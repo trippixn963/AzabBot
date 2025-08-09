@@ -101,7 +101,7 @@ class BotLogger:
         nested_groups = {}
 
         if config_summary:
-            config_items = [(key, value) for key, value in config_summary.items()]
+            config_items = list(config_summary.items())
             nested_groups["Configuration"] = config_items
 
         log_perfect_tree_section(
@@ -186,7 +186,7 @@ class BotLogger:
         nested_groups = {}
 
         if details:
-            detail_items = [(key, value) for key, value in details.items()]
+            detail_items = list(details.items())
             nested_groups["Details"] = detail_items
 
         log_perfect_tree_section(
@@ -229,7 +229,7 @@ class BotLogger:
         nested_groups = {}
 
         if context:
-            context_items = [(key, value) for key, value in context.items()]
+            context_items = list(context.items())
             nested_groups["Context"] = context_items
 
         log_perfect_tree_section(
@@ -285,7 +285,7 @@ class BotLogger:
             context: Additional context
         """
         if context:
-            context_items = [(key, value) for key, value in context.items()]
+            context_items = list(context.items())
             log_perfect_tree_section(
                 "Warning",
                 [("message", message)],
@@ -317,7 +317,7 @@ class BotLogger:
             context: Additional debug context
         """
         if context:
-            context_items = [(key, value) for key, value in context.items()]
+            context_items = list(context.items())
             log_perfect_tree_section(
                 "Debug Info",
                 [("message", message)],
@@ -347,7 +347,7 @@ class BotLogger:
         nested_groups = {}
 
         if details:
-            detail_items = [(key, value) for key, value in details.items()]
+            detail_items = list(details.items())
             nested_groups["Details"] = detail_items
 
         log_perfect_tree_section(
@@ -377,7 +377,7 @@ class BotLogger:
         nested_groups = {}
 
         if context:
-            context_items = [(key, value) for key, value in context.items()]
+            context_items = list(context.items())
             nested_groups["Context"] = context_items
 
         log_perfect_tree_section(
