@@ -35,7 +35,7 @@ env/
 .venv/
 
 # Poetry
-poetry.lock
+# Note: poetry.lock is tracked for reproducible builds
 
 # IDE
 .vscode/

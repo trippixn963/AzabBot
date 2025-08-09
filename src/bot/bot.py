@@ -19,6 +19,7 @@ import datetime
 import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+from datetime import timezone
 
 import discord
 
@@ -43,7 +44,7 @@ class BotMetrics:
 
     def __post_init__(self):
         if self.uptime_start is None:
-            self.uptime_start = datetime.datetime.utcnow()
+            self.uptime_start = datetime.datetime.now(timezone.utc)
 
 
 class SaydnayaBot(discord.Client):
@@ -361,7 +362,7 @@ class SaydnayaBot(discord.Client):
 
     def _check_rate_limits(self, message: discord.Message) -> bool:
         """Simple rate limiting - 1 minute cooldown per user."""
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(timezone.utc)
         user_id = message.author.id
 
         # Check user cooldown (1 minute)
@@ -545,7 +546,7 @@ class SaydnayaBot(discord.Client):
 
     def _update_metrics_and_cooldowns(self, message: discord.Message):
         """Update bot metrics and set cooldowns."""
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(timezone.utc)
 
         # Update metrics
         self.metrics.responses_generated += 1
@@ -601,7 +602,7 @@ class SaydnayaBot(discord.Client):
 
     def _format_bot_stats(self) -> str:
         """Format bot statistics for display."""
-        uptime = datetime.datetime.utcnow() - self.metrics.uptime_start
+        uptime = datetime.datetime.now(timezone.utc) - self.metrics.uptime_start
 
         return f"""Bot Statistics:
 Uptime: {uptime.days}d {uptime.seconds // 3600}h {(uptime.seconds % 3600) // 60}m
@@ -620,7 +621,7 @@ Response Rate: {(self.metrics.responses_generated /
         """Periodic cleanup task."""
         try:
             # Clean old cooldowns
-            now = datetime.datetime.utcnow()
+            now = datetime.datetime.now(timezone.utc)
             cutoff = now - datetime.timedelta(hours=1)
 
             # Clean user cooldowns
@@ -665,7 +666,7 @@ Response Rate: {(self.metrics.responses_generated /
                     batch_data["timer"].cancel()
 
             # Log final stats
-            uptime = datetime.datetime.utcnow() - self.metrics.uptime_start
+            uptime = datetime.datetime.now(timezone.utc) - self.metrics.uptime_start
             log_system_event(
                 "bot_shutdown",
                 "Bot shutting down",
