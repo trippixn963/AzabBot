@@ -83,9 +83,9 @@ class RateLimiter:
 
         # Token buckets for burst handling
         # Format: {limit_key: {user_id: {'tokens': int, 'last_refill': float}}}
-        self._token_buckets: Dict[str, Dict[int, Dict[str, Union[int, float]]]] = (
-            defaultdict(lambda: defaultdict(dict))
-        )
+        self._token_buckets: Dict[
+            str, Dict[int, Dict[str, Union[int, float]]]
+        ] = defaultdict(lambda: defaultdict(dict))
 
     def check_rate_limit(
         self,
