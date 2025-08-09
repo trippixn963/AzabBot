@@ -320,7 +320,9 @@ class SecurityValidator:
             return id_int
 
         except ValueError:
-            raise InvalidInputError(field_name, discord_id, "must be a valid integer") from None
+            raise InvalidInputError(
+                field_name, discord_id, "must be a valid integer"
+            ) from None
 
     def validate_permission_level(
         self, level: str, field_name: str = "permission_level"
