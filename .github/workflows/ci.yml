@@ -51,10 +51,13 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: Run Bandit Security Check
-      uses: gaurav-nelson/bandit-action@v1
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
-        path: "src/"
-        level: "medium"
-        confidence: "medium"
-        exit_zero: true
+        python-version: '3.10'
+    
+    - name: Install Bandit
+      run: pip install bandit
+    
+    - name: Run Bandit Security Check
+      run: bandit -r src/ -ll -i
