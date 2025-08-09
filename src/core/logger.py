@@ -22,7 +22,6 @@ from src.utils.tree_log import (
     log_status,
 )
 
-
 class BotLogger:
     """
     Comprehensive logging system for SaydnayaBot.
@@ -408,7 +407,6 @@ class BotLogger:
         numeric_level = getattr(logging, level.upper(), logging.INFO)
         self.python_logger.setLevel(numeric_level)
 
-
 # =============================================================================
 # Global Logger Instance
 # =============================================================================
@@ -416,24 +414,20 @@ class BotLogger:
 # Create a global logger instance for use throughout the application
 _global_bot_logger = BotLogger()
 
-
 # Convenience functions for global access
 def get_logger() -> BotLogger:
     """Get the global bot logger instance."""
     return _global_bot_logger
 
-
 def log_startup(version: str, config_summary: Optional[Dict[str, Any]] = None):
     """Log application startup."""
     return _global_bot_logger.log_startup(version, config_summary)
-
 
 def log_initialization_step(
     component: str, status: str, details: str, emoji: str = "🔧"
 ):
     """Log initialization step."""
     return _global_bot_logger.log_initialization_step(component, status, details, emoji)
-
 
 def log_error(
     message: str,
@@ -443,16 +437,13 @@ def log_error(
     """Log error with context."""
     return _global_bot_logger.log_error(message, exception, context)
 
-
 def log_warning(message: str, context: Optional[Dict[str, Any]] = None):
     """Log warning message."""
     return _global_bot_logger.log_warning(message, context)
 
-
 def log_info(message: str, emoji: str = "ℹ️"):
     """Log informational message."""
     return _global_bot_logger.log_info(message, emoji)
-
 
 def log_user_interaction(
     interaction_type: str,
@@ -465,7 +456,6 @@ def log_user_interaction(
     return _global_bot_logger.log_user_interaction(
         interaction_type, user_name, user_id, action, details
     )
-
 
 def log_system_event(
     event_type: str, description: str, details: Optional[Dict[str, Any]] = None

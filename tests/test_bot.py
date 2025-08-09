@@ -1,23 +1,26 @@
 """Basic tests for SaydnayaBot."""
 
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 # Mock all required modules before importing bot
-sys.modules['discord'] = MagicMock()
-sys.modules['discord.ext'] = MagicMock()
-sys.modules['discord.ext.tasks'] = MagicMock()
+sys.modules["discord"] = MagicMock()
+sys.modules["discord.ext"] = MagicMock()
+sys.modules["discord.ext.tasks"] = MagicMock()
 
 # Mock the bot module imports
-with patch.dict('sys.modules', {
-    'src.core.di_container': MagicMock(),
-    'src.core.logger': MagicMock(),
-    'src.monitoring.health_monitor': MagicMock(),
-    'src.services.ai_service': MagicMock(),
-    'src.utils.embed_builder': MagicMock()
-}):
+with patch.dict(
+    "sys.modules",
+    {
+        "src.core.di_container": MagicMock(),
+        "src.core.logger": MagicMock(),
+        "src.monitoring.health_monitor": MagicMock(),
+        "src.services.ai_service": MagicMock(),
+        "src.utils.embed_builder": MagicMock(),
+    },
+):
     from src.bot.bot import SaydnayaBot
 
 
@@ -46,10 +49,10 @@ class TestSaydnayaBot:
         """Test prison channel detection."""
         config = {"developer_id": 123456789, "prison_channel_ids": ["999"]}
         bot = SaydnayaBot(config)
-        
+
         # Test keyword detection
         assert bot._is_prison_channel("timeout-corner", 123) is True
         assert bot._is_prison_channel("general-chat", 123) is False
-        
+
         # Test explicit ID
         assert bot._is_prison_channel("any-name", 999) is True

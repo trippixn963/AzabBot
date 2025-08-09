@@ -25,7 +25,6 @@ from src.core.exceptions import (
     RateLimitExceededError,
 )
 
-
 class PermissionLevel(Enum):
     """Permission levels for role-based access control."""
 
@@ -34,7 +33,6 @@ class PermissionLevel(Enum):
     MODERATOR = "moderator"
     ADMIN = "admin"
     OWNER = "owner"
-
 
 @dataclass
 class SecurityContext:
@@ -53,7 +51,6 @@ class SecurityContext:
         if self.timestamp is None:
             self.timestamp = datetime.utcnow()
 
-
 @dataclass
 class RateLimitConfig:
     """Configuration for rate limiting rules."""
@@ -61,7 +58,6 @@ class RateLimitConfig:
     max_requests: int
     time_window: int  # seconds
     burst_allowance: int = 0  # extra requests allowed in burst
-
 
 class RateLimiter:
     """
@@ -203,7 +199,6 @@ class RateLimiter:
                 key_dict.pop(user_id, None)
             for key_dict in self._token_buckets.values():
                 key_dict.pop(user_id, None)
-
 
 class SecurityValidator:
     """
@@ -348,7 +343,6 @@ class SecurityValidator:
                 field_name, level, f"must be one of: {', '.join(valid_levels)}"
             ) from None
 
-
 class AccessController:
     """
     Role-based access control system.
@@ -489,7 +483,6 @@ class AccessController:
             PermissionLevel.OWNER,
         ]
         return levels_order.index(user_level) >= levels_order.index(required_level)
-
 
 class SecurityManager:
     """
@@ -712,7 +705,6 @@ class SecurityManager:
             "recent_events": recent_events[-10:],  # Last 10 events
         }
 
-
 # =============================================================================
 # Global Security Manager Instance
 # =============================================================================
@@ -720,12 +712,10 @@ class SecurityManager:
 # Create global security manager
 _global_security_manager = SecurityManager()
 
-
 # Convenience functions for global access
 def get_security_manager() -> SecurityManager:
     """Get the global security manager."""
     return _global_security_manager
-
 
 def create_security_context(
     user_id: int,
@@ -737,7 +727,6 @@ def create_security_context(
     return _global_security_manager.create_security_context(
         user_id, guild_id, channel_id, roles
     )
-
 
 def check_interaction_security(
     context: SecurityContext, interaction_type: str, user_input: Optional[str] = None

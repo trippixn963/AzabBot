@@ -20,7 +20,7 @@ repos:
     rev: 23.12.1
     hooks:
       - id: black
-        language_version: python3.10
+        language_version: python3
 
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
@@ -48,7 +48,7 @@ repos:
     rev: v3.15.0
     hooks:
       - id: pyupgrade
-        args: ["--py310-plus"]
+        args: ["--py39-plus"]
 
   - repo: https://github.com/hadialqattan/pycln
     rev: v2.4.0

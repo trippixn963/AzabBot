@@ -61,7 +61,6 @@ TREE_SYMBOLS = {
     "nested_last": "└─",  # Last node in nested structure
 }
 
-
 class TreeLogger:
     """
     Professional-grade tree-style logging system for SaydnayaBot.
@@ -535,14 +534,12 @@ class TreeLogger:
         """Set mock date for testing."""
         self.mock_date = mock_date
 
-
 # =============================================================================
 # Global Logger Instance and Standalone Functions
 # =============================================================================
 
 # Global logger instance
 _global_logger = TreeLogger()
-
 
 # Standalone functions for convenience
 def log_perfect_tree_section(
@@ -554,43 +551,35 @@ def log_perfect_tree_section(
     """Log a perfect tree section."""
     return _global_logger.log_perfect_tree_section(title, items, emoji, nested_groups)
 
-
 def log_error_with_traceback(
     message: str, exception: Optional[Exception] = None, level: str = "ERROR"
 ):
     """Log an error with traceback."""
     return _global_logger.log_error_with_traceback(message, exception, level)
 
-
 def log_critical_error(message: str, exception: Optional[Exception] = None):
     """Log a critical error."""
     return _global_logger.log_critical_error(message, exception)
-
 
 def log_spacing():
     """Add spacing in logs."""
     return _global_logger.log_spacing()
 
-
 def log_status(message: str, status: str = "INFO", emoji: str = "📍"):
     """Log a status message."""
     return _global_logger.log_status(message, status, emoji)
-
 
 def log_run_separator():
     """Log a run separator."""
     return _global_logger.log_run_separator()
 
-
 def log_run_header(bot_name: str, version: str, run_id: Optional[str] = None):
     """Log a run header."""
     return _global_logger.log_run_header(bot_name, version, run_id)
 
-
 def log_run_end(run_id: str, reason: str = "Normal shutdown"):
     """Log a run end."""
     return _global_logger.log_run_end(run_id, reason)
-
 
 def get_timestamp():
     """Get current timestamp."""

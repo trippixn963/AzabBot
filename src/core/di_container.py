@@ -19,14 +19,12 @@ from src.core.exceptions import ServiceError, ServiceInitializationError
 from src.core.logger import get_logger
 from src.services.base_service import BaseService
 
-
 class ServiceLifetime(Enum):
     """Service lifetime management modes."""
 
     SINGLETON = "singleton"  # One instance for the entire application
     TRANSIENT = "transient"  # New instance for each request
     SCOPED = "scoped"  # One instance per scope (e.g., per request)
-
 
 @dataclass
 class ServiceRegistration:
@@ -45,9 +43,7 @@ class ServiceRegistration:
         if self.config is None:
             self.config = {}
 
-
 T = TypeVar("T")
-
 
 class DIContainer:
     """
@@ -571,7 +567,6 @@ class DIContainer:
         """
         self._container_config = config.copy()
 
-
 # =============================================================================
 # Global DI Container Instance
 # =============================================================================
@@ -579,11 +574,9 @@ class DIContainer:
 # Create global DI container instance
 _global_container = DIContainer()
 
-
 def get_container() -> DIContainer:
     """Get the global DI container instance."""
     return _global_container
-
 
 def register_service(
     service_name: str,
@@ -598,7 +591,6 @@ def register_service(
         service_name, service_type, implementation_type, lifetime, dependencies, config
     )
 
-
 def register_factory(
     service_name: str,
     factory: Callable[..., T],
@@ -611,11 +603,9 @@ def register_factory(
         service_name, factory, lifetime, dependencies, config
     )
 
-
 async def resolve(service_name: str) -> Any:
     """Resolve a service from the global container."""
     return await _global_container.resolve(service_name)
-
 
 async def initialize_all_services() -> None:
     """Initialize all services in the global container."""

@@ -20,7 +20,6 @@ import psutil
 
 from src.services.base_service import BaseService, HealthCheckResult, ServiceStatus
 
-
 class AlertSeverity(Enum):
     """Alert severity levels."""
 
@@ -28,7 +27,6 @@ class AlertSeverity(Enum):
     WARNING = "warning"
     CRITICAL = "critical"
     EMERGENCY = "emergency"
-
 
 @dataclass
 class HealthAlert:
@@ -44,7 +42,6 @@ class HealthAlert:
     resolved: bool = False
     resolution_time: Optional[datetime] = None
 
-
 @dataclass
 class SystemMetrics:
     """System performance metrics."""
@@ -58,7 +55,6 @@ class SystemMetrics:
     network_bytes_recv: int
     active_connections: int
     uptime_seconds: float
-
 
 class HealthMonitor(BaseService):
     """

@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.config.config import BotConfig, ConfigField, _global_config, get_config
+from src.config.config import BotConfig, ConfigField, get_config
 
 
 class TestConfigField:
@@ -24,9 +24,9 @@ class TestConfigField:
             transformer=lambda x: x.upper(),
             sensitive=False,
             deprecated=False,
-            deprecated_message=""
+            deprecated_message="",
         )
-        
+
         assert field.name == "test_field"
         assert field.env_var == "TEST_FIELD"
         assert field.default == "default_value"
@@ -37,16 +37,17 @@ class TestConfigField:
 
     def test_field_validation(self):
         """Test field validation logic."""
+
         def validate_positive(x):
             return int(x) > 0
-        
+
         field = ConfigField(
             name="positive_number",
             env_var="POSITIVE_NUM",
             field_type=int,
-            validator=validate_positive
+            validator=validate_positive,
         )
-        
+
         assert field.validator("5") is True
         assert field.validator("-5") is False
         assert field.validator("0") is False
@@ -61,14 +62,18 @@ class TestBotConfig:
         assert isinstance(config._config, dict)
         assert len(config._fields) > 0  # Should have default fields defined
 
-    @patch.dict(os.environ, {"DISCORD_TOKEN": "test_token", "DEVELOPER_ID": "123456"})
+    @patch.dict(
+        os.environ, {"DISCORD_TOKEN": "test_token", "DEVELOPER_ID": "123456"}
+    )
     def test_load_config_from_env(self):
         """Test loading configuration from environment variables."""
         config = BotConfig()
         config.load()
-        
+
         assert config.get("discord_token") == "test_token"
-        assert config.get("developer_id") == 123456  # Should be transformed to int
+        assert (
+            config.get("developer_id") == 123456
+        )  # Should be transformed to int
 
     def test_config_validation_missing_required(self):
         """Test validation fails when required fields are missing."""
@@ -76,11 +81,14 @@ class TestBotConfig:
         with pytest.raises(ValueError, match="DISCORD_TOKEN"):
             config.validate()
 
-    @patch.dict(os.environ, {
-        "DISCORD_TOKEN": "test_token",
-        "DEVELOPER_ID": "123456",
-        "OPENAI_API_KEY": "test_key"
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "DISCORD_TOKEN": "test_token",
+            "DEVELOPER_ID": "123456",
+            "OPENAI_API_KEY": "test_key",
+        },
+    )
     def test_config_validation_success(self):
         """Test successful validation with all required fields."""
         config = BotConfig()
@@ -135,7 +143,7 @@ class TestBotConfig:
         config = BotConfig()
         config._config["discord_token"] = "secret_token"
         config._config["developer_id"] = 123456
-        
+
         summary = config.get_summary()
         assert "discord_token" not in summary
         assert "developer_id" in summary

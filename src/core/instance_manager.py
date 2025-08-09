@@ -14,7 +14,6 @@ import psutil
 
 from src.core.logger import get_logger
 
-
 class InstanceManager:
     """
     Manages bot instances to prevent conflicts.
@@ -246,10 +245,8 @@ class InstanceManager:
         except Exception as e:
             self.logger.log_error(f"Failed to remove PID file: {e}")
 
-
 # Global instance manager
 _instance_manager: Optional[InstanceManager] = None
-
 
 def get_instance_manager() -> InstanceManager:
     """Get or create the global instance manager."""

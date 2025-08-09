@@ -11,7 +11,6 @@ from typing import Any, Dict, Optional
 from src.core.exceptions import ServiceError
 from src.services.base_service import BaseService, HealthCheckResult, ServiceStatus
 
-
 class ReportService(BaseService):
     """
     Service for generating reports on prisoner activities and torture effectiveness.

@@ -20,7 +20,6 @@ from src.core.exceptions import (
     MissingConfigurationError,
 )
 
-
 @dataclass
 class ConfigField:
     """
@@ -40,7 +39,6 @@ class ConfigField:
     sensitive: bool = False  # Whether to hide value in logs
     deprecated: bool = False
     deprecated_message: str = ""
-
 
 class ConfigurationManager:
     """
@@ -595,7 +593,6 @@ class ConfigurationManager:
             self._loaded = True
             raise
 
-
 # =============================================================================
 # Global Configuration Instance
 # =============================================================================
@@ -603,47 +600,38 @@ class ConfigurationManager:
 # Create global configuration manager instance
 _global_config = ConfigurationManager()
 
-
 # Convenience functions for global access
 def load_configuration() -> Dict[str, Any]:
     """Load configuration from all sources."""
     return _global_config.load_configuration()
 
-
 def get_config() -> ConfigurationManager:
     """Get the global configuration manager."""
     return _global_config
-
 
 def get(key: str, default: Any = None) -> Any:
     """Get configuration value."""
     return _global_config.get(key, default)
 
-
 def get_str(key: str, default: str = "") -> str:
     """Get configuration value as string."""
     return _global_config.get_str(key, default)
-
 
 def get_int(key: str, default: int = 0) -> int:
     """Get configuration value as integer."""
     return _global_config.get_int(key, default)
 
-
 def get_float(key: str, default: float = 0.0) -> float:
     """Get configuration value as float."""
     return _global_config.get_float(key, default)
-
 
 def get_bool(key: str, default: bool = False) -> bool:
     """Get configuration value as boolean."""
     return _global_config.get_bool(key, default)
 
-
 def get_list(key: str, default: Optional[List] = None) -> List:
     """Get configuration value as list."""
     return _global_config.get_list(key, default)
-
 
 def require(key: str) -> Any:
     """Get required configuration value."""

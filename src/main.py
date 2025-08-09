@@ -6,7 +6,6 @@
 # =============================================================================
 
 import asyncio
-import os
 import signal
 import sys
 from pathlib import Path
@@ -16,13 +15,12 @@ from src.config.config import get_config
 from src.core.di_container import setup_dependencies
 from src.core.instance_manager import instance_manager
 from src.core.log_optimizer import LogOptimizer
-from src.core.logger import BotLogger, get_logger
+from src.core.logger import BotLogger
 from src.monitoring.health_monitor import HealthMonitor
 
 # Global references for signal handlers
 bot_instance = None
 logger = None
-
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully."""
@@ -32,7 +30,6 @@ def signal_handler(signum, frame):
         asyncio.create_task(shutdown_bot())
     else:
         sys.exit(0)
-
 
 async def shutdown_bot():
     """Gracefully shutdown the bot."""
@@ -45,7 +42,6 @@ async def shutdown_bot():
                 logger.log_error("Error during bot shutdown", exception=e)
         finally:
             bot_instance = None
-
 
 async def run_bot():
     """
@@ -175,7 +171,6 @@ async def run_bot():
 
         bot_logger.log_shutdown("Shutdown complete")
 
-
 def main():
     """Entry point for the application."""
     # Create logs directory if it doesn't exist
@@ -194,7 +189,6 @@ def main():
     except Exception as e:
         print(f"Fatal error: {e}")
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()
