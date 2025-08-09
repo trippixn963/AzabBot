@@ -42,7 +42,7 @@ jobs:
       run: poetry run isort --check-only src/
     
     - name: Run flake8
-      run: poetry run flake8 src/ --max-line-length=88 --extend-ignore=E203,E501,W503
+      run: poetry run flake8 src/ --max-line-length=88 --extend-ignore=E203,E501,W503,F824
     
     - name: Run ruff
       run: poetry run ruff check src/

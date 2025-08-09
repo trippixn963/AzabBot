@@ -197,8 +197,7 @@ class TreeLogger:
 
     def get_tree_prefix(self, is_last_item=False, depth_override=None):
         """Generate the proper tree prefix based on current depth and structure."""
-        global _tree_stack, _current_depth
-
+        # These are read-only access to globals
         depth = depth_override if depth_override is not None else _current_depth
 
         if depth == 0:
