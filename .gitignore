@@ -102,4 +102,14 @@ Thumbs.db
 
 # Pre-commit
 .pre-commit-config.yaml.backup
+
+# Release packages
+releases/
+*.tar.gz
+*.zip
+
+# Development files
+fix_formatting.py
+OPEN_SOURCE_CHECKLIST.md
+.cursorignore
 EOF < /dev/null
