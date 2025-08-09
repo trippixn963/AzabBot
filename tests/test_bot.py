@@ -2,12 +2,22 @@
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-
-# Mock discord module before importing bot
 import sys
-sys.modules['discord'] = MagicMock()
 
-from src.bot.bot import SaydnayaBot
+# Mock all required modules before importing bot
+sys.modules['discord'] = MagicMock()
+sys.modules['discord.ext'] = MagicMock()
+sys.modules['discord.ext.tasks'] = MagicMock()
+
+# Mock the bot module imports
+with patch.dict('sys.modules', {
+    'src.core.di_container': MagicMock(),
+    'src.core.logger': MagicMock(),
+    'src.monitoring.health_monitor': MagicMock(),
+    'src.services.ai_service': MagicMock(),
+    'src.utils.embed_builder': MagicMock()
+}):
+    from src.bot.bot import SaydnayaBot
 
 
 class TestSaydnayaBot:

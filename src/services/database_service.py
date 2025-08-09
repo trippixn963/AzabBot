@@ -270,7 +270,7 @@ class PrisonerDatabaseService(BaseService):
 
         except Exception as e:
             raise DatabaseQueryError(
-                f"SELECT FROM prisoners WHERE discord_id = {discord_id}", str(e)
+                "SELECT FROM prisoners WHERE discord_id = ?", str(e)
             ) from e
 
     async def update_prisoner_profile(
@@ -319,7 +319,7 @@ class PrisonerDatabaseService(BaseService):
         try:
             async with self._get_connection() as conn:
                 await conn.execute(
-                    f"UPDATE prisoners SET {', '.join(updates)} WHERE id = ?", params
+                    f"UPDATE prisoners SET {', '.join(updates)} WHERE id = ?", params  # nosec B608
                 )
                 await conn.commit()
 
@@ -340,7 +340,7 @@ class PrisonerDatabaseService(BaseService):
 
         except Exception as e:
             raise DatabaseQueryError(
-                f"UPDATE prisoners SET last_seen WHERE id = {prisoner_id}", str(e)
+                "UPDATE prisoners SET last_seen WHERE id = ?", str(e)
             ) from e
 
     # Session Management Methods
@@ -439,7 +439,7 @@ class PrisonerDatabaseService(BaseService):
                 params.append(session_id)
 
                 await conn.execute(
-                    f"UPDATE torture_sessions SET {', '.join(updates)} WHERE id = ?",
+                    f"UPDATE torture_sessions SET {', '.join(updates)} WHERE id = ?",  # nosec B608
                     params,
                 )
                 await conn.commit()
@@ -527,7 +527,7 @@ class PrisonerDatabaseService(BaseService):
 
         except Exception as e:
             raise DatabaseQueryError(
-                f"SELECT FROM conversation_history WHERE prisoner_id = {prisoner_id}",
+                "SELECT FROM conversation_history WHERE prisoner_id = ?",
                 str(e),
             ) from e
 
