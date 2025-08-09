@@ -51,7 +51,7 @@ async def shutdown_bot():
 async def run_bot():
     """
     Main bot execution function.
-    
+
     This function:
     1. Sets up logging and configuration
     2. Initializes dependency injection
@@ -59,14 +59,14 @@ async def run_bot():
     4. Handles graceful shutdown
     """
     global bot_instance, logger
-    
+
     # Initialize logger
     bot_logger = BotLogger()
     logger = bot_logger
-    
+
     # Log startup
     bot_logger.log_startup("SaydnayaBot", "1.0.0")
-    
+
     try:
         # Load configuration
         bot_logger.log_initialization_step(
@@ -76,7 +76,7 @@ async def run_bot():
         bot_logger.log_initialization_step(
             "Configuration", "success", "Configuration loaded successfully", "✅"
         )
-        
+
         # Setup dependency injection
         bot_logger.log_initialization_step(
             "Dependencies", "loading", "Setting up dependency injection"
@@ -85,12 +85,12 @@ async def run_bot():
         bot_logger.log_initialization_step(
             "Dependencies", "success", "Dependencies initialized", "✅"
         )
-        
+
         # Check instance lock
         bot_logger.log_initialization_step(
             "Instance Manager", "checking", "Checking for existing instances"
         )
-        
+
         # Get instance lock
         lock_acquired = instance_manager.acquire_lock()
         if not lock_acquired:
@@ -98,15 +98,15 @@ async def run_bot():
                 "Another instance is already running",
                 context={
                     "pid": instance_manager.get_running_pid(),
-                    "lock_file": str(instance_manager.lock_file)
-                }
+                    "lock_file": str(instance_manager.lock_file),
+                },
             )
             return
-        
+
         bot_logger.log_initialization_step(
             "Instance Manager", "success", "Instance lock acquired", "✅"
         )
-        
+
         # Initialize health monitor
         bot_logger.log_initialization_step(
             "Health Monitor", "starting", "Starting health monitoring"
@@ -116,7 +116,7 @@ async def run_bot():
         bot_logger.log_initialization_step(
             "Health Monitor", "success", "Health monitoring started", "✅"
         )
-        
+
         # Initialize log optimizer
         bot_logger.log_initialization_step(
             "Log Optimizer", "starting", "Starting log optimization service"
@@ -126,34 +126,32 @@ async def run_bot():
         bot_logger.log_initialization_step(
             "Log Optimizer", "success", "Log optimization started", "✅"
         )
-        
+
         # Create bot instance
-        bot_logger.log_initialization_step(
-            "Bot", "creating", "Creating bot instance"
-        )
+        bot_logger.log_initialization_step("Bot", "creating", "Creating bot instance")
         bot_instance = SaydnayaBot(config)
         bot_logger.log_initialization_step(
             "Bot", "success", "Bot instance created", "✅"
         )
-        
+
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
-        
+
         # Start the bot
         bot_logger.log_initialization_step(
             "Bot", "starting", "Starting bot connection to Discord"
         )
-        
+
         bot_logger.log_event(
             "bot_ready",
             "SaydnayaBot is starting...",
-            {"mode": "production", "version": "1.0.0"}
+            {"mode": "production", "version": "1.0.0"},
         )
-        
+
         # Run the bot
         await bot_instance.start(config.get("discord_token"))
-        
+
     except KeyboardInterrupt:
         bot_logger.log_warning("Received keyboard interrupt")
     except Exception as e:
@@ -162,20 +160,20 @@ async def run_bot():
     finally:
         # Cleanup
         bot_logger.log_shutdown("Bot shutdown initiated")
-        
+
         # Release instance lock
         instance_manager.release_lock()
-        
+
         # Stop services
-        if 'log_optimizer' in locals():
+        if "log_optimizer" in locals():
             await log_optimizer.stop()
-        if 'health_monitor' in locals():
+        if "health_monitor" in locals():
             await health_monitor.stop()
-        
+
         # Close bot if still connected
         if bot_instance:
             await shutdown_bot()
-        
+
         bot_logger.log_shutdown("Shutdown complete")
 
 
@@ -184,11 +182,11 @@ def main():
     # Create logs directory if it doesn't exist
     Path("logs").mkdir(exist_ok=True)
     Path("data").mkdir(exist_ok=True)
-    
+
     # Set up asyncio for Windows
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    
+
     # Run the bot
     try:
         asyncio.run(run_bot())
