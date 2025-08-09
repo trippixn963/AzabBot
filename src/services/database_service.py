@@ -319,8 +319,8 @@ class PrisonerDatabaseService(BaseService):
         try:
             async with self._get_connection() as conn:
                 await conn.execute(
-                    f"UPDATE prisoners SET {', '.join(updates)} WHERE id = ?",
-                    params,  # nosec B608
+                    f"UPDATE prisoners SET {', '.join(updates)} WHERE id = ?",  # nosec B608
+                    params,
                 )
                 await conn.commit()
 

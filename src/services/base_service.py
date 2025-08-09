@@ -16,10 +16,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, TypeVar
 
-from src.core.exceptions import (
-    ServiceError,
-    ServiceInitializationError,
-)
+from src.core.exceptions import ServiceError, ServiceInitializationError
 from src.core.logger import get_logger
 
 

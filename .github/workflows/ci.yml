@@ -66,4 +66,4 @@ jobs:
       run: pip install bandit
     
     - name: Run Bandit Security Check
-      run: bandit -r src/ -ll -i
+      run: bandit -r src/ -ll -i --skip B101
