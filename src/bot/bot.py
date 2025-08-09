@@ -29,6 +29,7 @@ from src.monitoring.health_monitor import HealthMonitor
 from src.services.ai_service import AIService
 from src.utils.embed_builder import EmbedBuilder
 
+
 @dataclass
 class BotMetrics:
     """Bot operational metrics."""
@@ -44,6 +45,7 @@ class BotMetrics:
     def __post_init__(self):
         if self.uptime_start is None:
             self.uptime_start = datetime.datetime.now(timezone.utc)
+
 
 class SaydnayaBot(discord.Client):
     """

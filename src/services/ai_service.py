@@ -27,6 +27,7 @@ from src.core.exceptions import (
 )
 from src.services.base_service import BaseService, HealthCheckResult, ServiceStatus
 
+
 class ResponseMode(Enum):
     """AI response generation modes."""
 
@@ -35,6 +36,7 @@ class ResponseMode(Enum):
     AZAB = "azab"  # Azab torturer personality - robotic nonsense
     PSYCHOLOGICAL = "psychological"  # Psychological analysis and targeting
     FALLBACK = "fallback"  # Predefined fallback responses
+
 
 @dataclass
 class ResponseContext:
@@ -57,6 +59,7 @@ class ResponseContext:
         if self.additional_context is None:
             self.additional_context = {}
 
+
 @dataclass
 class AIResponse:
     """Structured AI response with metadata."""
@@ -72,6 +75,7 @@ class AIResponse:
     def __post_init__(self):
         if self.metadata is None:
             self.metadata = {}
+
 
 class ContentFilter:
     """Content filtering and safety system."""
@@ -149,6 +153,7 @@ class ContentFilter:
 
         # Use probability-based response in normal channels
         return random.random() < response_probability
+
 
 class ResponseGenerator:
     """AI response generation with multiple strategies."""
@@ -348,6 +353,7 @@ class ResponseGenerator:
             mode, self.fallback_responses[ResponseMode.NORMAL]
         )
         return random.choice(responses)
+
 
 class AIService(BaseService):
     """

@@ -22,6 +22,7 @@ from src.core.exceptions import (
 )
 from src.services.base_service import BaseService, HealthCheckResult, ServiceStatus
 
+
 @dataclass
 class Prisoner:
     """Prisoner data model."""
@@ -40,6 +41,7 @@ class Prisoner:
     first_seen: Optional[datetime] = None
     last_seen: Optional[datetime] = None
     id: Optional[int] = None
+
 
 @dataclass
 class TortureSession:
@@ -64,6 +66,7 @@ class TortureSession:
         if self.torture_methods is None:
             self.torture_methods = []
 
+
 @dataclass
 class ConversationMessage:
     """Conversation message data model."""
@@ -76,6 +79,7 @@ class ConversationMessage:
     emotional_state: Optional[str] = None
     timestamp: Optional[datetime] = None
     id: Optional[int] = None
+
 
 class PrisonerDatabaseService(BaseService):
     """
@@ -790,6 +794,7 @@ class PrisonerDatabaseService(BaseService):
         return (
             (self._total_queries - self._failed_queries) / self._total_queries
         ) * 100
+
 
 class AsyncConnection:
     """Wrapper for async database operations."""

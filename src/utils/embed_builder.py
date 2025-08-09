@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple, Union
 
 from discord import Embed
 
+
 class EmbedBuilder:
     """
     Utility class for creating consistent embeds with SaydnayaBot branding.

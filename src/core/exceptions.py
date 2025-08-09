@@ -11,6 +11,7 @@
 
 from typing import Any, Dict, Optional
 
+
 class SaydnayaBotException(Exception):
     """
     Base exception for all SaydnayaBot-specific errors.
@@ -53,9 +54,11 @@ class SaydnayaBotException(Exception):
         """Return detailed representation of the exception."""
         return f"{self.__class__.__name__}(message='{self.message}', context={self.context}, error_code='{self.error_code}')"
 
+
 # =============================================================================
 # Configuration Exceptions
 # =============================================================================
+
 
 class ConfigurationError(SaydnayaBotException):
     """Raised when there are configuration-related errors."""
@@ -73,6 +76,7 @@ class ConfigurationError(SaydnayaBotException):
             context["config_key"] = config_key
         super().__init__(message, context, kwargs.get("error_code"))
 
+
 class MissingConfigurationError(ConfigurationError):
     """Raised when required configuration is missing."""
 
@@ -85,6 +89,7 @@ class MissingConfigurationError(ConfigurationError):
         """
         message = f"Required configuration key '{config_key}' is missing or empty"
         super().__init__(message, config_key, error_code="MISSING_CONFIG", **kwargs)
+
 
 class InvalidConfigurationError(ConfigurationError):
     """Raised when configuration has invalid values."""
@@ -105,9 +110,11 @@ class InvalidConfigurationError(ConfigurationError):
             message, config_key, context=context, error_code="INVALID_CONFIG", **kwargs
         )
 
+
 # =============================================================================
 # Service Exceptions
 # =============================================================================
+
 
 class ServiceError(SaydnayaBotException):
     """Base exception for service-related errors."""
@@ -125,6 +132,7 @@ class ServiceError(SaydnayaBotException):
         full_message = f"Service '{service_name}': {message}"
         super().__init__(full_message, context, kwargs.get("error_code"))
 
+
 class ServiceInitializationError(ServiceError):
     """Raised when a service fails to initialize properly."""
 
@@ -140,6 +148,7 @@ class ServiceInitializationError(ServiceError):
         super().__init__(
             service_name, message, error_code="SERVICE_INIT_FAILED", **kwargs
         )
+
 
 class ServiceUnavailableError(ServiceError):
     """Raised when a service is temporarily unavailable."""
@@ -161,9 +170,11 @@ class ServiceUnavailableError(ServiceError):
             service_name, reason, error_code="SERVICE_UNAVAILABLE", **kwargs
         )
 
+
 # =============================================================================
 # AI Service Exceptions
 # =============================================================================
+
 
 class AIServiceError(ServiceError):
     """Base exception for AI service-related errors."""
@@ -171,6 +182,7 @@ class AIServiceError(ServiceError):
     def __init__(self, message: str, **kwargs):
         """Initialize AI service error."""
         super().__init__("AIService", message, **kwargs)
+
 
 class AIGenerationError(AIServiceError):
     """Raised when AI response generation fails."""
@@ -191,6 +203,7 @@ class AIGenerationError(AIServiceError):
             message, context=context, error_code="AI_GENERATION_FAILED", **kwargs
         )
 
+
 class AIQuotaExceededError(AIServiceError):
     """Raised when AI service quota is exceeded."""
 
@@ -198,6 +211,7 @@ class AIQuotaExceededError(AIServiceError):
         """Initialize AI quota exceeded error."""
         message = "AI service quota exceeded"
         super().__init__(message, error_code="AI_QUOTA_EXCEEDED", **kwargs)
+
 
 class AIInappropriateContentError(AIServiceError):
     """Raised when AI service refuses to generate content due to policy violations."""
@@ -214,9 +228,11 @@ class AIInappropriateContentError(AIServiceError):
         )
         super().__init__(message, error_code="AI_CONTENT_POLICY_VIOLATION", **kwargs)
 
+
 # =============================================================================
 # Discord API Exceptions
 # =============================================================================
+
 
 class DiscordAPIError(SaydnayaBotException):
     """Base exception for Discord API-related errors."""
@@ -235,6 +251,7 @@ class DiscordAPIError(SaydnayaBotException):
         super().__init__(
             f"Discord API Error: {message}", context, kwargs.get("error_code")
         )
+
 
 class DiscordPermissionError(DiscordAPIError):
     """Raised when bot lacks required Discord permissions."""
@@ -264,6 +281,7 @@ class DiscordPermissionError(DiscordAPIError):
             message, context=context, error_code="DISCORD_PERMISSION_DENIED", **kwargs
         )
 
+
 class DiscordRateLimitError(DiscordAPIError):
     """Raised when Discord rate limits are hit."""
 
@@ -285,9 +303,11 @@ class DiscordRateLimitError(DiscordAPIError):
             **kwargs,
         )
 
+
 # =============================================================================
 # Database Exceptions
 # =============================================================================
+
 
 class DatabaseError(SaydnayaBotException):
     """Base exception for database-related errors."""
@@ -307,6 +327,7 @@ class DatabaseError(SaydnayaBotException):
             f"Database Error: {message}", context, kwargs.get("error_code")
         )
 
+
 class DatabaseConnectionError(DatabaseError):
     """Raised when database connection fails."""
 
@@ -319,6 +340,7 @@ class DatabaseConnectionError(DatabaseError):
         """
         message = f"Failed to connect to database: {reason}"
         super().__init__(message, error_code="DB_CONNECTION_FAILED", **kwargs)
+
 
 class DatabaseQueryError(DatabaseError):
     """Raised when database query execution fails."""
@@ -338,9 +360,11 @@ class DatabaseQueryError(DatabaseError):
             message, context=context, error_code="DB_QUERY_FAILED", **kwargs
         )
 
+
 # =============================================================================
 # Security Exceptions
 # =============================================================================
+
 
 class SecurityError(SaydnayaBotException):
     """Base exception for security-related errors."""
@@ -362,6 +386,7 @@ class SecurityError(SaydnayaBotException):
             f"Security Error: {message}", context, kwargs.get("error_code")
         )
 
+
 class AuthenticationError(SecurityError):
     """Raised when authentication fails."""
 
@@ -377,6 +402,7 @@ class AuthenticationError(SecurityError):
         if user_id:
             security_context["user_id"] = user_id
         super().__init__(message, security_context, error_code="AUTH_FAILED", **kwargs)
+
 
 class AuthorizationError(SecurityError):
     """Raised when authorization fails."""
@@ -397,6 +423,7 @@ class AuthorizationError(SecurityError):
         super().__init__(
             message, security_context, error_code="AUTHORIZATION_DENIED", **kwargs
         )
+
 
 class RateLimitExceededError(SecurityError):
     """Raised when user exceeds rate limits."""
@@ -422,9 +449,11 @@ class RateLimitExceededError(SecurityError):
             message, security_context, error_code="RATE_LIMIT_EXCEEDED", **kwargs
         )
 
+
 # =============================================================================
 # Validation Exceptions
 # =============================================================================
+
 
 class ValidationError(SaydnayaBotException):
     """Base exception for validation-related errors."""
@@ -449,6 +478,7 @@ class ValidationError(SaydnayaBotException):
             f"Validation Error: {message}", context, kwargs.get("error_code")
         )
 
+
 class InvalidInputError(ValidationError):
     """Raised when user input is invalid."""
 
@@ -463,6 +493,7 @@ class InvalidInputError(ValidationError):
         """
         message = f"Invalid {field}: {reason}"
         super().__init__(message, field, value, error_code="INVALID_INPUT", **kwargs)
+
 
 class RequiredFieldError(ValidationError):
     """Raised when required field is missing."""

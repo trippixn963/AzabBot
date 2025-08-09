@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, TypeVar
 from src.core.exceptions import ServiceError, ServiceInitializationError
 from src.core.logger import get_logger
 
+
 class ServiceStatus(Enum):
     """Service status enumeration."""
 
@@ -30,6 +31,7 @@ class ServiceStatus(Enum):
     SHUTTING_DOWN = "shutting_down"
     SHUTDOWN = "shutdown"
 
+
 @dataclass
 class HealthCheckResult:
     """Result of a service health check."""
@@ -39,6 +41,7 @@ class HealthCheckResult:
     details: Dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.utcnow)
     response_time_ms: Optional[float] = None
+
 
 @dataclass
 class ServiceMetrics:
@@ -56,7 +59,9 @@ class ServiceMetrics:
     memory_usage_mb: float = 0.0
     custom_metrics: Dict[str, Any] = field(default_factory=dict)
 
+
 T = TypeVar("T", bound="BaseService")
+
 
 class BaseService(ABC):
     """

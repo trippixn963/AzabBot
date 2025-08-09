@@ -22,6 +22,7 @@ from src.monitoring.health_monitor import HealthMonitor
 bot_instance = None
 logger = None
 
+
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully."""
     if logger:
@@ -30,6 +31,7 @@ def signal_handler(signum, frame):
         asyncio.create_task(shutdown_bot())
     else:
         sys.exit(0)
+
 
 async def shutdown_bot():
     """Gracefully shutdown the bot."""
@@ -42,6 +44,7 @@ async def shutdown_bot():
                 logger.log_error("Error during bot shutdown", exception=e)
         finally:
             bot_instance = None
+
 
 async def run_bot():
     """
@@ -171,6 +174,7 @@ async def run_bot():
 
         bot_logger.log_shutdown("Shutdown complete")
 
+
 def main():
     """Entry point for the application."""
     # Create logs directory if it doesn't exist
@@ -189,6 +193,7 @@ def main():
     except Exception as e:
         print(f"Fatal error: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

@@ -17,6 +17,7 @@ from typing import Any, Dict, Optional
 
 from src.core.logger import get_logger
 
+
 class LogDeletionManager:
     """
     Manages automatic log deletion and compression.
@@ -267,6 +268,7 @@ class LogDeletionManager:
         except Exception:
             return "Unknown"
 
+
 class LogRotationManager:
     """
     Manages log rotation to prevent single files from growing too large.
@@ -332,9 +334,11 @@ class LogRotationManager:
         except Exception as e:
             self.logger.log_error(f"Failed to rotate {file_path}: {e}")
 
+
 # Global instance for easy access
 _log_deletion_manager: Optional[LogDeletionManager] = None
 _log_rotation_manager: Optional[LogRotationManager] = None
+
 
 async def initialize_log_management(
     log_dir: Path,
@@ -357,6 +361,7 @@ async def initialize_log_management(
 
     await _log_deletion_manager.start()
 
+
 async def shutdown_log_management():
     """Shutdown the log management system."""
     global _log_deletion_manager
@@ -365,9 +370,11 @@ async def shutdown_log_management():
         await _log_deletion_manager.stop()
         _log_deletion_manager = None
 
+
 def get_log_deletion_manager() -> Optional[LogDeletionManager]:
     """Get the global log deletion manager instance."""
     return _log_deletion_manager
+
 
 def get_log_rotation_manager() -> Optional[LogRotationManager]:
     """Get the global log rotation manager instance."""
