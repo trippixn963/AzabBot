@@ -27,6 +27,7 @@ pytest-asyncio = "^0.21.0"
 pre-commit = "^3.3.0"
 ruff = "^0.1.0"
 bandit = "^1.8.6"
+pytest-cov = "^6.2.1"
 
 [tool.poetry.scripts]
 saydnayabot = "main:main"
