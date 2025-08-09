@@ -102,6 +102,14 @@ saydnayabot/
 └── .env               # Environment variables
 ```
 
+## Documentation 📚
+
+- [Contributing Guide](docs/development/CONTRIBUTING.md) - How to contribute to the project
+- [Security Policy](docs/project/SECURITY.md) - Security guidelines and reporting
+- [Changelog](docs/project/CHANGELOG.md) - Version history and updates
+- [Avatar Setup](docs/setup/AVATAR_SETUP.md) - Bot avatar configuration guide
+- [Azab Character](docs/AZAB_CHARACTER.md) - Character design and personality
+
 ## Development 🛠️
 
 ### Code Style
