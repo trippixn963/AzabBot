@@ -1,16 +1,17 @@
 """Tests for dependency injection container."""
 
-import pytest
 import asyncio
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.core.di_container import (
-    DIContainer,
-    setup_dependencies,
-    get_container,
-    ServiceNotFoundError,
     CircularDependencyError,
-    _global_container
+    DIContainer,
+    ServiceNotFoundError,
+    _global_container,
+    get_container,
+    setup_dependencies,
 )
 from src.services.base_service import BaseService, ServiceStatus
 

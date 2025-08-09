@@ -1,8 +1,9 @@
 """Basic tests for SaydnayaBot."""
 
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 import sys
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 # Mock all required modules before importing bot
 sys.modules['discord'] = MagicMock()

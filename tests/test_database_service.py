@@ -1,22 +1,23 @@
 """Tests for database service module."""
 
-import pytest
 import asyncio
-import tempfile
 import os
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from src.services.database_service import (
-    DatabaseService,
-    PrisonerRecord,
-    TortureSession,
-    ConversationEntry
-)
+import pytest
+
 from src.core.exceptions import (
     DatabaseConnectionError,
     DatabaseQueryError,
-    ServiceError
+    ServiceError,
+)
+from src.services.database_service import (
+    ConversationEntry,
+    DatabaseService,
+    PrisonerRecord,
+    TortureSession,
 )
 
 

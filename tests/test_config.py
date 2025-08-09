@@ -1,10 +1,11 @@
 """Tests for configuration module."""
 
 import os
-import pytest
 from unittest.mock import patch
 
-from src.config.config import BotConfig, ConfigField, get_config, _global_config
+import pytest
+
+from src.config.config import BotConfig, ConfigField, _global_config, get_config
 
 
 class TestConfigField:

@@ -1,17 +1,13 @@
 """Tests for logging module."""
 
-import pytest
-import tempfile
 import json
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from src.core.logger import (
-    BotLogger,
-    get_logger,
-    LogLevel,
-    _global_logger
-)
+import pytest
+
+from src.core.logger import BotLogger, LogLevel, _global_logger, get_logger
 from src.utils.tree_log import TreeLogger
 
 

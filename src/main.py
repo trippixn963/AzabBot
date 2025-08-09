@@ -15,10 +15,9 @@ from src.bot.bot import SaydnayaBot
 from src.config.config import get_config
 from src.core.di_container import setup_dependencies
 from src.core.instance_manager import instance_manager
-from src.core.logger import BotLogger, get_logger
 from src.core.log_optimizer import LogOptimizer
+from src.core.logger import BotLogger, get_logger
 from src.monitoring.health_monitor import HealthMonitor
-
 
 # Global references for signal handlers
 bot_instance = None
