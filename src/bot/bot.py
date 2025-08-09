@@ -18,8 +18,8 @@ import asyncio
 import datetime
 import random
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
 from datetime import timezone
+from typing import Any, Dict, List, Optional
 
 import discord
 
@@ -612,7 +612,7 @@ Daily Responses: {self.metrics.daily_responses}
 Commands Processed: {self.metrics.commands_processed:,}
 Errors Handled: {self.metrics.errors_handled:,}
 Guild Count: {len(self.guilds)}
-Response Rate: {(self.metrics.responses_generated / 
+Response Rate: {(self.metrics.responses_generated /
                  max(1, self.metrics.messages_seen)) * 100:.1f}%
 """
 
