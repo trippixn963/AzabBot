@@ -23,10 +23,9 @@ from src.utils.embed_builder import EmbedBuilder
 
 def create_activate_command(bot):
     """
-    Create an activate command that shows the bot is always online.
+    Create an activate command that activates the bot.
     
-    This command is a developer-only command that confirms the bot's active status.
-    The bot is designed to be always online and cannot be manually activated.
+    This command is a developer-only command that activates the bot's monitoring.
     
     Args:
         bot: The AzabBot instance that contains the developer_id
@@ -42,7 +41,7 @@ def create_activate_command(bot):
         """
         Handle the activate command interaction.
         
-        This command confirms that the bot is always active and online.
+        This command activates the bot's monitoring and response system.
         Only the bot's developer can use this command.
         """
         # Verify the user is the authorized developer
@@ -57,19 +56,24 @@ def create_activate_command(bot):
                 embed.set_thumbnail(url=bot.user.avatar.url)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
-            
-        # Confirm bot is always active
+        
+        # Activate the bot
+        bot.is_active = True
+        bot.logger.log_info("✅ Bot activated by developer command")
+        
+        # Create success embed
         embed = discord.Embed(
-            title="✅ Bot Status",
-            description="Bot is already active and always online!",
+            title="✅ Bot Activated",
+            description="AzabBot is now active and monitoring all channels!",
             color=0x00FF00,
             timestamp=discord.utils.utcnow()
         )
         if bot.user and bot.user.avatar:
             embed.set_thumbnail(url=bot.user.avatar.url)
         embed.add_field(name="Status", value="🟢 Active", inline=True)
+        embed.add_field(name="Monitoring", value="👁️ Enabled", inline=True)
         embed.add_field(name="Prisoners", value=f"{len(bot.current_prisoners)}", inline=True)
-        embed.set_footer(text="AzabBot v1.5.0 • Always Watching")
+        embed.set_footer(text="AzabBot v1.5.0 • Now Watching")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     return activate
@@ -77,10 +81,9 @@ def create_activate_command(bot):
 
 def create_deactivate_command(bot):
     """
-    Create a deactivate command that demonstrates the bot cannot be deactivated.
+    Create a deactivate command that deactivates the bot.
     
-    This command is a developer-only command that shows the bot's permanence.
-    The bot is designed to be always online and cannot be manually deactivated.
+    This command is a developer-only command that deactivates the bot's monitoring.
     
     Args:
         bot: The AzabBot instance that contains the developer_id
@@ -96,8 +99,8 @@ def create_deactivate_command(bot):
         """
         Handle the deactivate command interaction.
         
-        This command demonstrates that the bot cannot be deactivated and
-        is designed to be always present. Only the bot's developer can use this command.
+        This command deactivates the bot's monitoring and response system.
+        Only the bot's developer can use this command.
         """
         # Verify the user is the authorized developer
         if interaction.user.id != bot.developer_id:
@@ -111,19 +114,24 @@ def create_deactivate_command(bot):
                 embed.set_thumbnail(url=bot.user.avatar.url)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
-            
-        # Demonstrate bot's permanence with a thematic message
+        
+        # Deactivate the bot
+        bot.is_active = False
+        bot.logger.log_info("🔴 Bot deactivated by developer command")
+        
+        # Create deactivation embed
         embed = discord.Embed(
-            title="⚠️ Cannot Deactivate",
-            description="I cannot be deactivated. I am eternal. I am watching.",
-            color=0xFF6600,
+            title="🔴 Bot Deactivated",
+            description="AzabBot is now inactive. Monitoring and responses are disabled.",
+            color=0xFF0000,
             timestamp=discord.utils.utcnow()
         )
         if bot.user and bot.user.avatar:
             embed.set_thumbnail(url=bot.user.avatar.url)
-        embed.add_field(name="Status", value="🔴 Permanent", inline=True)
-        embed.add_field(name="Monitoring", value="👁️ Always Active", inline=True)
-        embed.set_footer(text="AzabBot v1.5.0 • There is no escape")
+        embed.add_field(name="Status", value="⭕ Inactive", inline=True)
+        embed.add_field(name="Monitoring", value="🚫 Disabled", inline=True)
+        embed.add_field(name="Commands", value="✅ Still Available", inline=True)
+        embed.set_footer(text="AzabBot v1.5.0 • Sleeping")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     return deactivate

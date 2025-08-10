@@ -77,12 +77,12 @@ jobs:
                 }
               ],
               "footer": {
-                "text": "AzabBot v1.5.0 • Continuous Integration",
+                "text": "AzabBot v1.5.0 • Today at $(date +%I:%M %p)",
                 "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
               },
               "timestamp": "${TIMESTAMP}"
             }],
-            "username": "AzabBot CI/CD",
+            "username": "AzabBot Development",
             "avatar_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
           }
           EOF
@@ -176,12 +176,12 @@ jobs:
                 }
               ],
               "footer": {
-                "text": "AzabBot v1.5.0 • Continuous Integration",
+                "text": "AzabBot v1.5.0 • Today at $(date +%I:%M %p)",
                 "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
               },
               "timestamp": "${TIMESTAMP}"
             }],
-            "username": "AzabBot CI/CD",
+            "username": "AzabBot Development",
             "avatar_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
           }
           EOF
