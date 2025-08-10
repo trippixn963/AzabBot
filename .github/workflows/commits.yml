@@ -102,7 +102,17 @@ jobs:
           EOF
           )
           
-          curl -s -X POST \
+          RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
-            "${WEBHOOK_URL}?thread_id=${THREAD_ID}"
+            "${WEBHOOK_URL}?thread_id=${THREAD_ID}")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE:" | cut -d: -f2)
+          echo "Response code: $HTTP_CODE"
+          
+          if [ "$HTTP_CODE" != "204" ] && [ "$HTTP_CODE" != "200" ]; then
+            echo "Error response:"
+            echo "$RESPONSE" | head -n -1
+          else
+            echo "Successfully sent to secondary server"
+          fi
