@@ -25,7 +25,8 @@ def create_activate_command(bot):
     """
     Create an activate command that activates the bot.
     
-    This command is a developer-only command that activates the bot's monitoring.
+    This command is restricted to authorized users (developer and specific moderators)
+    and activates the bot's monitoring.
     
     Args:
         bot: The AzabBot instance that contains the developer_id
@@ -35,20 +36,27 @@ def create_activate_command(bot):
     """
 
     @app_commands.command(
-        name="activate", description="Enable bot responses (Developer only)"
+        name="activate", description="Enable bot responses (Authorized users only)"
     )
     async def activate(interaction: discord.Interaction):
         """
         Handle the activate command interaction.
         
         This command activates the bot's monitoring and response system.
-        Only the bot's developer can use this command.
+        Only authorized users (developer and specific moderators) can use this command.
         """
-        # Verify the user is the authorized developer
-        if interaction.user.id != bot.developer_id:
+        # List of authorized user IDs (developer + moderators from config)
+        authorized_users = [bot.developer_id]
+        # Add moderator IDs from config if available
+        moderator_ids = bot.config.get("MODERATOR_IDS", [])
+        if moderator_ids:
+            authorized_users.extend(moderator_ids)
+        
+        # Verify the user is authorized
+        if interaction.user.id not in authorized_users:
             embed = discord.Embed(
                 title="❌ Permission Denied",
-                description="Only the developer can use this command.",
+                description="Only authorized users can use this command.",
                 color=0xFF0000,
                 timestamp=discord.utils.utcnow()
             )
@@ -60,6 +68,20 @@ def create_activate_command(bot):
         # Activate the bot
         bot.is_active = True
         bot.logger.log_info("✅ Bot activated by developer command")
+        
+        # Update bot presence to show active status
+        activity = discord.Activity(
+            type=discord.ActivityType.watching, name="⛓ Sednaya"
+        )
+        await bot.change_presence(activity=activity, status=discord.Status.online)
+        
+        # Scan for current prisoners if not already done
+        await bot._scan_for_prisoners()
+        
+        # Start presence rotation task if not already running
+        if bot.presence_rotation_task:
+            bot.presence_rotation_task.cancel()
+        bot.presence_rotation_task = bot.loop.create_task(bot._rotate_presence())
         
         # Create success embed
         embed = discord.Embed(
@@ -83,7 +105,8 @@ def create_deactivate_command(bot):
     """
     Create a deactivate command that deactivates the bot.
     
-    This command is a developer-only command that deactivates the bot's monitoring.
+    This command is restricted to authorized users (developer and specific moderators)
+    and deactivates the bot's monitoring.
     
     Args:
         bot: The AzabBot instance that contains the developer_id
@@ -93,20 +116,27 @@ def create_deactivate_command(bot):
     """
 
     @app_commands.command(
-        name="deactivate", description="Disable bot responses (Developer only)"
+        name="deactivate", description="Disable bot responses (Authorized users only)"
     )
     async def deactivate(interaction: discord.Interaction):
         """
         Handle the deactivate command interaction.
         
         This command deactivates the bot's monitoring and response system.
-        Only the bot's developer can use this command.
+        Only authorized users (developer and specific moderators) can use this command.
         """
-        # Verify the user is the authorized developer
-        if interaction.user.id != bot.developer_id:
+        # List of authorized user IDs (developer + moderators from config)
+        authorized_users = [bot.developer_id]
+        # Add moderator IDs from config if available
+        moderator_ids = bot.config.get("MODERATOR_IDS", [])
+        if moderator_ids:
+            authorized_users.extend(moderator_ids)
+        
+        # Verify the user is authorized
+        if interaction.user.id not in authorized_users:
             embed = discord.Embed(
                 title="❌ Permission Denied",
-                description="Only the developer can use this command.",
+                description="Only authorized users can use this command.",
                 color=0xFF0000,
                 timestamp=discord.utils.utcnow()
             )
@@ -118,6 +148,17 @@ def create_deactivate_command(bot):
         # Deactivate the bot
         bot.is_active = False
         bot.logger.log_info("🔴 Bot deactivated by developer command")
+        
+        # Update bot presence to show inactive status
+        activity = discord.Activity(
+            type=discord.ActivityType.watching, name="💤 Inactive"
+        )
+        await bot.change_presence(activity=activity, status=discord.Status.idle)
+        
+        # Stop presence rotation task
+        if bot.presence_rotation_task:
+            bot.presence_rotation_task.cancel()
+            bot.presence_rotation_task = None
         
         # Create deactivation embed
         embed = discord.Embed(

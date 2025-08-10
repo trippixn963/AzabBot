@@ -101,7 +101,7 @@ class AzabBot(discord.Client):
         self.batch_delay = 2.0  # Collect messages for 2 seconds before responding
 
         # Bot state
-        self.is_active = True  # Bot is always active
+        self.is_active = False  # Bot starts inactive, requires /activate
         self.prison_mode = True  # Prison mode enabled by default
         self.developer_id = config.get("DEVELOPER_ID")  # Developer from config
         if not self.developer_id:
@@ -214,11 +214,6 @@ class AzabBot(discord.Client):
         self.metrics.messages_seen += 1
 
         try:
-            # Debug logging
-            self.logger.log_info(
-                f"DEBUG: 📥 Message received from {message.author} in #{message.channel.name}"
-            )
-
             # Handle developer commands first (always works, even when deactivated)
             if await self._handle_developer_commands(message):
                 return
@@ -232,18 +227,24 @@ class AzabBot(discord.Client):
                         str(role.id) == str(target_role_id)
                         for role in message.author.roles
                     )
-                    self.logger.log_info(
-                        f"DEBUG: User roles: {[role.id for role in message.author.roles]}, Target role: {target_role_id}, Has role: {user_has_role}"
-                    )
 
             # Check if this is a prison channel
             is_prison_channel = self._is_prison_channel(
                 message.channel.name, message.channel.id
             )
-            self.logger.log_info(
-                f"DEBUG: Channel ID: {message.channel.id}, Is prison channel: {is_prison_channel}"
-            )
 
+            # Debug logging with tree structure
+            debug_context = {
+                "author": str(message.author),
+                "channel": f"#{message.channel.name}",
+                "channel_id": str(message.channel.id),
+                "is_prison": is_prison_channel,
+                "is_active": self.is_active,
+                "has_target_role": user_has_role,
+                "user_roles": [str(role.id) for role in message.author.roles] if hasattr(message.author, "roles") else [],
+                "target_role": str(target_role_id) if target_role_id else "None"
+            }
+            
             # ALWAYS store and learn from messages for context
             # Store message in memory service for learning
             if self.memory_service:
@@ -268,12 +269,19 @@ class AzabBot(discord.Client):
             )
 
             if not should_respond:
-                self.logger.log_info(
-                    f"DEBUG: Not responding - Active: {self.is_active}, Prison: {is_prison_channel}, Role: {user_has_role}"
+                debug_context["decision"] = "NOT RESPONDING"
+                debug_context["reason"] = f"Active={self.is_active}, Prison={is_prison_channel}, Role={user_has_role}"
+                self.logger.log_debug(
+                    f"📥 Message received - {message.author} in #{message.channel.name}",
+                    context=debug_context
                 )
                 return
 
-            self.logger.log_info("DEBUG: ✅ All conditions met, processing message")
+            debug_context["decision"] = "PROCESSING"
+            self.logger.log_debug(
+                f"📥 Message received - {message.author} in #{message.channel.name}",
+                context=debug_context
+            )
 
             # Check rate limits
             if not self._check_rate_limits(message):
@@ -324,11 +332,6 @@ class AzabBot(discord.Client):
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         """Handle member updates to detect new prisoners."""
         try:
-            # Debug logging for member updates
-            self.logger.log_info(
-                f"DEBUG: Member update detected - {after.display_name} (ID: {after.id})"
-            )
-
             # Member updates are always monitored regardless of bot active state
 
             # Get the target role ID from config
@@ -342,10 +345,21 @@ class AzabBot(discord.Client):
             # Check if member just got the muted role
             had_role = any(str(role.id) == str(target_role_id) for role in before.roles)
             has_role = any(str(role.id) == str(target_role_id) for role in after.roles)
-
-            self.logger.log_info(
-                f"DEBUG: Role check - Had role: {had_role}, Has role: {has_role}, Target: {target_role_id}"
-            )
+            
+            # Debug logging with tree structure
+            if had_role != has_role:  # Only log if role changed
+                debug_context = {
+                    "member": after.display_name,
+                    "member_id": str(after.id),
+                    "had_target_role": had_role,
+                    "has_target_role": has_role,
+                    "target_role_id": str(target_role_id),
+                    "action": "UNMUTED" if had_role and not has_role else "MUTED" if has_role else "UNKNOWN"
+                }
+                self.logger.log_debug(
+                    f"👤 Member role update - {after.display_name}",
+                    context=debug_context
+                )
 
             # If they just got UNMUTED (had role before, doesn't have it now)
             if had_role and not has_role:
@@ -357,9 +371,12 @@ class AzabBot(discord.Client):
                 self.current_prisoners.discard(after.display_name)
                 
                 # Send message in general chat
-                general_channel_id = 1350540215797940245  # Hardcoded general chat channel ID
-                self.logger.log_info(f"Using general channel ID: {general_channel_id}")
+                general_channel_id = self.config.get("GENERAL_CHANNEL_ID")
+                if not general_channel_id:
+                    self.logger.log_warning("GENERAL_CHANNEL_ID not configured, skipping release announcement")
+                    return
                     
+                self.logger.log_info(f"Using general channel ID: {general_channel_id}")
                 general_channel = after.guild.get_channel(general_channel_id)
                 self.logger.log_info(f"General channel object: {general_channel}")
                 
@@ -386,7 +403,8 @@ class AzabBot(discord.Client):
                 # Check if we already processed this prisoner recently (prevent duplicates)
                 if after.display_name in self.current_prisoners:
                     self.logger.log_debug(
-                        f"Skipping duplicate prisoner event for {after.display_name}"
+                        f"Skipping duplicate prisoner event for {after.display_name}",
+                        context={"user": after.display_name, "action": "skip_duplicate"}
                     )
                     return
                     
@@ -670,20 +688,28 @@ class AzabBot(discord.Client):
     async def _restore_startup_identity(self):
         """Set initial bot status."""
         try:
-            # Set initial online status with default presence
-            activity = discord.Activity(
-                type=discord.ActivityType.watching, name="⛓ Sednaya"
-            )
-            await self.change_presence(activity=activity, status=discord.Status.online)
-            self.logger.log_info("Bot started in active state")
-
-            # Scan for current prisoners on startup
-            await self._scan_for_prisoners()
-
-            # Start presence rotation task
-            if self.presence_rotation_task:
-                self.presence_rotation_task.cancel()
-            self.presence_rotation_task = asyncio.create_task(self._rotate_presence())
+            if self.is_active:
+                # Set initial online status with default presence
+                activity = discord.Activity(
+                    type=discord.ActivityType.watching, name="⛓ Sednaya"
+                )
+                await self.change_presence(activity=activity, status=discord.Status.online)
+                self.logger.log_info("Bot started in active state")
+                
+                # Scan for current prisoners on startup
+                await self._scan_for_prisoners()
+                
+                # Start presence rotation task
+                if self.presence_rotation_task:
+                    self.presence_rotation_task.cancel()
+                self.presence_rotation_task = asyncio.create_task(self._rotate_presence())
+            else:
+                # Bot starts inactive - waiting for activation
+                activity = discord.Activity(
+                    type=discord.ActivityType.watching, name="💤 Inactive"
+                )
+                await self.change_presence(activity=activity, status=discord.Status.idle)
+                self.logger.log_info("Bot started in INACTIVE state - waiting for /activate command", "⚠️")
 
         except Exception as e:
             log_error("Failed to set startup status", exception=e)
@@ -778,8 +804,14 @@ class AzabBot(discord.Client):
         if user_id in self.user_cooldowns:
             time_since_last = (now - self.user_cooldowns[user_id]).total_seconds()
             if time_since_last < cooldown_seconds:
-                self.logger.log_info(
-                    f"DEBUG: Rate limited - User {user_id} cooldown: {time_since_last:.1f}s < {cooldown_seconds}s"
+                self.logger.log_debug(
+                    f"⏱️ Rate limited user {user_id}",
+                    context={
+                        "user_id": str(user_id),
+                        "time_since_last": f"{time_since_last:.1f}s",
+                        "cooldown_required": f"{cooldown_seconds}s",
+                        "remaining": f"{cooldown_seconds - time_since_last:.1f}s"
+                    }
                 )
                 return False
 
@@ -789,14 +821,8 @@ class AzabBot(discord.Client):
         """Check if channel is designated as prison channel."""
         # Check explicit prison channel from config FIRST
         prison_channel_id = self.config.get("PRISON_CHANNEL_IDS", "")
-        self.logger.log_info(
-            f"DEBUG: Prison channel from config: {prison_channel_id}, Type: {type(prison_channel_id)}"
-        )
         if prison_channel_id:
             is_prison = str(channel_id) == str(prison_channel_id)
-            self.logger.log_info(
-                f"DEBUG: Checking prison channel: {prison_channel_id}, Current: {channel_id}, Match: {is_prison}"
-            )
             if is_prison:
                 return True
 
@@ -816,8 +842,9 @@ class AzabBot(discord.Client):
             keyword in channel_name.lower() for keyword in prison_keywords
         )
         if has_keyword:
-            self.logger.log_info(
-                f"DEBUG: Channel name '{channel_name}' contains prison keyword"
+            self.logger.log_debug(
+                f" Channel name '{channel_name}' contains prison keyword",
+                context={"channel": channel_name, "has_keyword": True}
             )
         return has_keyword
 
@@ -825,8 +852,9 @@ class AzabBot(discord.Client):
         """Add message to batch for delayed processing."""
         user_id = message.author.id
 
-        self.logger.log_info(
-            f"DEBUG: Adding message to batch - User: {message.author.display_name}, Channel: #{message.channel.name}"
+        self.logger.log_debug(
+            f" Adding message to batch - User: {message.author.display_name}, Channel: #{message.channel.name}",
+            context={"user": message.author.display_name, "channel": message.channel.name, "action": "add_to_batch"}
         )
 
         # Initialize batch for new user
@@ -835,16 +863,18 @@ class AzabBot(discord.Client):
 
         # Add message to batch
         self.message_batches[user_id].append(message)
-        self.logger.log_info(
-            f"DEBUG: Added message to batch for user {user_id}, batch size: {len(self.message_batches[user_id])}"
+        self.logger.log_debug(
+            f" Added message to batch for user {user_id}, batch size: {len(self.message_batches[user_id])}",
+            context={"user_id": str(user_id), "batch_size": len(self.message_batches[user_id]), "action": "batch_updated"}
         )
 
         # Cancel existing timer
         if user_id in self.batch_timers:
             try:
                 self.batch_timers[user_id].cancel()
-                self.logger.log_info(
-                    f"DEBUG: Cancelled existing timer for user {user_id}"
+                self.logger.log_debug(
+                    f"Cancelled existing timer for user {user_id}",
+                    context={"user_id": str(user_id), "action": "timer_cancelled"}
                 )
             except Exception as e:
                 self.logger.log_warning(
@@ -868,8 +898,9 @@ class AzabBot(discord.Client):
             if not messages:
                 return
 
-            self.logger.log_info(
-                f"DEBUG: Processing batch of {len(messages)} messages for user {user_id}"
+            self.logger.log_debug(
+                f" Processing batch of {len(messages)} messages for user {user_id}",
+                context={"user_id": str(user_id), "message_count": len(messages), "action": "process_batch"}
             )
 
             # Clean up batch and timer
@@ -909,8 +940,9 @@ class AzabBot(discord.Client):
             if len(messages) > 1:
                 # Combine all messages into a single context
                 combined_content = "\n".join([msg.content for msg in messages])
-                self.logger.log_info(
-                    f"DEBUG: Combined {len(messages)} messages into single context"
+                self.logger.log_debug(
+                    f"Combined {len(messages)} messages into single context",
+                    context={"message_count": len(messages), "action": "combine_messages"}
                 )
             else:
                 combined_content = messages[0].content

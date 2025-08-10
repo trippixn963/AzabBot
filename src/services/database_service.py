@@ -179,6 +179,23 @@ class PrisonerDatabaseService(BaseService):
 
     async def _create_database(self):
         """Create database tables from schema."""
+        # Check if database already exists and is initialized
+        if self.db_path.exists():
+            try:
+                async with self._get_connection() as conn:
+                    # Check if prisoners table exists
+                    cursor = await conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name='prisoners'"
+                    )
+                    result = await cursor.fetchone()
+                    if result:
+                        # Database already initialized, skip schema creation
+                        self.logger.log_info("Database already exists and is initialized")
+                        return
+            except Exception:
+                # If we can't check, try to create anyway
+                pass
+        
         schema_path = Path(__file__).parent.parent.parent / "data" / "schema.sql"
 
         if not schema_path.exists():
@@ -189,19 +206,34 @@ class PrisonerDatabaseService(BaseService):
                 with open(schema_path, "r") as f:
                     schema = f.read()
 
-                await conn.executescript(schema)
-                await conn.commit()
+                # Use executescript but handle existing objects gracefully
+                try:
+                    await conn.executescript(schema)
+                    await conn.commit()
+                except Exception as e:
+                    # If it's an "already exists" error, that's fine
+                    error_msg = str(e).lower()
+                    if 'already exists' not in error_msg:
+                        raise
 
         except Exception as e:
-            raise DatabaseConnectionError(f"Failed to create database: {str(e)}") from e
+            # Only raise if it's not an "already exists" error
+            if 'already exists' not in str(e).lower():
+                raise DatabaseConnectionError(f"Failed to create database: {str(e)}") from e
 
     @asynccontextmanager
     async def _get_connection(self):
         """Get database connection with async context manager."""
         async with self._lock:
             try:
+                # Use check_same_thread=False to allow connections across threads
                 conn = await asyncio.get_event_loop().run_in_executor(
-                    None, sqlite3.connect, str(self.db_path)
+                    None, 
+                    lambda: sqlite3.connect(
+                        str(self.db_path),
+                        check_same_thread=False,
+                        isolation_level=None  # Use autocommit mode
+                    )
                 )
                 conn.row_factory = sqlite3.Row
                 
@@ -766,6 +798,38 @@ class PrisonerDatabaseService(BaseService):
         except Exception as e:
             self.logger.log_error(f"Failed to add memorable quote: {e}")
 
+    # Raw Query Methods for Advanced Services
+    
+    async def execute(self, query: str, params: Tuple = ()):
+        """Execute a raw query (for advanced services)."""
+        try:
+            async with self._get_connection() as conn:
+                result = await conn.execute(query, params)
+                await conn.commit()
+                return result
+        except Exception as e:
+            raise DatabaseQueryError(f"Execute query: {query[:50]}...", str(e)) from e
+    
+    async def fetch_one(self, query: str, params: Tuple = ()):
+        """Fetch single row from a raw query."""
+        try:
+            async with self._get_connection() as conn:
+                cursor = await conn.execute(query, params)
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            raise DatabaseQueryError(f"Fetch one: {query[:50]}...", str(e)) from e
+    
+    async def fetch_all(self, query: str, params: Tuple = ()):
+        """Fetch all rows from a raw query."""
+        try:
+            async with self._get_connection() as conn:
+                cursor = await conn.execute(query, params)
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            raise DatabaseQueryError(f"Fetch all: {query[:50]}...", str(e)) from e
+
     # Utility Methods
 
     def _row_to_prisoner(self, row: sqlite3.Row) -> Prisoner:
@@ -861,7 +925,8 @@ class AsyncConnection:
 
     async def execute(self, query: str, params: Tuple = ()):
         """Execute a query asynchronously."""
-        return await self.loop.run_in_executor(None, self.conn.execute, query, params)
+        cursor = await self.loop.run_in_executor(None, self.conn.execute, query, params)
+        return AsyncCursor(cursor, self.loop)
 
     async def executescript(self, script: str):
         """Execute a script asynchronously."""
@@ -874,6 +939,29 @@ class AsyncConnection:
     async def rollback(self):
         """Rollback transaction asynchronously."""
         return await self.loop.run_in_executor(None, self.conn.rollback)
+
+
+class AsyncCursor:
+    """Wrapper for async cursor operations."""
+    
+    def __init__(self, cursor: sqlite3.Cursor, loop: asyncio.AbstractEventLoop):
+        self.cursor = cursor
+        self.loop = loop
+        self.lastrowid = cursor.lastrowid
+    
+    async def fetchone(self):
+        """Fetch one row asynchronously."""
+        return await self.loop.run_in_executor(None, self.cursor.fetchone)
+    
+    async def fetchall(self):
+        """Fetch all rows asynchronously."""
+        return await self.loop.run_in_executor(None, self.cursor.fetchall)
+    
+    async def fetchmany(self, size: int = None):
+        """Fetch many rows asynchronously."""
+        if size is None:
+            return await self.loop.run_in_executor(None, self.cursor.fetchmany)
+        return await self.loop.run_in_executor(None, self.cursor.fetchmany, size)
 
 
 # Alias for backward compatibility

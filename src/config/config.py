@@ -137,6 +137,17 @@ class ConfigurationManager:
                 description="Discord user ID of the bot developer",
                 transformer=lambda x: int(x) if isinstance(x, str) else x,
             ),
+            ConfigField(
+                name="MODERATOR_IDS",
+                field_type=list,
+                default=[],
+                description="List of moderator user IDs who can activate/deactivate the bot",
+                transformer=lambda x: (
+                    [int(id_.strip()) for id_ in x.split(",") if id_.strip()]
+                    if isinstance(x, str)
+                    else x
+                ),
+            ),
             # Target Channel Configuration
             ConfigField(
                 name="TARGET_CHANNEL_IDS",
@@ -155,6 +166,20 @@ class ConfigurationManager:
                 default="",
                 description="Prison channel ID for enhanced harassment",
                 transformer=lambda x: str(x).strip() if x else "",
+            ),
+            ConfigField(
+                name="GENERAL_CHANNEL_ID",
+                field_type=int,
+                default=None,
+                description="General channel ID for announcements",
+                transformer=lambda x: int(x) if isinstance(x, str) else x,
+            ),
+            ConfigField(
+                name="MUTE_LOG_THREAD_ID",
+                field_type=int,
+                default=None,
+                description="Thread ID for logging mute reasons from audit logs",
+                transformer=lambda x: int(x) if isinstance(x, str) else x,
             ),
             # User Management
             ConfigField(

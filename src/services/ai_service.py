@@ -672,8 +672,8 @@ class AIService(BaseService):
                         message=message_content,
                         channel_id=channel_id,
                     )
-                    self.logger.log_info(
-                        f"DEBUG: Retrieved user context for {user_name} (ID: {actual_user_id})"
+                    self.logger.log_debug(
+                        f"Retrieved user context for {user_name} (ID: {actual_user_id})"
                     )
                 except Exception as e:
                     self.logger.log_warning(
@@ -707,19 +707,11 @@ class AIService(BaseService):
                         )
                     )
                     self.logger.log_info(
-                        f"✅ Selected personality: {personality_mode.value} for {user_name}",
-                        extra={
-                            "personality": personality_mode.value,
-                            "user": user_name,
-                        },
+                        f"✅ Selected personality: {personality_mode.value} for {user_name}"
                     )
                 except Exception as e:
                     self.logger.log_warning(
-                        f"Personality service error: {e}",
-                        extra={
-                            "user_id": actual_user_id,
-                            "error_type": type(e).__name__,
-                        },
+                        f"Personality service error: {e}"
                     )
 
             # Check if we should use Azab personality in prison channels
@@ -819,8 +811,8 @@ class AIService(BaseService):
                     temperature=temperature,
                     personality_prompt=personality_prompt,
                 )
-                self.logger.log_info(
-                    f"DEBUG: Generated {len(ai_response.content)} char response in {ai_response.response_time_ms:.0f}ms"
+                self.logger.log_debug(
+                    f"Generated {len(ai_response.content)} char response in {ai_response.response_time_ms:.0f}ms"
                 )
             except AIGenerationError as e:
                 self.logger.log_error(
@@ -968,7 +960,9 @@ class AIService(BaseService):
 
         except AIQuotaExceededError:
             self.logger.log_warning("AI quota exceeded")
-            return self.response_generator.get_fallback_response(response_mode)
+            # Use default response mode if not set
+            fallback_mode = response_mode if 'response_mode' in locals() else ResponseMode.NORMAL
+            return self.response_generator.get_fallback_response(fallback_mode)
 
         except AIInappropriateContentError:
             self.logger.log_warning(
@@ -986,8 +980,9 @@ class AIService(BaseService):
                 context={"user": user_name, "channel": channel_name},
             )
 
-            # Return fallback response
-            return self.response_generator.get_fallback_response(response_mode)
+            # Return fallback response with default mode if not set
+            fallback_mode = response_mode if 'response_mode' in locals() else ResponseMode.NORMAL
+            return self.response_generator.get_fallback_response(fallback_mode)
 
     async def analyze_user_personality(
         self, message_content: str, user_name: str, channel_name: str

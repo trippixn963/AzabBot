@@ -15,14 +15,16 @@ from src.core.logger import get_logger
 log_info = get_logger().log_info
 log_warning = get_logger().log_warning
 log_error = get_logger().log_error
+log_debug = get_logger().log_debug
 
 
 class PsychologicalService(BaseService):
     """Service for psychological profiling and crime tracking."""
     
-    def __init__(self, container):
+    def __init__(self, name: str = "PsychologicalService"):
         """Initialize psychological service."""
-        super().__init__(container)
+        super().__init__(name, dependencies=["DatabaseService", "AIService"])
+        self.container = None
         self.db_service = None
         self.ai_service = None
         
@@ -42,20 +44,26 @@ class PsychologicalService(BaseService):
             5: "vengeful"
         }
         
-    async def initialize(self):
+    async def initialize(self, config: dict, **kwargs):
         """Initialize the psychological service."""
         try:
-            await super().initialize()
+            await super().initialize(config, **kwargs)
             
-            # Get services
-            self.db_service = self.container.get("DatabaseService")
-            self.ai_service = self.container.get("AIService")
+            # Store config for later use
+            self.config = config
             
-            # Initialize database tables
-            await self._initialize_database()
+            # Services are passed as kwargs from DI container
+            self.db_service = kwargs.get("DatabaseService")
+            self.ai_service = kwargs.get("AIService")
             
-            # Load existing data
-            await self._load_psychological_data()
+            # Initialize database tables if db_service available
+            if self.db_service:
+                await self._initialize_database()
+                
+                # Load existing data
+                await self._load_psychological_data()
+            else:
+                log_warning("Database service not available for psychological service")
             
             log_info("🧠 Psychological service initialized")
             
@@ -238,7 +246,7 @@ class PsychologicalService(BaseService):
         """
         try:
             # The specific mute role ID (from config)
-            target_role_id = "1402287996648030249"
+            target_role_id = self.config.get("TARGET_ROLE_ID", "")
             
             log_info(f"🔍 Checking audit logs for mute reason of user {user_id}")
             
@@ -323,8 +331,12 @@ class PsychologicalService(BaseService):
         try:
             import re
             
-            # Specific thread ID where mute/unmute logs go
-            MUTE_LOG_THREAD_ID = 1404020045876690985
+            # Specific thread ID where mute/unmute logs go (from config)
+            MUTE_LOG_THREAD_ID = self.config.get("MUTE_LOG_THREAD_ID")
+            if not MUTE_LOG_THREAD_ID:
+                log_debug("MUTE_LOG_THREAD_ID not configured, skipping Sapphire log check", 
+                         context={"config_key": "MUTE_LOG_THREAD_ID", "action": "skipping"})
+                return None
             
             # Try to get the specific thread
             try:
@@ -428,6 +440,10 @@ class PsychologicalService(BaseService):
                                         'source': 'mod_log_channel'
                                     }
             
+            return None
+            
+        except Exception as e:
+            log_error(f"Error extracting from Sapphire logs: {e}")
             return None
     
     # ============= PSYCHOLOGICAL PROFILING =============
@@ -757,30 +773,46 @@ class PsychologicalService(BaseService):
     async def _get_or_create_prisoner_id(self, user_id: str, username: str) -> int:
         """Get or create prisoner ID."""
         try:
-            result = await self.db_service.fetch_one(
-                "SELECT id FROM prisoners WHERE discord_id = ?",
-                (user_id,)
+            # Use the DatabaseService's method
+            prisoner = await self.db_service.get_or_create_prisoner(
+                discord_id=user_id,
+                username=username,
+                display_name=username
             )
-            
-            if result:
-                return result['id']
-            
-            await self.db_service.execute(
-                """INSERT INTO prisoners (discord_id, username, display_name)
-                   VALUES (?, ?, ?)""",
-                (user_id, username, username)
-            )
-            
-            result = await self.db_service.fetch_one(
-                "SELECT id FROM prisoners WHERE discord_id = ?",
-                (user_id,)
-            )
-            
-            return result['id'] if result else 0
+            return prisoner.id if prisoner else 0
             
         except Exception as e:
             log_error(f"Error getting prisoner ID: {e}")
             return 0
+    
+    async def start(self):
+        """Start the psychological service."""
+        try:
+            log_info("Psychological service started")
+        except Exception as e:
+            log_error(f"Error starting psychological service: {e}")
+    
+    async def stop(self):
+        """Stop the psychological service."""
+        try:
+            log_info("Psychological service stopped")
+        except Exception as e:
+            log_error(f"Error stopping psychological service: {e}")
+    
+    async def health_check(self):
+        """Health check for the psychological service."""
+        from src.services.base_service import HealthCheckResult, ServiceStatus
+        
+        return HealthCheckResult(
+            status=ServiceStatus.HEALTHY,
+            message="Psychological service operational",
+            details={
+                "prisoner_crimes": len(self.prisoner_crimes),
+                "psychological_profiles": len(self.psychological_profiles),
+                "grudge_list": len(self.grudge_list),
+                "conversation_memory": len(self.conversation_memory)
+            }
+        )
     
     async def shutdown(self):
         """Shutdown the psychological service."""

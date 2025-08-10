@@ -117,9 +117,17 @@ class BotLogger:
         # Clear any existing handlers to avoid duplication
         logger.handlers.clear()
 
-        # Console handler for immediate feedback
+        # Console handler for immediate feedback (INFO and above only)
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
+        
+        # Filter out DEBUG messages from console
+        class NoDebugFilter(logging.Filter):
+            def filter(self, record):
+                # Skip messages containing "DEBUG:"
+                return "DEBUG:" not in record.getMessage()
+        
+        console_handler.addFilter(NoDebugFilter())
 
         # Formatter that works well with tree logger output
         formatter = logging.Formatter(
@@ -357,6 +365,7 @@ class BotLogger:
 
         self.python_logger.warning(message)
 
+    
     def log_info(self, message: str, emoji: str = "ℹ️"):
         """
         Log informational messages.
@@ -370,23 +379,57 @@ class BotLogger:
 
     def log_debug(self, message: str, context: Optional[Dict[str, Any]] = None):
         """
-        Log debug messages (only shown in debug mode).
+        Log debug messages to debug.log file only (not to console) with tree format.
 
         Args:
             message: Debug message
             context: Additional debug context
         """
+        # Write to debug.log file directly with tree format
+        from pathlib import Path
+        from datetime import datetime
+        import pytz
+        
+        try:
+            est = pytz.timezone("US/Eastern")
+            current_date = datetime.now(est).strftime("%Y-%m-%d")
+            timestamp = datetime.now(est).strftime("[%m/%d %I:%M %p EST]")
+        except:
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            timestamp = datetime.now().strftime("[%m/%d %I:%M %p]")
+        
+        # Create debug.log path in date-based folder
+        project_root = Path(__file__).parent.parent.parent
+        debug_log_path = project_root / "logs" / current_date / "debug.log"
+        debug_log_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Format the debug message with tree structure
         if context:
+            # Create tree structure for context
+            formatted_lines = []
+            formatted_lines.append(f"{timestamp} [DEBUG] 🔍 {message}")
+            formatted_lines.append(f"{timestamp} [DEBUG] └─ 📁 Context")
+            
             context_items = list(context.items())
-            log_perfect_tree_section(
-                "Debug Info",
-                [("message", message)],
-                emoji="🐛",
-                nested_groups={"Context": context_items},
-            )
+            for i, (key, value) in enumerate(context_items):
+                is_last = i == len(context_items) - 1
+                prefix = "  └─" if is_last else "  ├─"
+                formatted_lines.append(f"{timestamp} [DEBUG] {prefix} {key}: {value}")
+            
+            debug_output = "\n".join(formatted_lines) + "\n"
         else:
-            # For simple debug messages, use Python logger only
-            self.python_logger.debug(message)
+            # Simple debug message
+            debug_output = f"{timestamp} [DEBUG] 🔍 {message}\n"
+        
+        # Write to debug.log
+        try:
+            with open(debug_log_path, "a", encoding="utf-8") as f:
+                f.write(debug_output)
+                f.flush()
+        except Exception as e:
+            # Fallback to Python logger if direct write fails
+            if self.python_logger:
+                self.python_logger.debug(f"🔍 DEBUG: {message}")
 
     def log_system_event(
         self,
