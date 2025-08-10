@@ -45,6 +45,12 @@ from typing import Dict, List, Optional
 
 import pytz
 
+# Import version for logging
+try:
+    from src import __version__
+except ImportError:
+    __version__ = "3.0.0"  # Fallback version
+
 # Global state tracking for tree structure
 _is_first_section = True  # Controls top-level spacing
 _tree_stack: List[bool] = []  # Tracks which levels have siblings
@@ -101,7 +107,7 @@ class TreeLogger:
         "Initialization",
         [
             ("status", "Starting up"),
-            ("version", "1.0.0"),
+            ("version", __version__),
             ("mode", "production")
         ],
         emoji="🎯"

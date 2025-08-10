@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 from enum import Enum
 
+from src import __version__
 from src.services.base_service import BaseService, ServiceStatus, HealthCheckResult
 from src.core.logger import BotLogger
 
@@ -396,7 +397,7 @@ class WebhookHealthService(BaseService):
         
         # Professional footer
         embed["footer"] = {
-            "text": f"AzabBot v1.5.0 • Health Monitor • Report #{self.consecutive_failures + 1}",
+            "text": f"AzabBot v{__version__} • Health Monitor • Report #{self.consecutive_failures + 1}",
             "icon_url": "https://cdn.discordapp.com/emojis/1058387875436941402.webp?size=96&quality=lossless"  # Health icon
         }
         

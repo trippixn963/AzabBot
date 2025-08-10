@@ -354,7 +354,7 @@ class PsychologicalService(BaseService):
                         # Check if message is from Sapphire bot
                         if message.author.bot:
                             # Look for messages about our user
-                            if user_id in message.content or f"<@{user_id}>}" in message.content:
+                            if user_id in message.content or f"<@{user_id}>" in message.content:
                                 log_debug(f"Found moderation log for user {user_id}", 
                                          context={"message_preview": message.content[:100]})
                                 
@@ -780,8 +780,38 @@ class PsychologicalService(BaseService):
     async def get_prisoner_dossier(self, user_id: str) -> dict:
         """Get complete psychological dossier on a prisoner."""
         try:
+            # First get crimes from database (most reliable source)
+            crimes_from_db = []
+            try:
+                crime_records = await self.db_service.fetch_all(
+                    """SELECT * FROM prisoner_crimes 
+                       WHERE discord_id = ? 
+                       ORDER BY crime_time DESC""",
+                    (user_id,)
+                )
+                crimes_from_db = [
+                    {
+                        'type': record['crime_type'],
+                        'description': record['crime_description'],
+                        'reason': record['mute_reason'],
+                        'muted_by': record['muted_by'],
+                        'severity': record['severity'],
+                        'time': record['crime_time']
+                    }
+                    for record in crime_records
+                ]
+            except Exception as e:
+                log_error(f"Error fetching crimes from database: {e}")
+            
+            # Use database crimes if available, otherwise fall back to memory
+            crimes = crimes_from_db if crimes_from_db else self.prisoner_crimes.get(user_id, [])
+            
+            # Also update memory cache if we got crimes from database
+            if crimes_from_db and user_id not in self.prisoner_crimes:
+                self.prisoner_crimes[user_id] = crimes_from_db
+            
             dossier = {
-                'crimes': self.prisoner_crimes.get(user_id, []),
+                'crimes': crimes,
                 'profile': self.psychological_profiles.get(user_id, {}),
                 'grudge': self.grudge_list.get(user_id, {}),
                 'memories': self.conversation_memory.get(user_id, [])[-5:],  # Last 5 memories

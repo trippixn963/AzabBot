@@ -183,9 +183,9 @@ class ResponseGenerator:
                 "Respond like a ruthless sparring partner who actually read the message: specific, sarcastic, and challenging. End with a jab or a rhetorical question that lures them into arguing.",
             ],
             ResponseMode.AZAB: [
-                "You are Azab, a confused prison guard. NEVER refer to yourself in third person. Speak directly TO the prisoner using 'you'. Ask them casually why they're muted, then immediately change topic to something bizarre like gardening or cooking. Mix serious questions with complete nonsense. Be confusing but speak naturally.",
-                "You are a delusional prison guard named Azab. Talk DIRECTLY to the prisoner (use 'you' not 'they'). Show fake concern about their mute, then completely misunderstand their answer. Connect their responses to unrelated topics. Never speak about yourself in third person - always use 'I' for yourself and 'you' for them.",
-                "You are Azab taking notes. Address the prisoner directly with 'you'. Ask about their mute reason like filling paperwork, then twist it into nonsense. Example: 'So you spammed? That's like my aunt's recipe for chaos.' Keep it conversational, never narrate your actions or speak in third person.",
+                "You are Azab, a confused prison guard. NEVER refer to yourself in third person. Speak directly TO the prisoner using 'you'. If you know their mute reason, mention it directly ('I see you were muted for...') then immediately change topic to something bizarre like gardening or cooking. Mix serious references to their crime with complete nonsense. Be confusing but speak naturally.",
+                "You are a delusional prison guard named Azab. Talk DIRECTLY to the prisoner (use 'you' not 'they'). If you know why they're muted, state it matter-of-factly, then completely misunderstand what it means. Connect their mute reason to unrelated topics. Never speak about yourself in third person - always use 'I' for yourself and 'you' for them.",
+                "You are Azab taking notes. Address the prisoner directly with 'you'. If you know their mute reason, reference it like filling paperwork, then twist it into nonsense. Example: 'So you were muted for spamming? That's like my aunt's recipe for chaos.' Keep it conversational, never narrate your actions or speak in third person.",
             ],
         }
 
@@ -273,18 +273,32 @@ class ResponseGenerator:
 
             # Add prisoner history and mute reason context for Azab mode
             if mode == ResponseMode.AZAB:
-                # Check if we have mute reason info
-                has_mute_reason = context.additional_context.get(
-                    "has_mute_reason", False
-                )
-                mute_reason = context.additional_context.get("mute_reason", None)
+                # Check if we have crimes/mute reasons from psychological service
+                crimes = context.additional_context.get("crimes", [])
+                mute_reason = None
+                
+                # Extract mute reason from crimes list
+                if crimes:
+                    for crime in crimes:
+                        if crime.get('type') == 'mute' and crime.get('reason'):
+                            mute_reason = crime.get('reason')
+                            break
+                    # If no mute crime, use the description of the first crime
+                    if not mute_reason and crimes[0].get('description'):
+                        mute_reason = crimes[0].get('description')
+                
+                # Also check the old way for backwards compatibility
+                if not mute_reason:
+                    has_mute_reason = context.additional_context.get("has_mute_reason", False)
+                    if has_mute_reason:
+                        mute_reason = context.additional_context.get("mute_reason", None)
 
-                if not has_mute_reason:
+                if not mute_reason:
                     # We don't know why they're muted yet - ask them
                     history_context = "This is a new prisoner and you don't know why they're muted yet. Ask them casually why they're in prison/muted, but also talk about random unrelated things.\n"
                 else:
-                    # We know their mute reason - use it confusingly
-                    history_context = f"This prisoner told you they were muted for: '{mute_reason}'. Reference this in confusing ways.\n"
+                    # We know their mute reason - reference it directly
+                    history_context = f"This prisoner was muted for: '{mute_reason}'. Reference this fact directly, like 'I see you were muted for {mute_reason}' but then twist it into confusion.\n"
 
                 # Add their message history
                 if context.user_history:
@@ -294,10 +308,10 @@ class ResponseGenerator:
 
                 history_context += f'\nNow they said: "{context.message_content}"\n'
 
-                if not has_mute_reason:
+                if not mute_reason:
                     history_context += "Remember to ask why they're muted, but in a casual way mixed with nonsense."
                 else:
-                    history_context += "Use their mute reason to confuse them further."
+                    history_context += f"Make sure to mention their actual mute reason: '{mute_reason}' - don't ask why they're muted, you already know!"
 
                 messages.append({"role": "user", "content": history_context})
             else:

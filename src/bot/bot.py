@@ -1061,6 +1061,7 @@ class AzabBot(discord.Client):
                     additional_context={
                         "is_prison": is_prison,
                         "batch_size": len(messages),
+                        "user_id": representative_message.author.id,  # Pass actual user ID
                         "harassment_intensity": harassment_intensity,
                         "in_solitary": prisoner_status.get('in_solitary', False),
                         "solitary_level": prisoner_status.get('solitary_level', 0),
@@ -1213,10 +1214,8 @@ class AzabBot(discord.Client):
         """Reset bot status after delay."""
         await asyncio.sleep(delay_seconds)
         try:
-            activity = discord.Activity(
-                type=discord.ActivityType.watching, name="prisoners suffer"
-            )
-            await self.change_presence(activity=activity, status=discord.Status.online)
+            # Just go back to default presence
+            await self._update_presence()
         except Exception as e:
             log_error("Failed to reset status", exception=e)
 
@@ -1278,84 +1277,139 @@ Response Rate: {(self.metrics.responses_generated /
         """Generate a personalized release message based on prisoner's history."""
         try:
             # Get AI service to generate personalized message
-            ai_service = self.ai_service
+            if not self.ai_service:
+                return f"🔓 {member.mention} has been released from prison. The guards got tired of you."
             
-            # Try to get their conversation history from database
+            # Get prisoner's psychological profile and conversation history
             conversation_summary = ""
-            try:
-                import sqlite3
-                conn = sqlite3.connect("data/memory.db")
-                cursor = conn.cursor()
-                
-                # Get recent messages from this user
-                cursor.execute("""
-                    SELECT message_content, bot_response 
-                    FROM conversation_history 
-                    WHERE user_id = ? 
-                    ORDER BY timestamp DESC 
-                    LIMIT 5
-                """, (str(member.id),))
-                
-                recent_convos = cursor.fetchall()
-                
-                # Get user profile
-                cursor.execute("""
-                    SELECT personality_profile, total_interactions, debate_wins, debate_losses
-                    FROM user_memories
-                    WHERE user_id = ?
-                """, (str(member.id),))
-                
-                profile = cursor.fetchone()
-                conn.close()
-                
-                if recent_convos:
-                    conversation_summary = "Recent conversations: " + " | ".join([f"They said: {msg[0][:50]}" for msg in recent_convos[:3]])
-                
-                if profile and profile[0]:
-                    import json
-                    personality = json.loads(profile[0]) if profile[0] else {}
-                    conversation_summary += f" Personality: {personality.get('dominant_trait', 'unknown')}, Total interactions: {profile[1]}"
+            crime_summary = ""
+            personality_info = ""
+            
+            # Try to get info from psychological service
+            if self.psychological_service:
+                try:
+                    user_id = str(member.id)
+                    dossier = await self.psychological_service.get_prisoner_dossier(user_id)
                     
-            except Exception as e:
-                self.logger.log_warning(f"Could not fetch prisoner history: {e}")
+                    # Get crimes
+                    if dossier.get('crimes'):
+                        crimes = dossier['crimes'][-3:]  # Last 3 crimes
+                        crime_descriptions = [crime.get('description', crime.get('reason', 'Unknown')) for crime in crimes]
+                        crime_summary = "Their crimes: " + ", ".join(crime_descriptions)
+                    
+                    # Get personality
+                    if dossier.get('profile'):
+                        profile = dossier['profile']
+                        personality_info = f"Personality: {profile.get('personality_type', 'unknown')}"
+                        if profile.get('triggers'):
+                            personality_info += f", Triggers: {', '.join(profile['triggers'][:2])}"
+                    
+                    # Get memorable conversations
+                    if dossier.get('memories'):
+                        memories = dossier['memories'][-2:]  # Last 2 memorable conversations
+                        if memories:
+                            conversation_summary = "Their memorable quotes: " + " | ".join([
+                                f'"{mem.get("message", "")[:40]}"' for mem in memories
+                            ])
+                    
+                except Exception as e:
+                    self.logger.log_warning(f"Could not fetch psychological profile: {e}")
             
-            # Generate personalized release message
-            prompt = f"""
-            A prisoner named {member.display_name} is being released from the torture prison.
-            {conversation_summary if conversation_summary else 'This is their first time in prison.'}
+            # Try to get conversation from prisoners database
+            if not conversation_summary:
+                try:
+                    import sqlite3
+                    conn = sqlite3.connect("data/prisoners.db")
+                    cursor = conn.cursor()
+                    
+                    # Get recent conversations
+                    cursor.execute("""
+                        SELECT prisoner_message, azab_response 
+                        FROM conversation_memories 
+                        WHERE discord_id = ? 
+                        ORDER BY created_at DESC 
+                        LIMIT 3
+                    """, (str(member.id),))
+                    
+                    recent_convos = cursor.fetchall()
+                    conn.close()
+                    
+                    if recent_convos:
+                        conversation_summary = "They said: " + " | ".join([
+                            f'"{msg[0][:30]}"' for msg in recent_convos
+                        ])
+                        
+                except Exception as e:
+                    self.logger.log_warning(f"Could not fetch prisoner conversations: {e}")
             
-            Generate a SHORT (1 sentence) sarcastic/mocking release announcement that:
-            1. Mentions them with {member.mention}
-            2. References something specific about them if you know their personality or what they said
-            3. Is funny and slightly insulting
-            4. Warns them or predicts they'll be back
-            5. Maximum 150 characters
+            # Build context for AI
+            context_info = f"""
+Prisoner: {member.display_name}
+{crime_summary}
+{personality_info}
+{conversation_summary}
+""".strip()
             
-            Examples of the tone (but make it specific to this person):
-            - If they were aggressive: mention how even the guards couldn't handle their anger
-            - If they were quiet: mock them for finally speaking up  
-            - If they debated: say the guards got tired of their arguments
+            # If we have no info, mention it's their first time
+            if not (crime_summary or personality_info or conversation_summary):
+                context_info = f"Prisoner: {member.display_name} - First time prisoner, no history recorded"
             
-            Start with their mention {member.mention} and keep it short!
-            """
+            # Create the prompt for release message
+            release_prompt = f"""You are a sarcastic prison guard announcing a prisoner's release.
+
+{context_info}
+
+Generate a SHORT (1-2 sentences max) release announcement that:
+1. Is sarcastic and mocking based on what you know about them
+2. References their specific crimes or behavior if known
+3. Predicts they'll be back soon
+4. Is funny but not too harsh
+
+Keep it under 200 characters. Be specific to this person based on the context.
+The prisoner is: {member.display_name}"""
             
-            response = await ai_service.generate_response(
-                prompt=prompt,
-                context={},
-                user_id=member.id,
-                max_tokens=60
+            # Generate response using AI service
+            response = await self.ai_service.generate_response(
+                message_content=release_prompt,
+                user_name="System",
+                channel_name="release-announcement",
+                channel_id=0,
+                guild_id=member.guild.id if member.guild else None,
+                additional_context={
+                    "is_release_message": True,
+                    "prisoner_name": member.display_name,
+                    "context_info": context_info
+                }
             )
             
-            # Ensure mention is included
-            if member.mention not in response:
-                response = f"{member.mention} {response}"
+            if response:
+                # Add emoji and mention
+                final_message = f"🔓 {member.mention} "
                 
-            return response
+                # Clean up the response and add it
+                response = response.replace(member.display_name, "").replace(member.mention, "").strip()
+                final_message += response
+                
+                # Ensure it's not too long
+                if len(final_message) > 300:
+                    final_message = final_message[:297] + "..."
+                    
+                return final_message
+            else:
+                # Fallback if AI fails
+                return f"🔓 {member.mention} has been released. The guards needed a break from your nonsense."
             
         except Exception as e:
             self.logger.log_error(f"Failed to generate AI release message: {e}")
             # Fallback to a simple message if AI fails
-            return f"🔓 {member.mention} has been released from prison. The guards got tired of you."
+            fallback_messages = [
+                f"🔓 {member.mention} has been released. The guards got tired of you.",
+                f"🔓 {member.mention} is free... for now. We know you'll be back.",
+                f"🔓 {member.mention} has been released. Even Sednaya couldn't handle you.",
+                f"🔓 {member.mention} escaped... just kidding, we let you go. See you soon.",
+            ]
+            import random
+            return random.choice(fallback_messages)
 
     async def _rotate_presence(self):
         """Rotate presence between prisoners or show default."""

@@ -26,6 +26,7 @@ import signal
 import sys
 from pathlib import Path
 
+from src import __version__
 from src.bot.bot import AzabBot
 from src.config.config import get_config
 from src.core.di_container import ServiceLifetime, register_service
@@ -108,7 +109,7 @@ async def run_bot():
     instance_manager = get_instance_manager()
 
     # Log startup with version information
-    bot_logger.log_startup("1.0.0")
+    bot_logger.log_startup(__version__)
 
     try:
         # Step 1: Load and validate configuration
@@ -222,7 +223,7 @@ async def run_bot():
         bot_logger.log_system_event(
             "bot_ready",
             "AzabBot is starting...",
-            {"mode": "production", "version": "1.0.0"},
+            {"mode": "production", "version": __version__},
         )
 
         # Validate Discord token before attempting connection
