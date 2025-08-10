@@ -1,9 +1,25 @@
-# =============================================================================
-# SaydnayaBot - Main Entry Point
-# =============================================================================
-# Main application entry point that initializes and runs the bot with proper
-# error handling, logging, and graceful shutdown support.
-# =============================================================================
+"""
+SaydnayaBot - Main Application Entry Point
+=========================================
+
+This module contains the main application logic for the SaydnayaBot Discord application.
+It handles the complete lifecycle of the bot including initialization, startup,
+runtime execution, and graceful shutdown.
+
+The module implements:
+- Dependency injection container setup
+- Service registration and initialization
+- Signal handling for graceful shutdown
+- Instance management (preventing multiple bot instances)
+- Comprehensive logging throughout the startup process
+- Error handling and cleanup procedures
+
+Key Functions:
+- run_bot(): Main async function that orchestrates the bot lifecycle
+- main(): Entry point that sets up the environment and runs the bot
+- signal_handler(): Handles shutdown signals (SIGINT, SIGTERM)
+- shutdown_bot(): Gracefully closes bot connections and cleans up resources
+"""
 
 import asyncio
 import signal
@@ -23,12 +39,22 @@ from src.services.personality_service import PersonalityService
 from src.services.report_service import ReportService
 
 # Global references for signal handlers
+# These are needed because signal handlers can't be async functions
 bot_instance = None
 logger = None
 
 
 def signal_handler(signum, frame):
-    """Handle shutdown signals gracefully."""
+    """
+    Handle shutdown signals gracefully.
+    
+    This function is called when the bot receives SIGINT (Ctrl+C) or SIGTERM.
+    It initiates a graceful shutdown by creating an async task to close the bot.
+    
+    Args:
+        signum: The signal number received
+        frame: The current stack frame (unused)
+    """
     if logger:
         logger.log_warning(f"Received signal {signum}, initiating graceful shutdown...")
     if bot_instance and asyncio.get_event_loop().is_running():
@@ -38,7 +64,12 @@ def signal_handler(signum, frame):
 
 
 async def shutdown_bot():
-    """Gracefully shutdown the bot."""
+    """
+    Gracefully shutdown the bot.
+    
+    This function ensures that the bot disconnects from Discord properly
+    and cleans up any resources before termination.
+    """
     global bot_instance
     if bot_instance:
         try:
@@ -52,27 +83,32 @@ async def shutdown_bot():
 
 async def run_bot():
     """
-    Main bot execution function.
-
-    This function:
-    1. Sets up logging and configuration
-    2. Creates and starts the bot
-    3. Handles graceful shutdown
+    Main bot execution function that orchestrates the complete bot lifecycle.
+    
+    This function performs the following steps in order:
+    1. Initialize logging and configuration
+    2. Set up instance management (prevent multiple bot instances)
+    3. Register all services in the dependency injection container
+    4. Create and configure the Discord bot instance
+    5. Set up signal handlers for graceful shutdown
+    6. Start the bot and connect to Discord
+    7. Handle any errors and perform cleanup on exit
+    
+    The function includes comprehensive error handling and logging
+    at each step of the initialization process.
     """
     global bot_instance, logger
 
-    # Initialize logger
+    # Initialize core components
     bot_logger = BotLogger()
     logger = bot_logger
-
-    # Initialize instance manager
     instance_manager = get_instance_manager()
 
-    # Log startup
+    # Log startup with version information
     bot_logger.log_startup("1.0.0")
 
     try:
-        # Load configuration
+        # Step 1: Load and validate configuration
         bot_logger.log_initialization_step(
             "Configuration", "loading", "Loading environment configuration"
         )
@@ -82,32 +118,33 @@ async def run_bot():
             "Configuration", "success", "Configuration loaded successfully", "✅"
         )
 
-        # Check instance lock
+        # Step 2: Instance management - ensure only one bot instance runs
         bot_logger.log_initialization_step(
             "Instance Manager", "checking", "Checking for existing instances"
         )
 
-        # Check and terminate existing instances
+        # Check and terminate any existing bot instances
         can_proceed = instance_manager.check_and_terminate_existing()
         if not can_proceed:
             bot_logger.log_error("Failed to acquire instance lock")
             return
 
-        # Create PID file
+        # Create PID file to track this instance
         instance_manager.create_pid_file()
 
         bot_logger.log_initialization_step(
             "Instance Manager", "success", "Instance lock acquired", "✅"
         )
 
-        # Register services in DI container
+        # Step 3: Register all services in dependency injection container
         bot_logger.log_initialization_step(
             "DI Container", "registering", "Registering services"
         )
 
-        # Register core services
+        # Import here to avoid circular imports
         from src.core.di_container import register_factory
 
+        # Register core services with appropriate lifetimes
         register_factory("Config", lambda: config, lifetime=ServiceLifetime.SINGLETON)
         register_service("Logger", type(bot_logger), lifetime=ServiceLifetime.SINGLETON)
         register_service(
@@ -119,6 +156,8 @@ async def run_bot():
         register_service(
             "PersonalityService", PersonalityService, lifetime=ServiceLifetime.SINGLETON
         )
+        
+        # Register services with dependencies
         register_service(
             "AIService",
             AIService,
@@ -139,18 +178,18 @@ async def run_bot():
             "DI Container", "success", "Services registered", "✅"
         )
 
-        # Create bot instance
+        # Step 4: Create and configure the Discord bot instance
         bot_logger.log_initialization_step("Bot", "creating", "Creating bot instance")
         bot_instance = SaydnayaBot(config)
         bot_logger.log_initialization_step(
             "Bot", "success", "Bot instance created", "✅"
         )
 
-        # Setup signal handlers for graceful shutdown
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+        # Step 5: Set up signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+        signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
 
-        # Start the bot
+        # Step 6: Start the bot and connect to Discord
         bot_logger.log_initialization_step(
             "Bot", "starting", "Starting bot connection to Discord"
         )
@@ -161,12 +200,12 @@ async def run_bot():
             {"mode": "production", "version": "1.0.0"},
         )
 
-        # Get Discord token
+        # Validate Discord token before attempting connection
         discord_token = config.get("DISCORD_TOKEN")
         if not discord_token:
             raise ValueError("DISCORD_TOKEN not found in configuration")
 
-        # Run the bot
+        # Connect to Discord and start the bot
         await bot_instance.start(discord_token)
 
     except KeyboardInterrupt:
@@ -175,13 +214,13 @@ async def run_bot():
         bot_logger.log_error("Fatal error in main", exception=e)
         raise
     finally:
-        # Cleanup
+        # Step 7: Cleanup and shutdown procedures
         bot_logger.log_shutdown("Bot shutdown initiated")
 
-        # Cleanup PID file
+        # Clean up instance management resources
         instance_manager.cleanup_pid_file()
 
-        # Close bot if still connected
+        # Ensure bot is properly closed if still connected
         if bot_instance:
             await shutdown_bot()
 
@@ -189,16 +228,24 @@ async def run_bot():
 
 
 def main():
-    """Entry point for the application."""
-    # Create logs directory if it doesn't exist
+    """
+    Entry point for the application.
+    
+    This function sets up the environment and runs the bot. It handles:
+    - Creating necessary directories (logs, data)
+    - Setting up asyncio event loop policy for Windows compatibility
+    - Running the main bot function with proper error handling
+    - Providing user-friendly error messages for common issues
+    """
+    # Ensure required directories exist
     Path("logs").mkdir(exist_ok=True)
     Path("data").mkdir(exist_ok=True)
 
-    # Set up asyncio for Windows
+    # Windows-specific asyncio setup for compatibility
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-    # Run the bot
+    # Run the bot with comprehensive error handling
     try:
         asyncio.run(run_bot())
     except KeyboardInterrupt:

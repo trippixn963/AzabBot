@@ -137,12 +137,10 @@ class SaydnayaBot(discord.Client):
             from src.bot.commands import (
                 create_activate_command,
                 create_deactivate_command,
-                create_status_command,
             )
 
             self.tree.add_command(create_activate_command(self))
             self.tree.add_command(create_deactivate_command(self))
-            self.tree.add_command(create_status_command(self))
 
             # Sync slash commands
             await self.tree.sync()
