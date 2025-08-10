@@ -341,6 +341,13 @@ class AzabBot(discord.Client):
                         
             # If they just got the muted role
             elif not had_role and has_role:
+                # Check if we already processed this prisoner recently (prevent duplicates)
+                if after.display_name in self.current_prisoners:
+                    self.logger.log_debug(
+                        f"Skipping duplicate prisoner event for {after.display_name}"
+                    )
+                    return
+                    
                 self.logger.log_info(
                     f"🚨 New prisoner detected: {after.display_name} just got muted!"
                 )
