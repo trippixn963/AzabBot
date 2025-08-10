@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Tuple
 import discord
 
 from src.services.base_service import BaseService
+from src.utils.time_utils import now_est_naive
 from src.repositories.prisoner_repository import PrisonerRepository
 from src.utils.error_handler import (
     handle_error, ErrorCategory, ErrorSeverity, AzabBotError
@@ -136,7 +137,7 @@ class PrisonService(BaseService):
             # Check if still in solitary period
             if data.get('release_time'):
                 release_time = datetime.fromisoformat(data['release_time'])
-                if datetime.utcnow() < release_time:
+                if now_est_naive() < release_time:
                     return True, data.get('severity', 1)
                 else:
                     # Release from solitary
@@ -165,7 +166,7 @@ class PrisonService(BaseService):
                     severity=ErrorSeverity.MEDIUM
                 )
             
-            release_time = datetime.utcnow() + timedelta(hours=duration_hours)
+            release_time = now_est_naive() + timedelta(hours=duration_hours)
             
             # Record in database
             await self.repository.execute(
@@ -173,7 +174,7 @@ class PrisonService(BaseService):
                    (prisoner_id, discord_id, in_solitary, placed_at, 
                     release_time, reason, severity)
                    VALUES (?, ?, 1, ?, ?, ?, ?)""",
-                (prisoner['id'], user_id, datetime.utcnow(),
+                (prisoner['id'], user_id, now_est_naive(),
                  release_time, reason, severity)
             )
             
@@ -182,7 +183,7 @@ class PrisonService(BaseService):
                 'prisoner_id': prisoner['id'],
                 'discord_id': user_id,
                 'in_solitary': True,
-                'placed_at': datetime.utcnow().isoformat(),
+                'placed_at': now_est_naive().isoformat(),
                 'release_time': release_time.isoformat(),
                 'reason': reason,
                 'severity': severity
@@ -210,7 +211,7 @@ class PrisonService(BaseService):
                     """UPDATE solitary_confinement 
                        SET in_solitary = 0, released_at = ?
                        WHERE discord_id = ? AND in_solitary = 1""",
-                    (datetime.utcnow(), user_id)
+                    (now_est_naive(), user_id)
                 )
                 
                 # Remove from tracking
@@ -239,18 +240,18 @@ class PrisonService(BaseService):
                 if user_id not in self.good_behavior_tracking:
                     self.good_behavior_tracking[user_id] = {
                         'behavior_score': 0,
-                        'last_good_behavior': datetime.utcnow().isoformat(),
+                        'last_good_behavior': now_est_naive().isoformat(),
                         'consecutive_good_days': 0
                     }
                 
                 # Increment behavior score
                 data = self.good_behavior_tracking[user_id]
                 data['behavior_score'] += 1
-                data['last_good_behavior'] = datetime.utcnow().isoformat()
+                data['last_good_behavior'] = now_est_naive().isoformat()
                 
                 # Check for consecutive days
-                last_behavior = datetime.fromisoformat(data.get('last_good_behavior', datetime.utcnow().isoformat()))
-                if (datetime.utcnow() - last_behavior).days <= 1:
+                last_behavior = datetime.fromisoformat(data.get('last_good_behavior', now_est_naive().isoformat()))
+                if (now_est_naive() - last_behavior).days <= 1:
                     data['consecutive_good_days'] += 1
                 else:
                     data['consecutive_good_days'] = 1
@@ -307,7 +308,7 @@ class PrisonService(BaseService):
                     self.escape_attempts[user_id] = []
                 
                 self.escape_attempts[user_id].append({
-                    'attempt_time': datetime.utcnow().isoformat(),
+                    'attempt_time': now_est_naive().isoformat(),
                     'message': message[:100]
                 })
                 

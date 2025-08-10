@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import discord
 from src.services.base_service import BaseService
+from src.utils.time_utils import now_est_naive
 from src.core.logger import get_logger
 
 log_info = get_logger().log_info
@@ -700,7 +701,7 @@ class PsychologicalService(BaseService):
                 'message': message,
                 'response': response,
                 'type': memory_type,
-                'timestamp': datetime.utcnow()
+                'timestamp': now_est_naive()
             })
             
             # Keep only last 20 memories per user in memory

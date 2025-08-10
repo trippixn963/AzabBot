@@ -28,7 +28,7 @@
 # Log Structure:
 # /logs/
 #   YYYY-MM-DD/
-#     logs.log      - All log messages
+#     log.log       - All log messages
 #     errors.log    - Only ERROR and CRITICAL level messages
 #     logs.json     - Structured JSON log entries
 #
@@ -537,7 +537,7 @@ class TreeLogger:
         Write log message to 3 separate log files in date-based subdirectory.
 
         Creates logs/YYYY-MM-DD/ directory with:
-        - logs.log: All log messages
+        - log.log: All log messages
         - errors.log: Only ERROR and CRITICAL level messages
         - logs.json: Structured JSON log entries
 
@@ -581,15 +581,15 @@ class TreeLogger:
             else:
                 log_entry = "\n"  # Just a blank line for spacing
 
-            # 1. Write to main logs.log file (all messages)
-            main_log_file = self.log_dir / "logs.log"
+            # 1. Write to main log.log file (all messages)
+            main_log_file = self.log_dir / "log.log"
             with open(main_log_file, "a", encoding="utf-8") as f:
                 f.write(log_entry)
                 f.flush()
 
-            # 2. Write to errors.log file (only ERROR and CRITICAL levels)
+            # 2. Write to error.log file (only ERROR and CRITICAL levels)
             if level in ["ERROR", "CRITICAL", "WARNING"]:
-                error_log_file = self.log_dir / "errors.log"
+                error_log_file = self.log_dir / "error.log"
                 with open(error_log_file, "a", encoding="utf-8") as f:
                     f.write(log_entry)
                     f.flush()

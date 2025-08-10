@@ -6,6 +6,7 @@ Reduces code duplication across services.
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
+from src.utils.time_utils import now_est_naive
 from src.utils.error_handler import (
     handle_error, ErrorCategory, ErrorSeverity, AzabBotError
 )
@@ -155,7 +156,7 @@ class BaseRepository:
         
         # Add timestamps if not present
         if "created_at" not in all_fields:
-            all_fields["created_at"] = datetime.utcnow()
+            all_fields["created_at"] = now_est_naive()
         
         columns = ", ".join(all_fields.keys())
         placeholders = ", ".join(["?" for _ in all_fields])
@@ -193,7 +194,7 @@ class BaseRepository:
         """
         # Add updated_at if table might have it
         if "updated_at" not in update_fields:
-            update_fields["updated_at"] = datetime.utcnow()
+            update_fields["updated_at"] = now_est_naive()
         
         set_clause = ", ".join([f"{k} = ?" for k in update_fields.keys()])
         where_clause = " AND ".join([f"{k} = ?" for k in where_fields.keys()])

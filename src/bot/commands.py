@@ -17,8 +17,11 @@ Available Commands:
 
 import discord
 from discord import app_commands
+from datetime import timezone
+import pytz
 
 from src.utils.embed_builder import EmbedBuilder
+from src.utils.time_utils import get_est_time
 
 
 def create_activate_command(bot):
@@ -58,7 +61,7 @@ def create_activate_command(bot):
                 title="❌ Permission Denied",
                 description="Only authorized users can use this command.",
                 color=0xFF0000,
-                timestamp=discord.utils.utcnow()
+                timestamp=get_est_time()
             )
             if bot.user and bot.user.avatar:
                 embed.set_thumbnail(url=bot.user.avatar.url)
@@ -138,7 +141,7 @@ def create_deactivate_command(bot):
                 title="❌ Permission Denied",
                 description="Only authorized users can use this command.",
                 color=0xFF0000,
-                timestamp=discord.utils.utcnow()
+                timestamp=get_est_time()
             )
             if bot.user and bot.user.avatar:
                 embed.set_thumbnail(url=bot.user.avatar.url)
@@ -207,7 +210,7 @@ def create_health_command(bot):
                 title="❌ Permission Denied",
                 description="Only the developer can use this command.",
                 color=0xFF0000,
-                timestamp=discord.utils.utcnow()
+                timestamp=get_est_time()
             )
             if bot.user and bot.user.avatar:
                 embed.set_thumbnail(url=bot.user.avatar.url)
@@ -225,7 +228,7 @@ def create_health_command(bot):
                     title="✅ Health Report Sent",
                     description="Health status report has been sent to the webhook successfully!",
                     color=0x00FF00,
-                    timestamp=discord.utils.utcnow()
+                    timestamp=get_est_time()
                 )
                 if bot.user and bot.user.avatar:
                     embed.set_thumbnail(url=bot.user.avatar.url)
@@ -236,7 +239,7 @@ def create_health_command(bot):
                     title="❌ Health Report Failed",
                     description="Failed to send health report. Check webhook configuration and logs for details.",
                     color=0xFF0000,
-                    timestamp=discord.utils.utcnow()
+                    timestamp=get_est_time()
                 )
                 if bot.user and bot.user.avatar:
                     embed.set_thumbnail(url=bot.user.avatar.url)
@@ -247,7 +250,7 @@ def create_health_command(bot):
                 title="⚠️ Service Not Configured",
                 description="Health webhook service is not configured or initialized.",
                 color=0xFFFF00,
-                timestamp=discord.utils.utcnow()
+                timestamp=get_est_time()
             )
             if bot.user and bot.user.avatar:
                 embed.set_thumbnail(url=bot.user.avatar.url)

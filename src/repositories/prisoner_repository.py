@@ -6,6 +6,7 @@ Centralizes all prisoner-related database queries.
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
+from src.utils.time_utils import now_est_naive
 from src.repositories.base_repository import BaseRepository
 from src.utils.error_handler import handle_error, ErrorCategory, ErrorSeverity
 from src.core.logger import get_logger
@@ -44,7 +45,7 @@ class PrisonerRepository(BaseRepository):
             create_fields={
                 "username": username,
                 "display_name": display_name or username,
-                "first_seen": datetime.utcnow(),
+                "first_seen": now_est_naive(),
                 "total_mutes": 0,
                 "total_messages": 0
             }
@@ -127,7 +128,7 @@ class PrisonerRepository(BaseRepository):
             """INSERT INTO prisoner_mutes 
                (prisoner_id, discord_id, reason, muted_by, duration, is_active, muted_at)
                VALUES (?, ?, ?, ?, ?, 1, ?)""",
-            (prisoner_id, discord_id, reason, muted_by, duration, datetime.utcnow())
+            (prisoner_id, discord_id, reason, muted_by, duration, now_est_naive())
         )
         
         if success:
@@ -167,7 +168,7 @@ class PrisonerRepository(BaseRepository):
             """UPDATE prisoner_mutes 
                SET is_active = 0, unmuted_at = ?
                WHERE prisoner_id = ? AND is_active = 1""",
-            (datetime.utcnow(), prisoner_id)
+            (now_est_naive(), prisoner_id)
         )
         
         if success:
@@ -272,7 +273,7 @@ class PrisonerRepository(BaseRepository):
             """INSERT INTO prisoner_messages 
                (prisoner_id, discord_id, channel_id, content, timestamp)
                VALUES (?, ?, ?, ?, ?)""",
-            (prisoner_id, discord_id, channel_id, content[:500], datetime.utcnow())
+            (prisoner_id, discord_id, channel_id, content[:500], now_est_naive())
         )
         
         if success:
@@ -329,7 +330,7 @@ class PrisonerRepository(BaseRepository):
         Returns:
             True if successful
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = now_est_naive() - timedelta(days=days)
         
         operations = [
             # Delete old messages
