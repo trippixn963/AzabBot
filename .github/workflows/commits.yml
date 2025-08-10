@@ -31,7 +31,7 @@ jobs:
               "fields": [
                 {
                   "name": "Author",
-                  "value": "${{ github.event.head_commit.author.name }}",
+                  "value": "حَـــــنَّـــــا",
                   "inline": true
                 },
                 {
@@ -86,7 +86,7 @@ jobs:
               "fields": [
                 {
                   "name": "Author",
-                  "value": "${{ github.event.head_commit.author.name }}",
+                  "value": "حَـــــنَّـــــا",
                   "inline": true
                 },
                 {
