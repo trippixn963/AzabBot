@@ -297,8 +297,43 @@ class SaydnayaBot(discord.Client):
                 f"DEBUG: Role check - Had role: {had_role}, Has role: {has_role}, Target: {target_role_id}"
             )
 
+            # If they just got UNMUTED (had role before, doesn't have it now)
+            if had_role and not has_role:
+                self.logger.log_info(
+                    f"🔓 Prisoner released: {after.display_name} just got unmuted!"
+                )
+                
+                # Remove from current prisoners set
+                self.current_prisoners.discard(after.display_name)
+                
+                # Send message in general chat (channel ID: 1350540215797940245)
+                general_channel = after.guild.get_channel(1350540215797940245)
+                if general_channel:
+                    try:
+                        # Send a release message mentioning the user
+                        release_messages = [
+                            f"🔓 {after.mention} has been released from prison! Try not to end up back there...",
+                            f"⛓️‍💥 {after.mention} is FREE! The guards got tired of you.",
+                            f"🚪 {after.mention} just walked out of Sednaya. Welcome back to civilization!",
+                            f"🎉 {after.mention} survived the torture! You're free... for now.",
+                            f"👋 {after.mention} has been released. Azab will miss you!",
+                            f"🔑 {after.mention} got their freedom back. Use it wisely this time.",
+                        ]
+                        
+                        import random
+                        message = random.choice(release_messages)
+                        await general_channel.send(message)
+                        
+                        self.logger.log_info(
+                            f"Posted unmute notification for {after.display_name} in general chat"
+                        )
+                    except Exception as e:
+                        self.logger.log_error(
+                            f"Failed to send unmute message: {e}"
+                        )
+                        
             # If they just got the muted role
-            if not had_role and has_role:
+            elif not had_role and has_role:
                 self.logger.log_info(
                     f"🚨 New prisoner detected: {after.display_name} just got muted!"
                 )
@@ -893,7 +928,7 @@ class SaydnayaBot(discord.Client):
             activity = discord.Activity(
                 type=discord.ActivityType.watching, name=status_text
             )
-            await self.change_presence(activity=activity, status=discord.Status.dnd)
+            await self.change_presence(activity=activity, status=discord.Status.online)
 
             self.logger.log_info(f"Set mocking status about {user.display_name}")
 
@@ -996,7 +1031,7 @@ Response Rate: {(self.metrics.responses_generated /
                 activity = discord.Activity(
                     type=discord.ActivityType.playing, name=f"with {prisoner_name}"
                 )
-                await self.change_presence(activity=activity, status=discord.Status.dnd)
+                await self.change_presence(activity=activity, status=discord.Status.online)
 
                 self.presence_index += 1
                 self.logger.log_info(f"Updated presence: Playing with {prisoner_name}")
@@ -1005,7 +1040,7 @@ Response Rate: {(self.metrics.responses_generated /
                 activity = discord.Activity(
                     type=discord.ActivityType.watching, name="⛓ Sednaya"
                 )
-                await self.change_presence(activity=activity, status=discord.Status.dnd)
+                await self.change_presence(activity=activity, status=discord.Status.online)
                 self.logger.log_info("Updated presence: Watching ⛓ Sednaya")
 
         except Exception as e:
