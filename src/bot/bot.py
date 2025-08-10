@@ -85,6 +85,7 @@ class AzabBot(discord.Client):
         self.ai_service: Optional[AIService] = None
         self.health_monitor: Optional[HealthMonitor] = None
         self.memory_service = None  # Will be set later if available
+        self.prison_service = None  # Enhanced prison features
 
         # Bot metrics and state
         self.metrics = BotMetrics()
@@ -125,6 +126,14 @@ class AzabBot(discord.Client):
             self.ai_service = await resolve("AIService")
             self.health_monitor = await resolve("HealthMonitor")
             self.webhook_health = await resolve("WebhookHealthService")
+            
+            # Try to resolve prison service (optional)
+            try:
+                self.prison_service = await resolve("PrisonService")
+                self.logger.log_info("Prison service loaded successfully")
+            except Exception as e:
+                self.logger.log_warning(f"Prison service not available: {e}")
+                self.prison_service = None
 
             # Register bot for health monitoring
             if self.health_monitor:
@@ -498,9 +507,61 @@ class AzabBot(discord.Client):
                 },
             )
 
+    async def on_member_join(self, member: discord.Member):
+        """Handle when a member joins the server."""
+        try:
+            # Check if they have recent prison break attempts
+            if self.prison_service:
+                # Check database for recent escape attempts
+                user_status = await self.prison_service.get_prisoner_status(str(member.id))
+                
+                if user_status.get('escape_attempts', 0) > 0:
+                    # They tried to escape before!
+                    await self.prison_service.detect_prison_break(
+                        str(member.id),
+                        member.display_name,
+                        "rejoin_server",
+                        was_muted=False  # We don't know if they were muted
+                    )
+                    
+                    self.logger.log_warning(
+                        f"🚨 ESCAPED PRISONER RETURNED: {member.display_name} rejoined after escape!"
+                    )
+                    
+                    # Send alert to prison channel
+                    prison_channel_id = self.config.get("PRISON_CHANNEL_IDS", "")
+                    if prison_channel_id:
+                        channel = member.guild.get_channel(int(prison_channel_id))
+                        if channel:
+                            await channel.send(
+                                f"⚠️ **ALERT**: Escaped prisoner {member.mention} has returned! "
+                                f"They thought they could escape justice! 🚨"
+                            )
+        except Exception as e:
+            self.logger.log_error(f"Error in on_member_join: {e}")
+    
     async def on_member_remove(self, member: discord.Member):
         """Handle when a member leaves the server."""
         try:
+            # Check if they were muted (trying to escape)
+            target_role_id = self.config.get("TARGET_ROLE_ID")
+            was_muted = False
+            
+            if target_role_id:
+                was_muted = any(str(role.id) == str(target_role_id) for role in member.roles)
+            
+            # Detect prison break attempt if they were muted
+            if was_muted and self.prison_service:
+                await self.prison_service.detect_prison_break(
+                    str(member.id), 
+                    member.display_name,
+                    "leave_server",
+                    was_muted=True
+                )
+                self.logger.log_warning(
+                    f"🚨 ESCAPE ATTEMPT: {member.display_name} left while muted!"
+                )
+            
             # Remove from current prisoners if they were in jail
             if member.display_name in self.current_prisoners:
                 self.current_prisoners.discard(member.display_name)
@@ -837,9 +898,37 @@ class AzabBot(discord.Client):
                 or user_has_role
             )
 
+            # Check prison service features if available
+            harassment_intensity = 1.0
+            prisoner_status = {}
+            
+            if self.prison_service and is_prison:
+                user_id = str(representative_message.author.id)
+                username = representative_message.author.display_name
+                
+                # Get prisoner status
+                prisoner_status = await self.prison_service.get_prisoner_status(user_id)
+                
+                # Check for solitary confinement
+                in_solitary, severity = await self.prison_service.check_solitary_confinement(
+                    user_id, username
+                )
+                
+                # Track good behavior (quiet = good)
+                is_quiet = len(messages) == 1 and len(combined_content) < 50
+                await self.prison_service.track_good_behavior(user_id, username, is_quiet)
+                
+                # Calculate harassment intensity
+                harassment_intensity = self.prison_service.calculate_harassment_intensity(user_id)
+                
+                self.logger.log_info(
+                    f"Prison Status - User: {username}, Solitary: {in_solitary}, "
+                    f"Intensity: {harassment_intensity:.2f}, Good Behavior: {prisoner_status.get('good_behavior_score', 0)}"
+                )
+            
             # Show typing indicator
             async with representative_message.channel.typing():
-                # Generate AI response
+                # Generate AI response with prison context
                 ai_response = await self.ai_service.generate_response(
                     combined_content,
                     representative_message.author.display_name,
@@ -853,6 +942,11 @@ class AzabBot(discord.Client):
                     additional_context={
                         "is_prison": is_prison,
                         "batch_size": len(messages),
+                        "harassment_intensity": harassment_intensity,
+                        "in_solitary": prisoner_status.get('in_solitary', False),
+                        "solitary_level": prisoner_status.get('solitary_level', 0),
+                        "good_behavior_score": prisoner_status.get('good_behavior_score', 0),
+                        "escape_attempts": prisoner_status.get('escape_attempts', 0),
                     },
                 )
 
@@ -1041,7 +1135,7 @@ Response Rate: {(self.metrics.responses_generated /
         """Generate a personalized release message based on prisoner's history."""
         try:
             # Get AI service to generate personalized message
-            ai_service = self.container.get("AIService")
+            ai_service = self.ai_service
             
             # Try to get their conversation history from database
             conversation_summary = ""
