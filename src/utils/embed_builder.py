@@ -24,6 +24,7 @@ All embeds follow a consistent design pattern with:
 from typing import List, Optional, Tuple, Union
 
 from discord import Embed
+from src import __version__
 
 
 class EmbedBuilder:
@@ -57,7 +58,7 @@ class EmbedBuilder:
     }
 
     # Developer information for footer
-    DEVELOPER_NAME = "John Hamwi"
+    DEVELOPER_NAME = "حَـــــنَّـــــا"
     DEVELOPER_ICON = "https://cdn.discordapp.com/embed/avatars/0.png"  # Default avatar
 
     @classmethod
@@ -96,7 +97,7 @@ class EmbedBuilder:
 
         # Add developer footer for branding
         embed.set_footer(
-            text=f"Developed by {cls.DEVELOPER_NAME}", icon_url=cls.DEVELOPER_ICON
+            text=f"AzabBot v{__version__} • Developed by {cls.DEVELOPER_NAME}", icon_url=cls.DEVELOPER_ICON
         )
 
         return embed

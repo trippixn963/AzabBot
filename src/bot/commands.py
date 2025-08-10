@@ -99,7 +99,7 @@ def create_activate_command(bot):
         embed.add_field(name="Status", value="🟢 Active", inline=True)
         embed.add_field(name="Responses", value="💬 Enabled", inline=True)
         embed.add_field(name="Prisoners", value=f"{len(bot.current_prisoners)}", inline=True)
-        embed.set_footer(text=f"AzabBot v{__version__} • Responding")
+        embed.set_footer(text=f"AzabBot v{__version__} • Developed by حَـــــنَّـــــا")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     return activate
@@ -176,7 +176,7 @@ def create_deactivate_command(bot):
         embed.add_field(name="Status", value="⭕ Inactive", inline=True)
         embed.add_field(name="Responses", value="🔇 Disabled", inline=True)
         embed.add_field(name="Commands", value="✅ Still Available", inline=True)
-        embed.set_footer(text=f"AzabBot v{__version__} • Silent Mode")
+        embed.set_footer(text=f"AzabBot v{__version__} • Developed by حَـــــنَّـــــا")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     return deactivate
@@ -233,7 +233,7 @@ def create_health_command(bot):
                 )
                 if bot.user and bot.user.avatar:
                     embed.set_thumbnail(url=bot.user.avatar.url)
-                embed.set_footer(text=f"AzabBot Health Monitor v{__version__}")
+                embed.set_footer(text=f"AzabBot v{__version__} • Developed by حَـــــنَّـــــا")
                 await interaction.followup.send(embed=embed, ephemeral=True)
             else:
                 embed = discord.Embed(
