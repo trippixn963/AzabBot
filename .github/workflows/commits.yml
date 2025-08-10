@@ -102,20 +102,31 @@ jobs:
           EOF
           )
           
+          echo "Webhook URL length: ${#WEBHOOK_URL}"
           echo "Webhook URL (first 50 chars): ${WEBHOOK_URL:0:50}..."
+          echo "Webhook URL (last 20 chars): ...${WEBHOOK_URL: -20}"
           echo "Thread ID: $THREAD_ID"
           
-          # Send the webhook
+          # Build full URL
+          FULL_URL="${WEBHOOK_URL}?thread_id=${THREAD_ID}"
+          echo "Full URL length: ${#FULL_URL}"
+          
+          # Send the webhook with verbose output
           curl -X POST \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
-            "${WEBHOOK_URL}?thread_id=${THREAD_ID}" \
+            "$FULL_URL" \
             -o response.txt \
             -w "HTTP_CODE:%{http_code}\n" \
-            -s
+            -s -v 2>curl_debug.txt
           
           CURL_EXIT=$?
           echo "Curl exit code: $CURL_EXIT"
+          
+          if [ -f curl_debug.txt ]; then
+            echo "Curl debug output:"
+            cat curl_debug.txt | head -20
+          fi
           
           if [ $CURL_EXIT -ne 0 ]; then
             echo "Curl failed with exit code: $CURL_EXIT"
