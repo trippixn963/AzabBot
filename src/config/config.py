@@ -87,7 +87,7 @@ class ConfigurationManager:
                 required=True,
                 description="Discord bot token for authentication",
                 sensitive=True,
-                validator=lambda x: len(x) > 50 and x.startswith(("Bot ", "MTk")),
+                validator=lambda x: len(x) > 50 and (x.startswith(("Bot ", "MT")) or "." in x),
             ),
             ConfigField(
                 name="DEVELOPER_ID",
@@ -110,14 +110,10 @@ class ConfigurationManager:
             ),
             ConfigField(
                 name="PRISON_CHANNEL_IDS",
-                field_type=list,
-                default=[],
-                description="List of prison channel IDs for enhanced harassment",
-                transformer=lambda x: (
-                    [int(id_.strip()) for id_ in x.split(",") if id_.strip()]
-                    if isinstance(x, str)
-                    else x
-                ),
+                field_type=str,
+                default="",
+                description="Prison channel ID for enhanced harassment",
+                transformer=lambda x: str(x).strip() if x else "",
             ),
             # User Management
             ConfigField(
@@ -136,6 +132,12 @@ class ConfigurationManager:
                 field_type=int,
                 default=None,
                 description="Required role ID for bot to respond to users",
+            ),
+            ConfigField(
+                name="TARGET_ROLE_ID",
+                field_type=str,  # String to handle large Discord IDs
+                default=None,
+                description="Users with this role will trigger bot responses",
             ),
             # AI Configuration
             ConfigField(
@@ -648,3 +650,7 @@ def get_list(key: str, default: Optional[List] = None) -> List:
 def require(key: str) -> Any:
     """Get required configuration value."""
     return _global_config.require(key)
+
+
+# Alias for backward compatibility
+BotConfig = ConfigurationManager

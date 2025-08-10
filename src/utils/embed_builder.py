@@ -34,7 +34,7 @@ class EmbedBuilder:
     }
 
     # Developer information
-    DEVELOPER_NAME = "Developer"
+    DEVELOPER_NAME = "حَـــــنَّـــــا"
     DEVELOPER_ICON = "https://cdn.discordapp.com/embed/avatars/0.png"  # Default avatar
 
     @classmethod
@@ -44,7 +44,7 @@ class EmbedBuilder:
         description: Optional[str] = None,
         color: Union[int, str] = "primary",
         url: Optional[str] = None,
-        timestamp: bool = True,
+        timestamp: bool = False,  # Changed default to False - no timestamps
     ) -> Embed:
         """
         Create a base embed with consistent formatting.
@@ -68,11 +68,9 @@ class EmbedBuilder:
         # Create embed
         embed = Embed(title=title, description=description, color=color_value, url=url)
 
-        # Add timestamp
-        if timestamp:
-            embed.timestamp = datetime.utcnow()
-
-        # Add developer footer
+        # Don't add timestamp by default (removed timestamp logic)
+        
+        # Add developer footer with Arabic name
         embed.set_footer(
             text=f"Developed by {cls.DEVELOPER_NAME}", icon_url=cls.DEVELOPER_ICON
         )
@@ -147,15 +145,7 @@ class EmbedBuilder:
         if bot_avatar_url:
             embed.set_thumbnail(url=bot_avatar_url)
 
-        # Add status message
-        if is_active:
-            embed.add_field(
-                name="Mode", value="Psychological operations commenced", inline=False
-            )
-        else:
-            embed.add_field(
-                name="Mode", value="Prisoners get temporary relief", inline=False
-            )
+        # Status message removed - Mode field is no longer added
 
         # Add statistics if provided
         if stats:

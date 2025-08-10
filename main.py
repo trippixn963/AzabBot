@@ -6,6 +6,7 @@
 # It imports and runs the main application from the app module.
 # =============================================================================
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -18,4 +19,4 @@ if str(project_root) not in sys.path:
 from src.main import run_bot
 
 if __name__ == "__main__":
-    run_bot()
+    asyncio.run(run_bot())

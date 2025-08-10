@@ -21,6 +21,25 @@ import psutil
 from src.services.base_service import BaseService, HealthCheckResult, ServiceStatus
 
 
+@dataclass
+class ComponentHealth:
+    """Health status of a single component."""
+    name: str
+    status: str
+    latency_ms: Optional[float] = None
+    error: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class HealthStatus:
+    """Overall health status."""
+    timestamp: datetime
+    overall_status: str
+    components: Dict[str, ComponentHealth]
+    system_metrics: 'SystemMetrics'
+
+
 class AlertSeverity(Enum):
     """Alert severity levels."""
 

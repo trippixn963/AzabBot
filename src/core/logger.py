@@ -12,6 +12,7 @@
 
 import logging
 import sys
+from enum import Enum
 from typing import Any, Dict, Optional, Union
 
 from src.core.exceptions import SaydnayaBotException
@@ -21,6 +22,15 @@ from src.utils.tree_log import (
     log_perfect_tree_section,
     log_status,
 )
+
+
+class LogLevel(Enum):
+    """Log level enumeration."""
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
 
 
 class BotLogger:
@@ -41,17 +51,19 @@ class BotLogger:
     - Exception handling integration
     """
 
-    def __init__(self, name: str = "SaydnayaBot"):
+    def __init__(self, name: str = "SaydnayaBot", cleanup_on_start: bool = True):
         """
         Initialize the bot logger.
 
         Args:
             name: Logger name for identification
+            cleanup_on_start: If True, deletes ALL existing logs on startup
         """
         self.name = name
-        self.tree_log = TreeLogger()
+        self.tree_log = TreeLogger(cleanup_on_start=cleanup_on_start)
         self.python_logger = self._setup_python_logger()
         self.run_id = self.tree_log.run_id
+        self.log_level = LogLevel.INFO
 
     def _setup_python_logger(self) -> logging.Logger:
         """Set up traditional Python logger for integration."""
@@ -398,14 +410,21 @@ class BotLogger:
         """Get the current run ID."""
         return self.run_id
 
-    def set_log_level(self, level: str):
+    def set_log_level(self, level: Union[str, LogLevel]):
         """
         Set the log level for Python logger.
 
         Args:
             level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         """
-        numeric_level = getattr(logging, level.upper(), logging.INFO)
+        if isinstance(level, LogLevel):
+            self.log_level = level
+            level_str = level.value
+        else:
+            level_str = level.upper()
+            self.log_level = LogLevel(level_str)
+        
+        numeric_level = getattr(logging, level_str, logging.INFO)
         self.python_logger.setLevel(numeric_level)
 
 

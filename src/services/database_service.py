@@ -818,3 +818,7 @@ class AsyncConnection:
     async def rollback(self):
         """Rollback transaction asynchronously."""
         return await self.loop.run_in_executor(None, self.conn.rollback)
+
+
+# Alias for backward compatibility
+DatabaseService = PrisonerDatabaseService

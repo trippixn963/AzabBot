@@ -20,6 +20,16 @@ from src.core.logger import get_logger
 from src.services.base_service import BaseService
 
 
+class ServiceNotFoundError(ServiceError):
+    """Service not found in container."""
+    pass
+
+
+class CircularDependencyError(ServiceError):
+    """Circular dependency detected."""
+    pass
+
+
 class ServiceLifetime(Enum):
     """Service lifetime management modes."""
 
