@@ -1,5 +1,5 @@
 """
-SaydnayaBot - Base Service Module
+AzabBot - Base Service Module
 =================================
 
 This module provides abstract base classes and interfaces for all bot services.

@@ -1,5 +1,5 @@
 # =============================================================================
-# SaydnayaBot - Prisoner Database Service
+# AzabBot - Prisoner Database Service
 # =============================================================================
 # Manages prisoner tracking, conversation history, and report generation
 # for Azab's psychological torture operations. Provides memory persistence
@@ -123,13 +123,22 @@ class PrisonerDatabaseService(BaseService):
 
         # Create database and schema
         await self._create_database()
+        
+        # Create initial backup if database exists and has data
+        await self._create_backup_if_needed()
 
         self.logger.log_info(f"Database initialized at {self.db_path}")
 
     async def start(self) -> None:
         """Start the database service."""
-        # Test database connection
+        # Test database connection and integrity
         async with self._get_connection() as conn:
+            # Quick integrity check
+            result = await conn.execute("PRAGMA quick_check")
+            check = await result.fetchone()
+            if check[0] != "ok":
+                self.logger.log_warning(f"Database integrity check failed: {check[0]}")
+            
             cursor = await conn.execute("SELECT COUNT(*) FROM prisoners")
             count = await cursor.fetchone()
             self.logger.log_info(f"Database started with {count[0]} prisoners")
@@ -165,11 +174,12 @@ class PrisonerDatabaseService(BaseService):
             return HealthCheckResult(
                 status=ServiceStatus.UNHEALTHY,
                 message=f"Database health check failed: {str(e)}",
+                details={"error": str(e)},
             )
 
     async def _create_database(self):
         """Create database tables from schema."""
-        schema_path = Path(__file__).parent.parent / "database" / "schema.sql"
+        schema_path = Path(__file__).parent.parent.parent / "data" / "schema.sql"
 
         if not schema_path.exists():
             raise DatabaseError(f"Schema file not found: {schema_path}")
@@ -194,6 +204,13 @@ class PrisonerDatabaseService(BaseService):
                     None, sqlite3.connect, str(self.db_path)
                 )
                 conn.row_factory = sqlite3.Row
+                
+                # Enable WAL mode for better concurrency and corruption resistance
+                conn.execute("PRAGMA journal_mode=WAL")
+                # Ensure data is written to disk (balanced performance)
+                conn.execute("PRAGMA synchronous=NORMAL")
+                # Enable foreign keys
+                conn.execute("PRAGMA foreign_keys=ON")
 
                 # Wrap in async-compatible connection
                 yield AsyncConnection(conn)
@@ -794,6 +811,45 @@ class PrisonerDatabaseService(BaseService):
         return (
             (self._total_queries - self._failed_queries) / self._total_queries
         ) * 100
+
+    async def _create_backup_if_needed(self):
+        """Create a backup of the database if it's a new day."""
+        if not self.db_path.exists():
+            return
+            
+        backup_dir = self.db_path.parent / "backups"
+        backup_dir.mkdir(exist_ok=True)
+        
+        # Check if today's backup exists
+        today = date.today().strftime("%Y%m%d")
+        backup_path = backup_dir / f"prisoners_{today}.db"
+        
+        if not backup_path.exists():
+            try:
+                import shutil
+                await asyncio.get_event_loop().run_in_executor(
+                    None, shutil.copy2, str(self.db_path), str(backup_path)
+                )
+                self.logger.log_info(f"Created daily backup: {backup_path.name}")
+                
+                # Keep only last 7 days of backups
+                await self._cleanup_old_backups(backup_dir)
+            except Exception as e:
+                self.logger.log_warning(f"Failed to create backup: {e}")
+    
+    async def _cleanup_old_backups(self, backup_dir: Path):
+        """Remove backups older than 7 days."""
+        try:
+            import time
+            current_time = time.time()
+            for backup_file in backup_dir.glob("prisoners_*.db"):
+                # Check file age
+                file_age = current_time - backup_file.stat().st_mtime
+                if file_age > (7 * 24 * 3600):  # 7 days in seconds
+                    backup_file.unlink()
+                    self.logger.log_info(f"Removed old backup: {backup_file.name}")
+        except Exception as e:
+            self.logger.log_warning(f"Failed to cleanup old backups: {e}")
 
 
 class AsyncConnection:

@@ -1,9 +1,9 @@
 # =============================================================================
-# SaydnayaBot - Tree Style Logging Module (Based on QuranBot Architecture)
+# AzabBot - Tree Style Logging Module (Based on QuranBot Architecture)
 # =============================================================================
 # Professional-grade logging system that creates beautiful, hierarchical logs
 # with perfect tree structure, timestamps, and multi-destination output.
-# Adapted from QuranBot's TreeLogger for SaydnayaBot architecture.
+# Adapted from QuranBot's TreeLogger for AzabBot architecture.
 #
 # Purpose:
 # Professional-grade logging system that creates beautiful, hierarchical logs
@@ -64,7 +64,7 @@ TREE_SYMBOLS = {
 
 class TreeLogger:
     """
-    Professional-grade tree-style logging system for SaydnayaBot.
+    Professional-grade tree-style logging system for AzabBot.
 
     Key Features:
     - Beautiful tree-style log formatting

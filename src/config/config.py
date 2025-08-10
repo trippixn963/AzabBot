@@ -1,8 +1,8 @@
 """
-SaydnayaBot - Advanced Configuration Management System
+AzabBot - Advanced Configuration Management System
 =====================================================
 
-This module provides a comprehensive configuration management system for SaydnayaBot
+This module provides a comprehensive configuration management system for AzabBot
 with robust validation, type safety, and secure handling of sensitive data.
 
 Features:
@@ -71,7 +71,7 @@ class ConfigField:
 
 class ConfigurationManager:
     """
-    Advanced configuration management system for SaydnayaBot.
+    Advanced configuration management system for AzabBot.
     
     This class provides a comprehensive configuration management solution that
     handles loading, validation, and access to application configuration.
@@ -325,6 +325,56 @@ class ConfigurationManager:
                 description="Maximum log file size in MB before rotation",
                 validator=lambda x: x >= 1,
             ),
+            # Health Webhook Configuration
+            # Primary webhook
+            ConfigField(
+                name="HEALTH_WEBHOOK_URL_1",
+                field_type=str,
+                default="",
+                description="Primary Discord webhook URL for health status reports",
+                sensitive=True,
+            ),
+            ConfigField(
+                name="HEALTH_THREAD_ID_1",
+                field_type=str,
+                default="",
+                description="Thread ID for primary webhook posts",
+            ),
+            # Secondary webhook
+            ConfigField(
+                name="HEALTH_WEBHOOK_URL_2",
+                field_type=str,
+                default="",
+                description="Secondary Discord webhook URL for health status reports",
+                sensitive=True,
+            ),
+            ConfigField(
+                name="HEALTH_THREAD_ID_2",
+                field_type=str,
+                default="",
+                description="Thread ID for secondary webhook posts",
+            ),
+            # Legacy support (maps to primary)
+            ConfigField(
+                name="HEALTH_WEBHOOK_URL",
+                field_type=str,
+                default="",
+                description="Discord webhook URL for health status reports (legacy)",
+                sensitive=True,
+            ),
+            ConfigField(
+                name="HEALTH_THREAD_ID",
+                field_type=str,
+                default="",
+                description="Thread ID for health webhook posts (legacy)",
+            ),
+            ConfigField(
+                name="HEALTH_CHECK_INTERVAL_HOURS",
+                field_type=float,
+                default=1.0,
+                description="Interval between health checks in hours",
+                validator=lambda x: x >= 0.1,
+            ),
         ]
 
         for field in fields:
@@ -553,6 +603,12 @@ class ConfigurationManager:
             self.load_configuration()
 
         return key in self._config_data and self._config_data[key] is not None
+    
+    def get_all(self) -> Dict[str, Any]:
+        """Get all configuration values as a dictionary."""
+        if not self._loaded:
+            self.load_configuration()
+        return self._config_data.copy()
 
     def validate_all(self) -> List[str]:
         """

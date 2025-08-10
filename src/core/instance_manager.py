@@ -1,5 +1,5 @@
 """
-SaydnayaBot - Instance Management System
+AzabBot - Instance Management System
 ========================================
 
 This module provides an instance management system that prevents multiple bot
@@ -34,7 +34,7 @@ class InstanceManager:
     Manages bot instances to prevent conflicts and ensure single-instance operation.
     
     This class provides comprehensive instance management capabilities to ensure
-    that only one instance of the SaydnayaBot can run at any given time. It
+    that only one instance of the AzabBot can run at any given time. It
     handles detection, termination, and cleanup of conflicting instances.
     
     The manager uses multiple detection methods including process scanning,
@@ -50,7 +50,7 @@ class InstanceManager:
     - Comprehensive logging and error handling
     """
 
-    def __init__(self, bot_name: str = "SaydnayaBot"):
+    def __init__(self, bot_name: str = "AzabBot"):
         """
         Initialize the instance manager with configuration.
         
@@ -136,8 +136,8 @@ class InstanceManager:
                     if any(
                         indicator in cmdline_str
                         for indicator in [
-                            "saydnayabot",
-                            "saydnaya_bot",
+                            "azabbot",
+                            "azab_bot",
                             "app/main.py",
                             "main.py",
                         ]

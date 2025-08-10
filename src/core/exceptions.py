@@ -1,8 +1,8 @@
 """
-SaydnayaBot - Core Exceptions Module
+AzabBot - Core Exceptions Module
 ===================================
 
-This module provides a comprehensive exception hierarchy for the SaydnayaBot application.
+This module provides a comprehensive exception hierarchy for the AzabBot application.
 It defines structured error handling with specific exception types for different
 error scenarios, enabling better error tracking, logging, and recovery.
 
@@ -18,16 +18,16 @@ Exception Categories:
 - Security errors (authentication, authorization, rate limiting)
 - Validation errors (input validation, required fields)
 
-All exceptions inherit from SaydnayaBotException which provides common
+All exceptions inherit from AzabBotException which provides common
 functionality for error context and logging.
 """
 
 from typing import Any, Dict, Optional
 
 
-class SaydnayaBotException(Exception):
+class AzabBotException(Exception):
     """
-    Base exception for all SaydnayaBot-specific errors.
+    Base exception for all AzabBot-specific errors.
     
     This is the root exception from which all other bot exceptions inherit.
     It provides common functionality for error context, logging, and
@@ -74,7 +74,7 @@ class SaydnayaBotException(Exception):
 # =============================================================================
 
 
-class ConfigurationError(SaydnayaBotException):
+class ConfigurationError(AzabBotException):
     """
     Base exception for configuration-related errors.
     
@@ -145,7 +145,7 @@ class InvalidConfigurationError(ConfigurationError):
 # =============================================================================
 
 
-class ServiceError(SaydnayaBotException):
+class ServiceError(AzabBotException):
     """Base exception for service-related errors."""
 
     def __init__(self, service_name: str, message: str, **kwargs):
@@ -274,7 +274,7 @@ class AIInappropriateContentError(AIServiceError):
 # =============================================================================
 
 
-class DiscordAPIError(SaydnayaBotException):
+class DiscordAPIError(AzabBotException):
     """Base exception for Discord API-related errors."""
 
     def __init__(self, message: str, status_code: Optional[int] = None, **kwargs):
@@ -349,7 +349,7 @@ class DiscordRateLimitError(DiscordAPIError):
 # =============================================================================
 
 
-class DatabaseError(SaydnayaBotException):
+class DatabaseError(AzabBotException):
     """Base exception for database-related errors."""
 
     def __init__(self, message: str, operation: Optional[str] = None, **kwargs):
@@ -406,7 +406,7 @@ class DatabaseQueryError(DatabaseError):
 # =============================================================================
 
 
-class SecurityError(SaydnayaBotException):
+class SecurityError(AzabBotException):
     """Base exception for security-related errors."""
 
     def __init__(
@@ -495,7 +495,7 @@ class RateLimitExceededError(SecurityError):
 # =============================================================================
 
 
-class ValidationError(SaydnayaBotException):
+class ValidationError(AzabBotException):
     """Base exception for validation-related errors."""
 
     def __init__(

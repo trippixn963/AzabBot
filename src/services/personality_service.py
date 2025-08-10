@@ -1,5 +1,5 @@
 # =============================================================================
-# SaydnayaBot - Advanced Personality Management Service
+# AzabBot - Advanced Personality Management Service
 # =============================================================================
 # Provides dynamic personality modes that adapt based on user interactions,
 # time of day, conversation context, and effectiveness metrics.
@@ -537,7 +537,7 @@ class PersonalityService(BaseService):
             return HealthCheckResult(
                 status=ServiceStatus.HEALTHY,
                 message=f"Managing {len(self.profiles)} personalities for {active_users} users",
-                metrics={
+                details={
                     "total_personalities": len(self.profiles),
                     "active_users": active_users,
                     "average_effectiveness": avg_effectiveness,
@@ -548,5 +548,5 @@ class PersonalityService(BaseService):
             return HealthCheckResult(
                 status=ServiceStatus.UNHEALTHY,
                 message=f"Personality service error: {str(e)}",
-                metrics={},
+                details={},
             )

@@ -1,5 +1,5 @@
 # =============================================================================
-# SaydnayaBot - Conversation Memory Service
+# AzabBot - Conversation Memory Service
 # =============================================================================
 # Provides persistent memory of user interactions, enabling the bot to
 # remember previous conversations, track user patterns, and build profiles
@@ -106,9 +106,17 @@ class MemoryService(BaseService):
         # Create database connection
         self.connection = sqlite3.connect(self.db_path)
         self.connection.row_factory = sqlite3.Row
+        
+        # Enable WAL mode for better corruption resistance
+        self.connection.execute("PRAGMA journal_mode=WAL")
+        self.connection.execute("PRAGMA synchronous=NORMAL")
+        self.connection.execute("PRAGMA foreign_keys=ON")
 
         # Create tables
         self._create_tables()
+        
+        # Create backup if needed
+        self._create_backup_if_needed()
 
         # Load existing memories
         self._load_memories()
@@ -486,7 +494,7 @@ class MemoryService(BaseService):
             return HealthCheckResult(
                 status=ServiceStatus.HEALTHY,
                 message=f"Tracking {user_count} users, {len(self.short_term_memory)} active",
-                metrics={
+                details={
                     "total_users": user_count,
                     "active_users": len(self.short_term_memory),
                     "cache_size": len(self.user_memories),
@@ -496,5 +504,33 @@ class MemoryService(BaseService):
             return HealthCheckResult(
                 status=ServiceStatus.UNHEALTHY,
                 message=f"Database error: {str(e)}",
-                metrics={},
+                details={},
             )
+    
+    def _create_backup_if_needed(self):
+        """Create a daily backup of the memory database."""
+        from pathlib import Path
+        from datetime import date
+        import shutil
+        
+        backup_dir = Path("data/backups")
+        backup_dir.mkdir(exist_ok=True)
+        
+        # Check if today's backup exists
+        today = date.today().strftime("%Y%m%d")
+        backup_path = backup_dir / f"memory_{today}.db"
+        
+        if not backup_path.exists() and self.db_path.exists():
+            try:
+                shutil.copy2(self.db_path, backup_path)
+                self.logger.log_info(f"Created daily backup: {backup_path.name}")
+                
+                # Keep only last 7 days of backups
+                import time
+                current_time = time.time()
+                for old_backup in backup_dir.glob("memory_*.db"):
+                    if current_time - old_backup.stat().st_mtime > (7 * 24 * 3600):
+                        old_backup.unlink()
+                        self.logger.log_info(f"Removed old backup: {old_backup.name}")
+            except Exception as e:
+                self.logger.log_warning(f"Failed to create backup: {e}")

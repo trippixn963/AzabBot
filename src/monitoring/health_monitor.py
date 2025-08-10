@@ -1,5 +1,5 @@
 """
-SaydnayaBot - Health Monitoring System
+AzabBot - Health Monitoring System
 ======================================
 
 This module provides a comprehensive health monitoring and alerting system for all
@@ -160,7 +160,7 @@ class SystemMetrics:
 
 class HealthMonitor(BaseService):
     """
-    Comprehensive health monitoring system for SaydnayaBot.
+    Comprehensive health monitoring system for AzabBot.
     
     This service provides centralized health monitoring for all bot services
     and system components. It continuously monitors service health, system
@@ -455,8 +455,13 @@ class HealthMonitor(BaseService):
             # System uptime
             uptime = time.time() - psutil.boot_time()
 
-            # Active network connections
-            connections = len(psutil.net_connections())
+            # Active network connections - handle permission errors gracefully
+            try:
+                connections = len(psutil.net_connections())
+            except (psutil.AccessDenied, PermissionError):
+                # On macOS, this often requires elevated permissions
+                connections = 0
+                self.logger.log_warning("Unable to access network connections due to permissions")
 
             metrics = SystemMetrics(
                 timestamp=datetime.utcnow(),

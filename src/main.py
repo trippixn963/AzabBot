@@ -1,8 +1,8 @@
 """
-SaydnayaBot - Main Application Entry Point
+AzabBot - Main Application Entry Point
 =========================================
 
-This module contains the main application logic for the SaydnayaBot Discord application.
+This module contains the main application logic for the AzabBot Discord application.
 It handles the complete lifecycle of the bot including initialization, startup,
 runtime execution, and graceful shutdown.
 
@@ -26,7 +26,7 @@ import signal
 import sys
 from pathlib import Path
 
-from src.bot.bot import SaydnayaBot
+from src.bot.bot import AzabBot
 from src.config.config import get_config
 from src.core.di_container import ServiceLifetime, register_service
 from src.core.instance_manager import get_instance_manager
@@ -37,6 +37,7 @@ from src.services.database_service import DatabaseService
 from src.services.memory_service import MemoryService
 from src.services.personality_service import PersonalityService
 from src.services.report_service import ReportService
+from src.services.webhook_health_service import WebhookHealthService
 
 # Global references for signal handlers
 # These are needed because signal handlers can't be async functions
@@ -142,7 +143,11 @@ async def run_bot():
         )
 
         # Import here to avoid circular imports
-        from src.core.di_container import register_factory
+        from src.core.di_container import register_factory, get_container
+
+        # Set container-wide configuration
+        container = get_container()
+        container.set_container_config(config.get_all())
 
         # Register core services with appropriate lifetimes
         register_factory("Config", lambda: config, lifetime=ServiceLifetime.SINGLETON)
@@ -173,6 +178,12 @@ async def run_bot():
         register_service(
             "HealthMonitor", HealthMonitor, lifetime=ServiceLifetime.SINGLETON
         )
+        register_service(
+            "WebhookHealthService", 
+            WebhookHealthService, 
+            lifetime=ServiceLifetime.SINGLETON,
+            dependencies=["Config", "HealthMonitor"]
+        )
 
         bot_logger.log_initialization_step(
             "DI Container", "success", "Services registered", "✅"
@@ -180,7 +191,7 @@ async def run_bot():
 
         # Step 4: Create and configure the Discord bot instance
         bot_logger.log_initialization_step("Bot", "creating", "Creating bot instance")
-        bot_instance = SaydnayaBot(config)
+        bot_instance = AzabBot(config)
         bot_logger.log_initialization_step(
             "Bot", "success", "Bot instance created", "✅"
         )
@@ -196,7 +207,7 @@ async def run_bot():
 
         bot_logger.log_system_event(
             "bot_ready",
-            "SaydnayaBot is starting...",
+            "AzabBot is starting...",
             {"mode": "production", "version": "1.0.0"},
         )
 

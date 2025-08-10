@@ -1,12 +1,31 @@
-# =============================================================================
-# SaydnayaBot - Log Optimization & Deletion System
-# =============================================================================
-# Manages log files efficiently by:
-# - Automatically deleting old logs to save disk space
-# - Compressing logs older than 1 day
-# - Batching log writes to reduce disk I/O
-# - Keeping only essential logs for debugging
-# =============================================================================
+"""
+AzabBot - Log Optimization & Management System
+==================================================
+
+This module provides comprehensive log file management capabilities for the
+AzabBot application, including automatic deletion, compression, rotation,
+and optimization to maintain efficient disk usage and system performance.
+
+The log management system handles:
+- Automatic deletion of old logs to save disk space
+- Compression of logs older than 1 day to reduce storage requirements
+- Log rotation to prevent individual files from becoming too large
+- Batching of log writes to reduce disk I/O overhead
+- Retention policies for different log types (error logs kept longer)
+- Background processing to avoid impacting bot performance
+
+Key Features:
+- Configurable retention periods for different log types
+- Automatic compression using gzip for space efficiency
+- Log rotation with configurable file sizes and backup counts
+- Background processing with minimal performance impact
+- Comprehensive statistics and monitoring
+- Graceful shutdown and cleanup procedures
+
+The system ensures that logging remains efficient and doesn't consume
+excessive disk space while maintaining important logs for debugging
+and monitoring purposes.
+"""
 
 import asyncio
 import gzip
@@ -20,13 +39,23 @@ from src.core.logger import get_logger
 
 class LogDeletionManager:
     """
-    Manages automatic log deletion and compression.
-
+    Manages automatic log deletion and compression for disk space optimization.
+    
+    This class provides automated log management capabilities to prevent
+    log files from consuming excessive disk space while maintaining
+    important logs for debugging and monitoring purposes.
+    
+    The manager implements intelligent retention policies that keep error
+    logs longer than regular logs, and compresses older logs to save space
+    while maintaining accessibility.
+    
     Features:
     - Deletes logs older than configured retention period
-    - Compresses logs between 1-7 days old
-    - Maintains separate retention for error logs
-    - Runs automatically in the background
+    - Compresses logs between 1-7 days old to save space
+    - Maintains separate retention policies for error logs
+    - Runs automatically in the background without blocking
+    - Provides comprehensive statistics and monitoring
+    - Graceful shutdown and cleanup procedures
     """
 
     def __init__(
@@ -37,12 +66,15 @@ class LogDeletionManager:
         error_retention_days: int = 30,
     ):
         """
-        Initialize the log deletion manager.
-
+        Initialize the log deletion manager with configuration.
+        
+        Sets up the log management system with specified retention policies
+        and prepares for background operation.
+        
         Args:
-            log_dir: Base directory for logs
-            retention_days: Days to keep logs (default: 7)
-            compress_after_days: Compress logs older than this (default: 1)
+            log_dir: Base directory containing log files
+            retention_days: Number of days to keep regular logs (default: 7)
+            compress_after_days: Days after which to compress logs (default: 1)
             error_retention_days: Days to keep error logs (default: 30)
         """
         self.log_dir = log_dir
@@ -54,7 +86,7 @@ class LogDeletionManager:
         self._deletion_task: Optional[asyncio.Task] = None
         self._shutdown = False
 
-        # Statistics
+        # Statistics tracking for monitoring and reporting
         self.stats = {
             "files_deleted": 0,
             "files_compressed": 0,
@@ -64,17 +96,28 @@ class LogDeletionManager:
         }
 
     async def start(self):
-        """Start the automatic log deletion process."""
+        """
+        Start the automatic log deletion and compression process.
+        
+        Initiates the background log management system that will
+        periodically clean up old logs and compress existing ones
+        to maintain efficient disk usage.
+        """
         self.logger.log_info("Starting log deletion manager", "🧹")
 
-        # Run initial cleanup
+        # Perform initial cleanup to handle any existing old logs
         await self.cleanup_logs()
 
-        # Start background task
+        # Start background task for periodic cleanup
         self._deletion_task = asyncio.create_task(self._deletion_loop())
 
     async def stop(self):
-        """Stop the log deletion process."""
+        """
+        Stop the log deletion process gracefully.
+        
+        Cancels the background task and performs final cleanup,
+        reporting statistics about the operation.
+        """
         self._shutdown = True
 
         if self._deletion_task and not self._deletion_task.done():
@@ -90,10 +133,16 @@ class LogDeletionManager:
         )
 
     async def _deletion_loop(self):
-        """Background loop for periodic log cleanup."""
+        """
+        Background loop for periodic log cleanup operations.
+        
+        Runs continuously in the background, performing log cleanup
+        every 6 hours to maintain efficient disk usage without
+        impacting bot performance.
+        """
         while not self._shutdown:
             try:
-                # Run cleanup every 6 hours
+                # Run cleanup every 6 hours to balance frequency with performance
                 await asyncio.sleep(21600)  # 6 hours
                 await self.cleanup_logs()
 

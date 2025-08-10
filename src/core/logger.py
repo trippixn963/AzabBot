@@ -1,5 +1,5 @@
 """
-SaydnayaBot - Core Logger Module
+AzabBot - Core Logger Module
 ================================
 
 This module provides a comprehensive logging system that integrates TreeLogger
@@ -32,7 +32,7 @@ import sys
 from enum import Enum
 from typing import Any, Dict, Optional, Union
 
-from src.core.exceptions import SaydnayaBotException
+from src.core.exceptions import AzabBotException
 from src.utils.tree_log import (
     TreeLogger,
     log_error_with_traceback,
@@ -58,7 +58,7 @@ class LogLevel(Enum):
 
 class BotLogger:
     """
-    Comprehensive logging system for SaydnayaBot.
+    Comprehensive logging system for AzabBot.
     
     This class combines TreeLogger's beautiful tree-style output with traditional
     Python logging to provide complete logging coverage for the application.
@@ -83,7 +83,7 @@ class BotLogger:
     - Exception handling integration with detailed context
     """
 
-    def __init__(self, name: str = "SaydnayaBot", cleanup_on_start: bool = True):
+    def __init__(self, name: str = "AzabBot", cleanup_on_start: bool = True):
         """
         Initialize the bot logger with configuration.
         
@@ -312,9 +312,9 @@ class BotLogger:
             context: Additional error context
             level: Error level (ERROR, WARNING, CRITICAL)
         """
-        # Extract context from SaydnayaBot exceptions
+        # Extract context from AzabBot exceptions
         error_context = {}
-        if isinstance(exception, SaydnayaBotException):
+        if isinstance(exception, AzabBotException):
             error_context.update(exception.context)
             if exception.error_code:
                 error_context["error_code"] = exception.error_code

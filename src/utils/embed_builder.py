@@ -1,9 +1,9 @@
 """
-SaydnayaBot - Embed Builder Utility
+AzabBot - Embed Builder Utility
 ===================================
 
 This module provides utilities for creating consistent, professional Discord embeds
-with SaydnayaBot branding and styling. It ensures visual consistency across all
+with AzabBot branding and styling. It ensures visual consistency across all
 bot responses and maintains the bot's thematic appearance.
 
 The EmbedBuilder class provides methods for creating various types of embeds:
@@ -28,7 +28,7 @@ from discord import Embed
 
 class EmbedBuilder:
     """
-    Utility class for creating consistent embeds with SaydnayaBot branding.
+    Utility class for creating consistent embeds with AzabBot branding.
     
     This class provides a centralized way to create Discord embeds that maintain
     visual consistency and brand identity across all bot interactions. It includes
@@ -302,7 +302,7 @@ class EmbedBuilder:
             Help embed
         """
         embed = cls.create_base_embed(
-            title="📖 SaydnayaBot Commands",
+            title="📖 AzabBot Commands",
             description="Only the developer can use these commands.",
             color="info",
         )

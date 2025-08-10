@@ -1,16 +1,30 @@
-# =============================================================================
-# SaydnayaBot - Core Security Module
-# =============================================================================
-# Comprehensive security framework providing authentication, authorization,
-# rate limiting, input validation, and security monitoring for the bot.
-#
-# This module implements security best practices including:
-# - Role-based access control
-# - Rate limiting with different strategies
-# - Input sanitization and validation
-# - Security event logging and monitoring
-# - Protection against common attack vectors
-# =============================================================================
+"""
+AzabBot - Core Security Module
+==================================
+
+This module provides a comprehensive security framework for the AzabBot
+application, implementing authentication, authorization, rate limiting,
+input validation, and security monitoring capabilities.
+
+The security system implements industry best practices including:
+- Role-based access control with hierarchical permissions
+- Advanced rate limiting with multiple strategies (token bucket, sliding window)
+- Comprehensive input sanitization and validation
+- Security event logging and monitoring
+- Protection against common attack vectors (injection, abuse, etc.)
+- Cross-platform security measures
+
+The module provides a layered security approach with multiple components
+working together to ensure the bot operates securely in various environments
+and handles user interactions safely.
+
+Key Components:
+- SecurityManager: Central security coordination
+- AccessController: Permission management and role-based access control
+- RateLimiter: Request rate limiting and abuse prevention
+- SecurityValidator: Input validation and sanitization
+- SecurityContext: Context-aware security information
+"""
 
 import time
 from collections import defaultdict, deque
@@ -27,7 +41,15 @@ from src.core.exceptions import (
 
 
 class PermissionLevel(Enum):
-    """Permission levels for role-based access control."""
+    """
+    Permission levels for role-based access control.
+    
+    Defines the hierarchical permission system used throughout the application
+    for controlling access to different features and capabilities.
+    
+    The levels are ordered from lowest to highest privilege, with each level
+    inheriting permissions from lower levels.
+    """
 
     GUEST = "guest"
     USER = "user"
@@ -38,7 +60,21 @@ class PermissionLevel(Enum):
 
 @dataclass
 class SecurityContext:
-    """Security context for a user interaction."""
+    """
+    Security context for a user interaction.
+    
+    Contains comprehensive security information about a user interaction
+    including user identity, location, permissions, and timing information.
+    This context is used throughout the security system for decision-making.
+    
+    Attributes:
+        user_id: Discord user ID for identification
+        guild_id: Discord guild/server ID (if applicable)
+        channel_id: Discord channel ID (if applicable)
+        permission_level: User's permission level
+        roles: List of Discord role IDs the user has
+        timestamp: When the security context was created
+    """
 
     user_id: int
     guild_id: Optional[int] = None
@@ -48,6 +84,7 @@ class SecurityContext:
     timestamp: datetime = None
 
     def __post_init__(self):
+        """Initialize default values for optional fields."""
         if self.roles is None:
             self.roles = []
         if self.timestamp is None:
@@ -56,7 +93,17 @@ class SecurityContext:
 
 @dataclass
 class RateLimitConfig:
-    """Configuration for rate limiting rules."""
+    """
+    Configuration for rate limiting rules.
+    
+    Defines the parameters for rate limiting including request limits,
+    time windows, and burst allowances for different types of interactions.
+    
+    Attributes:
+        max_requests: Maximum number of requests allowed
+        time_window: Time window in seconds for the limit
+        burst_allowance: Extra requests allowed during burst periods
+    """
 
     max_requests: int
     time_window: int  # seconds
@@ -66,22 +113,37 @@ class RateLimitConfig:
 class RateLimiter:
     """
     Flexible rate limiter with support for different limiting strategies.
-
+    
+    This class implements advanced rate limiting capabilities to prevent
+    abuse and ensure fair usage of bot resources. It supports multiple
+    algorithms and can be configured for different types of interactions.
+    
+    The rate limiter uses both sliding window and token bucket algorithms
+    to provide accurate rate limiting while allowing for reasonable burst
+    traffic patterns.
+    
     Supports:
     - Token bucket algorithm for burst handling
-    - Sliding window rate limiting
+    - Sliding window rate limiting for precise control
     - Per-user and per-channel limits
     - Different limits for different permission levels
+    - Automatic cleanup of expired entries
     """
 
     def __init__(self):
-        """Initialize the rate limiter."""
+        """
+        Initialize the rate limiter with empty tracking structures.
+        
+        Sets up the internal data structures for tracking request history
+        and token buckets for different rate limiting strategies.
+        """
+        # Request history for sliding window rate limiting
         # Format: {limit_key: {user_id: deque of timestamps}}
         self._request_history: Dict[str, Dict[int, deque]] = defaultdict(
             lambda: defaultdict(deque)
         )
 
-        # Token buckets for burst handling
+        # Token buckets for burst handling and advanced rate limiting
         # Format: {limit_key: {user_id: {'tokens': int, 'last_refill': float}}}
         self._token_buckets: Dict[
             str, Dict[int, Dict[str, Union[int, float]]]
@@ -95,19 +157,20 @@ class RateLimiter:
         context: Optional[SecurityContext] = None,
     ) -> bool:
         """
-        Check if user is within rate limits.
-
+        Check if user is within rate limits for the specified operation.
+        
+        This method implements comprehensive rate limiting using both
+        sliding window and token bucket algorithms to provide accurate
+        and fair rate limiting while allowing for reasonable burst traffic.
+        
         Args:
-            user_id: User ID to check
-            limit_key: Unique key for this rate limit type
-            config: Rate limit configuration
-            context: Additional security context
-
+            user_id: Discord user ID to check limits for
+            limit_key: Unique identifier for the rate limit rule
+            config: Rate limiting configuration parameters
+            context: Optional security context for additional checks
+            
         Returns:
-            True if within limits, False if rate limited
-
-        Raises:
-            RateLimitExceededError: If rate limit is exceeded
+            True if the request is allowed, False if rate limit exceeded
         """
         now = time.time()
 

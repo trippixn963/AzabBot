@@ -1,5 +1,5 @@
 # =============================================================================
-# SaydnayaBot - Report Generation Service
+# AzabBot - Report Generation Service
 # =============================================================================
 # Generates comprehensive reports on prisoner activity, torture effectiveness,
 # and Azab's performance. Provides analytics and insights for prison management.

@@ -1,5 +1,5 @@
 # =============================================================================
-# SaydnayaBot - Main Bot Module
+# AzabBot - Main Bot Module
 # =============================================================================
 # Professional Discord bot implementation with clean architecture, proper
 # service integration, and comprehensive error handling. This is the main
@@ -48,9 +48,9 @@ class BotMetrics:
             self.uptime_start = datetime.datetime.now(timezone.utc)
 
 
-class SaydnayaBot(discord.Client):
+class AzabBot(discord.Client):
     """
-    Main bot class implementing the SaydnayaBot Discord client.
+    Main bot class implementing the AzabBot Discord client.
 
     This bot provides AI-powered responses with different modes for different
     channel types, including enhanced harassment capabilities for designated
@@ -62,7 +62,7 @@ class SaydnayaBot(discord.Client):
 
     def __init__(self, config: Dict[str, Any]):
         """
-        Initialize the SaydnayaBot.
+        Initialize the AzabBot.
 
         Args:
             config: Bot configuration dictionary
@@ -81,7 +81,7 @@ class SaydnayaBot(discord.Client):
         # Configuration and services
         self.config = config
         self.logger = get_logger()
-        self.name = "SaydnayaBot"  # Service identifier
+        self.name = "AzabBot"  # Service identifier
         self.ai_service: Optional[AIService] = None
         self.health_monitor: Optional[HealthMonitor] = None
 
@@ -111,8 +111,11 @@ class SaydnayaBot(discord.Client):
 
         # Bot behavior settings
         self.response_probability = 0.7  # High probability for prison channels
+        
+        # Track start time for uptime calculation
+        self.start_time = datetime.datetime.now()
 
-        self.logger.log_info("SaydnayaBot initialized", "🤖")
+        self.logger.log_info("AzabBot initialized", "🤖")
 
     async def setup_hook(self):
         """Set up the bot after login but before ready event."""
@@ -120,10 +123,18 @@ class SaydnayaBot(discord.Client):
             # Resolve services from DI container
             self.ai_service = await resolve("AIService")
             self.health_monitor = await resolve("HealthMonitor")
+            self.webhook_health = await resolve("WebhookHealthService")
 
             # Register bot for health monitoring
             if self.health_monitor:
                 self.health_monitor.register_service(self)
+                
+            # Set up webhook health service
+            if self.webhook_health:
+                self.webhook_health.set_bot_instance(self)
+                if self.health_monitor:
+                    self.webhook_health.set_health_monitor(self.health_monitor)
+                await self.webhook_health.start_health_checks()
 
             # Reset daily counter if new day
             today = datetime.date.today()
@@ -137,10 +148,12 @@ class SaydnayaBot(discord.Client):
             from src.bot.commands import (
                 create_activate_command,
                 create_deactivate_command,
+                create_health_command,
             )
 
             self.tree.add_command(create_activate_command(self))
             self.tree.add_command(create_deactivate_command(self))
+            self.tree.add_command(create_health_command(self))
 
             # Sync slash commands
             await self.tree.sync()
@@ -304,8 +317,12 @@ class SaydnayaBot(discord.Client):
                 # Remove from current prisoners set
                 self.current_prisoners.discard(after.display_name)
                 
-                # Send message in general chat (channel ID: 1350540215797940245)
-                general_channel = after.guild.get_channel(1350540215797940245)
+                # Send message in general chat
+                general_channel_id = self.config.get("GENERAL_CHANNEL_ID")
+                if not general_channel_id:
+                    self.logger.log_warning("GENERAL_CHANNEL_ID not configured")
+                    return
+                general_channel = after.guild.get_channel(int(general_channel_id))
                 if general_channel:
                     try:
                         # Generate AI-based release message based on their history

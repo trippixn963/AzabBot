@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-SaydnayaBot - Application Entry Point
+AzabBot - Application Entry Point
 ====================================
 
-This module serves as the main entry point for the SaydnayaBot Discord application.
+This module serves as the main entry point for the AzabBot Discord application.
 It handles the initialization of the Python path and launches the bot asynchronously.
 
 The module ensures that the project root directory is in the Python path so that

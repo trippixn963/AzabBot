@@ -1,10 +1,10 @@
 """
-SaydnayaBot - Dependency Injection Container
+AzabBot - Dependency Injection Container
 ============================================
 
 This module provides a professional dependency injection system for managing
 service registration, resolution, lifecycle management, and circular dependency
-detection throughout the SaydnayaBot application.
+detection throughout the AzabBot application.
 
 The DI container implements a comprehensive service management system that
 handles service instantiation, dependency resolution, and service lifecycle
@@ -113,7 +113,7 @@ class DIContainer:
     Dependency Injection Container for managing service dependencies.
     
     This class provides a comprehensive DI container that manages the complete
-    lifecycle of services in the SaydnayaBot application. It handles service
+    lifecycle of services in the AzabBot application. It handles service
     registration, dependency resolution, lifecycle management, and cleanup.
     
     The container supports multiple service lifetime modes and provides robust

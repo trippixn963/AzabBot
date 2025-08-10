@@ -1,5 +1,5 @@
 # =============================================================================
-# SaydnayaBot - Professional AI Service
+# AzabBot - Professional AI Service
 # =============================================================================
 # Comprehensive AI service providing response generation, content analysis,
 # and conversation management with proper error handling, rate limiting,
