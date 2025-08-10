@@ -1001,6 +1001,24 @@ class AzabBot(discord.Client):
                 # Get prisoner dossier
                 dossier = await self.psychological_service.get_prisoner_dossier(user_id)
                 
+                # If no crimes tracked yet, try to extract mute reason from audit logs
+                if not dossier.get('crimes'):
+                    mute_data = await self.psychological_service.extract_mute_reason_from_audit(
+                        representative_message.guild, user_id
+                    )
+                    if mute_data:
+                        # Track the mute as a crime
+                        await self.psychological_service.track_crime(user_id, username, {
+                            'type': 'mute',
+                            'description': f"Muted for: {mute_data.get('reason', 'Unknown reason')}",
+                            'reason': mute_data.get('reason', 'Unknown reason'),
+                            'muted_by': mute_data.get('muted_by', 'Unknown'),
+                            'severity': 5
+                        })
+                        self.logger.log_info(
+                            f"📝 Extracted mute reason for {username}: {mute_data.get('reason', 'Unknown')}"
+                        )
+                
                 # Check for talking back (increase grudge)
                 if any(word in combined_content.lower() for word in ['shut up', 'fuck off', 'leave me alone', 'stop']):
                     await self.psychological_service.add_grudge(user_id, username, "Talked back", severity=1)
