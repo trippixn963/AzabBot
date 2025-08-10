@@ -234,17 +234,10 @@ graph TD
 
 | Command | Description | Permission |
 |---------|-------------|------------|
-| `/activate` | Shows bot status (always on) | Everyone |
-| `/deactivate` | Shows bot status (can't deactivate) | Everyone |
-| `/status` | View detailed bot statistics | Developer Only |
+| `/activate` | Activates the bot (always on) | Developer Only |
+| `/deactivate` | Deactivates the bot (can't actually deactivate) | Developer Only |
 
-### Status Display
-
-The `/status` command shows:
-- Current prisoners in jail
-- Total messages seen
-- Total responses generated
-- Bot uptime and health
+Both commands are restricted to the developer for security reasons. The bot humor is that it's always active and can never truly be deactivated.
 
 ---
 
