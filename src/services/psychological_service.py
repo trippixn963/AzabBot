@@ -350,28 +350,68 @@ class PsychologicalService(BaseService):
                     log_info(f"📋 Checking mute log thread: {thread.name}")
                     
                     # Check recent messages in the thread
-                    async for message in thread.history(limit=30):
+                    async for message in thread.history(limit=50):  # Increased limit to find the right action
                         # Check if message is from Sapphire bot
                         if message.author.bot:
-                            # Look for mute messages about our user
-                            if user_id in message.content or f"<@{user_id}>" in message.content:
-                                log_info(f"Found potential mute log for user {user_id}")
+                            # Look for messages about our user
+                            if user_id in message.content or f"<@{user_id}>}" in message.content:
+                                log_debug(f"Found moderation log for user {user_id}", 
+                                         context={"message_preview": message.content[:100]})
                                 
-                                # Check if it's a mute action (not unmute)
-                                if any(word in message.content.lower() for word in ['muted', 'mute', 'timeout']):
+                                # More specific checks to identify MUTE actions only
+                                message_lower = message.content.lower()
+                                embed_title = ""
+                                if message.embeds:
+                                    embed_title = (message.embeds[0].title or "").lower()
+                                
+                                # Skip if it's an unmute, ban, kick, or warn
+                                if any(action in message_lower or action in embed_title for action in 
+                                      ['unmute', 'unbanned', 'kicked', 'warned', 'ban', 'kick', 'warn']):
+                                    log_debug(f"Skipping non-mute action", 
+                                             context={"action_type": "not_mute", "user": user_id})
+                                    continue
+                                
+                                # Check if it's specifically a MUTE action
+                                is_mute = (
+                                    ('mute' in embed_title and 'unmute' not in embed_title) or
+                                    (re.search(r'\bmuted?\b', message_lower) and 'unmuted' not in message_lower) or
+                                    'timeout' in message_lower
+                                )
+                                
+                                if is_mute:
                                     # Extract reason from embed or message content
                                     reason = None
                                     muted_by = None
                                     
-                                    # Check embeds first (Sapphire often uses embeds)
+                                    # Check embeds first (Sapphire uses embeds for moderation logs)
                                     if message.embeds:
                                         embed = message.embeds[0]
-                                        # Look for reason field in embed
+                                        
+                                        # Check embed title to confirm it's a mute action
+                                        if embed.title:
+                                            title_lower = embed.title.lower()
+                                            # Common patterns: "• Mute | MFQRvyS", "User Muted", etc.
+                                            if not ('mute' in title_lower and 'unmute' not in title_lower):
+                                                log_debug("Embed title doesn't indicate mute action", 
+                                                         context={"title": embed.title})
+                                                continue
+                                        
+                                        # Look for specific fields in embed
                                         for field in embed.fields:
-                                            if 'reason' in field.name.lower():
+                                            field_name_lower = field.name.lower()
+                                            # Only accept "Reason" field (not "Ban Reason", "Kick Reason", etc.)
+                                            if field_name_lower == 'reason' or field_name_lower == '📝 reason':
                                                 reason = field.value
-                                            if 'moderator' in field.name.lower() or 'muted by' in field.name.lower():
+                                            if 'moderator' in field_name_lower or 'muted by' in field_name_lower:
                                                 muted_by = field.value
+                                            # Also check for "User" field which might contain the target
+                                            if field_name_lower == 'user' or field_name_lower == '👤 user':
+                                                # Verify this is about our target user
+                                                if user_id not in field.value:
+                                                    log_debug("Mute action is for different user", 
+                                                             context={"found_user": field.value, "target": user_id})
+                                                    reason = None  # Reset if wrong user
+                                                    break
                                         
                                         # Also check embed description
                                         if not reason and embed.description:
@@ -402,13 +442,22 @@ class PsychologicalService(BaseService):
                                                 break
                                     
                                     if reason:
+                                        # Check if this mute is recent (within last 24 hours)
+                                        from datetime import timedelta
+                                        time_diff = datetime.utcnow() - message.created_at.replace(tzinfo=None)
+                                        if time_diff > timedelta(hours=24):
+                                            log_debug(f"Found old mute reason (>{24}h old), continuing search", 
+                                                     context={"age_hours": time_diff.total_seconds()/3600})
+                                            continue
+                                        
                                         log_info(f"✅ Found mute reason in thread: {reason}")
                                         
                                         return {
                                             'reason': reason,
                                             'muted_by': muted_by or message.author.display_name,
                                             'timestamp': message.created_at,
-                                            'source': 'mute_log_thread'
+                                            'source': 'mute_log_thread',
+                                            'action_type': 'mute'  # Explicitly mark as mute
                                         }
                 else:
                     log_warning(f"Could not find mute log thread with ID {MUTE_LOG_THREAD_ID}")
