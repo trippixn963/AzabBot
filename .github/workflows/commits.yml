@@ -11,13 +11,8 @@ jobs:
     steps:
       - name: Discord Notification - Primary Server
         run: |
+          THREAD_ID="1403930609348378624"
           WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK }}"
-          THREAD_ID="${{ secrets.DISCORD_THREAD_ID }}"
-          
-          # Use default thread ID if secret not set
-          if [ -z "$THREAD_ID" ]; then
-            THREAD_ID="1403930609348378624"
-          fi
           
           COMMIT_MSG="${{ github.event.head_commit.message }}"
           COMMIT_MSG=$(echo "$COMMIT_MSG" | head -c 500 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
@@ -60,13 +55,8 @@ jobs:
       - name: Discord Notification - Secondary Server
         if: "${{ secrets.DISCORD_WEBHOOK_SY != '' }}"
         run: |
+          THREAD_ID="1404073613866438727"
           WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK_SY }}"
-          THREAD_ID="${{ secrets.DISCORD_THREAD_ID_SY }}"
-          
-          # Use default thread ID if secret not set
-          if [ -z "$THREAD_ID" ]; then
-            THREAD_ID="1404073613866438727"
-          fi
           
           COMMIT_MSG="${{ github.event.head_commit.message }}"
           COMMIT_MSG=$(echo "$COMMIT_MSG" | head -c 500 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
