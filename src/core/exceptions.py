@@ -1,13 +1,26 @@
-# =============================================================================
-# SaydnayaBot - Core Exceptions Module
-# =============================================================================
-# Comprehensive exception hierarchy for SaydnayaBot application.
-# Provides structured error handling with specific exception types for
-# different error scenarios, enabling better error tracking and recovery.
-#
-# This module follows Python exception best practices with clear inheritance
-# hierarchy and proper error context preservation.
-# =============================================================================
+"""
+SaydnayaBot - Core Exceptions Module
+===================================
+
+This module provides a comprehensive exception hierarchy for the SaydnayaBot application.
+It defines structured error handling with specific exception types for different
+error scenarios, enabling better error tracking, logging, and recovery.
+
+The exception hierarchy follows Python best practices with clear inheritance
+structure and proper error context preservation. Each exception type includes
+relevant context information to aid in debugging and error handling.
+
+Exception Categories:
+- Configuration errors (missing, invalid, etc.)
+- Service errors (initialization, availability, AI-specific)
+- Discord API errors (permissions, rate limits, etc.)
+- Database errors (connection, query, etc.)
+- Security errors (authentication, authorization, rate limiting)
+- Validation errors (input validation, required fields)
+
+All exceptions inherit from SaydnayaBotException which provides common
+functionality for error context and logging.
+"""
 
 from typing import Any, Dict, Optional
 
@@ -15,14 +28,15 @@ from typing import Any, Dict, Optional
 class SaydnayaBotException(Exception):
     """
     Base exception for all SaydnayaBot-specific errors.
-
+    
     This is the root exception from which all other bot exceptions inherit.
-    It provides common functionality for error context and logging.
-
+    It provides common functionality for error context, logging, and
+    structured error reporting throughout the application.
+    
     Attributes:
         message: Human-readable error message
-        context: Additional context information about the error
-        error_code: Optional error code for programmatic handling
+        context: Additional context information about the error (user_id, channel_id, etc.)
+        error_code: Optional error code for programmatic handling and categorization
     """
 
     def __init__(
@@ -32,8 +46,8 @@ class SaydnayaBotException(Exception):
         error_code: Optional[str] = None,
     ):
         """
-        Initialize the base exception.
-
+        Initialize the base exception with error details.
+        
         Args:
             message: Human-readable error description
             context: Additional context information (user_id, channel_id, etc.)
@@ -45,13 +59,13 @@ class SaydnayaBotException(Exception):
         self.error_code = error_code
 
     def __str__(self) -> str:
-        """Return string representation of the exception."""
+        """Return string representation of the exception with error code if available."""
         if self.error_code:
             return f"[{self.error_code}] {self.message}"
         return self.message
 
     def __repr__(self) -> str:
-        """Return detailed representation of the exception."""
+        """Return detailed representation of the exception for debugging."""
         return f"{self.__class__.__name__}(message='{self.message}', context={self.context}, error_code='{self.error_code}')"
 
 
@@ -61,12 +75,17 @@ class SaydnayaBotException(Exception):
 
 
 class ConfigurationError(SaydnayaBotException):
-    """Raised when there are configuration-related errors."""
+    """
+    Base exception for configuration-related errors.
+    
+    Raised when there are issues with application configuration including
+    missing required values, invalid settings, or configuration file problems.
+    """
 
     def __init__(self, message: str, config_key: Optional[str] = None, **kwargs):
         """
-        Initialize configuration error.
-
+        Initialize configuration error with context.
+        
         Args:
             message: Error description
             config_key: The configuration key that caused the error
@@ -78,12 +97,17 @@ class ConfigurationError(SaydnayaBotException):
 
 
 class MissingConfigurationError(ConfigurationError):
-    """Raised when required configuration is missing."""
+    """
+    Raised when required configuration is missing or empty.
+    
+    This exception is used when a configuration key that is marked as required
+    is not found in any configuration source (environment, .env file, etc.).
+    """
 
     def __init__(self, config_key: str, **kwargs):
         """
         Initialize missing configuration error.
-
+        
         Args:
             config_key: The missing configuration key
         """
@@ -92,7 +116,12 @@ class MissingConfigurationError(ConfigurationError):
 
 
 class InvalidConfigurationError(ConfigurationError):
-    """Raised when configuration has invalid values."""
+    """
+    Raised when configuration has invalid values or format.
+    
+    This exception is used when a configuration value exists but is invalid
+    according to the defined validation rules or type requirements.
+    """
 
     def __init__(self, config_key: str, value: Any, expected_type: str, **kwargs):
         """

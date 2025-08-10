@@ -1,13 +1,30 @@
-# =============================================================================
-# SaydnayaBot - Health Monitoring System
-# =============================================================================
-# Comprehensive health monitoring and alerting system for all bot services.
-# Provides real-time health checks, performance monitoring, and automated
-# recovery mechanisms.
-#
-# This module ensures system reliability through proactive monitoring and
-# automated responses to service degradation or failures.
-# =============================================================================
+"""
+SaydnayaBot - Health Monitoring System
+======================================
+
+This module provides a comprehensive health monitoring and alerting system for all
+bot services. It ensures system reliability through proactive monitoring, automated
+recovery mechanisms, and detailed performance analysis.
+
+The health monitoring system tracks:
+- Individual service health and performance
+- System resource utilization (CPU, memory, disk, network)
+- Service dependencies and cascading failures
+- Performance trends and anomalies
+- Automated alerting and recovery actions
+
+Key Features:
+- Real-time health checks with configurable intervals
+- System resource monitoring and alerting
+- Alert generation and management with severity levels
+- Automated recovery actions for common issues
+- Performance trend analysis and reporting
+- Health status dashboards and reporting
+- Service dependency tracking and impact analysis
+
+The system provides both reactive (alerting) and proactive (trend analysis)
+monitoring capabilities to maintain optimal bot performance and reliability.
+"""
 
 import asyncio
 import time
@@ -23,7 +40,19 @@ from src.services.base_service import BaseService, HealthCheckResult, ServiceSta
 
 @dataclass
 class ComponentHealth:
-    """Health status of a single component."""
+    """
+    Health status of a single component or service.
+    
+    Contains detailed health information for individual components
+    including status, performance metrics, and error details.
+    
+    Attributes:
+        name: Component/service name
+        status: Current health status (healthy, degraded, unhealthy)
+        latency_ms: Response time in milliseconds
+        error: Error message if component is unhealthy
+        details: Additional diagnostic information
+    """
 
     name: str
     status: str
@@ -34,7 +63,18 @@ class ComponentHealth:
 
 @dataclass
 class HealthStatus:
-    """Overall health status."""
+    """
+    Overall system health status.
+    
+    Aggregates health information from all monitored components
+    and provides a comprehensive view of system health.
+    
+    Attributes:
+        timestamp: When the health check was performed
+        overall_status: Overall system health status
+        components: Health status of individual components
+        system_metrics: System resource utilization metrics
+    """
 
     timestamp: datetime
     overall_status: str
@@ -43,7 +83,12 @@ class HealthStatus:
 
 
 class AlertSeverity(Enum):
-    """Alert severity levels."""
+    """
+    Alert severity levels for health monitoring.
+    
+    Defines the different levels of urgency for health alerts,
+    from informational to emergency situations.
+    """
 
     INFO = "info"
     WARNING = "warning"
@@ -53,7 +98,23 @@ class AlertSeverity(Enum):
 
 @dataclass
 class HealthAlert:
-    """Health monitoring alert."""
+    """
+    Health monitoring alert with tracking and resolution.
+    
+    Represents a health alert with full lifecycle management
+    including creation, acknowledgment, and resolution tracking.
+    
+    Attributes:
+        id: Unique alert identifier
+        timestamp: When the alert was created
+        severity: Alert severity level
+        service_name: Name of the service that triggered the alert
+        message: Human-readable alert message
+        details: Additional context and diagnostic information
+        acknowledged: Whether the alert has been acknowledged
+        resolved: Whether the alert has been resolved
+        resolution_time: When the alert was resolved
+    """
 
     id: str
     timestamp: datetime
@@ -68,7 +129,23 @@ class HealthAlert:
 
 @dataclass
 class SystemMetrics:
-    """System performance metrics."""
+    """
+    System performance and resource utilization metrics.
+    
+    Tracks comprehensive system metrics including CPU, memory,
+    disk, network usage, and connection information.
+    
+    Attributes:
+        timestamp: When metrics were collected
+        cpu_usage_percent: Current CPU usage percentage
+        memory_usage_mb: Current memory usage in megabytes
+        memory_usage_percent: Memory usage as percentage of total
+        disk_usage_percent: Disk usage percentage
+        network_bytes_sent: Network bytes sent since boot
+        network_bytes_recv: Network bytes received since boot
+        active_connections: Number of active network connections
+        uptime_seconds: System uptime in seconds
+    """
 
     timestamp: datetime
     cpu_usage_percent: float
@@ -83,19 +160,35 @@ class SystemMetrics:
 
 class HealthMonitor(BaseService):
     """
-    Comprehensive health monitoring system.
-
-    Features:
+    Comprehensive health monitoring system for SaydnayaBot.
+    
+    This service provides centralized health monitoring for all bot services
+    and system components. It continuously monitors service health, system
+    resources, and performance metrics to ensure optimal bot operation.
+    
+    The monitor implements both reactive (alerting) and proactive (trend analysis)
+    monitoring capabilities to maintain system reliability and performance.
+    
+    Key Features:
     - Service health monitoring with configurable intervals
     - System resource monitoring (CPU, memory, disk, network)
-    - Alert generation and management
-    - Automated recovery actions
-    - Performance trend analysis
+    - Alert generation and management with severity levels
+    - Automated recovery actions for common issues
+    - Performance trend analysis and reporting
     - Health status reporting and dashboards
+    - Service dependency tracking and impact analysis
     """
 
     def __init__(self, name: str = "HealthMonitor"):
-        """Initialize the health monitor."""
+        """
+        Initialize the health monitoring system.
+        
+        Sets up the health monitor with default configuration and
+        prepares it for service registration and monitoring.
+        
+        Args:
+            name: Service name for identification
+        """
         super().__init__(name)
 
         # Monitoring configuration

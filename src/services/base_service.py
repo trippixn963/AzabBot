@@ -1,13 +1,30 @@
-# =============================================================================
-# SaydnayaBot - Base Service Module
-# =============================================================================
-# Abstract base classes and interfaces for all bot services. Provides
-# standardized service lifecycle management, error handling, health checks,
-# and dependency injection support.
-#
-# This module establishes the foundation for a professional service-oriented
-# architecture with proper separation of concerns and maintainable code.
-# =============================================================================
+"""
+SaydnayaBot - Base Service Module
+=================================
+
+This module provides abstract base classes and interfaces for all bot services.
+It establishes the foundation for a professional service-oriented architecture
+with standardized service lifecycle management, error handling, health checks,
+and dependency injection support.
+
+The module defines the core service infrastructure that ensures consistent
+behavior across all services in the application. It provides proper separation
+of concerns and maintainable code structure through well-defined interfaces
+and abstract base classes.
+
+Key Components:
+- BaseService: Abstract base class for all services
+- ServiceStatus: Enumeration for service health states
+- HealthCheckResult: Data structure for health check results
+- ServiceMetrics: Performance and operational metrics tracking
+
+Service Lifecycle:
+1. __init__ - Basic initialization and setup
+2. initialize() - Async initialization with dependencies
+3. start() - Start service operations and monitoring
+4. health_check() - Periodic health monitoring
+5. stop() - Graceful shutdown and cleanup
+"""
 
 import asyncio
 from abc import ABC, abstractmethod
@@ -21,7 +38,13 @@ from src.core.logger import get_logger
 
 
 class ServiceStatus(Enum):
-    """Service status enumeration."""
+    """
+    Service status enumeration for health monitoring.
+    
+    Defines the possible states a service can be in, from initialization
+    through operation to shutdown. Used for health monitoring and
+    service availability tracking.
+    """
 
     UNINITIALIZED = "uninitialized"
     INITIALIZING = "initializing"
@@ -34,7 +57,19 @@ class ServiceStatus(Enum):
 
 @dataclass
 class HealthCheckResult:
-    """Result of a service health check."""
+    """
+    Result of a service health check operation.
+    
+    Contains comprehensive information about the health status of a service,
+    including status, message, details, and performance metrics.
+    
+    Attributes:
+        status: Current health status of the service
+        message: Human-readable description of the health status
+        details: Additional context and diagnostic information
+        timestamp: When the health check was performed
+        response_time_ms: Time taken to perform the health check
+    """
 
     status: ServiceStatus
     message: str
@@ -45,7 +80,26 @@ class HealthCheckResult:
 
 @dataclass
 class ServiceMetrics:
-    """Service performance and operational metrics."""
+    """
+    Service performance and operational metrics.
+    
+    Tracks comprehensive metrics about service performance, including
+    request counts, response times, error rates, and resource usage.
+    Used for monitoring, alerting, and performance optimization.
+    
+    Attributes:
+        name: Service name for identification
+        status: Current service status
+        uptime_seconds: Total uptime in seconds
+        requests_total: Total number of requests processed
+        requests_successful: Number of successful requests
+        requests_failed: Number of failed requests
+        last_error: Description of the most recent error
+        last_error_timestamp: When the last error occurred
+        average_response_time_ms: Average response time in milliseconds
+        memory_usage_mb: Current memory usage in megabytes
+        custom_metrics: Additional service-specific metrics
+    """
 
     name: str
     status: ServiceStatus
@@ -66,23 +120,35 @@ T = TypeVar("T", bound="BaseService")
 class BaseService(ABC):
     """
     Abstract base class for all bot services.
-
-    Provides standardized service lifecycle management, health monitoring,
-    error handling, and metrics collection. All services should inherit
-    from this class to ensure consistent behavior.
-
+    
+    This class provides standardized service lifecycle management, health monitoring,
+    error handling, and metrics collection. All services in the application should
+    inherit from this class to ensure consistent behavior and proper integration
+    with the service infrastructure.
+    
+    The base service implements common functionality including:
+    - Service lifecycle management (initialize, start, stop)
+    - Health monitoring and status tracking
+    - Error handling and logging
+    - Performance metrics collection
+    - Dependency management
+    - Configuration handling
+    
     Service Lifecycle:
-    1. __init__ - Basic initialization
+    1. __init__ - Basic initialization and setup
     2. initialize() - Async initialization with dependencies
-    3. start() - Start service operations
+    3. start() - Start service operations and monitoring
     4. health_check() - Periodic health monitoring
-    5. stop() - Graceful shutdown
+    5. stop() - Graceful shutdown and cleanup
     """
 
     def __init__(self, name: str, dependencies: Optional[List[str]] = None):
         """
-        Initialize the base service.
-
+        Initialize the base service with configuration.
+        
+        Sets up the service with basic configuration including name,
+        dependencies, status tracking, and metrics collection.
+        
         Args:
             name: Service name for identification and logging
             dependencies: List of service names this service depends on
@@ -92,7 +158,7 @@ class BaseService(ABC):
         self.status = ServiceStatus.UNINITIALIZED
         self.logger = get_logger()
 
-        # Metrics and monitoring
+        # Metrics and monitoring setup
         self.metrics = ServiceMetrics(name=name, status=self.status)
         self._start_time: Optional[datetime] = None
         self._health_check_interval = 60.0  # seconds

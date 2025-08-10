@@ -1,13 +1,30 @@
-# =============================================================================
-# SaydnayaBot - Dependency Injection Container
-# =============================================================================
-# Professional dependency injection system providing service registration,
-# resolution, lifecycle management, and circular dependency detection.
-#
-# This module implements a comprehensive DI container that manages service
-# instantiation, dependency resolution, and service lifecycle in a clean,
-# testable, and maintainable way.
-# =============================================================================
+"""
+SaydnayaBot - Dependency Injection Container
+============================================
+
+This module provides a professional dependency injection system for managing
+service registration, resolution, lifecycle management, and circular dependency
+detection throughout the SaydnayaBot application.
+
+The DI container implements a comprehensive service management system that
+handles service instantiation, dependency resolution, and service lifecycle
+in a clean, testable, and maintainable way. It supports multiple service
+lifetime modes and provides robust error handling and monitoring.
+
+Key Features:
+- Service registration with multiple lifetime modes (singleton, transient, scoped)
+- Automatic dependency resolution with circular dependency detection
+- Service lifecycle management (initialization, startup, shutdown)
+- Factory function support for complex service creation
+- Configuration injection and management
+- Health monitoring integration
+- Thread-safe service resolution
+- Startup order calculation and dependency graph management
+
+The container manages the entire service lifecycle from registration through
+instantiation, initialization, and cleanup, ensuring proper resource management
+and service coordination.
+"""
 
 import asyncio
 import inspect
@@ -21,19 +38,34 @@ from src.services.base_service import BaseService
 
 
 class ServiceNotFoundError(ServiceError):
-    """Service not found in container."""
+    """
+    Raised when a requested service is not found in the container.
+    
+    This exception is thrown when attempting to resolve a service that
+    has not been registered with the DI container.
+    """
 
     pass
 
 
 class CircularDependencyError(ServiceError):
-    """Circular dependency detected."""
+    """
+    Raised when a circular dependency is detected during service resolution.
+    
+    This exception is thrown when the dependency resolution process detects
+    a circular reference between services, which would cause infinite recursion.
+    """
 
     pass
 
 
 class ServiceLifetime(Enum):
-    """Service lifetime management modes."""
+    """
+    Service lifetime management modes for dependency injection.
+    
+    Defines how service instances are managed and reused throughout
+    the application lifecycle.
+    """
 
     SINGLETON = "singleton"  # One instance for the entire application
     TRANSIENT = "transient"  # New instance for each request
@@ -42,7 +74,21 @@ class ServiceLifetime(Enum):
 
 @dataclass
 class ServiceRegistration:
-    """Service registration information."""
+    """
+    Service registration information for the DI container.
+    
+    Contains all the information needed to register and resolve a service,
+    including its type, implementation, factory function, lifetime, and
+    dependencies.
+    
+    Attributes:
+        service_type: The service interface or base type
+        implementation_type: The concrete implementation type
+        factory: Optional factory function for complex instantiation
+        lifetime: How the service instance should be managed
+        dependencies: List of service names this service depends on
+        config: Configuration data to pass to the service
+    """
 
     service_type: Type
     implementation_type: Optional[Type] = None
@@ -52,6 +98,7 @@ class ServiceRegistration:
     config: Dict[str, Any] = None
 
     def __post_init__(self):
+        """Initialize default values for optional fields."""
         if self.dependencies is None:
             self.dependencies = []
         if self.config is None:
@@ -64,31 +111,45 @@ T = TypeVar("T")
 class DIContainer:
     """
     Dependency Injection Container for managing service dependencies.
-
-    Features:
+    
+    This class provides a comprehensive DI container that manages the complete
+    lifecycle of services in the SaydnayaBot application. It handles service
+    registration, dependency resolution, lifecycle management, and cleanup.
+    
+    The container supports multiple service lifetime modes and provides robust
+    error handling, circular dependency detection, and health monitoring
+    integration. It ensures proper service coordination and resource management.
+    
+    Key Features:
     - Service registration with multiple lifetime modes
     - Automatic dependency resolution with circular dependency detection
-    - Service lifecycle management
-    - Factory function support
-    - Configuration injection
+    - Service lifecycle management (initialization, startup, shutdown)
+    - Factory function support for complex service creation
+    - Configuration injection and management
     - Health monitoring integration
     - Thread-safe service resolution
-
-    The container manages the entire service lifecycle from registration
-    through instantiation, initialization, and cleanup.
+    - Startup order calculation and dependency graph management
+    
+    The container manages the entire service lifecycle from registration through
+    instantiation, initialization, and cleanup.
     """
 
     def __init__(self):
-        """Initialize the DI container."""
+        """
+        Initialize the DI container with default configuration.
+        
+        Sets up the container with empty service registrations, instance
+        storage, and dependency tracking structures.
+        """
         self.logger = get_logger()
 
-        # Service registrations
+        # Service registrations and metadata
         self._services: Dict[str, ServiceRegistration] = {}
 
-        # Active service instances
+        # Active service instances (for singleton services)
         self._instances: Dict[str, Any] = {}
 
-        # Service initialization status
+        # Service initialization status tracking
         self._initialized_services: Set[str] = set()
 
         # Dependency graph for circular dependency detection
@@ -97,7 +158,7 @@ class DIContainer:
         # Service startup order (topologically sorted)
         self._startup_order: List[str] = []
 
-        # Lock for thread safety
+        # Lock for thread safety during service resolution
         self._lock = asyncio.Lock()
 
         # Container configuration

@@ -1,9 +1,23 @@
-# =============================================================================
-# SaydnayaBot - Instance Management System
-# =============================================================================
-# Prevents multiple bot instances from running simultaneously by detecting
-# and automatically terminating existing instances before starting.
-# =============================================================================
+"""
+SaydnayaBot - Instance Management System
+========================================
+
+This module provides an instance management system that prevents multiple bot
+instances from running simultaneously. It detects and automatically terminates
+existing instances before starting a new one, ensuring system stability and
+preventing resource conflicts.
+
+The instance manager uses process detection and PID file management to:
+- Detect running bot instances across the system
+- Automatically terminate conflicting instances
+- Provide graceful shutdown with force-kill fallback
+- Ensure cross-platform compatibility
+- Maintain PID files for process tracking
+
+This system is critical for preventing resource conflicts, database locks,
+and other issues that can occur when multiple bot instances attempt to run
+simultaneously.
+"""
 
 import os
 import time
@@ -17,21 +31,34 @@ from src.core.logger import get_logger
 
 class InstanceManager:
     """
-    Manages bot instances to prevent conflicts.
-
+    Manages bot instances to prevent conflicts and ensure single-instance operation.
+    
+    This class provides comprehensive instance management capabilities to ensure
+    that only one instance of the SaydnayaBot can run at any given time. It
+    handles detection, termination, and cleanup of conflicting instances.
+    
+    The manager uses multiple detection methods including process scanning,
+    command line analysis, and PID file management to ensure reliable
+    single-instance operation across different platforms and environments.
+    
     Features:
-    - Detects existing bot instances
-    - Automatically terminates old instances
-    - Provides graceful shutdown with force-kill fallback
-    - Cross-platform compatibility
+    - Detects existing bot instances using multiple methods
+    - Automatically terminates old instances with graceful shutdown
+    - Provides force-kill fallback for unresponsive processes
+    - Cross-platform compatibility (Windows, Linux, macOS)
+    - PID file management for process tracking
+    - Comprehensive logging and error handling
     """
 
     def __init__(self, bot_name: str = "SaydnayaBot"):
         """
-        Initialize instance manager.
-
+        Initialize the instance manager with configuration.
+        
+        Sets up the instance manager with the bot name for detection
+        and establishes the current process information for tracking.
+        
         Args:
-            bot_name: Name of the bot for detection
+            bot_name: Name of the bot for process detection and identification
         """
         self.bot_name = bot_name
         self.logger = get_logger()
@@ -40,12 +67,18 @@ class InstanceManager:
 
     def check_and_terminate_existing(self) -> bool:
         """
-        Check for existing instances and terminate them.
-
+        Check for existing instances and terminate them if found.
+        
+        This method performs a comprehensive check for existing bot instances
+        and terminates them to ensure single-instance operation. It includes
+        error handling to prevent startup failures.
+        
         Returns:
-            True if safe to proceed, False if critical error
+            True if safe to proceed (no conflicts or conflicts resolved),
+            False if critical error occurred during termination
         """
         try:
+            # Find all existing bot instances
             existing_processes = self._find_existing_instances()
 
             if not existing_processes:
@@ -57,6 +90,7 @@ class InstanceManager:
                 "🔍",
             )
 
+            # Attempt to terminate conflicting instances
             return self._terminate_processes(existing_processes)
 
         except Exception as e:
@@ -66,35 +100,39 @@ class InstanceManager:
 
     def _find_existing_instances(self) -> List[psutil.Process]:
         """
-        Find all existing bot instances.
-
+        Find all existing bot instances using process scanning.
+        
+        This method scans all running processes to identify existing
+        bot instances by analyzing command lines, working directories,
+        and process names. It uses multiple detection methods for reliability.
+        
         Returns:
-            List of process objects for existing instances
+            List of process objects for existing bot instances
         """
         bot_processes = []
 
         try:
             for proc in psutil.process_iter(["pid", "name", "cmdline", "cwd"]):
                 try:
-                    # Skip current process
+                    # Skip the current process to avoid self-termination
                     if proc.info["pid"] == self.current_pid:
                         continue
 
-                    # Check if it's a Python process
+                    # Check if it's a Python process (required for bot instances)
                     if (
                         not proc.info["name"]
                         or "python" not in proc.info["name"].lower()
                     ):
                         continue
 
-                    # Check command line for bot files
+                    # Analyze command line for bot-specific indicators
                     cmdline = proc.info.get("cmdline")
                     if not cmdline:
                         continue
 
                     cmdline_str = " ".join(cmdline).lower()
 
-                    # Look for bot-specific indicators
+                    # Look for bot-specific indicators in command line
                     if any(
                         indicator in cmdline_str
                         for indicator in [

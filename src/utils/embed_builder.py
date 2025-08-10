@@ -1,9 +1,25 @@
-# =============================================================================
-# SaydnayaBot - Embed Builder Utility
-# =============================================================================
-# Creates consistent, professional embeds with bot branding and footer.
-# Matches QuranBot's embed style for visual consistency.
-# =============================================================================
+"""
+SaydnayaBot - Embed Builder Utility
+===================================
+
+This module provides utilities for creating consistent, professional Discord embeds
+with SaydnayaBot branding and styling. It ensures visual consistency across all
+bot responses and maintains the bot's thematic appearance.
+
+The EmbedBuilder class provides methods for creating various types of embeds:
+- Base embeds with consistent formatting
+- Azab response embeds (prison-themed responses)
+- Status and information embeds
+- Error and warning embeds
+- Prisoner report embeds
+- Help and command embeds
+
+All embeds follow a consistent design pattern with:
+- Branded color scheme matching the prison theme
+- Developer footer with author name
+- Consistent formatting and styling
+- Thematic elements appropriate for the bot's purpose
+"""
 
 from typing import List, Optional, Tuple, Union
 
@@ -13,15 +29,23 @@ from discord import Embed
 class EmbedBuilder:
     """
     Utility class for creating consistent embeds with SaydnayaBot branding.
-
+    
+    This class provides a centralized way to create Discord embeds that maintain
+    visual consistency and brand identity across all bot interactions. It includes
+    predefined color schemes, formatting standards, and thematic elements.
+    
     Features:
-    - Consistent color scheme
-    - Bot profile picture in author field
-    - Developer footer with timestamp
+    - Consistent color scheme with prison/azab theme
+    - Bot profile picture integration in author field
+    - Developer footer with author name and timestamp
     - Multiple embed types for different purposes
+    - Thematic styling appropriate for prison channel management
+    
+    The class uses class methods for easy access without instantiation,
+    making it convenient to use throughout the application.
     """
 
-    # Brand colors
+    # Brand colors for consistent theming
     COLORS = {
         "primary": 0x8B0000,  # Dark red - main brand color
         "success": 0x00FF00,  # Green - successful operations
@@ -32,8 +56,8 @@ class EmbedBuilder:
         "azab": 0x800080,  # Purple - Azab responses
     }
 
-    # Developer information
-    DEVELOPER_NAME = "حَـــــنَّـــــا"
+    # Developer information for footer
+    DEVELOPER_NAME = "John Hamwi"
     DEVELOPER_ICON = "https://cdn.discordapp.com/embed/avatars/0.png"  # Default avatar
 
     @classmethod
@@ -46,30 +70,31 @@ class EmbedBuilder:
         timestamp: bool = False,  # Changed default to False - no timestamps
     ) -> Embed:
         """
-        Create a base embed with consistent formatting.
-
+        Create a base embed with consistent formatting and branding.
+        
+        This method creates the foundation for all other embed types,
+        ensuring consistent styling, colors, and footer information.
+        
         Args:
-            title: Embed title
-            description: Embed description
+            title: Embed title text
+            description: Embed description text
             color: Color name from COLORS dict or hex value
-            url: URL for the title
-            timestamp: Whether to add timestamp
-
+            url: URL for the title (makes title clickable)
+            timestamp: Whether to add current timestamp (default: False)
+            
         Returns:
-            Configured Discord embed
+            Configured Discord embed with consistent formatting
         """
-        # Get color
+        # Resolve color value from name or use direct hex value
         if isinstance(color, str):
             color_value = cls.COLORS.get(color, cls.COLORS["primary"])
         else:
             color_value = color
 
-        # Create embed
+        # Create embed with specified parameters
         embed = Embed(title=title, description=description, color=color_value, url=url)
 
-        # Don't add timestamp by default (removed timestamp logic)
-
-        # Add developer footer with Arabic name
+        # Add developer footer for branding
         embed.set_footer(
             text=f"Developed by {cls.DEVELOPER_NAME}", icon_url=cls.DEVELOPER_ICON
         )
@@ -85,16 +110,19 @@ class EmbedBuilder:
         bot_avatar_url: Optional[str] = None,
     ) -> Embed:
         """
-        Create an embed for Azab's responses.
-
+        Create an embed for Azab's thematic responses.
+        
+        This method creates specialized embeds for Azab's responses to prisoners,
+        using the azab color theme and appropriate formatting for the prison context.
+        
         Args:
-            prisoner_name: Name of the prisoner
-            response: Azab's response
-            confusion_level: Level of confusion (1-10)
-            bot_avatar_url: Bot's avatar URL
-
+            prisoner_name: Name of the prisoner receiving the response
+            response: Azab's response text
+            confusion_level: Level of confusion (1-10) for context
+            bot_avatar_url: Bot's avatar URL for author field
+            
         Returns:
-            Configured embed for Azab response
+            Configured embed for Azab response with prison theming
         """
         embed = cls.create_base_embed(
             title="🔥 Azab's Response", description=response, color="azab"

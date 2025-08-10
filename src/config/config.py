@@ -1,13 +1,27 @@
-# =============================================================================
-# SaydnayaBot - Advanced Configuration Management System
-# =============================================================================
-# Professional configuration management with validation, type safety, and
-# comprehensive error handling. Supports multiple configuration sources,
-# environment variable validation, and secure configuration loading.
-#
-# This module provides a robust configuration system that can handle complex
-# configuration scenarios with proper validation and error reporting.
-# =============================================================================
+"""
+SaydnayaBot - Advanced Configuration Management System
+=====================================================
+
+This module provides a comprehensive configuration management system for SaydnayaBot
+with robust validation, type safety, and secure handling of sensitive data.
+
+Features:
+- Type-safe configuration loading with validation
+- Multiple configuration sources (environment variables, .env files, JSON)
+- Comprehensive error handling and detailed reporting
+- Secure handling of sensitive configuration (tokens, keys)
+- Configuration change detection and reloading capabilities
+- Deprecation warnings and migration support
+- Configuration field definitions with metadata and validation rules
+
+Configuration Priority (highest to lowest):
+1. Environment variables
+2. .env file in project root
+3. Default values defined in field definitions
+
+The system supports various data types including strings, integers, floats,
+booleans, and lists, with automatic type conversion and validation.
+"""
 
 import os
 from dataclasses import dataclass
@@ -25,9 +39,22 @@ from src.core.exceptions import (
 class ConfigField:
     """
     Configuration field definition with validation and metadata.
-
-    Defines how a configuration field should be processed, validated,
-    and used throughout the application.
+    
+    This class defines how a configuration field should be processed, validated,
+    and used throughout the application. It includes type information, default
+    values, validation rules, and metadata for sensitive data handling.
+    
+    Attributes:
+        name: The configuration key name
+        field_type: Expected Python type for the field
+        default: Default value if not provided
+        required: Whether the field is mandatory
+        description: Human-readable description of the field's purpose
+        validator: Optional custom validation function
+        transformer: Optional function to transform the raw value
+        sensitive: Whether to hide the value in logs and summaries
+        deprecated: Whether the field is deprecated
+        deprecated_message: Warning message for deprecated fields
     """
 
     name: str
@@ -45,28 +72,32 @@ class ConfigField:
 class ConfigurationManager:
     """
     Advanced configuration management system for SaydnayaBot.
-
-    Features:
-    - Type-safe configuration loading
-    - Multiple configuration sources (.env files, environment variables, JSON)
+    
+    This class provides a comprehensive configuration management solution that
+    handles loading, validation, and access to application configuration.
+    
+    Key Features:
+    - Type-safe configuration loading with automatic conversion
+    - Multiple configuration sources with priority handling
     - Comprehensive validation with custom validators
-    - Secure handling of sensitive configuration
+    - Secure handling of sensitive configuration data
     - Configuration change detection and reloading
     - Deprecation warnings and migration support
-    - Detailed error reporting with context
-
-    Configuration Priority (highest to lowest):
-    1. Environment variables
-    2. .env file in config/ directory
-    3. Default values
+    - Detailed error reporting with context and suggestions
+    
+    The manager supports various configuration sources and provides methods
+    for safe access to configuration values with proper type conversion.
     """
 
     def __init__(self, config_dir: Optional[Path] = None):
         """
         Initialize the configuration manager.
-
+        
+        Sets up the configuration system and defines all available
+        configuration fields with their validation rules and metadata.
+        
         Args:
-            config_dir: Directory containing configuration files
+            config_dir: Directory containing configuration files (defaults to current working directory)
         """
         self.config_dir = Path.cwd()  # Root directory
         self.env_file = self.config_dir / ".env"
@@ -74,11 +105,20 @@ class ConfigurationManager:
         self._field_definitions: Dict[str, ConfigField] = {}
         self._loaded = False
 
-        # Define all configuration fields
+        # Define all configuration fields with validation rules
         self._define_configuration_fields()
 
     def _define_configuration_fields(self):
-        """Define all configuration fields with validation and metadata."""
+        """
+        Define all configuration fields with validation and metadata.
+        
+        This method sets up the complete configuration schema including
+        Discord bot settings, AI service configuration, database settings,
+        and other application-specific configuration options.
+        
+        Each field includes type information, validation rules, default values,
+        and metadata for proper handling throughout the application.
+        """
         fields = [
             # Core Discord Configuration
             ConfigField(

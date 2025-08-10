@@ -1,14 +1,31 @@
-# =============================================================================
-# SaydnayaBot - Core Logger Module
-# =============================================================================
-# Professional logging system that integrates TreeLogger with standard Python
-# logging for comprehensive application logging. Provides both tree-style
-# structured logging and traditional logging capabilities.
-#
-# This module serves as the central logging interface for the entire application,
-# combining the beautiful tree-style output with proper logging levels,
-# handlers, and formatters.
-# =============================================================================
+"""
+SaydnayaBot - Core Logger Module
+================================
+
+This module provides a comprehensive logging system that integrates TreeLogger
+with standard Python logging for complete application logging coverage.
+
+The logging system combines beautiful tree-style structured logging with traditional
+Python logging capabilities, providing both visual appeal and comprehensive
+logging functionality. It serves as the central logging interface for the entire
+application.
+
+Key Features:
+- Tree-style structured logging for complex operations and initialization
+- Traditional Python logging for simple messages and integration
+- Automatic error context extraction and formatting
+- Run ID tracking for session management and correlation
+- Multiple output destinations (console, files, JSON)
+- Proper log level management and filtering
+- Exception handling integration with detailed context
+- Performance metrics logging
+- User interaction tracking
+- System event logging
+
+The logger provides specialized methods for different types of logging needs
+including startup/shutdown, initialization steps, user interactions, AI operations,
+and error handling.
+"""
 
 import logging
 import sys
@@ -25,7 +42,12 @@ from src.utils.tree_log import (
 
 
 class LogLevel(Enum):
-    """Log level enumeration."""
+    """
+    Log level enumeration for consistent logging level management.
+    
+    Provides standardized log levels that can be used throughout the application
+    for consistent logging behavior and filtering.
+    """
 
     DEBUG = "DEBUG"
     INFO = "INFO"
@@ -37,27 +59,40 @@ class LogLevel(Enum):
 class BotLogger:
     """
     Comprehensive logging system for SaydnayaBot.
-
-    Combines TreeLogger's beautiful tree-style output with traditional Python
-    logging for complete logging coverage. Provides structured logging for
-    initialization, errors, user interactions, and system events.
-
+    
+    This class combines TreeLogger's beautiful tree-style output with traditional
+    Python logging to provide complete logging coverage for the application.
+    It offers structured logging for complex operations while maintaining
+    compatibility with standard logging practices.
+    
+    The logger provides specialized methods for different types of logging needs:
+    - Initialization and startup logging
+    - User interaction tracking
+    - AI operation logging
+    - Error handling with context
+    - Performance metrics
+    - System events
+    
     Features:
     - Tree-style structured logging for complex operations
-    - Traditional logging for simple messages
-    - Automatic error context extraction
+    - Traditional logging for simple messages and integration
+    - Automatic error context extraction and formatting
     - Run ID tracking for session management
     - Multiple output destinations (console, files, JSON)
-    - Proper log level management
-    - Exception handling integration
+    - Proper log level management and filtering
+    - Exception handling integration with detailed context
     """
 
     def __init__(self, name: str = "SaydnayaBot", cleanup_on_start: bool = True):
         """
-        Initialize the bot logger.
-
+        Initialize the bot logger with configuration.
+        
+        Sets up both the tree logger and traditional Python logger,
+        establishing the foundation for comprehensive logging throughout
+        the application.
+        
         Args:
-            name: Logger name for identification
+            name: Logger name for identification and filtering
             cleanup_on_start: If True, deletes ALL existing logs on startup
         """
         self.name = name
@@ -67,7 +102,15 @@ class BotLogger:
         self.log_level = LogLevel.INFO
 
     def _setup_python_logger(self) -> logging.Logger:
-        """Set up traditional Python logger for integration."""
+        """
+        Set up traditional Python logger for integration and compatibility.
+        
+        Creates a standard Python logger with console output and proper
+        formatting that works well alongside the tree logger.
+        
+        Returns:
+            Configured Python logger instance
+        """
         logger = logging.getLogger(self.name)
         logger.setLevel(logging.DEBUG)
 
@@ -78,7 +121,7 @@ class BotLogger:
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
 
-        # Formatter that works well with tree logger
+        # Formatter that works well with tree logger output
         formatter = logging.Formatter(
             "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
             datefmt="%m/%d %I:%M %p EST",
@@ -94,10 +137,14 @@ class BotLogger:
     ):
         """
         Log application startup with comprehensive information.
-
+        
+        Creates a detailed startup log entry including version information,
+        configuration summary, and system status. This is typically called
+        once at the beginning of the application lifecycle.
+        
         Args:
-            version: Application version
-            config_summary: Configuration summary to log
+            version: Application version string
+            config_summary: Optional configuration summary to log (sensitive data will be filtered)
         """
         # Log run separator and header
         self.tree_log.log_run_separator()
