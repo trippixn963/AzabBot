@@ -319,10 +319,15 @@ class AzabBot(discord.Client):
                 
                 # Send message in general chat
                 general_channel_id = self.config.get("GENERAL_CHANNEL_ID")
+                self.logger.log_info(f"General channel ID from config: {general_channel_id}")
+                
                 if not general_channel_id:
                     self.logger.log_warning("GENERAL_CHANNEL_ID not configured")
                     return
+                    
                 general_channel = after.guild.get_channel(int(general_channel_id))
+                self.logger.log_info(f"General channel object: {general_channel}")
+                
                 if general_channel:
                     try:
                         # Generate AI-based release message based on their history
@@ -332,12 +337,14 @@ class AzabBot(discord.Client):
                         await general_channel.send(release_message)
                         
                         self.logger.log_info(
-                            f"Posted unmute notification for {after.display_name} in general chat"
+                            f"✅ Posted unmute notification for {after.display_name} in #{general_channel.name} (ID: {general_channel.id})"
                         )
                     except Exception as e:
                         self.logger.log_error(
                             f"Failed to send unmute message: {e}"
                         )
+                else:
+                    self.logger.log_error(f"Could not find general channel with ID {general_channel_id}")
                         
             # If they just got the muted role
             elif not had_role and has_role:
