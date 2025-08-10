@@ -111,34 +111,37 @@ jobs:
           FULL_URL="${WEBHOOK_URL}?thread_id=${THREAD_ID}"
           echo "Full URL length: ${#FULL_URL}"
           
-          # Send the webhook with verbose output
-          curl -X POST \
+          # First test without thread_id
+          echo "Testing webhook without thread_id..."
+          TEST_RESPONSE=$(curl -X POST \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
-            "$FULL_URL" \
-            -o response.txt \
-            -w "HTTP_CODE:%{http_code}\n" \
-            -s -v 2>curl_debug.txt
+            "$WEBHOOK_URL" \
+            -w "\nHTTP_CODE:%{http_code}" \
+            -s 2>&1)
           
-          CURL_EXIT=$?
-          echo "Curl exit code: $CURL_EXIT"
+          TEST_CODE=$(echo "$TEST_RESPONSE" | grep "HTTP_CODE:" | cut -d: -f2)
+          echo "Test without thread_id - Response code: $TEST_CODE"
           
-          if [ -f curl_debug.txt ]; then
-            echo "Curl debug output:"
-            cat curl_debug.txt | head -20
-          fi
-          
-          if [ $CURL_EXIT -ne 0 ]; then
-            echo "Curl failed with exit code: $CURL_EXIT"
-            exit 0
-          fi
-          
-          HTTP_CODE=$(cat response.txt | grep "HTTP_CODE:" | cut -d: -f2)
-          echo "Response code: $HTTP_CODE"
-          
-          if [ "$HTTP_CODE" != "204" ] && [ "$HTTP_CODE" != "200" ]; then
-            echo "Error response from Discord:"
-            cat response.txt | head -n -1
+          if [ "$TEST_CODE" = "204" ] || [ "$TEST_CODE" = "200" ]; then
+            echo "Webhook works without thread_id, now trying with thread_id..."
+            
+            # Send with thread_id
+            FINAL_RESPONSE=$(curl -X POST \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" \
+              "$FULL_URL" \
+              -w "\nHTTP_CODE:%{http_code}" \
+              -s 2>&1)
+            
+            FINAL_CODE=$(echo "$FINAL_RESPONSE" | grep "HTTP_CODE:" | cut -d: -f2)
+            echo "With thread_id - Response code: $FINAL_CODE"
+            
+            if [ "$FINAL_CODE" != "204" ] && [ "$FINAL_CODE" != "200" ]; then
+              echo "Failed with thread_id. Response:"
+              echo "$FINAL_RESPONSE" | head -n -1
+            fi
           else
-            echo "Successfully sent to secondary server"
+            echo "Webhook failed even without thread_id. Response:"
+            echo "$TEST_RESPONSE" | head -n -1
           fi
