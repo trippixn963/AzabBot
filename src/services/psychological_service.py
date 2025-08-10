@@ -231,35 +231,60 @@ class PsychologicalService(BaseService):
         except Exception as e:
             log_error(f"Error tracking crime: {e}")
     
-    async def extract_mute_reason_from_audit(self, guild: discord.Guild, user_id: str) -> Optional[str]:
+    async def extract_mute_reason_from_audit(self, guild: discord.Guild, user_id: str) -> Optional[dict]:
         """
         Try to extract mute reason from audit logs.
         Works with Sapphire and other moderation bots.
         """
         try:
+            # The specific mute role ID (from config)
+            target_role_id = "1402287996648030249"
+            
+            log_info(f"🔍 Checking audit logs for mute reason of user {user_id}")
+            
             # Check audit logs for recent mute actions
             async for entry in guild.audit_logs(
-                limit=10,
+                limit=20,  # Increased limit to catch more entries
                 action=discord.AuditLogAction.member_role_update
             ):
-                # Check if this entry is about our user and involves mute role
+                # Check if this entry is about our user
                 if entry.target and str(entry.target.id) == user_id:
                     # Check if mute role was added
                     if entry.after and entry.before:
                         added_roles = set(entry.after.roles) - set(entry.before.roles)
                         
-                        # Look for mute role in added roles
-                        mute_role_names = ['muted', 'mute', 'timeout', 'imprisoned']
+                        # Check if our specific mute role was added
                         for role in added_roles:
-                            if any(mute_name in role.name.lower() for mute_name in mute_role_names):
+                            log_info(f"  Checking role: {role.name} (ID: {role.id})")
+                            
+                            # Check by role ID first (most accurate)
+                            if str(role.id) == target_role_id:
                                 # Found mute action, extract reason
                                 reason = entry.reason or "No reason provided"
-                                muted_by = entry.user.display_name if entry.user else "Unknown"
+                                muted_by = entry.user.display_name if entry.user else "Sapphire"
+                                
+                                log_info(f"✅ Found mute reason: {reason} by {muted_by}")
                                 
                                 return {
                                     'reason': reason,
                                     'muted_by': muted_by,
-                                    'timestamp': entry.created_at
+                                    'timestamp': entry.created_at,
+                                    'role_name': role.name
+                                }
+                            
+                            # Fallback: check by role name
+                            mute_role_names = ['muted', 'mute', 'timeout', 'imprisoned', 'prisoner']
+                            if any(mute_name in role.name.lower() for mute_name in mute_role_names):
+                                reason = entry.reason or "No reason provided"
+                                muted_by = entry.user.display_name if entry.user else "Sapphire"
+                                
+                                log_info(f"✅ Found mute by role name: {reason} by {muted_by}")
+                                
+                                return {
+                                    'reason': reason,
+                                    'muted_by': muted_by,
+                                    'timestamp': entry.created_at,
+                                    'role_name': role.name
                                 }
             
             # Also check timeout (different from role-based mutes)
@@ -280,10 +305,56 @@ class PsychologicalService(BaseService):
                             'timeout_until': entry.after.timed_out_until
                         }
             
-            return None
+            # If we couldn't find in audit logs, try checking recent messages for Sapphire's mute confirmation
+            log_info(f"❌ No mute reason found in audit logs for {user_id}")
+            
+            # Try alternative: Check for Sapphire's mute message in mod log channel
+            # Sapphire usually sends a message like "User has been muted for: [reason]"
+            return await self._extract_from_sapphire_logs(guild, user_id)
             
         except Exception as e:
             log_error(f"Error extracting mute reason from audit: {e}")
+            return None
+    
+    async def _extract_from_sapphire_logs(self, guild: discord.Guild, user_id: str) -> Optional[dict]:
+        """
+        Fallback: Check for Sapphire's mute confirmation messages in mod channels.
+        """
+        try:
+            # Common mod log channel names
+            log_channel_names = ['mod-log', 'mod-logs', 'modlog', 'modlogs', 'audit-log', 'logs']
+            
+            for channel in guild.text_channels:
+                if any(log_name in channel.name.lower() for log_name in log_channel_names):
+                    # Check recent messages in this channel
+                    async for message in channel.history(limit=50):
+                        # Check if message is from Sapphire bot
+                        if message.author.bot:
+                            # Look for mute messages about our user
+                            if user_id in message.content or f"<@{user_id}>" in message.content:
+                                # Try to extract reason from message
+                                # Common patterns: "muted for: X", "reason: X", "muted - X"
+                                import re
+                                
+                                patterns = [
+                                    r'(?:muted|timeout).*?(?:for|reason):\s*(.+?)(?:\n|$)',
+                                    r'(?:muted|timeout).*?-\s*(.+?)(?:\n|$)',
+                                    r'Reason:\s*(.+?)(?:\n|$)'
+                                ]
+                                
+                                for pattern in patterns:
+                                    match = re.search(pattern, message.content, re.IGNORECASE)
+                                    if match:
+                                        reason = match.group(1).strip()
+                                        log_info(f"✅ Found mute reason in {channel.name}: {reason}")
+                                        
+                                        return {
+                                            'reason': reason,
+                                            'muted_by': message.author.display_name,
+                                            'timestamp': message.created_at,
+                                            'source': 'mod_log_message'
+                                        }
+            
             return None
     
     # ============= PSYCHOLOGICAL PROFILING =============
