@@ -121,8 +121,77 @@ You can customize notifications by editing the workflow files:
 - Add or remove mention types
 - Include additional context or metrics
 
+## 🏛️ Forum Channel Support
+
+Discord forum channels require special handling for webhooks:
+
+### Creating Webhook in Forum Channel
+
+1. **Navigate to Forum Channel**
+   - Right-click on your forum channel
+   - Select "Edit Channel" > "Integrations" > "Webhooks"
+
+2. **Webhook Behavior in Forums**
+   - Each webhook message creates a new thread by default
+   - You can post to existing threads using `thread_id` parameter
+
+### Configuration Options
+
+#### Option 1: Create New Thread for Each Run
+- Webhook will create a new thread for each GitHub Action run
+- Thread title will be auto-generated based on the workflow
+
+#### Option 2: Post to Specific Thread
+1. Create a thread in your forum channel for CI notifications
+2. Get the thread ID (right-click thread > Copy ID)
+3. Add to GitHub Secrets:
+   - `DISCORD_CI_THREAD_ID`: Thread ID for CI notifications
+   - `DISCORD_DEPLOY_THREAD_ID`: Thread ID for deployments
+   - `DISCORD_RELEASE_THREAD_ID`: Thread ID for releases
+
+#### Option 3: Organized by Type
+Create separate threads for different notification types:
+- "🧪 CI Tests" - All test results
+- "🚀 Deployments" - Deployment notifications
+- "📦 Releases" - New version announcements
+- "🔒 Security" - Security scan results
+
+### Using Forum-Compatible Workflows
+
+Use the forum-specific workflows:
+```yaml
+# .github/workflows/ci.yml
+- name: Notify Discord Forum
+  env:
+    WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK }}
+    THREAD_ID: ${{ secrets.DISCORD_CI_THREAD_ID }}
+  run: |
+    # Webhook with thread_id parameter
+    curl -X POST "${WEBHOOK_URL}?thread_id=${THREAD_ID}" ...
+```
+
+### Thread Management
+
+#### Auto-Archive Settings
+- Set forum channel auto-archive to 1 week for CI/CD threads
+- Keep release threads permanently
+
+#### Thread Naming Convention
+- CI: `CI Run #123 - main`
+- Deploy: `Deploy v1.5.0 to production`
+- Release: `Release v1.5.0`
+
+### Benefits of Forum Channels
+
+1. **Organization**: Each run gets its own thread
+2. **Discussion**: Team can discuss issues in threads
+3. **History**: Easy to find past runs
+4. **Filtering**: Use tags to categorize (success/failure/deployment)
+5. **Search**: Forum search to find specific runs
+
 ## 📚 Related Documentation
 
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [Discord Webhooks Guide](https://discord.com/developers/docs/resources/webhook)
+- [Discord Forum Channels](https://support.discord.com/hc/en-us/articles/6208479917079-Forum-Channels)
 - [Actions Status Discord](https://github.com/marketplace/actions/actions-status-discord)

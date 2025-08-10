@@ -1,0 +1,177 @@
+name: CI with Forum Support
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10']
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    
+    - name: Install dependencies
+      run: poetry install --no-interaction
+    
+    - name: Run black
+      run: poetry run black --check src/
+    
+    - name: Run isort
+      run: poetry run isort --check-only src/
+    
+    - name: Run flake8
+      run: poetry run flake8 src/ --max-line-length=88 --extend-ignore=E203,E501,W503,F824
+    
+    - name: Run ruff
+      run: poetry run ruff check src/
+    
+    - name: Run tests with coverage
+      run: |
+        poetry run pytest -v --cov=src --cov-report=xml --cov-report=term-missing
+    
+    # Option 1: Using the reusable workflow for forum support
+    - name: Notify Discord Forum - Tests
+      if: always() && secrets.DISCORD_WEBHOOK != ''
+      uses: ./.github/workflows/forum-discord.yml
+      with:
+        title: "🧪 CI Tests - ${{ job.status == 'success' && 'Passed ✅' || 'Failed ❌' }}"
+        message: |
+          **Branch:** ${{ github.ref_name }}
+          **Commit:** ${{ github.sha }}
+          **Status:** ${{ job.status }}
+        thread_name: "CI-${{ github.run_number }}"
+        color: "${{ job.status == 'success' && '3066993' || '15158332' }}"
+        status: "${{ job.status }}"
+      secrets:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        DISCORD_FORUM_THREAD_ID: ${{ secrets.DISCORD_CI_THREAD_ID }}
+    
+    # Option 2: Direct webhook call with thread support
+    - name: Notify Discord Forum - Direct API
+      if: always()
+      env:
+        WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK }}
+        THREAD_ID: ${{ secrets.DISCORD_CI_THREAD_ID }}
+      run: |
+        # Prepare status emoji and color
+        if [ "${{ job.status }}" == "success" ]; then
+          STATUS_EMOJI="✅"
+          COLOR="3066993"
+          STATUS_TEXT="Passed"
+        else
+          STATUS_EMOJI="❌"
+          COLOR="15158332"
+          STATUS_TEXT="Failed"
+        fi
+        
+        # Create the JSON payload
+        PAYLOAD=$(cat <<EOF
+        {
+          "embeds": [{
+            "title": "🧪 CI Tests - ${STATUS_TEXT} ${STATUS_EMOJI}",
+            "description": "**Repository:** \`${{ github.repository }}\`\n**Branch:** \`${{ github.ref_name }}\`\n**Commit:** [\`${{ github.sha }}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})\n**Author:** ${{ github.actor }}\n\n**Test Results:** ${STATUS_EMOJI} Tests ${STATUS_TEXT}",
+            "color": ${COLOR},
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+            "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "footer": {
+              "text": "SaydnayaBot CI",
+              "icon_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+            },
+            "fields": [
+              {
+                "name": "Workflow",
+                "value": "${{ github.workflow }}",
+                "inline": true
+              },
+              {
+                "name": "Run Number",
+                "value": "#${{ github.run_number }}",
+                "inline": true
+              },
+              {
+                "name": "Triggered By",
+                "value": "${{ github.event_name }}",
+                "inline": true
+              }
+            ]
+          }],
+          "username": "SaydnayaBot CI",
+          "avatar_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+        }
+        EOF
+        )
+        
+        # Determine if we should post to a thread or create new
+        if [ -n "$THREAD_ID" ]; then
+          # Post to existing thread in forum
+          WEBHOOK_ENDPOINT="${WEBHOOK_URL}?thread_id=${THREAD_ID}"
+        else
+          # Add thread_name to create new thread in forum
+          PAYLOAD=$(cat <<EOF
+        {
+          "thread_name": "CI Run #${{ github.run_number }} - ${{ github.ref_name }}",
+          "embeds": [{
+            "title": "🧪 CI Tests - ${STATUS_TEXT} ${STATUS_EMOJI}",
+            "description": "**Repository:** \`${{ github.repository }}\`\n**Branch:** \`${{ github.ref_name }}\`\n**Commit:** [\`${{ github.sha }}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})\n**Author:** ${{ github.actor }}\n\n**Test Results:** ${STATUS_EMOJI} Tests ${STATUS_TEXT}",
+            "color": ${COLOR},
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+            "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "footer": {
+              "text": "SaydnayaBot CI",
+              "icon_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+            },
+            "fields": [
+              {
+                "name": "Workflow",
+                "value": "${{ github.workflow }}",
+                "inline": true
+              },
+              {
+                "name": "Run Number",
+                "value": "#${{ github.run_number }}",
+                "inline": true
+              },
+              {
+                "name": "Triggered By",
+                "value": "${{ github.event_name }}",
+                "inline": true
+              }
+            ]
+          }],
+          "username": "SaydnayaBot CI",
+          "avatar_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+        }
+        EOF
+        )
+          WEBHOOK_ENDPOINT="${WEBHOOK_URL}"
+        fi
+        
+        # Send the webhook
+        response=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD" \
+          "$WEBHOOK_ENDPOINT")
+        
+        if [ "$response" -eq 204 ]; then
+          echo "✅ Discord notification sent successfully"
+        else
+          echo "⚠️ Discord notification failed with status code: $response"
+        fi
