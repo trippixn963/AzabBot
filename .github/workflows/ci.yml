@@ -49,6 +49,25 @@ jobs:
     - name: Run tests with coverage
       run: |
         poetry run pytest -v --cov=src --cov-report=xml --cov-report=term-missing
+    
+    - name: Notify Discord - Tests
+      uses: sarisia/actions-status-discord@v1
+      if: always()
+      with:
+        webhook: ${{ secrets.DISCORD_WEBHOOK }}
+        title: "🧪 CI Tests - ${{ job.status == 'success' && 'Passed ✅' || 'Failed ❌' }}"
+        description: |
+          **Repository:** `${{ github.repository }}`
+          **Branch:** `${{ github.ref_name }}`
+          **Commit:** [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+          **Author:** ${{ github.actor }}
+          
+          **Test Results:** ${{ job.status == 'success' && '✅ All tests passed' || '❌ Tests failed' }}
+          **Coverage Report:** ${{ job.status == 'success' && '📊 Coverage report generated' || '⚠️ Coverage unavailable' }}
+        color: ${{ job.status == 'success' && '0x00ff00' || '0xff0000' }}
+        url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        username: SaydnayaBot CI
+        avatar_url: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png
       
   security:
     runs-on: ubuntu-latest
@@ -65,3 +84,22 @@ jobs:
     
     - name: Run Bandit Security Check
       run: bandit -r src/ -ll -i --skip B101
+    
+    - name: Notify Discord - Security
+      uses: sarisia/actions-status-discord@v1
+      if: always()
+      with:
+        webhook: ${{ secrets.DISCORD_WEBHOOK }}
+        title: "🔒 Security Scan - ${{ job.status == 'success' && 'Clean ✅' || 'Issues Found ⚠️' }}"
+        description: |
+          **Repository:** `${{ github.repository }}`
+          **Branch:** `${{ github.ref_name }}`
+          **Scan Type:** Bandit Security Check
+          
+          **Results:** ${{ job.status == 'success' && '✅ No security vulnerabilities detected' || '⚠️ Security issues found - review required' }}
+          
+          ${{ job.status != 'success' && '**Action Required:** Please review the security findings and address any vulnerabilities.' || '' }}
+        color: ${{ job.status == 'success' && '0x00ff00' || '0xffaa00' }}
+        url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        username: SaydnayaBot Security
+        avatar_url: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png

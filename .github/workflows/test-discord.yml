@@ -1,0 +1,69 @@
+name: Test Discord Notifications
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'Test message to send'
+        required: false
+        default: 'Testing Discord webhook integration'
+        type: string
+
+jobs:
+  test-notification:
+    name: Test Discord Webhook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      - name: Send Test Notification
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          title: "🧪 Discord Webhook Test"
+          description: |
+            **Test Message:** ${{ github.event.inputs.message }}
+            **Repository:** `${{ github.repository }}`
+            **Triggered by:** ${{ github.actor }}
+            **Timestamp:** ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
+            
+            ✅ If you see this message, your Discord webhook is configured correctly!
+          color: 0x00ff00
+          url: ${{ github.server_url }}/${{ github.repository }}
+          username: SaydnayaBot Test
+          avatar_url: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png
+          nodetail: false
+      
+      - name: Test Different Status Colors
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          title: "🎨 Status Color Examples"
+          description: |
+            This shows different status colors:
+            - 🟢 Green (0x00ff00): Success
+            - 🔴 Red (0xff0000): Failure
+            - 🟠 Orange (0xffaa00): Warning
+            - 🔵 Blue (0x7289da): Information
+            - 🟡 Yellow (0xffff00): Security
+            
+            Current test status: **Success**
+          color: 0x7289da
+          username: SaydnayaBot Colors
+      
+      - name: Test with Mention
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          content: "This is a test mention (would ping @here in real scenarios)"
+          title: "📢 Test with Mention"
+          description: |
+            **Note:** In production workflows, mentions are used for:
+            - `@here`: Important notifications
+            - `@everyone`: Release announcements
+            - `@channel`: Critical failures
+            
+            This test doesn't actually mention to avoid spam.
+          color: 0xffaa00
+          username: SaydnayaBot Mentions

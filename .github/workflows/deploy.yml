@@ -131,6 +131,29 @@ jobs:
             See [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) for installation instructions.
           draft: false
           prerelease: false
+      
+      - name: Notify Discord - Release Created
+        uses: sarisia/actions-status-discord@v1
+        if: success()
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          content: "@everyone"
+          title: "📦 New Release: SaydnayaBot ${{ steps.extract_notes.outputs.VERSION }}"
+          description: |
+            **Version:** `${{ steps.extract_notes.outputs.VERSION }}`
+            **Release Page:** [View on GitHub](https://github.com/${{ github.repository }}/releases/tag/${{ steps.extract_notes.outputs.VERSION }})
+            
+            ## 🐳 Quick Start
+            ```bash
+            docker pull ${{ secrets.DOCKER_USERNAME }}/saydnayabot:${{ steps.extract_notes.outputs.VERSION }}
+            ```
+            
+            ## 📝 Highlights
+            Check the [release notes](https://github.com/${{ github.repository }}/releases/tag/${{ steps.extract_notes.outputs.VERSION }}) for what's new!
+          color: 0x7289da
+          url: https://github.com/${{ github.repository }}/releases/tag/${{ steps.extract_notes.outputs.VERSION }}
+          username: SaydnayaBot Releases
+          avatar_url: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png
 
   deploy:
     name: Deploy to ${{ github.event.inputs.environment || 'production' }}
@@ -180,16 +203,35 @@ jobs:
 
   notify:
     name: Notify Deployment
-    needs: [deploy]
+    needs: [deploy, test, build]
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Send notification
-        run: |
-          if [ "${{ needs.deploy.result }}" == "success" ]; then
-            echo "✅ Deployment successful!"
-          else
-            echo "❌ Deployment failed!"
-          fi
-          
-          # Add notification logic here (Discord webhook, Slack, etc.)
+      - name: Notify Discord - Deployment Status
+        uses: sarisia/actions-status-discord@v1
+        if: always()
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          content: ${{ needs.deploy.result != 'success' && '@here' || '' }}
+          title: "🚀 Deployment to ${{ github.event.inputs.environment || 'Production' }} - ${{ needs.deploy.result == 'success' && 'Successful ✅' || needs.deploy.result == 'failure' && 'Failed ❌' || 'Skipped ⏭️' }}"
+          description: |
+            **Repository:** `${{ github.repository }}`
+            **Environment:** `${{ github.event.inputs.environment || 'production' }}`
+            **Version:** `${{ github.ref_name }}`
+            **Triggered by:** ${{ github.actor }}
+            **Trigger:** ${{ github.event_name == 'workflow_dispatch' && 'Manual Deployment' || 'Tag Push' }}
+            
+            ## 📊 Pipeline Status
+            | Stage | Status |
+            |-------|--------|
+            | 🧪 Tests | ${{ needs.test.result == 'success' && '✅ Passed' || needs.test.result == 'failure' && '❌ Failed' || '⏭️ Skipped' }} |
+            | 🔨 Build | ${{ needs.build.result == 'success' && '✅ Completed' || needs.build.result == 'failure' && '❌ Failed' || '⏭️ Skipped' }} |
+            | 🚀 Deploy | ${{ needs.deploy.result == 'success' && '✅ Deployed' || needs.deploy.result == 'failure' && '❌ Failed' || '⏭️ Skipped' }} |
+            
+            ${{ needs.build.outputs.image-tag && format('## 🐳 Docker Image\n```\n{0}\n```', needs.build.outputs.image-tag) || '' }}
+            
+            ${{ needs.deploy.result != 'success' && '## ⚠️ Action Required\nDeployment failed. Please check the logs and retry if necessary.' || '## ✅ Deployment Complete\nThe application has been successfully deployed and is now running.' }}
+          color: ${{ needs.deploy.result == 'success' && '0x00ff00' || needs.deploy.result == 'failure' && '0xff0000' || '0xffaa00' }}
+          url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          username: SaydnayaBot Deploy
+          avatar_url: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png

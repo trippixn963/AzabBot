@@ -201,3 +201,36 @@ jobs:
                 environment: 'production'
               }
             })
+      
+      - name: Notify Discord - Release Published
+        uses: sarisia/actions-status-discord@v1
+        if: success()
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          content: "@everyone"
+          title: "🎉 SaydnayaBot v${{ needs.prepare-release.outputs.version }} Released!"
+          description: |
+            **Version:** `v${{ needs.prepare-release.outputs.version }}`
+            **Release Type:** `${{ github.event.inputs.release_type }}`
+            **Released by:** ${{ github.actor }}
+            
+            ## 📦 Installation Options
+            
+            ### 🐳 Docker
+            ```bash
+            docker pull ${{ secrets.DOCKER_USERNAME || 'yourusername' }}/saydnayabot:${{ needs.prepare-release.outputs.version }}
+            ```
+            
+            ### 📥 Direct Download
+            [Download Release Assets](https://github.com/${{ github.repository }}/releases/tag/v${{ needs.prepare-release.outputs.version }})
+            
+            ### 📝 What's New
+            View the full [changelog](https://github.com/${{ github.repository }}/blob/v${{ needs.prepare-release.outputs.version }}/docs/project/CHANGELOG.md) for details.
+            
+            ## 🚀 Deployment
+            Automatic deployment to production has been triggered.
+          color: 0x7289da
+          image: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png
+          url: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.prepare-release.outputs.version }}
+          username: SaydnayaBot Releases
+          avatar_url: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png
