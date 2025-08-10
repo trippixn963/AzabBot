@@ -53,7 +53,7 @@ jobs:
             "${WEBHOOK_URL}?thread_id=${THREAD_ID}"
       
       - name: Discord Notification - Secondary Server
-        if: "${{ secrets.DISCORD_WEBHOOK_SY != '' }}"
+        if: ${{ secrets.DISCORD_WEBHOOK_SY != '' }}
         run: |
           THREAD_ID="1404073613866438727"
           WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK_SY }}"
