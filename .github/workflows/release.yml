@@ -37,7 +37,6 @@ jobs:
           
           PAYLOAD=$(cat <<EOF
           {
-            "content": "**@everyone** New version available!",
             "embeds": [{
               "author": {
                 "name": "AzabBot Release Manager",
