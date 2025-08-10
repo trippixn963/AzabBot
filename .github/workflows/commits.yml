@@ -102,17 +102,32 @@ jobs:
           EOF
           )
           
-          RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
+          echo "Webhook URL (first 50 chars): ${WEBHOOK_URL:0:50}..."
+          echo "Thread ID: $THREAD_ID"
+          
+          # Send the webhook
+          curl -X POST \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
-            "${WEBHOOK_URL}?thread_id=${THREAD_ID}")
+            "${WEBHOOK_URL}?thread_id=${THREAD_ID}" \
+            -o response.txt \
+            -w "HTTP_CODE:%{http_code}\n" \
+            -s
           
-          HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE:" | cut -d: -f2)
+          CURL_EXIT=$?
+          echo "Curl exit code: $CURL_EXIT"
+          
+          if [ $CURL_EXIT -ne 0 ]; then
+            echo "Curl failed with exit code: $CURL_EXIT"
+            exit 0
+          fi
+          
+          HTTP_CODE=$(cat response.txt | grep "HTTP_CODE:" | cut -d: -f2)
           echo "Response code: $HTTP_CODE"
           
           if [ "$HTTP_CODE" != "204" ] && [ "$HTTP_CODE" != "200" ]; then
-            echo "Error response:"
-            echo "$RESPONSE" | head -n -1
+            echo "Error response from Discord:"
+            cat response.txt | head -n -1
           else
             echo "Successfully sent to secondary server"
           fi
