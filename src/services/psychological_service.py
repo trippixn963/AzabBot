@@ -1,0 +1,647 @@
+"""
+Psychological Profiling Service
+Tracks prisoner crimes, builds psychological profiles, and manages grudges
+"""
+
+import asyncio
+import json
+import re
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+import discord
+from src.services.base_service import BaseService
+from src.core.logger import get_logger
+
+log_info = get_logger().log_info
+log_warning = get_logger().log_warning
+log_error = get_logger().log_error
+
+
+class PsychologicalService(BaseService):
+    """Service for psychological profiling and crime tracking."""
+    
+    def __init__(self, container):
+        """Initialize psychological service."""
+        super().__init__(container)
+        self.db_service = None
+        self.ai_service = None
+        
+        # In-memory tracking
+        self.prisoner_crimes: Dict[str, List[dict]] = {}  # user_id -> list of crimes
+        self.psychological_profiles: Dict[str, dict] = {}  # user_id -> profile
+        self.grudge_list: Dict[str, dict] = {}  # user_id -> grudge info
+        self.conversation_memory: Dict[str, List[str]] = {}  # user_id -> memorable quotes
+        
+        # Grudge levels
+        self.GRUDGE_LEVELS = {
+            0: "neutral",
+            1: "annoyed",
+            2: "irritated", 
+            3: "angry",
+            4: "furious",
+            5: "vengeful"
+        }
+        
+    async def initialize(self):
+        """Initialize the psychological service."""
+        try:
+            await super().initialize()
+            
+            # Get services
+            self.db_service = self.container.get("DatabaseService")
+            self.ai_service = self.container.get("AIService")
+            
+            # Initialize database tables
+            await self._initialize_database()
+            
+            # Load existing data
+            await self._load_psychological_data()
+            
+            log_info("🧠 Psychological service initialized")
+            
+        except Exception as e:
+            log_error(f"Failed to initialize psychological service: {e}")
+            raise
+    
+    async def _initialize_database(self):
+        """Initialize psychological profiling tables."""
+        try:
+            schema = """
+            -- Crime tracking table
+            CREATE TABLE IF NOT EXISTS prisoner_crimes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prisoner_id INTEGER NOT NULL,
+                discord_id TEXT NOT NULL,
+                crime_type TEXT,
+                crime_description TEXT,
+                mute_reason TEXT,
+                muted_by TEXT,
+                mute_duration INTEGER, -- in seconds
+                crime_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                severity INTEGER DEFAULT 1 CHECK(severity >= 1 AND severity <= 10),
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (prisoner_id) REFERENCES prisoners(id)
+            );
+            
+            -- Enhanced psychological profiles
+            CREATE TABLE IF NOT EXISTS psychological_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prisoner_id INTEGER NOT NULL UNIQUE,
+                discord_id TEXT NOT NULL,
+                personality_type TEXT,
+                triggers TEXT, -- JSON array
+                weaknesses TEXT, -- JSON array
+                resistance_patterns TEXT, -- JSON array
+                common_phrases TEXT, -- JSON array
+                behavioral_patterns TEXT, -- JSON
+                emotional_volatility INTEGER DEFAULT 5, -- 1-10 scale
+                intelligence_assessment INTEGER DEFAULT 5, -- 1-10 scale
+                manipulation_resistance INTEGER DEFAULT 5, -- 1-10 scale
+                breaking_point TEXT,
+                profile_notes TEXT,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (prisoner_id) REFERENCES prisoners(id)
+            );
+            
+            -- Grudge tracking
+            CREATE TABLE IF NOT EXISTS grudge_list (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prisoner_id INTEGER NOT NULL,
+                discord_id TEXT NOT NULL,
+                grudge_level INTEGER DEFAULT 0 CHECK(grudge_level >= 0 AND grudge_level <= 5),
+                grudge_reason TEXT,
+                talked_back_count INTEGER DEFAULT 0,
+                disrespect_count INTEGER DEFAULT 0,
+                escape_attempts INTEGER DEFAULT 0,
+                last_offense TIMESTAMP,
+                special_treatment TEXT, -- JSON for special harassment
+                forgiveness_impossible BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (prisoner_id) REFERENCES prisoners(id)
+            );
+            
+            -- Memorable conversations
+            CREATE TABLE IF NOT EXISTS conversation_memories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prisoner_id INTEGER NOT NULL,
+                discord_id TEXT NOT NULL,
+                message_content TEXT,
+                bot_response TEXT,
+                memory_type TEXT CHECK(memory_type IN ('funny', 'rebellious', 'pathetic', 'memorable', 'confession')),
+                context TEXT,
+                effectiveness_rating INTEGER,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (prisoner_id) REFERENCES prisoners(id)
+            );
+            
+            -- Create indexes
+            CREATE INDEX IF NOT EXISTS idx_crimes_discord_id ON prisoner_crimes(discord_id);
+            CREATE INDEX IF NOT EXISTS idx_crimes_time ON prisoner_crimes(crime_time);
+            CREATE INDEX IF NOT EXISTS idx_profiles_discord_id ON psychological_profiles(discord_id);
+            CREATE INDEX IF NOT EXISTS idx_grudge_discord_id ON grudge_list(discord_id);
+            CREATE INDEX IF NOT EXISTS idx_grudge_level ON grudge_list(grudge_level);
+            CREATE INDEX IF NOT EXISTS idx_memories_discord_id ON conversation_memories(discord_id);
+            CREATE INDEX IF NOT EXISTS idx_memories_type ON conversation_memories(memory_type);
+            """
+            
+            # Execute schema
+            statements = [s.strip() for s in schema.split(';') if s.strip()]
+            for statement in statements:
+                await self.db_service.execute(statement + ';')
+            
+            log_info("Psychological profiling tables initialized")
+            
+        except Exception as e:
+            log_error(f"Failed to initialize psychological tables: {e}")
+    
+    async def _load_psychological_data(self):
+        """Load existing psychological data from database."""
+        try:
+            # Load recent crimes
+            crimes = await self.db_service.fetch_all(
+                """SELECT * FROM prisoner_crimes 
+                   WHERE crime_time > datetime('now', '-30 days')
+                   ORDER BY crime_time DESC"""
+            )
+            for crime in crimes:
+                user_id = crime['discord_id']
+                if user_id not in self.prisoner_crimes:
+                    self.prisoner_crimes[user_id] = []
+                self.prisoner_crimes[user_id].append(dict(crime))
+            
+            # Load psychological profiles
+            profiles = await self.db_service.fetch_all(
+                "SELECT * FROM psychological_profiles"
+            )
+            for profile in profiles:
+                self.psychological_profiles[profile['discord_id']] = dict(profile)
+            
+            # Load grudges
+            grudges = await self.db_service.fetch_all(
+                "SELECT * FROM grudge_list WHERE grudge_level > 0"
+            )
+            for grudge in grudges:
+                self.grudge_list[grudge['discord_id']] = dict(grudge)
+            
+            log_info(f"Loaded {len(self.prisoner_crimes)} prisoners with crimes, "
+                    f"{len(self.psychological_profiles)} profiles, "
+                    f"{len(self.grudge_list)} grudges")
+            
+        except Exception as e:
+            log_warning(f"Could not load psychological data: {e}")
+    
+    # ============= CRIME TRACKING =============
+    
+    async def track_crime(self, user_id: str, username: str, crime_data: dict):
+        """
+        Track a prisoner's crime (mute reason).
+        crime_data should contain: type, description, reason, muted_by, duration
+        """
+        try:
+            prisoner_id = await self._get_or_create_prisoner_id(user_id, username)
+            
+            # Store in database
+            await self.db_service.execute(
+                """INSERT INTO prisoner_crimes 
+                   (prisoner_id, discord_id, crime_type, crime_description, 
+                    mute_reason, muted_by, mute_duration, severity)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (prisoner_id, user_id, 
+                 crime_data.get('type', 'unknown'),
+                 crime_data.get('description', ''),
+                 crime_data.get('reason', 'No reason provided'),
+                 crime_data.get('muted_by', 'unknown'),
+                 crime_data.get('duration', 0),
+                 crime_data.get('severity', 5))
+            )
+            
+            # Update in-memory tracking
+            if user_id not in self.prisoner_crimes:
+                self.prisoner_crimes[user_id] = []
+            self.prisoner_crimes[user_id].append(crime_data)
+            
+            # Update psychological profile based on crime
+            await self._update_profile_from_crime(user_id, username, crime_data)
+            
+            log_info(f"📝 Tracked crime for {username}: {crime_data.get('reason', 'unknown')}")
+            
+        except Exception as e:
+            log_error(f"Error tracking crime: {e}")
+    
+    async def extract_mute_reason_from_audit(self, guild: discord.Guild, user_id: str) -> Optional[str]:
+        """
+        Try to extract mute reason from audit logs.
+        Works with Sapphire and other moderation bots.
+        """
+        try:
+            # Check audit logs for recent mute actions
+            async for entry in guild.audit_logs(
+                limit=10,
+                action=discord.AuditLogAction.member_role_update
+            ):
+                # Check if this entry is about our user and involves mute role
+                if entry.target and str(entry.target.id) == user_id:
+                    # Check if mute role was added
+                    if entry.after and entry.before:
+                        added_roles = set(entry.after.roles) - set(entry.before.roles)
+                        
+                        # Look for mute role in added roles
+                        mute_role_names = ['muted', 'mute', 'timeout', 'imprisoned']
+                        for role in added_roles:
+                            if any(mute_name in role.name.lower() for mute_name in mute_role_names):
+                                # Found mute action, extract reason
+                                reason = entry.reason or "No reason provided"
+                                muted_by = entry.user.display_name if entry.user else "Unknown"
+                                
+                                return {
+                                    'reason': reason,
+                                    'muted_by': muted_by,
+                                    'timestamp': entry.created_at
+                                }
+            
+            # Also check timeout (different from role-based mutes)
+            async for entry in guild.audit_logs(
+                limit=10,
+                action=discord.AuditLogAction.member_update
+            ):
+                if entry.target and str(entry.target.id) == user_id:
+                    # Check if timeout was applied
+                    if entry.after.timed_out_until and not entry.before.timed_out_until:
+                        reason = entry.reason or "No reason provided"
+                        muted_by = entry.user.display_name if entry.user else "Unknown"
+                        
+                        return {
+                            'reason': reason,
+                            'muted_by': muted_by,
+                            'timestamp': entry.created_at,
+                            'timeout_until': entry.after.timed_out_until
+                        }
+            
+            return None
+            
+        except Exception as e:
+            log_error(f"Error extracting mute reason from audit: {e}")
+            return None
+    
+    # ============= PSYCHOLOGICAL PROFILING =============
+    
+    async def build_psychological_profile(self, user_id: str, username: str, 
+                                         messages: List[str] = None) -> dict:
+        """Build or update psychological profile based on prisoner behavior."""
+        try:
+            prisoner_id = await self._get_or_create_prisoner_id(user_id, username)
+            
+            # Get existing profile or create new
+            existing = await self.db_service.fetch_one(
+                "SELECT * FROM psychological_profiles WHERE discord_id = ?",
+                (user_id,)
+            )
+            
+            # Analyze behavior patterns
+            profile_data = await self._analyze_prisoner_psychology(user_id, messages)
+            
+            if existing:
+                # Update existing profile
+                await self.db_service.execute(
+                    """UPDATE psychological_profiles 
+                       SET personality_type = ?,
+                           triggers = ?,
+                           weaknesses = ?,
+                           behavioral_patterns = ?,
+                           emotional_volatility = ?,
+                           last_updated = CURRENT_TIMESTAMP
+                       WHERE discord_id = ?""",
+                    (profile_data['personality_type'],
+                     json.dumps(profile_data['triggers']),
+                     json.dumps(profile_data['weaknesses']),
+                     json.dumps(profile_data['behavioral_patterns']),
+                     profile_data['emotional_volatility'],
+                     user_id)
+                )
+            else:
+                # Create new profile
+                await self.db_service.execute(
+                    """INSERT INTO psychological_profiles 
+                       (prisoner_id, discord_id, personality_type, triggers, 
+                        weaknesses, behavioral_patterns, emotional_volatility)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (prisoner_id, user_id,
+                     profile_data['personality_type'],
+                     json.dumps(profile_data['triggers']),
+                     json.dumps(profile_data['weaknesses']),
+                     json.dumps(profile_data['behavioral_patterns']),
+                     profile_data['emotional_volatility'])
+                )
+            
+            # Update in-memory profile
+            self.psychological_profiles[user_id] = profile_data
+            
+            return profile_data
+            
+        except Exception as e:
+            log_error(f"Error building psychological profile: {e}")
+            return {}
+    
+    async def _analyze_prisoner_psychology(self, user_id: str, messages: List[str] = None) -> dict:
+        """Analyze prisoner's psychological patterns."""
+        profile = {
+            'personality_type': 'unknown',
+            'triggers': [],
+            'weaknesses': [],
+            'behavioral_patterns': {},
+            'emotional_volatility': 5,
+            'resistance_level': 5
+        }
+        
+        try:
+            # Analyze message patterns if provided
+            if messages:
+                # Check for common patterns
+                patterns = {
+                    'aggressive': r'\b(fuck|shit|damn|hell|stupid|idiot|hate)\b',
+                    'pleading': r'\b(please|sorry|forgive|stop|enough)\b',
+                    'defiant': r'\b(never|won\'t|can\'t make me|try me|whatever)\b',
+                    'confused': r'\b(what|why|how|huh|\?{2,})\b',
+                    'sarcastic': r'\b(sure|yeah right|oh really|wow|great)\b'
+                }
+                
+                pattern_counts = {}
+                for pattern_name, pattern_regex in patterns.items():
+                    count = sum(1 for msg in messages if re.search(pattern_regex, msg.lower()))
+                    if count > 0:
+                        pattern_counts[pattern_name] = count
+                
+                # Determine personality type
+                if pattern_counts:
+                    dominant_pattern = max(pattern_counts, key=pattern_counts.get)
+                    profile['personality_type'] = dominant_pattern
+                    
+                    # Set triggers based on personality
+                    if dominant_pattern == 'aggressive':
+                        profile['triggers'] = ['authority', 'criticism', 'being ignored']
+                        profile['weaknesses'] = ['pride', 'anger management', 'impulsiveness']
+                        profile['emotional_volatility'] = 8
+                    elif dominant_pattern == 'pleading':
+                        profile['triggers'] = ['isolation', 'uncertainty', 'repetition']
+                        profile['weaknesses'] = ['fear', 'desperation', 'need for approval']
+                        profile['emotional_volatility'] = 7
+                    elif dominant_pattern == 'defiant':
+                        profile['triggers'] = ['commands', 'threats', 'mockery']
+                        profile['weaknesses'] = ['stubbornness', 'need to rebel', 'predictability']
+                        profile['resistance_level'] = 8
+                    elif dominant_pattern == 'confused':
+                        profile['triggers'] = ['complexity', 'contradictions', 'rapid changes']
+                        profile['weaknesses'] = ['comprehension', 'focus', 'patience']
+                        profile['emotional_volatility'] = 6
+                    elif dominant_pattern == 'sarcastic':
+                        profile['triggers'] = ['being outsmarted', 'ignored sarcasm', 'literal responses']
+                        profile['weaknesses'] = ['need to be clever', 'masking emotions', 'cynicism']
+                        profile['resistance_level'] = 7
+                
+                profile['behavioral_patterns'] = pattern_counts
+            
+            # Check crime history for additional insights
+            if user_id in self.prisoner_crimes:
+                crimes = self.prisoner_crimes[user_id]
+                if crimes:
+                    # Analyze crime patterns
+                    crime_types = [c.get('type', '') for c in crimes]
+                    if 'spam' in crime_types:
+                        profile['triggers'].append('attention seeking')
+                    if 'harassment' in crime_types:
+                        profile['triggers'].append('aggression')
+                    if 'nsfw' in crime_types:
+                        profile['weaknesses'].append('inappropriate behavior')
+            
+        except Exception as e:
+            log_error(f"Error analyzing psychology: {e}")
+        
+        return profile
+    
+    async def _update_profile_from_crime(self, user_id: str, username: str, crime_data: dict):
+        """Update psychological profile based on new crime."""
+        try:
+            # Get or create profile
+            if user_id not in self.psychological_profiles:
+                await self.build_psychological_profile(user_id, username)
+            
+            profile = self.psychological_profiles.get(user_id, {})
+            
+            # Update based on crime type
+            crime_type = crime_data.get('type', '').lower()
+            if 'spam' in crime_type:
+                profile.setdefault('triggers', []).append('needs attention')
+            if 'harassment' in crime_type or 'toxic' in crime_type:
+                profile.setdefault('weaknesses', []).append('anger issues')
+                profile['emotional_volatility'] = min(10, profile.get('emotional_volatility', 5) + 1)
+            if 'evasion' in crime_type or 'bypass' in crime_type:
+                profile.setdefault('behavioral_patterns', {})['sneaky'] = True
+                profile['intelligence_assessment'] = min(10, profile.get('intelligence_assessment', 5) + 1)
+            
+            # Save updates
+            self.psychological_profiles[user_id] = profile
+            
+        except Exception as e:
+            log_error(f"Error updating profile from crime: {e}")
+    
+    # ============= GRUDGE SYSTEM =============
+    
+    async def add_grudge(self, user_id: str, username: str, reason: str, severity: int = 1):
+        """Add or increase grudge against a prisoner."""
+        try:
+            prisoner_id = await self._get_or_create_prisoner_id(user_id, username)
+            
+            # Check existing grudge
+            existing = await self.db_service.fetch_one(
+                "SELECT * FROM grudge_list WHERE discord_id = ?",
+                (user_id,)
+            )
+            
+            if existing:
+                # Increase grudge level
+                new_level = min(5, existing['grudge_level'] + severity)
+                talked_back = existing['talked_back_count'] + (1 if 'talk' in reason.lower() else 0)
+                disrespect = existing['disrespect_count'] + (1 if 'disrespect' in reason.lower() else 0)
+                
+                await self.db_service.execute(
+                    """UPDATE grudge_list 
+                       SET grudge_level = ?,
+                           grudge_reason = ?,
+                           talked_back_count = ?,
+                           disrespect_count = ?,
+                           last_offense = CURRENT_TIMESTAMP,
+                           updated_at = CURRENT_TIMESTAMP
+                       WHERE discord_id = ?""",
+                    (new_level, reason, talked_back, disrespect, user_id)
+                )
+                
+                # Check if grudge is now unforgivable
+                if new_level >= 4:
+                    await self.db_service.execute(
+                        "UPDATE grudge_list SET forgiveness_impossible = 1 WHERE discord_id = ?",
+                        (user_id,)
+                    )
+            else:
+                # Create new grudge
+                await self.db_service.execute(
+                    """INSERT INTO grudge_list 
+                       (prisoner_id, discord_id, grudge_level, grudge_reason,
+                        talked_back_count, disrespect_count)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (prisoner_id, user_id, severity, reason,
+                     1 if 'talk' in reason.lower() else 0,
+                     1 if 'disrespect' in reason.lower() else 0)
+                )
+            
+            # Update in-memory tracking
+            if user_id not in self.grudge_list:
+                self.grudge_list[user_id] = {}
+            
+            self.grudge_list[user_id]['grudge_level'] = new_level if existing else severity
+            self.grudge_list[user_id]['reason'] = reason
+            
+            log_info(f"😤 Grudge against {username}: Level {self.grudge_list[user_id]['grudge_level']}")
+            
+        except Exception as e:
+            log_error(f"Error adding grudge: {e}")
+    
+    def get_grudge_level(self, user_id: str) -> Tuple[int, str]:
+        """Get grudge level and description for a user."""
+        if user_id not in self.grudge_list:
+            return 0, "neutral"
+        
+        level = self.grudge_list[user_id].get('grudge_level', 0)
+        return level, self.GRUDGE_LEVELS.get(level, "neutral")
+    
+    # ============= CONVERSATION MEMORY =============
+    
+    async def remember_conversation(self, user_id: str, username: str,
+                                   message: str, response: str, memory_type: str = "memorable"):
+        """Remember a significant conversation."""
+        try:
+            prisoner_id = await self._get_or_create_prisoner_id(user_id, username)
+            
+            # Store in database
+            await self.db_service.execute(
+                """INSERT INTO conversation_memories 
+                   (prisoner_id, discord_id, message_content, bot_response, memory_type)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (prisoner_id, user_id, message, response, memory_type)
+            )
+            
+            # Update in-memory tracking
+            if user_id not in self.conversation_memory:
+                self.conversation_memory[user_id] = []
+            
+            self.conversation_memory[user_id].append({
+                'message': message,
+                'response': response,
+                'type': memory_type,
+                'timestamp': datetime.utcnow()
+            })
+            
+            # Keep only last 20 memories per user in memory
+            if len(self.conversation_memory[user_id]) > 20:
+                self.conversation_memory[user_id] = self.conversation_memory[user_id][-20:]
+            
+        except Exception as e:
+            log_error(f"Error remembering conversation: {e}")
+    
+    async def get_prisoner_memories(self, user_id: str, limit: int = 5) -> List[dict]:
+        """Get memorable conversations for a prisoner."""
+        try:
+            memories = await self.db_service.fetch_all(
+                """SELECT * FROM conversation_memories 
+                   WHERE discord_id = ? 
+                   ORDER BY timestamp DESC 
+                   LIMIT ?""",
+                (user_id, limit)
+            )
+            return [dict(m) for m in memories]
+        except Exception as e:
+            log_error(f"Error getting memories: {e}")
+            return []
+    
+    # ============= ANALYSIS METHODS =============
+    
+    async def get_prisoner_dossier(self, user_id: str) -> dict:
+        """Get complete psychological dossier on a prisoner."""
+        try:
+            dossier = {
+                'crimes': self.prisoner_crimes.get(user_id, []),
+                'profile': self.psychological_profiles.get(user_id, {}),
+                'grudge': self.grudge_list.get(user_id, {}),
+                'memories': self.conversation_memory.get(user_id, [])[-5:],  # Last 5 memories
+                'analysis': {}
+            }
+            
+            # Add analysis
+            if dossier['profile']:
+                dossier['analysis']['danger_level'] = dossier['profile'].get('emotional_volatility', 5)
+                dossier['analysis']['manipulation_difficulty'] = dossier['profile'].get('manipulation_resistance', 5)
+                dossier['analysis']['recommended_approach'] = self._recommend_approach(dossier['profile'])
+            
+            # Add grudge analysis
+            grudge_level = dossier['grudge'].get('grudge_level', 0)
+            dossier['analysis']['relationship'] = self.GRUDGE_LEVELS.get(grudge_level, "neutral")
+            dossier['analysis']['forgiveness_possible'] = not dossier['grudge'].get('forgiveness_impossible', False)
+            
+            return dossier
+            
+        except Exception as e:
+            log_error(f"Error getting prisoner dossier: {e}")
+            return {}
+    
+    def _recommend_approach(self, profile: dict) -> str:
+        """Recommend torture approach based on profile."""
+        personality = profile.get('personality_type', 'unknown')
+        
+        approaches = {
+            'aggressive': "Mock their impotent rage and challenge their threats",
+            'pleading': "Give false hope then crush it repeatedly",
+            'defiant': "Ignore their defiance and treat them as already broken",
+            'confused': "Increase confusion with contradictions and nonsense",
+            'sarcastic': "Out-sarcasm them and take everything literally",
+            'unknown': "Probe for weaknesses with varied approaches"
+        }
+        
+        return approaches.get(personality, approaches['unknown'])
+    
+    async def _get_or_create_prisoner_id(self, user_id: str, username: str) -> int:
+        """Get or create prisoner ID."""
+        try:
+            result = await self.db_service.fetch_one(
+                "SELECT id FROM prisoners WHERE discord_id = ?",
+                (user_id,)
+            )
+            
+            if result:
+                return result['id']
+            
+            await self.db_service.execute(
+                """INSERT INTO prisoners (discord_id, username, display_name)
+                   VALUES (?, ?, ?)""",
+                (user_id, username, username)
+            )
+            
+            result = await self.db_service.fetch_one(
+                "SELECT id FROM prisoners WHERE discord_id = ?",
+                (user_id,)
+            )
+            
+            return result['id'] if result else 0
+            
+        except Exception as e:
+            log_error(f"Error getting prisoner ID: {e}")
+            return 0
+    
+    async def shutdown(self):
+        """Shutdown the psychological service."""
+        try:
+            log_info("Psychological service shutting down...")
+            await super().shutdown()
+        except Exception as e:
+            log_error(f"Error shutting down psychological service: {e}")

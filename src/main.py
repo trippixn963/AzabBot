@@ -39,6 +39,7 @@ from src.services.personality_service import PersonalityService
 from src.services.report_service import ReportService
 from src.services.webhook_health_service import WebhookHealthService
 from src.services.prison_service import PrisonService
+from src.services.psychological_service import PsychologicalService
 
 # Global references for signal handlers
 # These are needed because signal handlers can't be async functions
@@ -188,6 +189,12 @@ async def run_bot():
         register_service(
             "PrisonService",
             PrisonService,
+            lifetime=ServiceLifetime.SINGLETON,
+            dependencies=["Config", "DatabaseService", "AIService"]
+        )
+        register_service(
+            "PsychologicalService",
+            PsychologicalService,
             lifetime=ServiceLifetime.SINGLETON,
             dependencies=["Config", "DatabaseService", "AIService"]
         )

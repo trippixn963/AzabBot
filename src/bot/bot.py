@@ -86,6 +86,7 @@ class AzabBot(discord.Client):
         self.health_monitor: Optional[HealthMonitor] = None
         self.memory_service = None  # Will be set later if available
         self.prison_service = None  # Enhanced prison features
+        self.psychological_service = None  # Psychological profiling and grudges
 
         # Bot metrics and state
         self.metrics = BotMetrics()
@@ -134,6 +135,14 @@ class AzabBot(discord.Client):
             except Exception as e:
                 self.logger.log_warning(f"Prison service not available: {e}")
                 self.prison_service = None
+            
+            # Try to resolve psychological service (optional)
+            try:
+                self.psychological_service = await resolve("PsychologicalService")
+                self.logger.log_info("Psychological service loaded successfully")
+            except Exception as e:
+                self.logger.log_warning(f"Psychological service not available: {e}")
+                self.psychological_service = None
 
             # Register bot for health monitoring
             if self.health_monitor:
@@ -387,6 +396,30 @@ class AzabBot(discord.Client):
 
                 # Add to current prisoners set
                 self.current_prisoners.add(after.display_name)
+                
+                # Try to extract mute reason from audit logs (for Sapphire)
+                if self.psychological_service and after.guild:
+                    mute_info = await self.psychological_service.extract_mute_reason_from_audit(
+                        after.guild, str(after.id)
+                    )
+                    
+                    if mute_info:
+                        # Track the crime
+                        await self.psychological_service.track_crime(
+                            str(after.id),
+                            after.display_name,
+                            {
+                                'type': 'mute',
+                                'reason': mute_info.get('reason', 'Unknown'),
+                                'muted_by': mute_info.get('muted_by', 'Unknown'),
+                                'description': f"Muted for: {mute_info.get('reason', 'Unknown reason')}",
+                                'severity': 5
+                            }
+                        )
+                        
+                        self.logger.log_info(
+                            f"📝 Captured mute reason for {after.display_name}: {mute_info.get('reason', 'Unknown')}"
+                        )
 
                 # Find the prison channel
                 prison_channel_id = self.config.get("PRISON_CHANNEL_IDS", "")
@@ -901,6 +934,7 @@ class AzabBot(discord.Client):
             # Check prison service features if available
             harassment_intensity = 1.0
             prisoner_status = {}
+            psychological_context = {}
             
             if self.prison_service and is_prison:
                 user_id = str(representative_message.author.id)
@@ -926,6 +960,40 @@ class AzabBot(discord.Client):
                     f"Intensity: {harassment_intensity:.2f}, Good Behavior: {prisoner_status.get('good_behavior_score', 0)}"
                 )
             
+            # Check psychological service features if available
+            if self.psychological_service and is_prison:
+                user_id = str(representative_message.author.id)
+                username = representative_message.author.display_name
+                
+                # Get prisoner dossier
+                dossier = await self.psychological_service.get_prisoner_dossier(user_id)
+                
+                # Check for talking back (increase grudge)
+                if any(word in combined_content.lower() for word in ['shut up', 'fuck off', 'leave me alone', 'stop']):
+                    await self.psychological_service.add_grudge(user_id, username, "Talked back", severity=1)
+                
+                # Build/update psychological profile
+                await self.psychological_service.build_psychological_profile(
+                    user_id, username, [msg.content for msg in messages]
+                )
+                
+                # Get grudge level
+                grudge_level, grudge_desc = self.psychological_service.get_grudge_level(user_id)
+                
+                psychological_context = {
+                    'crimes': dossier.get('crimes', [])[-3:],  # Last 3 crimes
+                    'personality': dossier.get('profile', {}).get('personality_type', 'unknown'),
+                    'triggers': dossier.get('profile', {}).get('triggers', []),
+                    'grudge_level': grudge_level,
+                    'grudge_description': grudge_desc,
+                    'past_memories': dossier.get('memories', [])[-2:]  # Last 2 memorable conversations
+                }
+                
+                self.logger.log_info(
+                    f"Psychological: {username} - Type: {psychological_context['personality']}, "
+                    f"Grudge: {grudge_desc} ({grudge_level}/5)"
+                )
+            
             # Show typing indicator
             async with representative_message.channel.typing():
                 # Generate AI response with prison context
@@ -947,6 +1015,10 @@ class AzabBot(discord.Client):
                         "solitary_level": prisoner_status.get('solitary_level', 0),
                         "good_behavior_score": prisoner_status.get('good_behavior_score', 0),
                         "escape_attempts": prisoner_status.get('escape_attempts', 0),
+                        "psychological_profile": psychological_context,
+                        "crimes": psychological_context.get('crimes', []),
+                        "grudge_level": psychological_context.get('grudge_level', 0),
+                        "personality_type": psychological_context.get('personality', 'unknown'),
                     },
                 )
 
@@ -962,6 +1034,26 @@ class AzabBot(discord.Client):
                     await self._send_formatted_response(
                         representative_message, ai_response, is_prison
                     )
+                    
+                    # Remember significant conversations
+                    if self.psychological_service and is_prison:
+                        # Determine if this conversation is memorable
+                        memory_type = "memorable"
+                        if psychological_context.get('grudge_level', 0) > 0:
+                            memory_type = "rebellious"
+                        elif "please" in combined_content.lower() or "sorry" in combined_content.lower():
+                            memory_type = "pathetic"
+                        elif len(ai_response) > 200:  # Long response = probably funny
+                            memory_type = "funny"
+                        
+                        # Save the conversation
+                        await self.psychological_service.remember_conversation(
+                            user_id,
+                            username,
+                            combined_content[:500],  # Limit message length
+                            ai_response[:500],  # Limit response length
+                            memory_type
+                        )
                 except Exception as e:
                     log_error(
                         "Failed to send AI response",
