@@ -984,8 +984,9 @@ class AzabBot(discord.Client):
                 is_quiet = len(messages) == 1 and len(combined_content) < 50
                 await self.prison_service.track_good_behavior(user_id, username, is_quiet)
                 
-                # Calculate harassment intensity
-                harassment_intensity = self.prison_service.calculate_harassment_intensity(user_id)
+                # Calculate harassment intensity (reduction is inverse of intensity)
+                harassment_reduction = self.prison_service.calculate_harassment_reduction(user_id)
+                harassment_intensity = 2.0 - harassment_reduction  # Convert reduction to intensity
                 
                 self.logger.log_info(
                     f"Prison Status - User: {username}, Solitary: {in_solitary}, "

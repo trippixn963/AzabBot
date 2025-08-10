@@ -804,6 +804,9 @@ class PrisonerDatabaseService(BaseService):
         """Execute a raw query (for advanced services)."""
         try:
             async with self._get_connection() as conn:
+                # Handle None params - SQLite doesn't accept None
+                if params is None:
+                    params = ()
                 result = await conn.execute(query, params)
                 await conn.commit()
                 return result
@@ -814,6 +817,9 @@ class PrisonerDatabaseService(BaseService):
         """Fetch single row from a raw query."""
         try:
             async with self._get_connection() as conn:
+                # Handle None params - SQLite doesn't accept None
+                if params is None:
+                    params = ()
                 cursor = await conn.execute(query, params)
                 row = await cursor.fetchone()
                 return dict(row) if row else None
@@ -824,6 +830,9 @@ class PrisonerDatabaseService(BaseService):
         """Fetch all rows from a raw query."""
         try:
             async with self._get_connection() as conn:
+                # Handle None params - SQLite doesn't accept None
+                if params is None:
+                    params = ()
                 cursor = await conn.execute(query, params)
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
