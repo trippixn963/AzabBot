@@ -5,9 +5,6 @@ on:
     types: [opened, closed]
   pull_request:
     types: [opened, closed, merged]
-  workflow_run:
-    workflows: ["*"]
-    types: [completed]
 
 jobs:
   notify:
@@ -64,55 +61,3 @@ jobs:
             -d "$PAYLOAD" \
             "${WEBHOOK_URL}?thread_id=${THREAD_ID}"
       
-      - name: Build Status Notification
-        if: github.event_name == 'workflow_run'
-        run: |
-          WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK_SY }}"
-          THREAD_ID="1404073613866438727"
-          
-          WORKFLOW_NAME="${{ github.event.workflow_run.name }}"
-          CONCLUSION="${{ github.event.workflow_run.conclusion }}"
-          RUN_URL="${{ github.event.workflow_run.html_url }}"
-          
-          # Skip if this is our own notification workflow
-          if [ "$WORKFLOW_NAME" = "Commit Notifications" ] || [ "$WORKFLOW_NAME" = "Release Notifications" ] || [ "$WORKFLOW_NAME" = "Status Updates" ]; then
-            exit 0
-          fi
-          
-          if [ "$CONCLUSION" = "success" ]; then
-            TITLE="✅ Build Successful"
-            COLOR=3066993   # Green
-            STATUS="All tests passed"
-          elif [ "$CONCLUSION" = "failure" ]; then
-            TITLE="❌ Build Failed"
-            COLOR=15158332  # Red
-            STATUS="Build or tests failed"
-          else
-            exit 0  # Skip other conclusions
-          fi
-          
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-          
-          PAYLOAD=$(cat <<EOF
-          {
-            "embeds": [{
-              "title": "${TITLE}",
-              "description": "**${WORKFLOW_NAME}**\n${STATUS}\n\n[View Details](${RUN_URL})",
-              "color": ${COLOR},
-              "url": "${RUN_URL}",
-              "footer": {
-                "text": "AzabBot CI/CD",
-                "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-              },
-              "timestamp": "${TIMESTAMP}"
-            }],
-            "username": "AzabBot Build",
-            "avatar_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
-          }
-          EOF
-          )
-          
-          curl -s -X POST \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD" \
-            "${WEBHOOK_URL}?thread_id=${THREAD_ID}"
