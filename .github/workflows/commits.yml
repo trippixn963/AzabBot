@@ -53,21 +53,9 @@ jobs:
             "${WEBHOOK_URL}?thread_id=${THREAD_ID}"
       
       - name: Discord Notification - Secondary Server
-        continue-on-error: true
         run: |
           THREAD_ID="1404073613866438727"
           WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK_SY }}"
-          
-          # Debug output
-          echo "Secondary webhook configured: $([ -z "$WEBHOOK_URL" ] && echo "NO" || echo "YES")"
-          
-          # Skip if webhook not configured
-          if [ -z "$WEBHOOK_URL" ]; then
-            echo "Secondary webhook not configured, skipping"
-            exit 0
-          fi
-          
-          echo "Sending to secondary server..."
           
           COMMIT_MSG="${{ github.event.head_commit.message }}"
           COMMIT_MSG=$(echo "$COMMIT_MSG" | head -c 500 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
@@ -102,46 +90,7 @@ jobs:
           EOF
           )
           
-          echo "Webhook URL length: ${#WEBHOOK_URL}"
-          echo "Webhook URL (first 50 chars): ${WEBHOOK_URL:0:50}..."
-          echo "Webhook URL (last 20 chars): ...${WEBHOOK_URL: -20}"
-          echo "Thread ID: $THREAD_ID"
-          
-          # Build full URL
-          FULL_URL="${WEBHOOK_URL}?thread_id=${THREAD_ID}"
-          echo "Full URL length: ${#FULL_URL}"
-          
-          # First test without thread_id
-          echo "Testing webhook without thread_id..."
-          TEST_RESPONSE=$(curl -X POST \
+          curl -s -X POST \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
-            "$WEBHOOK_URL" \
-            -w "\nHTTP_CODE:%{http_code}" \
-            -s 2>&1)
-          
-          TEST_CODE=$(echo "$TEST_RESPONSE" | grep "HTTP_CODE:" | cut -d: -f2)
-          echo "Test without thread_id - Response code: $TEST_CODE"
-          
-          if [ "$TEST_CODE" = "204" ] || [ "$TEST_CODE" = "200" ]; then
-            echo "Webhook works without thread_id, now trying with thread_id..."
-            
-            # Send with thread_id
-            FINAL_RESPONSE=$(curl -X POST \
-              -H "Content-Type: application/json" \
-              -d "$PAYLOAD" \
-              "$FULL_URL" \
-              -w "\nHTTP_CODE:%{http_code}" \
-              -s 2>&1)
-            
-            FINAL_CODE=$(echo "$FINAL_RESPONSE" | grep "HTTP_CODE:" | cut -d: -f2)
-            echo "With thread_id - Response code: $FINAL_CODE"
-            
-            if [ "$FINAL_CODE" != "204" ] && [ "$FINAL_CODE" != "200" ]; then
-              echo "Failed with thread_id. Response:"
-              echo "$FINAL_RESPONSE" | head -n -1
-            fi
-          else
-            echo "Webhook failed even without thread_id. Response:"
-            echo "$TEST_RESPONSE" | head -n -1
-          fi
+            "${WEBHOOK_URL}?thread_id=${THREAD_ID}"
