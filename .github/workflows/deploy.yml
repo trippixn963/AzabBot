@@ -152,8 +152,8 @@ jobs:
             Check the [release notes](https://github.com/${{ github.repository }}/releases/tag/${{ steps.extract_notes.outputs.VERSION }}) for what's new!
           color: 0x7289da
           url: https://github.com/${{ github.repository }}/releases/tag/${{ steps.extract_notes.outputs.VERSION }}
-          username: SaydnayaBot Releases
-          avatar_url: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png
+          username: Azab Releases
+          avatar_url: https://github.com/${{ github.repository }}/raw/main/images/PFP.gif
 
   deploy:
     name: Deploy to ${{ github.event.inputs.environment || 'production' }}
@@ -233,5 +233,5 @@ jobs:
             ${{ needs.deploy.result != 'success' && '## ⚠️ Action Required\nDeployment failed. Please check the logs and retry if necessary.' || '## ✅ Deployment Complete\nThe application has been successfully deployed and is now running.' }}
           color: ${{ needs.deploy.result == 'success' && '0x00ff00' || needs.deploy.result == 'failure' && '0xff0000' || '0xffaa00' }}
           url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          username: SaydnayaBot Deploy
-          avatar_url: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png
+          username: Azab Deploy
+          avatar_url: https://github.com/${{ github.repository }}/raw/main/images/PFP.gif

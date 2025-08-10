@@ -230,7 +230,7 @@ jobs:
             ## 🚀 Deployment
             Automatic deployment to production has been triggered.
           color: 0x7289da
-          image: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png
+          image: https://github.com/${{ github.repository }}/raw/main/images/PFP.gif
           url: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.prepare-release.outputs.version }}
-          username: SaydnayaBot Releases
-          avatar_url: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png
+          username: Azab Releases
+          avatar_url: https://github.com/${{ github.repository }}/raw/main/images/PFP.gif

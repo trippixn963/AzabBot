@@ -92,8 +92,8 @@ jobs:
             "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
             "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
             "footer": {
-              "text": "SaydnayaBot CI",
-              "icon_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+              "text": "Azab CI",
+              "icon_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
             },
             "fields": [
               {
@@ -113,8 +113,8 @@ jobs:
               }
             ]
           }],
-          "username": "SaydnayaBot CI",
-          "avatar_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+          "username": "Azab CI",
+          "avatar_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
         }
         EOF
         )
@@ -135,8 +135,8 @@ jobs:
             "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
             "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
             "footer": {
-              "text": "SaydnayaBot CI",
-              "icon_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+              "text": "Azab CI",
+              "icon_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
             },
             "fields": [
               {
@@ -156,8 +156,8 @@ jobs:
               }
             ]
           }],
-          "username": "SaydnayaBot CI",
-          "avatar_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+          "username": "Azab CI",
+          "avatar_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
         }
         EOF
         )

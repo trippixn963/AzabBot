@@ -31,8 +31,8 @@ jobs:
             ✅ If you see this message, your Discord webhook is configured correctly!
           color: 0x00ff00
           url: ${{ github.server_url }}/${{ github.repository }}
-          username: SaydnayaBot Test
-          avatar_url: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png
+          username: Azab Test
+          avatar_url: https://github.com/${{ github.repository }}/raw/main/images/PFP.gif
           nodetail: false
       
       - name: Test Different Status Colors
@@ -50,7 +50,7 @@ jobs:
             
             Current test status: **Success**
           color: 0x7289da
-          username: SaydnayaBot Colors
+          username: Azab Colors
       
       - name: Test with Mention
         uses: sarisia/actions-status-discord@v1
@@ -66,4 +66,4 @@ jobs:
             
             This test doesn't actually mention to avoid spam.
           color: 0xffaa00
-          username: SaydnayaBot Mentions
+          username: Azab Mentions

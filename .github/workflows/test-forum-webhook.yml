@@ -29,8 +29,8 @@ jobs:
               "color": 3066993,
               "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
               "footer": {
-                "text": "SaydnayaBot CI/CD",
-                "icon_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+                "text": "Azab CI/CD",
+                "icon_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
               },
               "fields": [
                 {
@@ -45,8 +45,8 @@ jobs:
                 }
               ]
             }],
-            "username": "SaydnayaBot CI",
-            "avatar_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+            "username": "Azab CI",
+            "avatar_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
           }
           EOF
           )
