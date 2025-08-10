@@ -58,11 +58,16 @@ jobs:
           THREAD_ID="1404073613866438727"
           WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK_SY }}"
           
+          # Debug output
+          echo "Secondary webhook configured: $([ -z "$WEBHOOK_URL" ] && echo "NO" || echo "YES")"
+          
           # Skip if webhook not configured
           if [ -z "$WEBHOOK_URL" ]; then
             echo "Secondary webhook not configured, skipping"
             exit 0
           fi
+          
+          echo "Sending to secondary server..."
           
           COMMIT_MSG="${{ github.event.head_commit.message }}"
           COMMIT_MSG=$(echo "$COMMIT_MSG" | head -c 500 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
