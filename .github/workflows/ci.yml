@@ -50,24 +50,72 @@ jobs:
       run: |
         poetry run pytest -v --cov=src --cov-report=xml --cov-report=term-missing
     
-    - name: Notify Discord - Tests
-      uses: sarisia/actions-status-discord@v1
+    - name: Notify Discord Forum - Tests
       if: always()
-      with:
-        webhook: ${{ secrets.DISCORD_WEBHOOK }}
-        title: "🧪 CI Tests - ${{ job.status == 'success' && 'Passed ✅' || 'Failed ❌' }}"
-        description: |
-          **Repository:** `${{ github.repository }}`
-          **Branch:** `${{ github.ref_name }}`
-          **Commit:** [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
-          **Author:** ${{ github.actor }}
-          
-          **Test Results:** ${{ job.status == 'success' && '✅ All tests passed' || '❌ Tests failed' }}
-          **Coverage Report:** ${{ job.status == 'success' && '📊 Coverage report generated' || '⚠️ Coverage unavailable' }}
-        color: ${{ job.status == 'success' && '0x00ff00' || '0xff0000' }}
-        url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        username: SaydnayaBot CI
-        avatar_url: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png
+      run: |
+        # Forum thread ID
+        THREAD_ID="1403930609348378624"
+        WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK }}"
+        
+        # Determine status
+        if [ "${{ job.status }}" == "success" ]; then
+          STATUS_EMOJI="✅"
+          COLOR="3066993"
+          STATUS_TEXT="Passed"
+        else
+          STATUS_EMOJI="❌"
+          COLOR="15158332"
+          STATUS_TEXT="Failed"
+        fi
+        
+        # Create the JSON payload
+        PAYLOAD=$(cat <<EOF
+        {
+          "embeds": [{
+            "title": "🧪 CI Tests - ${STATUS_TEXT} ${STATUS_EMOJI}",
+            "description": "**Repository:** \`${{ github.repository }}\`\n**Branch:** \`${{ github.ref_name }}\`\n**Commit:** [\`${{ github.sha }}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})\n**Author:** ${{ github.actor }}\n\n**Test Results:** ${STATUS_EMOJI} All tests ${STATUS_TEXT}\n**Coverage:** ${{ job.status == 'success' && '📊 Coverage report generated' || '⚠️ Coverage unavailable' }}",
+            "color": ${COLOR},
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+            "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "footer": {
+              "text": "SaydnayaBot CI",
+              "icon_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+            },
+            "fields": [
+              {
+                "name": "Workflow",
+                "value": "${{ github.workflow }}",
+                "inline": true
+              },
+              {
+                "name": "Run Number",
+                "value": "#${{ github.run_number }}",
+                "inline": true
+              },
+              {
+                "name": "Python Version",
+                "value": "${{ matrix.python-version }}",
+                "inline": true
+              }
+            ]
+          }],
+          "username": "SaydnayaBot CI",
+          "avatar_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+        }
+        EOF
+        )
+        
+        # Send to the forum thread
+        response=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD" \
+          "${WEBHOOK_URL}?thread_id=${THREAD_ID}")
+        
+        if [ "$response" -eq 204 ]; then
+          echo "✅ Discord notification sent to forum thread"
+        else
+          echo "⚠️ Discord notification failed with status: $response"
+        fi
       
   security:
     runs-on: ubuntu-latest
@@ -85,21 +133,54 @@ jobs:
     - name: Run Bandit Security Check
       run: bandit -r src/ -ll -i --skip B101
     
-    - name: Notify Discord - Security
-      uses: sarisia/actions-status-discord@v1
+    - name: Notify Discord Forum - Security
       if: always()
-      with:
-        webhook: ${{ secrets.DISCORD_WEBHOOK }}
-        title: "🔒 Security Scan - ${{ job.status == 'success' && 'Clean ✅' || 'Issues Found ⚠️' }}"
-        description: |
-          **Repository:** `${{ github.repository }}`
-          **Branch:** `${{ github.ref_name }}`
-          **Scan Type:** Bandit Security Check
-          
-          **Results:** ${{ job.status == 'success' && '✅ No security vulnerabilities detected' || '⚠️ Security issues found - review required' }}
-          
-          ${{ job.status != 'success' && '**Action Required:** Please review the security findings and address any vulnerabilities.' || '' }}
-        color: ${{ job.status == 'success' && '0x00ff00' || '0xffaa00' }}
-        url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        username: SaydnayaBot Security
-        avatar_url: https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png
+      run: |
+        # Forum thread ID
+        THREAD_ID="1403930609348378624"
+        WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK }}"
+        
+        # Determine status
+        if [ "${{ job.status }}" == "success" ]; then
+          STATUS_EMOJI="✅"
+          COLOR="3066993"
+          STATUS_TEXT="Clean"
+          RESULT_TEXT="✅ No security vulnerabilities detected"
+        else
+          STATUS_EMOJI="⚠️"
+          COLOR="16776960"
+          STATUS_TEXT="Issues Found"
+          RESULT_TEXT="⚠️ Security issues found - review required\n\n**Action Required:** Please review the security findings and address any vulnerabilities."
+        fi
+        
+        # Create the JSON payload
+        PAYLOAD=$(cat <<EOF
+        {
+          "embeds": [{
+            "title": "🔒 Security Scan - ${STATUS_TEXT} ${STATUS_EMOJI}",
+            "description": "**Repository:** \`${{ github.repository }}\`\n**Branch:** \`${{ github.ref_name }}\`\n**Scan Type:** Bandit Security Check\n\n**Results:** ${RESULT_TEXT}",
+            "color": ${COLOR},
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+            "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "footer": {
+              "text": "SaydnayaBot Security",
+              "icon_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+            }
+          }],
+          "username": "SaydnayaBot Security",
+          "avatar_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+        }
+        EOF
+        )
+        
+        # Send to the forum thread
+        response=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD" \
+          "${WEBHOOK_URL}?thread_id=${THREAD_ID}")
+        
+        if [ "$response" -eq 204 ]; then
+          echo "✅ Discord notification sent to forum thread"
+        else
+          echo "⚠️ Discord notification failed with status: $response"
+        fi

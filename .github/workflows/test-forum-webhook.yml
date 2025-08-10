@@ -1,0 +1,66 @@
+name: Test Forum Webhook
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'Test message to send'
+        required: false
+        default: 'Testing forum thread webhook integration'
+        type: string
+
+jobs:
+  test-forum:
+    name: Test Forum Thread Posting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send to Forum Thread
+        run: |
+          # Your specific thread ID
+          THREAD_ID="1403930609348378624"
+          WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK }}"
+          
+          # Create the JSON payload
+          PAYLOAD=$(cat <<EOF
+          {
+            "embeds": [{
+              "title": "🧪 Forum Thread Test",
+              "description": "**Test Message:** ${{ github.event.inputs.message }}\n**Repository:** \`${{ github.repository }}\`\n**Triggered by:** ${{ github.actor }}\n**Thread ID:** \`${THREAD_ID}\`\n\n✅ If you see this in the forum thread, the integration is working!",
+              "color": 3066993,
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+              "footer": {
+                "text": "SaydnayaBot CI/CD",
+                "icon_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+              },
+              "fields": [
+                {
+                  "name": "Workflow",
+                  "value": "${{ github.workflow }}",
+                  "inline": true
+                },
+                {
+                  "name": "Run Number",
+                  "value": "#${{ github.run_number }}",
+                  "inline": true
+                }
+              ]
+            }],
+            "username": "SaydnayaBot CI",
+            "avatar_url": "https://github.com/${{ github.repository }}/raw/main/docs/setup/avatar.png"
+          }
+          EOF
+          )
+          
+          # Send to the specific thread
+          response=$(curl -s -o response.txt -w "%{http_code}" -X POST \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "${WEBHOOK_URL}?thread_id=${THREAD_ID}")
+          
+          echo "Response code: $response"
+          if [ "$response" -eq 204 ]; then
+            echo "✅ Successfully posted to forum thread!"
+          else
+            echo "❌ Failed to post. Response:"
+            cat response.txt
+          fi
