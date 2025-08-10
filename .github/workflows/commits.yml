@@ -78,8 +78,8 @@ jobs:
                 }
               ],
               "footer": {
-                "text": "🤖 AzabBot v2.0 • Commit ${GITHUB_SHA:0:7} • ${BUILD_TIME}",
-                "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+                "text": "AzabBot v2.0 • Commit ${GITHUB_SHA:0:7}",
+                "icon_url": "https://cdn.discordapp.com/icons/1228455909827805308/a_3557a72e70e15c96cbd31a88d659efed.gif"
               },
               "timestamp": "${TIMESTAMP}"
             }],
@@ -178,8 +178,8 @@ jobs:
                 }
               ],
               "footer": {
-                "text": "🤖 AzabBot v2.0 • Commit ${GITHUB_SHA:0:7} • ${BUILD_TIME}",
-                "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+                "text": "AzabBot v2.0 • Commit ${GITHUB_SHA:0:7}",
+                "icon_url": "https://cdn.discordapp.com/icons/1228455909827805308/a_3557a72e70e15c96cbd31a88d659efed.gif"
               },
               "timestamp": "${TIMESTAMP}"
             }],
