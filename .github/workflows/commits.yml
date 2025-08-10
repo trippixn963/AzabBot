@@ -77,7 +77,7 @@ jobs:
                 }
               ],
               "footer": {
-                "text": "AzabBot v1.5.0 • Today at $(date +%I:%M %p)",
+                "text": "AzabBot v1.5.0 • Continuous Integration",
                 "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
               },
               "timestamp": "${TIMESTAMP}"
@@ -176,7 +176,7 @@ jobs:
                 }
               ],
               "footer": {
-                "text": "AzabBot v1.5.0 • Today at $(date +%I:%M %p)",
+                "text": "AzabBot v1.5.0 • Continuous Integration",
                 "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
               },
               "timestamp": "${TIMESTAMP}"

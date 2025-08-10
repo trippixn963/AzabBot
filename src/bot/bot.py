@@ -84,6 +84,7 @@ class AzabBot(discord.Client):
         self.name = "AzabBot"  # Service identifier
         self.ai_service: Optional[AIService] = None
         self.health_monitor: Optional[HealthMonitor] = None
+        self.memory_service = None  # Will be set later if available
 
         # Bot metrics and state
         self.metrics = BotMetrics()
@@ -204,8 +205,6 @@ class AzabBot(discord.Client):
             if await self._handle_developer_commands(message):
                 return
 
-            # Bot is always active - removed activation check
-
             # Check if user has the target role from config
             target_role_id = self.config.get("TARGET_ROLE_ID")
             user_has_role = False
@@ -227,10 +226,32 @@ class AzabBot(discord.Client):
                 f"DEBUG: Channel ID: {message.channel.id}, Is prison channel: {is_prison_channel}"
             )
 
-            # Bot only responds if: user has target role AND in prison channel
-            if not (is_prison_channel and user_has_role):
+            # ALWAYS store and learn from messages for context
+            # Store message in memory service for learning
+            if self.memory_service:
+                try:
+                    await self.memory_service.store_message(
+                        message.author.id,
+                        message.content,
+                        message.channel.id,
+                        message.guild.id if message.guild else None
+                    )
+                    self.logger.log_info(
+                        f"📚 Stored message from {message.author.display_name} for learning"
+                    )
+                except Exception as e:
+                    self.logger.log_warning(f"Failed to store message in memory: {e}")
+
+            # Check if bot should respond
+            should_respond = (
+                self.is_active and  # Bot must be activated
+                is_prison_channel and  # Must be in prison channel
+                user_has_role  # User must have the target role
+            )
+
+            if not should_respond:
                 self.logger.log_info(
-                    f"DEBUG: Conditions not met - Prison channel: {is_prison_channel}, Has role: {user_has_role}"
+                    f"DEBUG: Not responding - Active: {self.is_active}, Prison: {is_prison_channel}, Role: {user_has_role}"
                 )
                 return
 
@@ -290,7 +311,7 @@ class AzabBot(discord.Client):
                 f"DEBUG: Member update detected - {after.display_name} (ID: {after.id})"
             )
 
-            # Bot is always active - no need to check
+            # Member updates are always monitored regardless of bot active state
 
             # Get the target role ID from config
             target_role_id = self.config.get("TARGET_ROLE_ID")
@@ -318,14 +339,10 @@ class AzabBot(discord.Client):
                 self.current_prisoners.discard(after.display_name)
                 
                 # Send message in general chat
-                general_channel_id = self.config.get("GENERAL_CHANNEL_ID")
-                self.logger.log_info(f"General channel ID from config: {general_channel_id}")
-                
-                if not general_channel_id:
-                    self.logger.log_warning("GENERAL_CHANNEL_ID not configured")
-                    return
+                general_channel_id = 1350540215797940245  # Hardcoded general chat channel ID
+                self.logger.log_info(f"Using general channel ID: {general_channel_id}")
                     
-                general_channel = after.guild.get_channel(int(general_channel_id))
+                general_channel = after.guild.get_channel(general_channel_id)
                 self.logger.log_info(f"General channel object: {general_channel}")
                 
                 if general_channel:
@@ -465,26 +482,10 @@ class AzabBot(discord.Client):
                     {"user_id": after.id, "username": after.display_name},
                 )
 
-            # If they just got unmuted (role removed)
-            elif had_role and not has_role:
-                self.logger.log_info(
-                    f"🔓 Prisoner released: {after.display_name} was unmuted"
-                )
-
-                # Remove from current prisoners set
-                self.current_prisoners.discard(after.display_name)
-
-                # Find the prison channel to announce release
-                prison_channel_id = self.config.get("PRISON_CHANNEL_IDS", "")
-                if prison_channel_id:
-                    channel = after.guild.get_channel(int(prison_channel_id))
-                    if channel:
-                        release_messages = [
-                            f"{after.display_name} has been released. They survived... this time.",
-                            f"Prisoner {after.display_name} served their time. Don't come back!",
-                            f"{after.display_name} is free to go. We'll miss the entertainment.",
-                        ]
-                        await channel.send(random.choice(release_messages))
+            # NOTE: Unmute handling is already done above (lines 332-367)
+            # This elif block was causing duplicate messages
+            # elif had_role and not has_role:
+            #     # This code was moved/merged with the earlier unmute handler
 
         except Exception as e:
             log_error(
@@ -496,6 +497,18 @@ class AzabBot(discord.Client):
                     "guild_id": after.guild.id if after and after.guild else None,
                 },
             )
+
+    async def on_member_remove(self, member: discord.Member):
+        """Handle when a member leaves the server."""
+        try:
+            # Remove from current prisoners if they were in jail
+            if member.display_name in self.current_prisoners:
+                self.current_prisoners.discard(member.display_name)
+                self.logger.log_info(
+                    f"🚪 Removed {member.display_name} from prisoners list (left server)"
+                )
+        except Exception as e:
+            self.logger.log_error(f"Error in on_member_remove: {e}")
 
     async def on_error(self, event: str, *args, **kwargs):
         """Handle Discord client errors."""
@@ -1127,25 +1140,45 @@ Response Rate: {(self.metrics.responses_generated /
                 return
 
             if self.current_prisoners:
-                # Rotate between prisoners
-                prisoners_list = list(self.current_prisoners)
-                self.presence_index = self.presence_index % len(prisoners_list)
-                prisoner_name = prisoners_list[self.presence_index]
+                # Clean up prisoners who are no longer in any guild
+                valid_prisoners = []
+                for prisoner_name in self.current_prisoners:
+                    # Check if this user is still in any guild
+                    member_exists = False
+                    for guild in self.guilds:
+                        if discord.utils.get(guild.members, display_name=prisoner_name):
+                            member_exists = True
+                            break
+                    
+                    if member_exists:
+                        valid_prisoners.append(prisoner_name)
+                    else:
+                        self.logger.log_info(f"🧹 Removing {prisoner_name} from presence (not in server)")
+                
+                # Update the current_prisoners set
+                self.current_prisoners = set(valid_prisoners)
+                
+                if valid_prisoners:
+                    # Rotate between valid prisoners
+                    self.presence_index = self.presence_index % len(valid_prisoners)
+                    prisoner_name = valid_prisoners[self.presence_index]
 
-                activity = discord.Activity(
-                    type=discord.ActivityType.playing, name=f"with {prisoner_name}"
-                )
-                await self.change_presence(activity=activity, status=discord.Status.online)
+                    activity = discord.Activity(
+                        type=discord.ActivityType.playing, name=f"with {prisoner_name}"
+                    )
+                    await self.change_presence(activity=activity, status=discord.Status.online)
 
-                self.presence_index += 1
-                self.logger.log_info(f"Updated presence: Playing with {prisoner_name}")
-            else:
-                # Default presence when no prisoners
-                activity = discord.Activity(
-                    type=discord.ActivityType.watching, name="⛓ Sednaya"
-                )
-                await self.change_presence(activity=activity, status=discord.Status.online)
-                self.logger.log_info("Updated presence: Watching ⛓ Sednaya")
+                    self.presence_index += 1
+                    self.logger.log_info(f"Updated presence: Playing with {prisoner_name}")
+                    return
+            
+            # If we get here, either no prisoners or all were invalid
+            # Default presence when no prisoners
+            activity = discord.Activity(
+                type=discord.ActivityType.watching, name="⛓ Sednaya"
+            )
+            await self.change_presence(activity=activity, status=discord.Status.online)
+            self.logger.log_info("Updated presence: Watching ⛓ Sednaya")
 
         except Exception as e:
             log_error("Failed to update presence", exception=e)

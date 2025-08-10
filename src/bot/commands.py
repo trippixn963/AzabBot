@@ -35,7 +35,7 @@ def create_activate_command(bot):
     """
 
     @app_commands.command(
-        name="activate", description="Activate the bot (Developer only)"
+        name="activate", description="Enable bot responses (Developer only)"
     )
     async def activate(interaction: discord.Interaction):
         """
@@ -64,16 +64,16 @@ def create_activate_command(bot):
         # Create success embed
         embed = discord.Embed(
             title="✅ Bot Activated",
-            description="AzabBot is now active and monitoring all channels!",
+            description="AzabBot is now active and will respond to prisoners!",
             color=0x00FF00,
             timestamp=discord.utils.utcnow()
         )
         if bot.user and bot.user.avatar:
             embed.set_thumbnail(url=bot.user.avatar.url)
         embed.add_field(name="Status", value="🟢 Active", inline=True)
-        embed.add_field(name="Monitoring", value="👁️ Enabled", inline=True)
+        embed.add_field(name="Responses", value="💬 Enabled", inline=True)
         embed.add_field(name="Prisoners", value=f"{len(bot.current_prisoners)}", inline=True)
-        embed.set_footer(text="AzabBot v1.5.0 • Now Watching")
+        embed.set_footer(text="AzabBot v1.5.0 • Responding")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     return activate
@@ -93,7 +93,7 @@ def create_deactivate_command(bot):
     """
 
     @app_commands.command(
-        name="deactivate", description="Deactivate the bot (Developer only)"
+        name="deactivate", description="Disable bot responses (Developer only)"
     )
     async def deactivate(interaction: discord.Interaction):
         """
@@ -122,16 +122,16 @@ def create_deactivate_command(bot):
         # Create deactivation embed
         embed = discord.Embed(
             title="🔴 Bot Deactivated",
-            description="AzabBot is now inactive. Monitoring and responses are disabled.",
+            description="AzabBot is now inactive. Still learning but not responding.",
             color=0xFF0000,
             timestamp=discord.utils.utcnow()
         )
         if bot.user and bot.user.avatar:
             embed.set_thumbnail(url=bot.user.avatar.url)
         embed.add_field(name="Status", value="⭕ Inactive", inline=True)
-        embed.add_field(name="Monitoring", value="🚫 Disabled", inline=True)
+        embed.add_field(name="Responses", value="🔇 Disabled", inline=True)
         embed.add_field(name="Commands", value="✅ Still Available", inline=True)
-        embed.set_footer(text="AzabBot v1.5.0 • Sleeping")
+        embed.set_footer(text="AzabBot v1.5.0 • Silent Mode")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     return deactivate
