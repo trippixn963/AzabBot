@@ -5,7 +5,6 @@
 # Matches QuranBot's embed style for visual consistency.
 # =============================================================================
 
-from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
 from discord import Embed

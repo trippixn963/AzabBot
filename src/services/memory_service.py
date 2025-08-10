@@ -6,15 +6,13 @@
 # for more effective responses.
 # =============================================================================
 
-import hashlib
 import json
 import sqlite3
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from src.core.logger import get_logger
 from src.services.base_service import BaseService, HealthCheckResult, ServiceStatus
 
 
@@ -399,7 +397,7 @@ class MemoryService(BaseService):
 
         cursor.execute(
             """
-            INSERT OR REPLACE INTO user_memories 
+            INSERT OR REPLACE INTO user_memories
             (user_id, username, total_interactions, last_seen, personality_profile,
              trigger_words, response_effectiveness, conversation_topics, emotional_states,
              debate_wins, debate_losses, ignored_responses, updated_at)
@@ -436,7 +434,7 @@ class MemoryService(BaseService):
 
         cursor.execute(
             """
-            INSERT INTO conversation_history 
+            INSERT INTO conversation_history
             (user_id, channel_id, message_content, bot_response, response_strategy)
             VALUES (?, ?, ?, ?, ?)
         """,
@@ -453,7 +451,7 @@ class MemoryService(BaseService):
         cutoff = datetime.now() - timedelta(days=30)
         cursor.execute(
             """
-            DELETE FROM conversation_history 
+            DELETE FROM conversation_history
             WHERE timestamp < ?
         """,
             (cutoff.isoformat(),),

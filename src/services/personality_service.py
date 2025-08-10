@@ -11,7 +11,6 @@ from datetime import datetime, time
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-from src.core.logger import get_logger
 from src.services.base_service import BaseService, HealthCheckResult, ServiceStatus
 
 
