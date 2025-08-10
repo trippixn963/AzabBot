@@ -455,7 +455,7 @@ This project is provided as-is with no license. Use at your own risk.
 
 ## 🙏 Credits
 
-Created by **John Hamwi** for [discord.gg/syria](https://discord.gg/syria)
+Developed by **حَـــــنَّـــــا** (John Hamwi) for [discord.gg/syria](https://discord.gg/syria)
 
 **Version:** 3.0.0 | **Status:** Personal Project | **Support:** None
 
