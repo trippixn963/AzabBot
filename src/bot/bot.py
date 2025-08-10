@@ -74,7 +74,7 @@ class SaydnayaBot(discord.Client):
         intents.members = True  # Need this to track member updates
 
         super().__init__(intents=intents)
-        
+
         # Set up the command tree for slash commands
         self.tree = app_commands.CommandTree(self)
 
@@ -103,7 +103,7 @@ class SaydnayaBot(discord.Client):
         self.developer_id = config.get("DEVELOPER_ID")  # Developer from config
         if not self.developer_id:
             raise ValueError("DEVELOPER_ID must be set in configuration")
-        
+
         # Presence management
         self.current_prisoners = set()  # Track prisoners in jail
         self.presence_rotation_task = None
@@ -132,14 +132,18 @@ class SaydnayaBot(discord.Client):
                 self.metrics.last_response_date = today
 
             # Background tasks initialization would go here if needed
-            
+
             # Register slash commands
-            from src.bot.commands import create_activate_command, create_deactivate_command, create_status_command
-            
+            from src.bot.commands import (
+                create_activate_command,
+                create_deactivate_command,
+                create_status_command,
+            )
+
             self.tree.add_command(create_activate_command(self))
             self.tree.add_command(create_deactivate_command(self))
             self.tree.add_command(create_status_command(self))
-            
+
             # Sync slash commands
             await self.tree.sync()
             self.logger.log_info("Slash commands synced")
@@ -184,7 +188,7 @@ class SaydnayaBot(discord.Client):
             self.logger.log_info(
                 f"DEBUG: 📥 Message received from {message.author} in #{message.channel.name}"
             )
-            
+
             # Handle developer commands first (always works, even when deactivated)
             if await self._handle_developer_commands(message):
                 return
@@ -195,25 +199,30 @@ class SaydnayaBot(discord.Client):
             target_role_id = self.config.get("TARGET_ROLE_ID")
             user_has_role = False
             if target_role_id:
-                if hasattr(message.author, 'roles'):
-                    user_has_role = any(str(role.id) == str(target_role_id) for role in message.author.roles)
+                if hasattr(message.author, "roles"):
+                    user_has_role = any(
+                        str(role.id) == str(target_role_id)
+                        for role in message.author.roles
+                    )
                     self.logger.log_info(
                         f"DEBUG: User roles: {[role.id for role in message.author.roles]}, Target role: {target_role_id}, Has role: {user_has_role}"
                     )
-            
+
             # Check if this is a prison channel
-            is_prison_channel = self._is_prison_channel(message.channel.name, message.channel.id)
+            is_prison_channel = self._is_prison_channel(
+                message.channel.name, message.channel.id
+            )
             self.logger.log_info(
                 f"DEBUG: Channel ID: {message.channel.id}, Is prison channel: {is_prison_channel}"
             )
-            
+
             # Bot only responds if: user has target role AND in prison channel
             if not (is_prison_channel and user_has_role):
                 self.logger.log_info(
                     f"DEBUG: Conditions not met - Prison channel: {is_prison_channel}, Has role: {user_has_role}"
                 )
                 return
-            
+
             self.logger.log_info("DEBUG: ✅ All conditions met, processing message")
 
             # Check rate limits
@@ -234,8 +243,8 @@ class SaydnayaBot(discord.Client):
                     context={
                         "user_id": message.author.id,
                         "channel_id": message.channel.id,
-                        "message_content": message.content[:100]
-                    }
+                        "message_content": message.content[:100],
+                    },
                 )
 
         except Exception as e:
@@ -269,35 +278,39 @@ class SaydnayaBot(discord.Client):
             self.logger.log_info(
                 f"DEBUG: Member update detected - {after.display_name} (ID: {after.id})"
             )
-            
+
             # Bot is always active - no need to check
-            
+
             # Get the target role ID from config
             target_role_id = self.config.get("TARGET_ROLE_ID")
             if not target_role_id:
-                self.logger.log_warning("No TARGET_ROLE_ID configured, cannot detect prisoners")
+                self.logger.log_warning(
+                    "No TARGET_ROLE_ID configured, cannot detect prisoners"
+                )
                 return
-            
+
             # Check if member just got the muted role
             had_role = any(str(role.id) == str(target_role_id) for role in before.roles)
             has_role = any(str(role.id) == str(target_role_id) for role in after.roles)
-            
+
             self.logger.log_info(
                 f"DEBUG: Role check - Had role: {had_role}, Has role: {has_role}, Target: {target_role_id}"
             )
-            
+
             # If they just got the muted role
             if not had_role and has_role:
-                self.logger.log_info(f"🚨 New prisoner detected: {after.display_name} just got muted!")
-                
+                self.logger.log_info(
+                    f"🚨 New prisoner detected: {after.display_name} just got muted!"
+                )
+
                 # Add to current prisoners set
                 self.current_prisoners.add(after.display_name)
-                
+
                 # Find the prison channel
                 prison_channel_id = self.config.get("PRISON_CHANNEL_IDS", "")
                 if not prison_channel_id:
                     return
-                
+
                 # Get the prison channel
                 try:
                     channel = after.guild.get_channel(int(prison_channel_id))
@@ -310,34 +323,40 @@ class SaydnayaBot(discord.Client):
                     log_error(
                         f"Invalid prison channel ID: {prison_channel_id}",
                         exception=e,
-                        context={"guild_id": after.guild.id, "user_id": after.id}
+                        context={"guild_id": after.guild.id, "user_id": after.id},
                     )
                     return
-                
+
                 # Wait a moment for them to be moved to the channel
                 await asyncio.sleep(2)
-                
+
                 # Check if this is a returning prisoner using memory service
                 is_returning = False
                 previous_visits = 0
-                
+
                 # Try to check user history
                 try:
                     # Check database for previous interactions
                     import sqlite3
+
                     conn = sqlite3.connect("data/memory.db")
                     cursor = conn.cursor()
-                    cursor.execute("SELECT total_interactions FROM user_memories WHERE user_id = ?", (str(after.id),))
+                    cursor.execute(
+                        "SELECT total_interactions FROM user_memories WHERE user_id = ?",
+                        (str(after.id),),
+                    )
                     result = cursor.fetchone()
                     conn.close()
-                    
+
                     if result and result[0] > 0:
                         is_returning = True
                         previous_visits = result[0]
-                        self.logger.log_info(f"🔄 RETURNING PRISONER: {after.display_name} has {previous_visits} previous interactions!")
+                        self.logger.log_info(
+                            f"🔄 RETURNING PRISONER: {after.display_name} has {previous_visits} previous interactions!"
+                        )
                 except Exception as e:
                     self.logger.log_warning(f"Could not check prisoner history: {e}")
-                
+
                 # Generate appropriate message based on history
                 if is_returning:
                     # Messages for returning prisoners - mention their history!
@@ -371,29 +390,34 @@ class SaydnayaBot(discord.Client):
                 except discord.Forbidden:
                     log_error(
                         "No permission to send message in prison channel",
-                        context={"channel_id": channel.id, "channel_name": channel.name}
+                        context={
+                            "channel_id": channel.id,
+                            "channel_name": channel.name,
+                        },
                     )
                 except discord.HTTPException as e:
                     log_error(
                         "Failed to send welcome message",
                         exception=e,
-                        context={"user_id": after.id, "channel_id": channel.id}
+                        context={"user_id": after.id, "channel_id": channel.id},
                     )
-                
+
                 # Log the event
                 log_system_event(
                     "new_prisoner",
                     f"New prisoner detected: {after.display_name}",
-                    {"user_id": after.id, "username": after.display_name}
+                    {"user_id": after.id, "username": after.display_name},
                 )
-            
+
             # If they just got unmuted (role removed)
             elif had_role and not has_role:
-                self.logger.log_info(f"🔓 Prisoner released: {after.display_name} was unmuted")
-                
+                self.logger.log_info(
+                    f"🔓 Prisoner released: {after.display_name} was unmuted"
+                )
+
                 # Remove from current prisoners set
                 self.current_prisoners.discard(after.display_name)
-                
+
                 # Find the prison channel to announce release
                 prison_channel_id = self.config.get("PRISON_CHANNEL_IDS", "")
                 if prison_channel_id:
@@ -405,7 +429,7 @@ class SaydnayaBot(discord.Client):
                             f"{after.display_name} is free to go. We'll miss the entertainment.",
                         ]
                         await channel.send(random.choice(release_messages))
-                
+
         except Exception as e:
             log_error(
                 "Error in on_member_update event",
@@ -414,7 +438,7 @@ class SaydnayaBot(discord.Client):
                     "before_user": before.display_name if before else "Unknown",
                     "after_user": after.display_name if after else "Unknown",
                     "guild_id": after.guild.id if after and after.guild else None,
-                }
+                },
             )
 
     async def on_error(self, event: str, *args, **kwargs):
@@ -446,9 +470,7 @@ class SaydnayaBot(discord.Client):
         ]
 
         # Feature flags
-        features = {
-            "Feature Flags": []
-        }
+        features = {"Feature Flags": []}
 
         # Channel information
         channels_info = []
@@ -487,15 +509,14 @@ class SaydnayaBot(discord.Client):
         try:
             # Set initial online status with default presence
             activity = discord.Activity(
-                type=discord.ActivityType.watching,
-                name="⛓ Sednaya"
+                type=discord.ActivityType.watching, name="⛓ Sednaya"
             )
             await self.change_presence(activity=activity, status=discord.Status.online)
             self.logger.log_info("Bot started in active state")
-            
+
             # Scan for current prisoners on startup
             await self._scan_for_prisoners()
-            
+
             # Start presence rotation task
             if self.presence_rotation_task:
                 self.presence_rotation_task.cancel()
@@ -586,7 +607,7 @@ class SaydnayaBot(discord.Client):
         """Simple rate limiting - 10 second cooldown for all channels."""
         now = datetime.datetime.now(timezone.utc)
         user_id = message.author.id
-        
+
         # 10 second cooldown for all channels to prevent spam
         cooldown_seconds = 10
 
@@ -615,7 +636,7 @@ class SaydnayaBot(discord.Client):
             )
             if is_prison:
                 return True
-        
+
         # Check prison keywords in channel name as fallback
         prison_keywords = [
             "prison",
@@ -628,15 +649,19 @@ class SaydnayaBot(discord.Client):
             "cage",
             "cell",
         ]
-        has_keyword = any(keyword in channel_name.lower() for keyword in prison_keywords)
+        has_keyword = any(
+            keyword in channel_name.lower() for keyword in prison_keywords
+        )
         if has_keyword:
-            self.logger.log_info(f"DEBUG: Channel name '{channel_name}' contains prison keyword")
+            self.logger.log_info(
+                f"DEBUG: Channel name '{channel_name}' contains prison keyword"
+            )
         return has_keyword
 
     async def _add_message_to_batch(self, message: discord.Message):
         """Add message to batch for delayed processing."""
         user_id = message.author.id
-        
+
         self.logger.log_info(
             f"DEBUG: Adding message to batch - User: {message.author.display_name}, Channel: #{message.channel.name}"
         )
@@ -647,15 +672,21 @@ class SaydnayaBot(discord.Client):
 
         # Add message to batch
         self.message_batches[user_id].append(message)
-        self.logger.log_info(f"DEBUG: Added message to batch for user {user_id}, batch size: {len(self.message_batches[user_id])}")
+        self.logger.log_info(
+            f"DEBUG: Added message to batch for user {user_id}, batch size: {len(self.message_batches[user_id])}"
+        )
 
         # Cancel existing timer
         if user_id in self.batch_timers:
             try:
                 self.batch_timers[user_id].cancel()
-                self.logger.log_info(f"DEBUG: Cancelled existing timer for user {user_id}")
+                self.logger.log_info(
+                    f"DEBUG: Cancelled existing timer for user {user_id}"
+                )
             except Exception as e:
-                self.logger.log_warning(f"Failed to cancel timer for user {user_id}: {e}")
+                self.logger.log_warning(
+                    f"Failed to cancel timer for user {user_id}: {e}"
+                )
 
         # Start new timer to process batch after delay
         self.batch_timers[user_id] = asyncio.create_task(
@@ -674,7 +705,9 @@ class SaydnayaBot(discord.Client):
             if not messages:
                 return
 
-            self.logger.log_info(f"DEBUG: Processing batch of {len(messages)} messages for user {user_id}")
+            self.logger.log_info(
+                f"DEBUG: Processing batch of {len(messages)} messages for user {user_id}"
+            )
 
             # Clean up batch and timer
             del self.message_batches[user_id]
@@ -691,8 +724,8 @@ class SaydnayaBot(discord.Client):
                     context={
                         "message_count": len(messages),
                         "user_id": user_id,
-                        "channel_id": messages[0].channel.id if messages else None
-                    }
+                        "channel_id": messages[0].channel.id if messages else None,
+                    },
                 )
 
         except asyncio.CancelledError:
@@ -713,18 +746,27 @@ class SaydnayaBot(discord.Client):
             if len(messages) > 1:
                 # Combine all messages into a single context
                 combined_content = "\n".join([msg.content for msg in messages])
-                self.logger.log_info(f"DEBUG: Combined {len(messages)} messages into single context")
+                self.logger.log_info(
+                    f"DEBUG: Combined {len(messages)} messages into single context"
+                )
             else:
                 combined_content = messages[0].content
 
             # Check if prison channel OR user has target role
             target_role_id = self.config.get("TARGET_ROLE_ID")
             user_has_role = False
-            if target_role_id and hasattr(representative_message.author, 'roles'):
-                user_has_role = any(role.id == int(target_role_id) for role in representative_message.author.roles)
-            is_prison = self._is_prison_channel(
-                representative_message.channel.name, representative_message.channel.id
-            ) or user_has_role
+            if target_role_id and hasattr(representative_message.author, "roles"):
+                user_has_role = any(
+                    role.id == int(target_role_id)
+                    for role in representative_message.author.roles
+                )
+            is_prison = (
+                self._is_prison_channel(
+                    representative_message.channel.name,
+                    representative_message.channel.id,
+                )
+                or user_has_role
+            )
 
             # Show typing indicator
             async with representative_message.channel.typing():
@@ -765,8 +807,8 @@ class SaydnayaBot(discord.Client):
                             "user_id": representative_message.author.id,
                             "channel_id": representative_message.channel.id,
                             "is_prison": is_prison,
-                            "response_length": len(ai_response) if ai_response else 0
-                        }
+                            "response_length": len(ai_response) if ai_response else 0,
+                        },
                     )
 
                 # Update metrics and cooldowns
@@ -938,66 +980,66 @@ Response Rate: {(self.metrics.responses_generated /
             except Exception as e:
                 self.logger.log_warning(f"Error in presence rotation: {e}")
                 await asyncio.sleep(30)  # Wait longer on error
-    
+
     async def _update_presence(self):
         """Update bot presence based on current prisoners."""
         try:
             if not self.is_active:
                 return
-                
+
             if self.current_prisoners:
                 # Rotate between prisoners
                 prisoners_list = list(self.current_prisoners)
                 self.presence_index = self.presence_index % len(prisoners_list)
                 prisoner_name = prisoners_list[self.presence_index]
-                
+
                 activity = discord.Activity(
-                    type=discord.ActivityType.playing,
-                    name=f"with {prisoner_name}"
+                    type=discord.ActivityType.playing, name=f"with {prisoner_name}"
                 )
                 await self.change_presence(activity=activity, status=discord.Status.dnd)
-                
+
                 self.presence_index += 1
                 self.logger.log_info(f"Updated presence: Playing with {prisoner_name}")
             else:
                 # Default presence when no prisoners
                 activity = discord.Activity(
-                    type=discord.ActivityType.watching,
-                    name="⛓ Sednaya"
+                    type=discord.ActivityType.watching, name="⛓ Sednaya"
                 )
                 await self.change_presence(activity=activity, status=discord.Status.dnd)
                 self.logger.log_info("Updated presence: Watching ⛓ Sednaya")
-                
+
         except Exception as e:
             log_error("Failed to update presence", exception=e)
-    
+
     async def _scan_for_prisoners(self):
         """Scan prison channel for current prisoners."""
         try:
             prison_channel_id = self.config.get("PRISON_CHANNEL_IDS", "")
             target_role_id = self.config.get("TARGET_ROLE_ID")
-            
+
             if not prison_channel_id or not target_role_id:
                 return
-            
+
             # Find the prison channel in any guild
             for guild in self.guilds:
                 channel = guild.get_channel(int(prison_channel_id))
                 if channel:
                     # Clear and rebuild prisoner list
                     self.current_prisoners.clear()
-                    
+
                     # Check all members in the channel
                     for member in channel.members:
-                        if any(str(role.id) == str(target_role_id) for role in member.roles):
+                        if any(
+                            str(role.id) == str(target_role_id) for role in member.roles
+                        ):
                             self.current_prisoners.add(member.display_name)
-                    
+
                     if self.current_prisoners:
                         self.logger.log_info(
                             f"Found {len(self.current_prisoners)} prisoners in jail: {', '.join(self.current_prisoners)}"
                         )
                     break
-                    
+
         except Exception as e:
             log_error("Failed to scan for prisoners", exception=e)
 
@@ -1007,7 +1049,7 @@ Response Rate: {(self.metrics.responses_generated /
             # Cancel presence rotation task
             if self.presence_rotation_task and not self.presence_rotation_task.done():
                 self.presence_rotation_task.cancel()
-            
+
             # Cancel background tasks
             if hasattr(self, "cleanup_task") and hasattr(self.cleanup_task, "cancel"):
                 self.cleanup_task.cancel()

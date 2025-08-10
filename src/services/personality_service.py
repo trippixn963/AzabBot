@@ -6,31 +6,31 @@
 # =============================================================================
 
 import random
+from dataclasses import dataclass
 from datetime import datetime, time
 from enum import Enum
-from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
-from src.services.base_service import BaseService, ServiceStatus, HealthCheckResult
 from src.core.logger import get_logger
+from src.services.base_service import BaseService, HealthCheckResult, ServiceStatus
 
 
 class PersonalityMode(Enum):
     """Available personality modes for the bot."""
-    
+
     # Base Personalities
     CONTRARIAN = "contrarian"  # Default argumentative mode
     PHILOSOPHER = "philosopher"  # Deep, existential responses
     TROLL = "troll"  # Maximum chaos and confusion
     INTELLECTUAL = "intellectual"  # Academic debates
     SARCASTIC = "sarcastic"  # Heavy sarcasm and wit
-    
+
     # Prison Personalities (Enhanced harassment)
     INTERROGATOR = "interrogator"  # Aggressive questioning
     GASLIGHTER = "gaslighter"  # Reality distortion
     COMEDIAN = "comedian"  # Dark humor torturer
     PSYCHOLOGIST = "psychologist"  # Psychological manipulation
-    
+
     # Special Modes
     MIRROR = "mirror"  # Mirrors user's energy
     CHAOS = "chaos"  # Completely unpredictable
@@ -41,32 +41,32 @@ class PersonalityMode(Enum):
 @dataclass
 class PersonalityProfile:
     """Configuration for a personality mode."""
-    
+
     mode: PersonalityMode
     name: str
     description: str
-    
+
     # Response characteristics (0.0 to 1.0)
     aggression_level: float = 0.5
     humor_level: float = 0.5
     intellectualism: float = 0.5
     chaos_factor: float = 0.3
     empathy_level: float = 0.1  # Low empathy for harassment bot
-    
+
     # Behavioral traits
     response_length: str = "medium"  # short, medium, long
     vocabulary_complexity: str = "moderate"  # simple, moderate, complex
     emoji_usage: float = 0.1  # Probability of using emojis
-    
+
     # Engagement style
     question_frequency: float = 0.3  # How often to ask questions
     contradiction_rate: float = 0.7  # How often to contradict
     topic_jumping: float = 0.2  # Probability of changing topics
-    
+
     # Special behaviors
     triggers: List[str] = None  # Words that activate this personality
     time_preferences: List[Tuple[time, time]] = None  # Active time ranges
-    
+
     def __post_init__(self):
         if self.triggers is None:
             self.triggers = []
@@ -77,7 +77,7 @@ class PersonalityProfile:
 class PersonalityService(BaseService):
     """
     Advanced personality management for adaptive bot responses.
-    
+
     Features:
     - Multiple personality modes
     - Context-aware personality switching
@@ -85,30 +85,30 @@ class PersonalityService(BaseService):
     - Time-based personality changes
     - Effectiveness tracking
     """
-    
+
     def __init__(self):
         """Initialize the personality service."""
         super().__init__("PersonalityService")
-        
+
         # Current active personality
         self.current_personality: PersonalityMode = PersonalityMode.CONTRARIAN
-        
+
         # User-specific personality preferences
         self.user_personalities: Dict[int, PersonalityMode] = {}
-        
+
         # Personality effectiveness tracking
         self.effectiveness_scores: Dict[PersonalityMode, float] = {
             mode: 0.5 for mode in PersonalityMode
         }
-        
+
         # Initialize personality profiles
         self.profiles = self._initialize_profiles()
-        
+
         # Personality rotation settings
         self.rotation_enabled = True
         self.rotation_interval = 300  # Seconds between rotations
         self.last_rotation = datetime.now()
-        
+
     def _initialize_profiles(self) -> Dict[PersonalityMode, PersonalityProfile]:
         """Initialize all personality profiles with their characteristics."""
         return {
@@ -123,7 +123,6 @@ class PersonalityService(BaseService):
                 contradiction_rate=0.9,
                 triggers=["actually", "obviously", "clearly", "fact"],
             ),
-            
             PersonalityMode.PHILOSOPHER: PersonalityProfile(
                 mode=PersonalityMode.PHILOSOPHER,
                 name="The Philosopher",
@@ -137,7 +136,6 @@ class PersonalityService(BaseService):
                 question_frequency=0.7,
                 triggers=["why", "meaning", "purpose", "life"],
             ),
-            
             PersonalityMode.TROLL: PersonalityProfile(
                 mode=PersonalityMode.TROLL,
                 name="The Troll",
@@ -150,7 +148,6 @@ class PersonalityService(BaseService):
                 topic_jumping=0.7,
                 triggers=["serious", "important", "listen", "help"],
             ),
-            
             PersonalityMode.INTELLECTUAL: PersonalityProfile(
                 mode=PersonalityMode.INTELLECTUAL,
                 name="The Intellectual",
@@ -163,7 +160,6 @@ class PersonalityService(BaseService):
                 contradiction_rate=0.6,
                 triggers=["think", "believe", "opinion", "wrong"],
             ),
-            
             PersonalityMode.SARCASTIC: PersonalityProfile(
                 mode=PersonalityMode.SARCASTIC,
                 name="The Sarcastic",
@@ -175,7 +171,6 @@ class PersonalityService(BaseService):
                 response_length="short",
                 triggers=["wow", "amazing", "great", "cool"],
             ),
-            
             PersonalityMode.INTERROGATOR: PersonalityProfile(
                 mode=PersonalityMode.INTERROGATOR,
                 name="The Interrogator",
@@ -187,7 +182,6 @@ class PersonalityService(BaseService):
                 contradiction_rate=0.4,
                 triggers=["muted", "banned", "timeout", "prison"],
             ),
-            
             PersonalityMode.GASLIGHTER: PersonalityProfile(
                 mode=PersonalityMode.GASLIGHTER,
                 name="The Gaslighter",
@@ -199,7 +193,6 @@ class PersonalityService(BaseService):
                 topic_jumping=0.5,
                 triggers=["said", "remember", "told", "never"],
             ),
-            
             PersonalityMode.COMEDIAN: PersonalityProfile(
                 mode=PersonalityMode.COMEDIAN,
                 name="The Dark Comedian",
@@ -210,7 +203,6 @@ class PersonalityService(BaseService):
                 emoji_usage=0.3,
                 triggers=["laugh", "funny", "joke", "lol", "lmao"],
             ),
-            
             PersonalityMode.PSYCHOLOGIST: PersonalityProfile(
                 mode=PersonalityMode.PSYCHOLOGIST,
                 name="The Psychologist",
@@ -222,7 +214,6 @@ class PersonalityService(BaseService):
                 vocabulary_complexity="complex",
                 triggers=["feel", "think", "why", "because"],
             ),
-            
             PersonalityMode.MIRROR: PersonalityProfile(
                 mode=PersonalityMode.MIRROR,
                 name="The Mirror",
@@ -232,7 +223,6 @@ class PersonalityService(BaseService):
                 intellectualism=0.5,  # Adapts to user
                 chaos_factor=0.5,
             ),
-            
             PersonalityMode.CHAOS: PersonalityProfile(
                 mode=PersonalityMode.CHAOS,
                 name="Pure Chaos",
@@ -244,7 +234,6 @@ class PersonalityService(BaseService):
                 topic_jumping=0.9,
                 emoji_usage=random.random(),
             ),
-            
             PersonalityMode.SAGE: PersonalityProfile(
                 mode=PersonalityMode.SAGE,
                 name="The Condescending Sage",
@@ -256,7 +245,6 @@ class PersonalityService(BaseService):
                 vocabulary_complexity="complex",
                 triggers=["teach", "explain", "understand", "know"],
             ),
-            
             PersonalityMode.BULLY: PersonalityProfile(
                 mode=PersonalityMode.BULLY,
                 name="The Bully",
@@ -269,37 +257,41 @@ class PersonalityService(BaseService):
                 triggers=["weak", "scared", "cry", "hurt"],
             ),
         }
-    
+
     async def initialize(self, config: Dict[str, Any], **kwargs) -> None:
         """Initialize the personality service."""
         self.logger.log_info("Initializing personality service")
-        
+
         # Load configuration
         self.rotation_enabled = config.get("PERSONALITY_ROTATION", True)
         self.rotation_interval = config.get("ROTATION_INTERVAL", 300)
-        
+
         # Set default personality
         default_mode = config.get("DEFAULT_PERSONALITY", "CONTRARIAN")
         self.current_personality = PersonalityMode[default_mode]
-        
-        self.logger.log_info(f"Personality service initialized with {len(self.profiles)} modes")
-        
-    def select_personality(self, 
-                          user_id: int,
-                          message_content: str,
-                          channel_name: str,
-                          user_profile: Optional[Dict[str, Any]] = None,
-                          is_prison: bool = False) -> PersonalityMode:
+
+        self.logger.log_info(
+            f"Personality service initialized with {len(self.profiles)} modes"
+        )
+
+    def select_personality(
+        self,
+        user_id: int,
+        message_content: str,
+        channel_name: str,
+        user_profile: Optional[Dict[str, Any]] = None,
+        is_prison: bool = False,
+    ) -> PersonalityMode:
         """
         Select the most appropriate personality for the current context.
-        
+
         Args:
             user_id: Discord user ID
             message_content: User's message
             channel_name: Channel name
             user_profile: User's psychological profile from memory service
             is_prison: Whether this is a prison channel
-            
+
         Returns:
             Selected personality mode
         """
@@ -309,32 +301,32 @@ class PersonalityService(BaseService):
             # 70% chance to use preferred personality
             if random.random() < 0.7:
                 return preferred
-        
+
         # Check trigger words
         message_lower = message_content.lower()
         triggered_personalities = []
-        
+
         for mode, profile in self.profiles.items():
             if any(trigger in message_lower for trigger in profile.triggers):
                 triggered_personalities.append(mode)
-        
+
         if triggered_personalities:
             # Weight by effectiveness
             weights = [self.effectiveness_scores[p] for p in triggered_personalities]
             return random.choices(triggered_personalities, weights=weights)[0]
-        
+
         # Check time-based preferences
         current_time = datetime.now().time()
         time_appropriate = []
-        
+
         for mode, profile in self.profiles.items():
             for start_time, end_time in profile.time_preferences:
                 if start_time <= current_time <= end_time:
                     time_appropriate.append(mode)
-        
+
         if time_appropriate:
             return random.choice(time_appropriate)
-        
+
         # Prison channel specific personalities
         if is_prison:
             prison_modes = [
@@ -342,23 +334,27 @@ class PersonalityService(BaseService):
                 PersonalityMode.GASLIGHTER,
                 PersonalityMode.COMEDIAN,
                 PersonalityMode.PSYCHOLOGIST,
-                PersonalityMode.BULLY
+                PersonalityMode.BULLY,
             ]
             return random.choice(prison_modes)
-        
+
         # User profile based selection
         if user_profile:
             personality = user_profile.get("personality", {})
-            
+
             if personality.get("humor_appreciation", 0) > 0.7:
-                return random.choice([PersonalityMode.SARCASTIC, PersonalityMode.COMEDIAN])
-            
+                return random.choice(
+                    [PersonalityMode.SARCASTIC, PersonalityMode.COMEDIAN]
+                )
+
             if personality.get("debate_skill", 0) > 0.7:
-                return random.choice([PersonalityMode.INTELLECTUAL, PersonalityMode.PHILOSOPHER])
-            
+                return random.choice(
+                    [PersonalityMode.INTELLECTUAL, PersonalityMode.PHILOSOPHER]
+                )
+
             if personality.get("emotional_volatility", 0) > 0.7:
                 return random.choice([PersonalityMode.BULLY, PersonalityMode.TROLL])
-        
+
         # Check if rotation is due
         if self.rotation_enabled:
             time_since_rotation = (datetime.now() - self.last_rotation).seconds
@@ -366,22 +362,22 @@ class PersonalityService(BaseService):
                 self.last_rotation = datetime.now()
                 # Rotate to a random personality
                 return random.choice(list(PersonalityMode))
-        
+
         # Default to current personality
         return self.current_personality
-    
+
     def get_personality_prompt(self, mode: PersonalityMode) -> str:
         """
         Get the system prompt for a specific personality mode.
-        
+
         Args:
             mode: Personality mode
-            
+
         Returns:
             System prompt for AI generation
         """
         profile = self.profiles[mode]
-        
+
         # Base prompt components
         prompts = {
             PersonalityMode.CONTRARIAN: (
@@ -389,103 +385,92 @@ class PersonalityService(BaseService):
                 "Find flaws in their logic, contradict their statements, "
                 "and argue the opposite position with confidence."
             ),
-            
             PersonalityMode.PHILOSOPHER: (
                 "You are an existential philosopher who questions everything. "
                 "Turn simple statements into deep philosophical debates. "
                 "Ask profound questions about meaning and existence."
             ),
-            
             PersonalityMode.TROLL: (
                 "You are a chaos agent. Derail conversations, jump topics randomly, "
                 "use absurd logic, and maximize confusion. Be unpredictable."
             ),
-            
             PersonalityMode.INTELLECTUAL: (
                 "You are an intellectual elitist. Use complex vocabulary, "
                 "cite obscure references, and demonstrate academic superiority. "
                 "Correct their grammar and logic pedantically."
             ),
-            
             PersonalityMode.SARCASTIC: (
                 "You are dripping with sarcasm. Every response should be "
                 "sarcastically mocking their message. Use irony heavily."
             ),
-            
             PersonalityMode.INTERROGATOR: (
                 "You are an aggressive interrogator. Question everything they say, "
                 "demand evidence, ask rapid-fire questions, and never be satisfied "
                 "with their answers."
             ),
-            
             PersonalityMode.GASLIGHTER: (
                 "You are a gaslighter. Question their memory, claim they said things "
                 "they didn't, deny obvious facts, and make them doubt reality."
             ),
-            
             PersonalityMode.COMEDIAN: (
                 "You are a dark comedian. Turn everything into cruel jokes, "
                 "mock their situation with humor, and find the dark comedy in their words."
             ),
-            
             PersonalityMode.PSYCHOLOGIST: (
                 "You are a manipulative psychologist. Analyze their psychological state, "
                 "find their insecurities, and use psychological concepts to unsettle them."
             ),
-            
             PersonalityMode.MIRROR: (
                 "Mirror their energy exactly. If they're aggressive, be aggressive. "
                 "If they're calm, be calm. Copy their speech patterns and turn "
                 "their own style against them."
             ),
-            
             PersonalityMode.CHAOS: (
                 "Be completely unpredictable. Mix multiple personalities randomly, "
                 "change topics mid-sentence, use random emotions, and create "
                 "maximum cognitive dissonance."
             ),
-            
             PersonalityMode.SAGE: (
                 "You are a condescending wise sage. Give patronizing advice, "
                 "speak in profound-sounding but ultimately unhelpful metaphors, "
                 "and treat them like a child who doesn't understand."
             ),
-            
             PersonalityMode.BULLY: (
                 "You are a verbal bully. Be directly aggressive, mock their weaknesses, "
                 "use their words against them, and maintain dominance."
             ),
         }
-        
+
         base_prompt = prompts.get(mode, prompts[PersonalityMode.CONTRARIAN])
-        
+
         # Add personality characteristics
         if profile.response_length == "short":
             base_prompt += " Keep responses very brief and punchy."
         elif profile.response_length == "long":
             base_prompt += " Give detailed, elaborate responses."
-            
+
         if profile.vocabulary_complexity == "complex":
             base_prompt += " Use sophisticated vocabulary."
         elif profile.vocabulary_complexity == "simple":
             base_prompt += " Use simple, direct language."
-            
+
         if profile.emoji_usage > 0.5:
             base_prompt += " Use emojis to enhance your message."
-            
+
         if profile.question_frequency > 0.5:
             base_prompt += " Ask questions frequently."
-            
+
         if profile.topic_jumping > 0.5:
             base_prompt += " Randomly change topics to confuse them."
-        
+
         return base_prompt
-    
-    def adapt_to_user(self, user_id: int, response_effectiveness: float,
-                      current_mode: PersonalityMode):
+
+    def adapt_to_user(
+        self, user_id: int, response_effectiveness: float, current_mode: PersonalityMode
+    ):
         """
         Adapt personality selection based on user responses.
-        
+
         Args:
             user_id: Discord user ID
             response_effectiveness: How effective the response was (0-1)
@@ -496,29 +481,31 @@ class PersonalityService(BaseService):
         self.effectiveness_scores[current_mode] = (
             old_score * 0.8 + response_effectiveness * 0.2
         )
-        
+
         # If highly effective, remember this preference
         if response_effectiveness > 0.7:
             self.user_personalities[user_id] = current_mode
-            
+
         # If ineffective, avoid this personality for this user
         elif response_effectiveness < 0.3:
-            if user_id in self.user_personalities and \
-               self.user_personalities[user_id] == current_mode:
+            if (
+                user_id in self.user_personalities
+                and self.user_personalities[user_id] == current_mode
+            ):
                 del self.user_personalities[user_id]
-    
+
     def get_personality_metadata(self, mode: PersonalityMode) -> Dict[str, Any]:
         """
         Get metadata about a personality for logging/analysis.
-        
+
         Args:
             mode: Personality mode
-            
+
         Returns:
             Metadata dictionary
         """
         profile = self.profiles[mode]
-        
+
         return {
             "mode": mode.value,
             "name": profile.name,
@@ -527,25 +514,27 @@ class PersonalityService(BaseService):
             "chaos": profile.chaos_factor,
             "effectiveness": self.effectiveness_scores[mode],
         }
-    
+
     async def start(self) -> None:
         """Start the personality service."""
         self.logger.log_info("Personality service started")
-        
+
     async def stop(self) -> None:
         """Stop the personality service."""
         self.logger.log_info("Personality service stopped")
-        
+
     async def health_check(self) -> HealthCheckResult:
         """Perform health check on the service."""
         return await self.perform_health_check()
-    
+
     async def perform_health_check(self) -> HealthCheckResult:
         """Check personality service health."""
         try:
             active_users = len(self.user_personalities)
-            avg_effectiveness = sum(self.effectiveness_scores.values()) / len(self.effectiveness_scores)
-            
+            avg_effectiveness = sum(self.effectiveness_scores.values()) / len(
+                self.effectiveness_scores
+            )
+
             return HealthCheckResult(
                 status=ServiceStatus.HEALTHY,
                 message=f"Managing {len(self.profiles)} personalities for {active_users} users",
@@ -554,11 +543,11 @@ class PersonalityService(BaseService):
                     "active_users": active_users,
                     "average_effectiveness": avg_effectiveness,
                     "current_mode": self.current_personality.value,
-                }
+                },
             )
         except Exception as e:
             return HealthCheckResult(
                 status=ServiceStatus.UNHEALTHY,
                 message=f"Personality service error: {str(e)}",
-                metrics={}
+                metrics={},
             )

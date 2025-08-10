@@ -12,15 +12,15 @@ from pathlib import Path
 
 from src.bot.bot import SaydnayaBot
 from src.config.config import get_config
+from src.core.di_container import ServiceLifetime, register_service
 from src.core.instance_manager import get_instance_manager
 from src.core.logger import BotLogger
-from src.core.di_container import register_service, ServiceLifetime
+from src.monitoring.health_monitor import HealthMonitor
 from src.services.ai_service import AIService
 from src.services.database_service import DatabaseService
-from src.services.report_service import ReportService
 from src.services.memory_service import MemoryService
 from src.services.personality_service import PersonalityService
-from src.monitoring.health_monitor import HealthMonitor
+from src.services.report_service import ReportService
 
 # Global references for signal handlers
 bot_instance = None
@@ -64,7 +64,7 @@ async def run_bot():
     # Initialize logger
     bot_logger = BotLogger()
     logger = bot_logger
-    
+
     # Initialize instance manager
     instance_manager = get_instance_manager()
 
@@ -92,7 +92,7 @@ async def run_bot():
         if not can_proceed:
             bot_logger.log_error("Failed to acquire instance lock")
             return
-            
+
         # Create PID file
         instance_manager.create_pid_file()
 
@@ -104,18 +104,37 @@ async def run_bot():
         bot_logger.log_initialization_step(
             "DI Container", "registering", "Registering services"
         )
-        
+
         # Register core services
         from src.core.di_container import register_factory
+
         register_factory("Config", lambda: config, lifetime=ServiceLifetime.SINGLETON)
         register_service("Logger", type(bot_logger), lifetime=ServiceLifetime.SINGLETON)
-        register_service("DatabaseService", DatabaseService, lifetime=ServiceLifetime.SINGLETON)
-        register_service("MemoryService", MemoryService, lifetime=ServiceLifetime.SINGLETON)
-        register_service("PersonalityService", PersonalityService, lifetime=ServiceLifetime.SINGLETON)
-        register_service("AIService", AIService, lifetime=ServiceLifetime.SINGLETON, dependencies=["Config", "PersonalityService", "MemoryService"])
-        register_service("ReportService", ReportService, lifetime=ServiceLifetime.SINGLETON, dependencies=["DatabaseService"])
-        register_service("HealthMonitor", HealthMonitor, lifetime=ServiceLifetime.SINGLETON)
-        
+        register_service(
+            "DatabaseService", DatabaseService, lifetime=ServiceLifetime.SINGLETON
+        )
+        register_service(
+            "MemoryService", MemoryService, lifetime=ServiceLifetime.SINGLETON
+        )
+        register_service(
+            "PersonalityService", PersonalityService, lifetime=ServiceLifetime.SINGLETON
+        )
+        register_service(
+            "AIService",
+            AIService,
+            lifetime=ServiceLifetime.SINGLETON,
+            dependencies=["Config", "PersonalityService", "MemoryService"],
+        )
+        register_service(
+            "ReportService",
+            ReportService,
+            lifetime=ServiceLifetime.SINGLETON,
+            dependencies=["DatabaseService"],
+        )
+        register_service(
+            "HealthMonitor", HealthMonitor, lifetime=ServiceLifetime.SINGLETON
+        )
+
         bot_logger.log_initialization_step(
             "DI Container", "success", "Services registered", "✅"
         )

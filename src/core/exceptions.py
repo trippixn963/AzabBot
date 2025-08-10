@@ -190,7 +190,9 @@ class ExternalServiceError(ServiceError):
     def __init__(self, service: str, operation: str, message: str):
         self.service = service
         self.operation = operation
-        super().__init__(f"External service error in {service} during {operation}: {message}")
+        super().__init__(
+            f"External service error in {service} during {operation}: {message}"
+        )
 
 
 class AIGenerationError(AIServiceError):

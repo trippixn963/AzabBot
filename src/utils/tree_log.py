@@ -111,14 +111,14 @@ class TreeLogger:
 
     def __init__(self, cleanup_on_start=True):
         """Initialize the TreeLogger instance.
-        
+
         Args:
             cleanup_on_start: If True, deletes ALL existing logs on startup for fresh start
         """
         # Clean up existing logs BEFORE setting up new directories
         if cleanup_on_start:
             self._cleanup_existing_logs()
-        
+
         self.log_dir = self._setup_log_directories()
         self.run_id = self._generate_run_id()
         self.current_datetime_iso = self._get_current_datetime_iso()
@@ -130,7 +130,7 @@ class TreeLogger:
     def _cleanup_existing_logs(self):
         """
         Clean up ALL existing logs on startup for completely fresh logging.
-        
+
         This ensures fresh logs every time the bot starts, deleting ALL
         previous log files and folders to start with a completely clean slate.
         Same implementation as QuranBot for consistency.
@@ -138,67 +138,71 @@ class TreeLogger:
         try:
             project_root = Path(__file__).parent.parent.parent
             main_log_dir = project_root / "logs"
-            
+
             print(f"🧹 Starting log cleanup in: {main_log_dir}")
-            
+
             if not main_log_dir.exists():
                 print("📁 Log folder doesn't exist, nothing to clean")
                 return
-            
+
             # Track cleanup statistics
             deleted_folders = 0
             deleted_files = 0
-            
+
             # Delete ALL log folders for completely fresh start
             for item in main_log_dir.iterdir():
                 if not item.is_dir():
                     # Skip non-directory items (like .DS_Store)
                     continue
-                    
+
                 # Check if this is a date folder (YYYY-MM-DD format)
                 if not self._is_date_folder(item.name):
                     continue
-                    
+
                 print(f"🗑️  Deleting log folder: {item.name}")
-                
+
                 try:
                     # Count files before deleting
-                    file_count = sum(1 for _ in item.rglob('*') if _.is_file())
-                    
+                    file_count = sum(1 for _ in item.rglob("*") if _.is_file())
+
                     # Delete the entire date folder
                     import shutil
+
                     shutil.rmtree(item)
-                    
+
                     deleted_folders += 1
                     deleted_files += file_count
-                    
+
                     print(f"✅ Deleted folder: {item.name} ({file_count} files)")
-                    
+
                 except Exception as e:
                     print(f"⚠️  Error deleting {item.name}: {e}")
-                    
+
             if deleted_folders > 0:
-                print(f"🎯 Cleanup complete: Removed {deleted_folders} folders, {deleted_files} files")
+                print(
+                    f"🎯 Cleanup complete: Removed {deleted_folders} folders, {deleted_files} files"
+                )
                 print("📝 Starting fresh logging session...")
                 print()
             else:
                 print("✨ No old logs to clean up")
                 print()
-                
+
         except Exception as e:
             print(f"⚠️  Error during log cleanup: {e}")
             print("📝 Continuing with normal logging...")
             print()
-    
+
     def _is_date_folder(self, name: str) -> bool:
         """Check if a folder name matches the date format YYYY-MM-DD."""
         try:
             from datetime import datetime
+
             datetime.strptime(name, "%Y-%m-%d")
             return True
         except ValueError:
             return False
-    
+
     def _setup_log_directories(self):
         """Create log directory structure with date-based subdirectories and 3 log files."""
         try:

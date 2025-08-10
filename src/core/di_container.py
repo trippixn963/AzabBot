@@ -22,11 +22,13 @@ from src.services.base_service import BaseService
 
 class ServiceNotFoundError(ServiceError):
     """Service not found in container."""
+
     pass
 
 
 class CircularDependencyError(ServiceError):
     """Circular dependency detected."""
+
     pass
 
 

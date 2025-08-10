@@ -26,6 +26,7 @@ from src.utils.tree_log import (
 
 class LogLevel(Enum):
     """Log level enumeration."""
+
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
@@ -423,7 +424,7 @@ class BotLogger:
         else:
             level_str = level.upper()
             self.log_level = LogLevel(level_str)
-        
+
         numeric_level = getattr(logging, level_str, logging.INFO)
         self.python_logger.setLevel(numeric_level)
 

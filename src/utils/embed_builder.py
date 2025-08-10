@@ -69,7 +69,7 @@ class EmbedBuilder:
         embed = Embed(title=title, description=description, color=color_value, url=url)
 
         # Don't add timestamp by default (removed timestamp logic)
-        
+
         # Add developer footer with Arabic name
         embed.set_footer(
             text=f"Developed by {cls.DEVELOPER_NAME}", icon_url=cls.DEVELOPER_ICON

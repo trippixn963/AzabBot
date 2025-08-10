@@ -87,7 +87,8 @@ class ConfigurationManager:
                 required=True,
                 description="Discord bot token for authentication",
                 sensitive=True,
-                validator=lambda x: len(x) > 50 and (x.startswith(("Bot ", "MT")) or "." in x),
+                validator=lambda x: len(x) > 50
+                and (x.startswith(("Bot ", "MT")) or "." in x),
             ),
             ConfigField(
                 name="DEVELOPER_ID",

@@ -24,6 +24,7 @@ from src.services.base_service import BaseService, HealthCheckResult, ServiceSta
 @dataclass
 class ComponentHealth:
     """Health status of a single component."""
+
     name: str
     status: str
     latency_ms: Optional[float] = None
@@ -34,10 +35,11 @@ class ComponentHealth:
 @dataclass
 class HealthStatus:
     """Overall health status."""
+
     timestamp: datetime
     overall_status: str
     components: Dict[str, ComponentHealth]
-    system_metrics: 'SystemMetrics'
+    system_metrics: "SystemMetrics"
 
 
 class AlertSeverity(Enum):
