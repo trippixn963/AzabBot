@@ -53,10 +53,16 @@ jobs:
             "${WEBHOOK_URL}?thread_id=${THREAD_ID}"
       
       - name: Discord Notification - Secondary Server
-        if: ${{ secrets.DISCORD_WEBHOOK_SY != '' }}
+        continue-on-error: true
         run: |
           THREAD_ID="1404073613866438727"
           WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK_SY }}"
+          
+          # Skip if webhook not configured
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "Secondary webhook not configured, skipping"
+            exit 0
+          fi
           
           COMMIT_MSG="${{ github.event.head_commit.message }}"
           COMMIT_MSG=$(echo "$COMMIT_MSG" | head -c 500 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
