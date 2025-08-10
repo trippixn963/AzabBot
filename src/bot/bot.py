@@ -310,19 +310,11 @@ class SaydnayaBot(discord.Client):
                 general_channel = after.guild.get_channel(1350540215797940245)
                 if general_channel:
                     try:
-                        # Send a release message mentioning the user
-                        release_messages = [
-                            f"🔓 {after.mention} has been released from prison! Try not to end up back there...",
-                            f"⛓️‍💥 {after.mention} is FREE! The guards got tired of you.",
-                            f"🚪 {after.mention} just walked out of Sednaya. Welcome back to civilization!",
-                            f"🎉 {after.mention} survived the torture! You're free... for now.",
-                            f"👋 {after.mention} has been released. Azab will miss you!",
-                            f"🔑 {after.mention} got their freedom back. Use it wisely this time.",
-                        ]
+                        # Generate AI-based release message based on their history
+                        release_message = await self._generate_release_message(after)
                         
-                        import random
-                        message = random.choice(release_messages)
-                        await general_channel.send(message)
+                        # Send the personalized message
+                        await general_channel.send(release_message)
                         
                         self.logger.log_info(
                             f"Posted unmute notification for {after.display_name} in general chat"
@@ -1002,6 +994,89 @@ Response Rate: {(self.metrics.responses_generated /
 
         except Exception as e:
             log_error("Error in cleanup task", exception=e)
+
+    async def _generate_release_message(self, member: discord.Member) -> str:
+        """Generate a personalized release message based on prisoner's history."""
+        try:
+            # Get AI service to generate personalized message
+            ai_service = self.container.get("AIService")
+            
+            # Try to get their conversation history from database
+            conversation_summary = ""
+            try:
+                import sqlite3
+                conn = sqlite3.connect("data/memory.db")
+                cursor = conn.cursor()
+                
+                # Get recent messages from this user
+                cursor.execute("""
+                    SELECT message_content, bot_response 
+                    FROM conversation_history 
+                    WHERE user_id = ? 
+                    ORDER BY timestamp DESC 
+                    LIMIT 5
+                """, (str(member.id),))
+                
+                recent_convos = cursor.fetchall()
+                
+                # Get user profile
+                cursor.execute("""
+                    SELECT personality_profile, total_interactions, debate_wins, debate_losses
+                    FROM user_memories
+                    WHERE user_id = ?
+                """, (str(member.id),))
+                
+                profile = cursor.fetchone()
+                conn.close()
+                
+                if recent_convos:
+                    conversation_summary = "Recent conversations: " + " | ".join([f"They said: {msg[0][:50]}" for msg in recent_convos[:3]])
+                
+                if profile and profile[0]:
+                    import json
+                    personality = json.loads(profile[0]) if profile[0] else {}
+                    conversation_summary += f" Personality: {personality.get('dominant_trait', 'unknown')}, Total interactions: {profile[1]}"
+                    
+            except Exception as e:
+                self.logger.log_warning(f"Could not fetch prisoner history: {e}")
+            
+            # Generate personalized release message
+            prompt = f"""
+            A prisoner named {member.display_name} is being released from the torture prison.
+            {conversation_summary if conversation_summary else 'This is their first time in prison.'}
+            
+            Generate a SHORT (1 sentence) sarcastic/mocking release announcement that:
+            1. Mentions them with {member.mention}
+            2. References something specific about them if you know their personality or what they said
+            3. Is funny and slightly insulting
+            4. Warns them or predicts they'll be back
+            5. Maximum 150 characters
+            
+            Examples of the tone (but make it specific to this person):
+            - If they were aggressive: mention how even the guards couldn't handle their anger
+            - If they were quiet: mock them for finally speaking up  
+            - If they debated: say the guards got tired of their arguments
+            
+            Start with their mention {member.mention} and keep it short!
+            """
+            
+            response = await ai_service.generate_response(
+                prompt=prompt,
+                context={},
+                user_id=member.id,
+                max_tokens=60
+            )
+            
+            # Ensure mention is included
+            if member.mention not in response:
+                response = f"{member.mention} {response}"
+                
+            return response
+            
+        except Exception as e:
+            self.logger.log_error(f"Failed to generate AI release message: {e}")
+            # Fallback to a simple message if AI fails
+            return f"🔓 {member.mention} has been released from prison. The guards got tired of you."
 
     async def _rotate_presence(self):
         """Rotate presence between prisoners or show default."""
