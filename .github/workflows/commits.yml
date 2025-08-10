@@ -9,10 +9,54 @@ jobs:
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     steps:
-      - name: Discord Notification
+      - name: Discord Notification - Primary Server
         run: |
-          THREAD_ID="1403930609348378624"
+          THREAD_ID="${{ secrets.DISCORD_THREAD_ID }}"
           WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK }}"
+          
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          COMMIT_MSG=$(echo "$COMMIT_MSG" | head -c 500 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+          
+          PAYLOAD=$(cat <<EOF
+          {
+            "embeds": [{
+              "title": "📝 New Commit",
+              "description": "**Message:**\n\`\`\`\n${COMMIT_MSG}\n\`\`\`",
+              "color": 7506394,
+              "url": "${{ github.event.head_commit.url }}",
+              "footer": {
+                "text": "AzabBot",
+                "icon_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
+              },
+              "fields": [
+                {
+                  "name": "Author",
+                  "value": "${{ github.event.head_commit.author.name }}",
+                  "inline": true
+                },
+                {
+                  "name": "Commit",
+                  "value": "[\`${{ github.event.head_commit.id }}\`](${{ github.event.head_commit.url }})",
+                  "inline": true
+                }
+              ]
+            }],
+            "username": "Azab",
+            "avatar_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
+          }
+          EOF
+          )
+          
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "${WEBHOOK_URL}?thread_id=${THREAD_ID}"
+      
+      - name: Discord Notification - Secondary Server
+        if: "${{ secrets.DISCORD_WEBHOOK_SY != '' }}"
+        run: |
+          THREAD_ID="${{ secrets.DISCORD_THREAD_ID_SY }}"
+          WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK_SY }}"
           
           COMMIT_MSG="${{ github.event.head_commit.message }}"
           COMMIT_MSG=$(echo "$COMMIT_MSG" | head -c 500 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
