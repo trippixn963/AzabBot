@@ -318,42 +318,115 @@ class PsychologicalService(BaseService):
     
     async def _extract_from_sapphire_logs(self, guild: discord.Guild, user_id: str) -> Optional[dict]:
         """
-        Fallback: Check for Sapphire's mute confirmation messages in mod channels.
+        Check Sapphire's mute logs in the specific mod log thread.
         """
         try:
-            # Common mod log channel names
-            log_channel_names = ['mod-log', 'mod-logs', 'modlog', 'modlogs', 'audit-log', 'logs']
+            import re
             
-            for channel in guild.text_channels:
-                if any(log_name in channel.name.lower() for log_name in log_channel_names):
-                    # Check recent messages in this channel
-                    async for message in channel.history(limit=50):
+            # Specific thread ID where mute/unmute logs go
+            MUTE_LOG_THREAD_ID = 1404020045876690985
+            
+            # Try to get the specific thread
+            try:
+                thread = guild.get_thread(MUTE_LOG_THREAD_ID)
+                if not thread:
+                    # Try to fetch it as a channel
+                    thread = guild.get_channel(MUTE_LOG_THREAD_ID)
+                
+                if thread:
+                    log_info(f"📋 Checking mute log thread: {thread.name}")
+                    
+                    # Check recent messages in the thread
+                    async for message in thread.history(limit=30):
                         # Check if message is from Sapphire bot
                         if message.author.bot:
                             # Look for mute messages about our user
                             if user_id in message.content or f"<@{user_id}>" in message.content:
-                                # Try to extract reason from message
-                                # Common patterns: "muted for: X", "reason: X", "muted - X"
-                                import re
+                                log_info(f"Found potential mute log for user {user_id}")
                                 
-                                patterns = [
-                                    r'(?:muted|timeout).*?(?:for|reason):\s*(.+?)(?:\n|$)',
-                                    r'(?:muted|timeout).*?-\s*(.+?)(?:\n|$)',
-                                    r'Reason:\s*(.+?)(?:\n|$)'
-                                ]
-                                
-                                for pattern in patterns:
-                                    match = re.search(pattern, message.content, re.IGNORECASE)
-                                    if match:
-                                        reason = match.group(1).strip()
-                                        log_info(f"✅ Found mute reason in {channel.name}: {reason}")
+                                # Check if it's a mute action (not unmute)
+                                if any(word in message.content.lower() for word in ['muted', 'mute', 'timeout']):
+                                    # Extract reason from embed or message content
+                                    reason = None
+                                    muted_by = None
+                                    
+                                    # Check embeds first (Sapphire often uses embeds)
+                                    if message.embeds:
+                                        embed = message.embeds[0]
+                                        # Look for reason field in embed
+                                        for field in embed.fields:
+                                            if 'reason' in field.name.lower():
+                                                reason = field.value
+                                            if 'moderator' in field.name.lower() or 'muted by' in field.name.lower():
+                                                muted_by = field.value
+                                        
+                                        # Also check embed description
+                                        if not reason and embed.description:
+                                            patterns = [
+                                                r'[Rr]eason:\s*(.+?)(?:\n|$)',
+                                                r'[Ff]or:\s*(.+?)(?:\n|$)',
+                                                r'[Mm]uted.*?:\s*(.+?)(?:\n|$)'
+                                            ]
+                                            for pattern in patterns:
+                                                match = re.search(pattern, embed.description)
+                                                if match:
+                                                    reason = match.group(1).strip()
+                                                    break
+                                    
+                                    # Fallback to message content
+                                    if not reason:
+                                        patterns = [
+                                            r'[Rr]eason:\s*(.+?)(?:\n|$)',
+                                            r'(?:muted|timeout).*?(?:for|reason):\s*(.+?)(?:\n|$)',
+                                            r'`(.+?)`\s*(?:-|—)\s*(.+?)(?:\n|$)'  # Pattern like `username` - reason
+                                        ]
+                                        
+                                        for pattern in patterns:
+                                            match = re.search(pattern, message.content)
+                                            if match:
+                                                # Get the last group (reason)
+                                                reason = match.groups()[-1].strip()
+                                                break
+                                    
+                                    if reason:
+                                        log_info(f"✅ Found mute reason in thread: {reason}")
                                         
                                         return {
                                             'reason': reason,
-                                            'muted_by': message.author.display_name,
+                                            'muted_by': muted_by or message.author.display_name,
                                             'timestamp': message.created_at,
-                                            'source': 'mod_log_message'
+                                            'source': 'mute_log_thread'
                                         }
+                else:
+                    log_warning(f"Could not find mute log thread with ID {MUTE_LOG_THREAD_ID}")
+            
+            except Exception as e:
+                log_error(f"Error accessing mute log thread: {e}")
+            
+            # Fallback: Check common mod log channel names
+            log_channel_names = ['mod-log', 'mod-logs', 'modlog', 'modlogs', 'audit-log', 'logs']
+            
+            for channel in guild.text_channels:
+                if any(log_name in channel.name.lower() for log_name in log_channel_names):
+                    async for message in channel.history(limit=20):
+                        if message.author.bot and (user_id in message.content or f"<@{user_id}>" in message.content):
+                            patterns = [
+                                r'[Rr]eason:\s*(.+?)(?:\n|$)',
+                                r'(?:muted|timeout).*?(?:for|reason):\s*(.+?)(?:\n|$)'
+                            ]
+                            
+                            for pattern in patterns:
+                                match = re.search(pattern, message.content)
+                                if match:
+                                    reason = match.group(1).strip()
+                                    log_info(f"✅ Found mute reason in {channel.name}: {reason}")
+                                    
+                                    return {
+                                        'reason': reason,
+                                        'muted_by': message.author.display_name,
+                                        'timestamp': message.created_at,
+                                        'source': 'mod_log_channel'
+                                    }
             
             return None
     
