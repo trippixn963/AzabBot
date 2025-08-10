@@ -1,0 +1,91 @@
+name: Release Notifications
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord Release Notification
+        run: |
+          WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK_SY }}"
+          THREAD_ID="1404073613866438727"
+          
+          # Release info
+          RELEASE_NAME="${{ github.event.release.name }}"
+          RELEASE_BODY="${{ github.event.release.body }}"
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          RELEASE_URL="${{ github.event.release.html_url }}"
+          IS_PRERELEASE="${{ github.event.release.prerelease }}"
+          
+          # Clean release body
+          RELEASE_BODY=$(echo "$RELEASE_BODY" | head -c 2000 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+          
+          # Determine release type
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            RELEASE_TYPE="🔬 Pre-Release"
+            COLOR=16776960  # Yellow
+          else
+            RELEASE_TYPE="🚀 New Release"
+            COLOR=5763719   # Green
+          fi
+          
+          # Get timestamp
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+          
+          PAYLOAD=$(cat <<EOF
+          {
+            "content": "**@everyone** New version available!",
+            "embeds": [{
+              "author": {
+                "name": "AzabBot Release Manager",
+                "icon_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif",
+                "url": "https://github.com/${{ github.repository }}"
+              },
+              "title": "${RELEASE_TYPE}: ${RELEASE_NAME}",
+              "description": "${RELEASE_BODY}\n\n**[📥 Download Release](${RELEASE_URL})** • **[📋 View Changelog](${RELEASE_URL})**",
+              "color": ${COLOR},
+              "url": "${RELEASE_URL}",
+              "fields": [
+                {
+                  "name": "🏷️ Version",
+                  "value": "\`${RELEASE_TAG}\`",
+                  "inline": true
+                },
+                {
+                  "name": "👤 Released by",
+                  "value": "حَـــــنَّـــــا",
+                  "inline": true
+                },
+                {
+                  "name": "📦 Type",
+                  "value": "${RELEASE_TYPE}",
+                  "inline": true
+                },
+                {
+                  "name": "🔗 Quick Links",
+                  "value": "[GitHub](https://github.com/${{ github.repository }}) • [Issues](https://github.com/${{ github.repository }}/issues) • [Wiki](https://github.com/${{ github.repository }}/wiki)",
+                  "inline": false
+                }
+              ],
+              "footer": {
+                "text": "AzabBot Release System",
+                "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+              },
+              "timestamp": "${TIMESTAMP}",
+              "thumbnail": {
+                "url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
+              }
+            }],
+            "username": "AzabBot Releases",
+            "avatar_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
+          }
+          EOF
+          )
+          
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "${WEBHOOK_URL}?thread_id=${THREAD_ID}"

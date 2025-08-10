@@ -14,34 +14,75 @@ jobs:
           THREAD_ID="1403930609348378624"
           WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK }}"
           
+          # Get commit info
           COMMIT_MSG="${{ github.event.head_commit.message }}"
-          COMMIT_MSG=$(echo "$COMMIT_MSG" | head -c 500 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+          COMMIT_MSG=$(echo "$COMMIT_MSG" | head -c 1000 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+          SHORT_SHA="${{ github.event.head_commit.id }}"
+          SHORT_SHA=${SHORT_SHA:0:7}
+          
+          # Determine commit type based on message
+          if echo "$COMMIT_MSG" | grep -qi "fix"; then
+            COMMIT_TYPE="🐛 Bug Fix"
+            COLOR=16744448  # Orange
+          elif echo "$COMMIT_MSG" | grep -qi "feat\|feature\|add"; then
+            COMMIT_TYPE="✨ New Feature"
+            COLOR=3066993   # Green
+          elif echo "$COMMIT_MSG" | grep -qi "docs\|documentation"; then
+            COMMIT_TYPE="📚 Documentation"
+            COLOR=3447003   # Blue
+          elif echo "$COMMIT_MSG" | grep -qi "refactor\|improve"; then
+            COMMIT_TYPE="♻️ Refactor"
+            COLOR=10181046  # Purple
+          elif echo "$COMMIT_MSG" | grep -qi "test"; then
+            COMMIT_TYPE="🧪 Tests"
+            COLOR=15844367  # Gold
+          elif echo "$COMMIT_MSG" | grep -qi "release\|version"; then
+            COMMIT_TYPE="🚀 Release"
+            COLOR=65280     # Bright Green
+          else
+            COMMIT_TYPE="🔧 Update"
+            COLOR=7506394   # Default blue
+          fi
+          
+          # Get current timestamp
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           
           PAYLOAD=$(cat <<EOF
           {
             "embeds": [{
-              "title": "📝 New Commit",
-              "description": "**Message:**\n\`\`\`\n${COMMIT_MSG}\n\`\`\`",
-              "color": 7506394,
-              "url": "${{ github.event.head_commit.url }}",
-              "footer": {
-                "text": "AzabBot",
-                "icon_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
+              "author": {
+                "name": "AzabBot Development",
+                "icon_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif",
+                "url": "https://github.com/${{ github.repository }}"
               },
+              "title": "${COMMIT_TYPE}",
+              "description": "**${COMMIT_MSG}**\n\n**[\`${SHORT_SHA}\`](${{ github.event.head_commit.url }})** • [View Changes](${{ github.event.head_commit.url }}) • [View Repository](https://github.com/${{ github.repository }})",
+              "color": ${COLOR},
+              "url": "${{ github.event.head_commit.url }}",
               "fields": [
                 {
-                  "name": "Author",
+                  "name": "👤 Developer",
                   "value": "حَـــــنَّـــــا",
                   "inline": true
                 },
                 {
-                  "name": "Commit",
-                  "value": "[\`${{ github.event.head_commit.id }}\`](${{ github.event.head_commit.url }})",
+                  "name": "🌿 Branch",
+                  "value": "\`${{ github.ref_name }}\`",
+                  "inline": true
+                },
+                {
+                  "name": "📊 Status",
+                  "value": "✅ Deployed",
                   "inline": true
                 }
-              ]
+              ],
+              "footer": {
+                "text": "AzabBot v1.5.0 • Continuous Integration",
+                "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+              },
+              "timestamp": "${TIMESTAMP}"
             }],
-            "username": "Azab",
+            "username": "AzabBot CI/CD",
             "avatar_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
           }
           EOF
@@ -53,38 +94,94 @@ jobs:
             "${WEBHOOK_URL}?thread_id=${THREAD_ID}"
       
       - name: Discord Notification - Secondary Server
+        continue-on-error: true
         run: |
           THREAD_ID="1404073613866438727"
           WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK_SY }}"
           
+          # Check if webhook is set
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "❌ No secondary webhook configured"
+            exit 0
+          fi
+          
+          echo "✅ Secondary webhook is configured"
+          echo "Sending to thread: $THREAD_ID"
+          
+          # Get commit info
           COMMIT_MSG="${{ github.event.head_commit.message }}"
-          COMMIT_MSG=$(echo "$COMMIT_MSG" | head -c 500 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+          COMMIT_MSG=$(echo "$COMMIT_MSG" | head -c 1000 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+          SHORT_SHA="${{ github.event.head_commit.id }}"
+          SHORT_SHA=${SHORT_SHA:0:7}
+          
+          # Count changes
+          FILES_ADDED="${{ github.event.head_commit.added }}"
+          FILES_MODIFIED="${{ github.event.head_commit.modified }}"
+          FILES_REMOVED="${{ github.event.head_commit.removed }}"
+          
+          # Determine commit type based on message
+          if echo "$COMMIT_MSG" | grep -qi "fix"; then
+            COMMIT_TYPE="🐛 Bug Fix"
+            COLOR=16744448  # Orange
+          elif echo "$COMMIT_MSG" | grep -qi "feat\|feature\|add"; then
+            COMMIT_TYPE="✨ New Feature"
+            COLOR=3066993   # Green
+          elif echo "$COMMIT_MSG" | grep -qi "docs\|documentation"; then
+            COMMIT_TYPE="📚 Documentation"
+            COLOR=3447003   # Blue
+          elif echo "$COMMIT_MSG" | grep -qi "refactor\|improve"; then
+            COMMIT_TYPE="♻️ Refactor"
+            COLOR=10181046  # Purple
+          elif echo "$COMMIT_MSG" | grep -qi "test"; then
+            COMMIT_TYPE="🧪 Tests"
+            COLOR=15844367  # Gold
+          elif echo "$COMMIT_MSG" | grep -qi "release\|version"; then
+            COMMIT_TYPE="🚀 Release"
+            COLOR=65280     # Bright Green
+          else
+            COMMIT_TYPE="🔧 Update"
+            COLOR=7506394   # Default blue
+          fi
+          
+          # Get current timestamp
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           
           PAYLOAD=$(cat <<EOF
           {
             "embeds": [{
-              "title": "📝 New Commit",
-              "description": "**Message:**\n\`\`\`\n${COMMIT_MSG}\n\`\`\`",
-              "color": 7506394,
-              "url": "${{ github.event.head_commit.url }}",
-              "footer": {
-                "text": "AzabBot",
-                "icon_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
+              "author": {
+                "name": "AzabBot Development",
+                "icon_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif",
+                "url": "https://github.com/${{ github.repository }}"
               },
+              "title": "${COMMIT_TYPE}",
+              "description": "**${COMMIT_MSG}**\n\n**[\`${SHORT_SHA}\`](${{ github.event.head_commit.url }})** • [View Changes](${{ github.event.head_commit.url }}) • [View Repository](https://github.com/${{ github.repository }})",
+              "color": ${COLOR},
+              "url": "${{ github.event.head_commit.url }}",
               "fields": [
                 {
-                  "name": "Author",
+                  "name": "👤 Developer",
                   "value": "حَـــــنَّـــــا",
                   "inline": true
                 },
                 {
-                  "name": "Commit",
-                  "value": "[\`${{ github.event.head_commit.id }}\`](${{ github.event.head_commit.url }})",
+                  "name": "🌿 Branch",
+                  "value": "\`${{ github.ref_name }}\`",
+                  "inline": true
+                },
+                {
+                  "name": "📊 Status",
+                  "value": "✅ Deployed",
                   "inline": true
                 }
-              ]
+              ],
+              "footer": {
+                "text": "AzabBot v1.5.0 • Continuous Integration",
+                "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+              },
+              "timestamp": "${TIMESTAMP}"
             }],
-            "username": "Azab",
+            "username": "AzabBot CI/CD",
             "avatar_url": "https://github.com/${{ github.repository }}/raw/main/images/PFP.gif"
           }
           EOF
