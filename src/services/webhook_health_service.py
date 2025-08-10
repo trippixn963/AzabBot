@@ -289,84 +289,135 @@ class WebhookHealthService(BaseService):
         """Build Discord embed for health report."""
         status_text, color = status.value
         
+        # Get stats
+        bot_stats = health_data.get("bot_stats", {})
+        perf = health_data.get("performance", {})
+        services = health_data.get("services", {})
+        
+        # Create status indicators with emojis
+        cpu_percent = perf.get('cpu_percent', 0)
+        mem_percent = perf.get('memory_percent', 0)
+        
+        # CPU status bar
+        cpu_bar = self._create_progress_bar(cpu_percent, 10)
+        mem_bar = self._create_progress_bar(mem_percent, 10)
+        
+        # Service health summary
+        healthy_services = sum(1 for s in services.values() if s.get("healthy", True))
+        total_services = len(services)
+        service_health_pct = (healthy_services / total_services * 100) if total_services > 0 else 100
+        
+        # Determine overall health emoji and message
+        if status == HealthStatus.HEALTHY:
+            status_emoji = "✅"
+            status_msg = "All systems operational"
+        elif status == HealthStatus.WARNING:
+            status_emoji = "⚠️"
+            status_msg = "Minor issues detected"
+        elif status == HealthStatus.CRITICAL:
+            status_emoji = "🔴"
+            status_msg = "Critical issues require attention"
+        else:
+            status_emoji = "💀"
+            status_msg = "System offline"
+        
         embed = {
-            "title": f"{status_text} AzabBot Health Report",
+            "author": {
+                "name": "AzabBot System Monitor",
+                "icon_url": "https://github.com/trippixn963/AzabBot/raw/main/images/PFP.gif",
+                "url": "https://github.com/trippixn963/AzabBot"
+            },
+            "title": f"{status_emoji} System Health Report",
+            "description": f"**Status:** {status_msg}\n**Uptime:** {health_data.get('uptime', 'Unknown')}\n\n"
+                          f"**Performance Overview:**\n"
+                          f"CPU Usage: {cpu_bar} {cpu_percent:.1f}%\n"
+                          f"Memory: {mem_bar} {mem_percent:.1f}%\n"
+                          f"Services: {healthy_services}/{total_services} operational ({service_health_pct:.0f}%)",
             "color": color,
             "timestamp": datetime.now().isoformat(),
             "fields": []
         }
         
-        # Add thumbnail (bot avatar) if available
+        # Add thumbnail for visual appeal
         if self.bot_instance and self.bot_instance.user and self.bot_instance.user.avatar:
             embed["thumbnail"] = {
                 "url": str(self.bot_instance.user.avatar.url)
             }
-            
-        # System overview field
-        bot_stats = health_data.get("bot_stats", {})
-        overview_lines = []
-        if health_data.get("uptime"):
-            overview_lines.append(f"⏱️ Uptime: {health_data['uptime']}")
+        
+        # Network Statistics
         if bot_stats:
-            overview_lines.append(f"🏠 Guilds: {bot_stats.get('guilds', 0)}")
-            overview_lines.append(f"👥 Users: {bot_stats.get('users', 0)}")
-            overview_lines.append(f"📡 Latency: {bot_stats.get('latency', 0)}ms")
-            
-        if overview_lines:
             embed["fields"].append({
-                "name": "📊 System Overview",
-                "value": "\n".join(overview_lines),
+                "name": "📊 Network Statistics",
+                "value": f"**Servers:** {bot_stats.get('guilds', 0)}\n"
+                        f"**Users:** {bot_stats.get('users', 0):,}\n"
+                        f"**Latency:** {bot_stats.get('latency', 0)}ms",
                 "inline": True
             })
             
-        # Performance metrics field
-        perf = health_data.get("performance", {})
+            # Activity Metrics
+            embed["fields"].append({
+                "name": "📈 Activity Metrics",
+                "value": f"**Messages Processed:** {bot_stats.get('messages_seen', 0):,}\n"
+                        f"**Responses Generated:** {bot_stats.get('responses_generated', 0):,}\n"
+                        f"**Active Prisoners:** {bot_stats.get('prisoners', 0)}",
+                "inline": True
+            })
+        
+        # System Resources
         if perf:
-            perf_lines = [
-                f"🖥️ CPU: {perf.get('cpu_percent', 0):.1f}%",
-                f"💾 RAM: {perf.get('memory_percent', 0):.1f}%",
-                f"📦 Memory: {perf.get('memory_mb', 0):.0f} MB"
-            ]
+            memory_mb = perf.get('memory_mb', 0)
             embed["fields"].append({
-                "name": "⚡ Performance",
-                "value": "\n".join(perf_lines),
+                "name": "💻 System Resources",
+                "value": f"**CPU Load:** {cpu_percent:.1f}%\n"
+                        f"**RAM Usage:** {mem_percent:.1f}%\n"
+                        f"**Memory:** {memory_mb:.0f} MB",
                 "inline": True
             })
-            
-        # Bot activity field
-        if bot_stats:
-            activity_lines = [
-                f"⛓️ Prisoners: {bot_stats.get('prisoners', 0)}",
-                f"📨 Messages: {bot_stats.get('messages_seen', 0)}",
-                f"💬 Responses: {bot_stats.get('responses_generated', 0)}"
-            ]
+        
+        # Service Health Details (if any issues)
+        if services and healthy_services < total_services:
+            unhealthy = [name for name, info in services.items() if not info.get("healthy", True)]
             embed["fields"].append({
-                "name": "🤖 Bot Activity",
-                "value": "\n".join(activity_lines),
-                "inline": True
-            })
-            
-        # Service status field
-        services = health_data.get("services", {})
-        if services:
-            service_lines = []
-            for name, info in list(services.items())[:6]:  # Limit to 6 services
-                icon = "✅" if info.get("healthy") else "❌"
-                service_lines.append(f"{icon} {name}")
-                
-            embed["fields"].append({
-                "name": "🔧 Services",
-                "value": "\n".join(service_lines) or "No services",
+                "name": "⚠️ Service Issues",
+                "value": "\n".join([f"❌ {name}" for name in unhealthy[:5]]),
                 "inline": False
             })
-            
-        # Add footer
+        
+        # Quick Stats Bar
+        embed["fields"].append({
+            "name": "📊 Quick Stats",
+            "value": f"```\n"
+                    f"Uptime    : {health_data.get('uptime', 'N/A')}\n"
+                    f"Health    : {status_text.split()[1]}\n"
+                    f"Next Check: {self.check_interval // 3600}h\n"
+                    f"```",
+            "inline": False
+        })
+        
+        # Professional footer
         embed["footer"] = {
-            "text": f"Health Check #{self.consecutive_failures + 1} • AzabBot v1.5.0",
-            "icon_url": "https://github.com/trippixn963/AzabBot/raw/main/images/PFP.gif"
+            "text": f"AzabBot v1.5.0 • Health Monitor • Report #{self.consecutive_failures + 1}",
+            "icon_url": "https://cdn.discordapp.com/emojis/1058387875436941402.webp?size=96&quality=lossless"  # Health icon
         }
         
         return embed
+    
+    def _create_progress_bar(self, percentage: float, length: int = 10) -> str:
+        """Create a visual progress bar using emojis."""
+        filled = int((percentage / 100) * length)
+        
+        # Color based on percentage
+        if percentage < 50:
+            fill_char = "🟩"
+        elif percentage < 75:
+            fill_char = "🟨"
+        else:
+            fill_char = "🟥"
+        
+        empty_char = "⬜"
+        
+        bar = fill_char * filled + empty_char * (length - filled)
+        return bar
         
     async def _send_webhook(self, embed: Dict[str, Any]) -> bool:
         """Send embed via Discord webhooks to all configured destinations."""
