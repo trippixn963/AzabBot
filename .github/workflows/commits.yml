@@ -44,8 +44,9 @@ jobs:
             COLOR=7506394   # Default blue
           fi
           
-          # Get current timestamp
+          # Get current timestamp and build info
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+          BUILD_TIME=$(date -u +"%I:%M %p UTC")
           
           PAYLOAD=$(cat <<EOF
           {
@@ -77,7 +78,7 @@ jobs:
                 }
               ],
               "footer": {
-                "text": "AzabBot v1.5.0 • Continuous Integration",
+                "text": "🤖 AzabBot v2.0 • Commit ${GITHUB_SHA:0:7} • ${BUILD_TIME}",
                 "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
               },
               "timestamp": "${TIMESTAMP}"
@@ -143,8 +144,9 @@ jobs:
             COLOR=7506394   # Default blue
           fi
           
-          # Get current timestamp
+          # Get current timestamp and build info
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+          BUILD_TIME=$(date -u +"%I:%M %p UTC")
           
           PAYLOAD=$(cat <<EOF
           {
@@ -176,7 +178,7 @@ jobs:
                 }
               ],
               "footer": {
-                "text": "AzabBot v1.5.0 • Continuous Integration",
+                "text": "🤖 AzabBot v2.0 • Commit ${GITHUB_SHA:0:7} • ${BUILD_TIME}",
                 "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
               },
               "timestamp": "${TIMESTAMP}"
