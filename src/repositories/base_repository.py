@@ -1,6 +1,60 @@
 """
-Base repository pattern for database operations.
-Reduces code duplication across services.
+Base Repository Pattern for AzabBot
+===================================
+
+This module provides a comprehensive, production-grade base repository pattern
+for database operations with standardized error handling, transaction management,
+and data access patterns. Reduces code duplication across services while ensuring
+consistent database interaction patterns and robust error recovery.
+
+DESIGN PATTERNS IMPLEMENTED:
+1. Repository Pattern: Data access abstraction layer
+2. Template Pattern: Consistent database operation patterns
+3. Decorator Pattern: Error handling and retry logic
+4. Strategy Pattern: Different database operation strategies
+5. Command Pattern: Database operations with rollback capabilities
+
+REPOSITORY COMPONENTS:
+- BaseRepository: Abstract base class with common database operations
+- Error Handling: Comprehensive error categorization and recovery
+- Transaction Management: ACID-compliant transaction support
+- Data Validation: Input validation and sanitization
+- Performance Optimization: Connection pooling and query optimization
+- Logging Integration: Detailed operation logging and monitoring
+
+DATABASE OPERATIONS:
+- fetch_one: Single record retrieval with error handling
+- fetch_all: Multiple record retrieval with pagination support
+- execute: Query execution with transaction support
+- get_or_create: Atomic get-or-create operations
+- update: Record updates with validation
+- delete: Safe deletion with cascade support
+- count: Record counting with filtering
+- transaction: Multi-operation transaction support
+
+PERFORMANCE CHARACTERISTICS:
+- Connection Pooling: Efficient database connection management
+- Query Optimization: Prepared statements and parameter binding
+- Caching: Intelligent result caching for frequently accessed data
+- Batch Operations: Bulk insert/update operations for performance
+- Async Support: Non-blocking database operations
+
+ERROR HANDLING:
+- Categorized Errors: Database, validation, and system errors
+- Severity Levels: Critical, high, medium, and low severity
+- Retry Logic: Automatic retry with exponential backoff
+- Graceful Degradation: Fallback mechanisms for failures
+- Detailed Logging: Comprehensive error context and stack traces
+
+USAGE EXAMPLES:
+1. Basic repository usage with error handling
+2. Transaction management for complex operations
+3. Batch operations for performance optimization
+4. Custom repository extension patterns
+5. Error recovery and fallback strategies
+
+This base repository provides the foundation for all data access operations
+in the AzabBot system, ensuring consistent patterns and robust error handling.
 """
 
 from typing import Any, Dict, List, Optional, Tuple

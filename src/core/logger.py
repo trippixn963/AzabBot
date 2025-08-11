@@ -1,30 +1,86 @@
 """
-AzabBot - Core Logger Module
-================================
+Core Logger Module for AzabBot
+=============================
 
-This module provides a comprehensive logging system that integrates TreeLogger
-with standard Python logging for complete application logging coverage.
+This module provides a comprehensive, production-grade logging system that
+integrates TreeLogger with standard Python logging for complete application
+logging coverage with advanced features, structured output, and comprehensive
+monitoring capabilities throughout the AzabBot application.
 
-The logging system combines beautiful tree-style structured logging with traditional
-Python logging capabilities, providing both visual appeal and comprehensive
-logging functionality. It serves as the central logging interface for the entire
-application.
+DESIGN PATTERNS IMPLEMENTED:
+1. Adapter Pattern: Integration between TreeLogger and Python logging
+2. Strategy Pattern: Different logging strategies and output formats
+3. Observer Pattern: Log event monitoring and correlation
+4. Factory Pattern: Logger creation and configuration management
+5. Template Pattern: Consistent logging patterns and formatting
 
-Key Features:
+LOGGING SYSTEM COMPONENTS:
+- BotLogger: Central logging system with comprehensive capabilities
+- TreeLogger Integration: Beautiful tree-style structured logging
+- Python Logger Integration: Traditional logging compatibility
+- Log Level Management: Comprehensive log level control and filtering
+- Run ID Tracking: Session management and correlation capabilities
+- Error Context Extraction: Automatic error context and formatting
+- Performance Metrics: Performance tracking and monitoring integration
+
+LOGGING FEATURES:
 - Tree-style structured logging for complex operations and initialization
-- Traditional Python logging for simple messages and integration
-- Automatic error context extraction and formatting
-- Run ID tracking for session management and correlation
-- Multiple output destinations (console, files, JSON)
-- Proper log level management and filtering
-- Exception handling integration with detailed context
-- Performance metrics logging
-- User interaction tracking
-- System event logging
+- Traditional Python logging for simple messages and integration compatibility
+- Automatic error context extraction and comprehensive formatting
+- Run ID tracking for session management and correlation across operations
+- Multiple output destinations (console, files, JSON) with configurable routing
+- Proper log level management and filtering with granular control
+- Exception handling integration with detailed context and stack traces
+- Performance metrics logging and monitoring capabilities
+- User interaction tracking and behavioral analysis
+- System event logging with comprehensive event categorization
 
-The logger provides specialized methods for different types of logging needs
-including startup/shutdown, initialization steps, user interactions, AI operations,
-and error handling.
+STRUCTURED LOGGING CAPABILITIES:
+- Tree-style output for complex operation visualization
+- Hierarchical logging for nested operations and workflows
+- Visual categorization with emoji and status indicators
+- Context-aware logging with relevant information extraction
+- Correlation tracking across different logging components
+- Performance measurement and timing integration
+- Error context preservation and debugging information
+
+INTEGRATION FEATURES:
+- Seamless integration with existing Python logging infrastructure
+- Compatibility with third-party logging libraries and frameworks
+- Configurable output formats and destinations
+- Log level filtering and management
+- Exception handling and error reporting integration
+- Performance monitoring and metrics collection
+- Debug information and troubleshooting capabilities
+
+PERFORMANCE CHARACTERISTICS:
+- Efficient logging operations with minimal performance impact
+- Optimized tree structure generation and formatting
+- Memory-efficient log message handling and processing
+- Fast log level checking and filtering
+- Efficient file I/O operations and buffering
+- Low-overhead context extraction and formatting
+- Configurable performance tuning and optimization
+
+ERROR HANDLING:
+- Comprehensive error context extraction and preservation
+- Exception handling integration with detailed stack traces
+- Error correlation and tracking across components
+- Debug information and troubleshooting capabilities
+- Graceful degradation on logging failures
+- Error recovery and fallback mechanisms
+- Security-conscious error information handling
+
+USAGE EXAMPLES:
+1. Application startup and shutdown logging
+2. Service initialization and lifecycle management
+3. User interaction tracking and behavioral analysis
+4. AI operation logging and performance monitoring
+5. Error handling and debugging information
+
+This logging system provides the foundation for comprehensive application
+monitoring, debugging, and performance analysis throughout the AzabBot
+system, ensuring complete visibility and operational excellence.
 """
 
 import logging

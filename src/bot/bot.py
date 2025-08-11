@@ -128,6 +128,11 @@ class AzabBot(discord.Client):
             self.health_monitor = await resolve("HealthMonitor")
             self.webhook_health = await resolve("WebhookHealthService")
             
+            # Start health monitor's monitoring tasks
+            if self.health_monitor:
+                await self.health_monitor.start()
+                self.logger.log_info("Health monitor tasks started")
+            
             # Try to resolve prison service (optional)
             try:
                 self.prison_service = await resolve("PrisonService")

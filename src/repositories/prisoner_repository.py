@@ -1,6 +1,69 @@
 """
-Prisoner repository for database operations.
-Centralizes all prisoner-related database queries.
+Prisoner Repository for AzabBot
+===============================
+
+This module provides a comprehensive, production-grade prisoner repository for
+database operations with centralized prisoner-related queries, behavioral tracking,
+and psychological profiling data management. Implements advanced prisoner lifecycle
+management with detailed analytics and reporting capabilities.
+
+DESIGN PATTERNS IMPLEMENTED:
+1. Repository Pattern: Data access abstraction for prisoner operations
+2. Factory Pattern: Prisoner record creation and management
+3. Observer Pattern: Prisoner behavior monitoring and tracking
+4. Strategy Pattern: Different prisoner management strategies
+5. Command Pattern: Prisoner operations with audit trail
+
+PRISONER COMPONENTS:
+- PrisonerRepository: Specialized repository for prisoner operations
+- Behavioral Tracking: Comprehensive behavior monitoring and analysis
+- Mute Management: Advanced mute tracking and history management
+- Message Logging: Complete conversation history and analysis
+- Statistics Generation: Detailed prisoner analytics and reporting
+- Data Cleanup: Automated data maintenance and archival
+
+DATABASE OPERATIONS:
+- get_or_create_prisoner: Atomic prisoner creation with duplicate handling
+- get_active_prisoners: Active prisoner retrieval with mute status
+- record_mute: Mute event logging with reason tracking
+- record_unmute: Unmute event logging with duration calculation
+- get_prisoner_stats: Comprehensive prisoner statistics and analytics
+- record_message: Message logging with content analysis
+- get_recent_messages: Recent message retrieval for context
+- cleanup_old_data: Automated data cleanup and archival
+
+PRISONER LIFECYCLE:
+- First Contact: Initial prisoner detection and profile creation
+- Behavioral Analysis: Pattern recognition and psychological profiling
+- Mute Management: Advanced mute tracking with reason analysis
+- Message Tracking: Complete conversation history and context
+- Statistics Generation: Comprehensive analytics and reporting
+- Data Maintenance: Automated cleanup and archival processes
+
+PERFORMANCE CHARACTERISTICS:
+- Indexed Queries: Optimized database queries with proper indexing
+- Batch Operations: Efficient bulk operations for data processing
+- Caching: Intelligent caching for frequently accessed prisoner data
+- Connection Pooling: Efficient database connection management
+- Async Operations: Non-blocking database operations for scalability
+
+ANALYTICS CAPABILITIES:
+- Behavioral Patterns: Comprehensive behavior analysis and tracking
+- Mute History: Detailed mute reason analysis and patterns
+- Message Analysis: Conversation content and frequency analysis
+- Statistical Reporting: Advanced analytics and trend analysis
+- Performance Metrics: System performance and efficiency tracking
+
+USAGE EXAMPLES:
+1. Prisoner creation and profile management
+2. Behavioral tracking and analysis
+3. Mute history and reason analysis
+4. Message logging and conversation tracking
+5. Statistical reporting and analytics generation
+
+This prisoner repository provides comprehensive data management for all
+prisoner-related operations in the AzabBot system, enabling advanced
+psychological profiling and behavioral analysis capabilities.
 """
 
 from typing import Dict, List, Optional

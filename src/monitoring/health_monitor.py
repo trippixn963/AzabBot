@@ -1,29 +1,79 @@
 """
-AzabBot - Health Monitoring System
-======================================
+Health Monitoring System for AzabBot
+====================================
 
-This module provides a comprehensive health monitoring and alerting system for all
-bot services. It ensures system reliability through proactive monitoring, automated
-recovery mechanisms, and detailed performance analysis.
+This module provides a comprehensive, production-grade health monitoring and
+alerting system for all bot services with proactive monitoring, automated recovery
+mechanisms, and detailed performance analysis. Ensures system reliability through
+continuous monitoring of service health, system resources, and performance metrics.
 
-The health monitoring system tracks:
-- Individual service health and performance
-- System resource utilization (CPU, memory, disk, network)
-- Service dependencies and cascading failures
-- Performance trends and anomalies
-- Automated alerting and recovery actions
+DESIGN PATTERNS IMPLEMENTED:
+1. Observer Pattern: Service health monitoring and status tracking
+2. Strategy Pattern: Different monitoring strategies and recovery actions
+3. Factory Pattern: Alert creation and management
+4. Template Pattern: Consistent health check patterns
+5. Command Pattern: Recovery actions and alert processing
 
-Key Features:
+MONITORING COMPONENTS:
+- HealthMonitor: Central monitoring service with comprehensive health tracking
+- ComponentHealth: Individual component health status and metrics
+- HealthStatus: Aggregated system health status and overview
+- HealthAlert: Alert management with lifecycle tracking
+- SystemMetrics: System resource utilization and performance metrics
+- AlertSeverity: Alert severity levels and classification
+
+HEALTH MONITORING FEATURES:
 - Real-time health checks with configurable intervals
-- System resource monitoring and alerting
-- Alert generation and management with severity levels
+- System resource monitoring (CPU, memory, disk, network)
+- Service dependency tracking and cascading failure detection
+- Performance trend analysis and anomaly detection
 - Automated recovery actions for common issues
-- Performance trend analysis and reporting
-- Health status dashboards and reporting
-- Service dependency tracking and impact analysis
+- Alert generation and management with severity levels
+- Health status dashboards and comprehensive reporting
+- Service lifecycle monitoring and status transitions
 
-The system provides both reactive (alerting) and proactive (trend analysis)
-monitoring capabilities to maintain optimal bot performance and reliability.
+SYSTEM RESOURCE MONITORING:
+- CPU usage monitoring with threshold-based alerting
+- Memory utilization tracking and leak detection
+- Disk space monitoring and cleanup recommendations
+- Network activity analysis and connection tracking
+- System uptime monitoring and performance trends
+- Resource bottleneck identification and optimization
+
+ALERT MANAGEMENT SYSTEM:
+- Multi-level alert severity classification (Info, Warning, Critical, Emergency)
+- Alert lifecycle management (creation, acknowledgment, resolution)
+- Automated alert correlation and deduplication
+- Alert history tracking and trend analysis
+- Customizable alert thresholds and conditions
+- Alert callback system for external integrations
+
+RECOVERY MECHANISMS:
+- Automated recovery actions for common service failures
+- Service restart and reconnection logic
+- Resource cleanup and optimization procedures
+- Graceful degradation and fallback strategies
+- Recovery success tracking and reporting
+- Manual intervention escalation procedures
+
+PERFORMANCE CHARACTERISTICS:
+- Low-overhead monitoring with configurable intervals
+- Efficient resource usage with optimized data collection
+- Scalable monitoring for multiple services and components
+- Real-time alerting with minimal latency
+- Historical data retention and trend analysis
+- Memory-efficient metrics storage and processing
+
+USAGE EXAMPLES:
+1. Service health monitoring and status tracking
+2. System resource monitoring and alerting
+3. Automated recovery action implementation
+4. Custom alert callback integration
+5. Health status reporting and analytics
+
+This health monitoring system provides comprehensive oversight of all bot
+services and system components, ensuring optimal performance and reliability
+through proactive monitoring and automated recovery mechanisms.
 """
 
 import asyncio

@@ -1,22 +1,82 @@
 """
-AzabBot - Instance Management System
-========================================
+Instance Management System for AzabBot
+=====================================
 
-This module provides an instance management system that prevents multiple bot
-instances from running simultaneously. It detects and automatically terminates
-existing instances before starting a new one, ensuring system stability and
-preventing resource conflicts.
+This module provides a comprehensive, production-grade instance management
+system that prevents multiple bot instances from running simultaneously with
+advanced process detection, automatic termination, and cross-platform
+compatibility for optimal system stability and resource management.
 
-The instance manager uses process detection and PID file management to:
-- Detect running bot instances across the system
-- Automatically terminate conflicting instances
-- Provide graceful shutdown with force-kill fallback
-- Ensure cross-platform compatibility
-- Maintain PID files for process tracking
+DESIGN PATTERNS IMPLEMENTED:
+1. Singleton Pattern: Single instance enforcement and management
+2. Observer Pattern: Process monitoring and status tracking
+3. Strategy Pattern: Different termination strategies and fallback mechanisms
+4. Factory Pattern: Process detection and management strategies
+5. Command Pattern: Process termination and cleanup operations
 
-This system is critical for preventing resource conflicts, database locks,
-and other issues that can occur when multiple bot instances attempt to run
-simultaneously.
+INSTANCE MANAGEMENT COMPONENTS:
+- InstanceManager: Central instance management and coordination
+- Process Detection: Cross-platform process scanning and identification
+- PID File Management: Process tracking and file-based coordination
+- Termination Strategies: Graceful shutdown with force-kill fallback
+- Resource Cleanup: Automatic resource release and cleanup procedures
+- Cross-Platform Support: Windows, Linux, and macOS compatibility
+
+PROCESS MANAGEMENT FEATURES:
+- Detect running bot instances across the system using multiple methods
+- Automatically terminate conflicting instances with graceful shutdown
+- Provide force-kill fallback for unresponsive processes
+- Ensure cross-platform compatibility and process handling
+- Maintain PID files for process tracking and coordination
+- Resource conflict prevention and database lock management
+- Process lifecycle monitoring and status tracking
+
+PROCESS DETECTION STRATEGIES:
+- Command line analysis for bot-specific indicators
+- Working directory verification for project identification
+- Process name filtering for Python-based bot instances
+- Cross-platform process scanning and identification
+- Multiple detection methods for reliability and accuracy
+- Permission handling for elevated access requirements
+- Zombie process detection and cleanup
+
+TERMINATION MECHANISMS:
+- Graceful termination with timeout-based waiting
+- Force-kill fallback for unresponsive processes
+- Resource cleanup and release procedures
+- Cross-platform termination compatibility
+- Process state monitoring and verification
+- Error handling and recovery mechanisms
+- Termination confirmation and status reporting
+
+PERFORMANCE CHARACTERISTICS:
+- Fast process detection and scanning
+- Efficient resource usage and memory management
+- Minimal overhead for process monitoring
+- Optimized termination procedures
+- Cross-platform performance optimization
+- Low-impact process management operations
+- Efficient PID file handling and coordination
+
+ERROR HANDLING:
+- Comprehensive error handling for process operations
+- Permission error handling and graceful degradation
+- Process access denial recovery mechanisms
+- Cross-platform error handling and compatibility
+- Termination failure recovery and fallback strategies
+- Resource cleanup error handling and reporting
+- Detailed error logging and debugging information
+
+USAGE EXAMPLES:
+1. Single instance enforcement and conflict prevention
+2. Process detection and termination management
+3. Cross-platform process handling and compatibility
+4. Resource cleanup and conflict resolution
+5. PID file management and process tracking
+
+This instance management system is critical for preventing resource conflicts,
+database locks, and other issues that can occur when multiple bot instances
+attempt to run simultaneously, ensuring optimal system stability and performance.
 """
 
 import os

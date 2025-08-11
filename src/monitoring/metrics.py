@@ -1,6 +1,84 @@
 """
-Metrics collection and monitoring for AzabBot.
-Provides comprehensive performance and business metrics.
+Metrics Collection and Monitoring for AzabBot
+============================================
+
+This module provides a comprehensive, production-grade metrics collection and
+monitoring system for performance tracking, business analytics, and operational
+insights. Implements advanced metric types, statistical analysis, and real-time
+monitoring capabilities for optimal system performance and business intelligence.
+
+DESIGN PATTERNS IMPLEMENTED:
+1. Observer Pattern: Metric collection and monitoring
+2. Strategy Pattern: Different metric types and collection strategies
+3. Factory Pattern: Metric creation and management
+4. Template Pattern: Consistent metric collection patterns
+5. Command Pattern: Metric operations and data processing
+
+METRICS COMPONENTS:
+- MetricsCollector: Central metrics collection and management system
+- Metric: Base metric class with type-specific implementations
+- MetricPoint: Individual metric data points with timestamps
+- MetricSummary: Statistical summaries and aggregations
+- Timer: Context manager for timing operations
+- MetricType: Enumeration of supported metric types
+
+METRIC TYPES SUPPORTED:
+- Counter: Cumulative count metrics for events and operations
+- Gauge: Current value metrics for system state and resources
+- Histogram: Distribution analysis for performance measurements
+- Timer: Timing measurements for operation performance analysis
+- Custom: Extensible metric types for specialized requirements
+
+PERFORMANCE METRICS:
+- Request duration and throughput analysis
+- Database query performance and optimization
+- AI service response times and token usage
+- Cache hit/miss ratios and efficiency
+- System resource utilization tracking
+- Error rates and failure analysis
+
+BUSINESS METRICS:
+- Discord message and command processing
+- User interaction patterns and engagement
+- Service usage statistics and trends
+- Operational efficiency and cost analysis
+- Quality metrics and user satisfaction
+- Growth and adoption tracking
+
+STATISTICAL ANALYSIS:
+- Real-time statistical calculations and summaries
+- Percentile analysis (P50, P95, P99) for performance
+- Trend analysis and anomaly detection
+- Moving averages and smoothing algorithms
+- Correlation analysis between metrics
+- Predictive analytics and forecasting
+
+DATA MANAGEMENT:
+- Efficient metric storage with sliding windows
+- Automatic data retention and cleanup
+- Label-based metric organization and filtering
+- Time-series data analysis and aggregation
+- Memory-efficient storage and processing
+- Data export and integration capabilities
+
+PERFORMANCE CHARACTERISTICS:
+- Low-overhead metric collection with minimal impact
+- Efficient memory usage with optimized data structures
+- Scalable collection for high-volume metrics
+- Real-time processing and analysis capabilities
+- Thread-safe operations with async support
+- Configurable retention and storage policies
+
+USAGE EXAMPLES:
+1. Performance monitoring and optimization
+2. Business analytics and reporting
+3. Operational monitoring and alerting
+4. Custom metric implementation and tracking
+5. Statistical analysis and trend detection
+
+This metrics system provides comprehensive data collection and analysis
+capabilities for monitoring system performance, business metrics, and
+operational insights across the entire AzabBot platform.
 """
 
 import time

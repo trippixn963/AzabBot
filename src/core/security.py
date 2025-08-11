@@ -1,29 +1,100 @@
 """
-AzabBot - Core Security Module
-==================================
+Core Security Module for AzabBot
+===============================
 
-This module provides a comprehensive security framework for the AzabBot
-application, implementing authentication, authorization, rate limiting,
-input validation, and security monitoring capabilities.
+This module provides a comprehensive, production-grade security framework for
+the AzabBot application with advanced authentication, authorization, rate limiting,
+input validation, and security monitoring capabilities implementing industry
+best practices and layered security approaches.
 
-The security system implements industry best practices including:
-- Role-based access control with hierarchical permissions
-- Advanced rate limiting with multiple strategies (token bucket, sliding window)
-- Comprehensive input sanitization and validation
-- Security event logging and monitoring
-- Protection against common attack vectors (injection, abuse, etc.)
-- Cross-platform security measures
+DESIGN PATTERNS IMPLEMENTED:
+1. Strategy Pattern: Different rate limiting and security strategies
+2. Observer Pattern: Security event monitoring and tracking
+3. Factory Pattern: Security context creation and management
+4. Command Pattern: Security operations and validation procedures
+5. Template Pattern: Consistent security patterns and validation rules
 
-The module provides a layered security approach with multiple components
-working together to ensure the bot operates securely in various environments
-and handles user interactions safely.
-
-Key Components:
-- SecurityManager: Central security coordination
+SECURITY FRAMEWORK COMPONENTS:
+- SecurityManager: Central security coordination and management
 - AccessController: Permission management and role-based access control
-- RateLimiter: Request rate limiting and abuse prevention
-- SecurityValidator: Input validation and sanitization
-- SecurityContext: Context-aware security information
+- RateLimiter: Advanced rate limiting with multiple strategies
+- SecurityValidator: Comprehensive input validation and sanitization
+- SecurityContext: Context-aware security information and tracking
+- PermissionLevel: Hierarchical permission system and access control
+
+SECURITY FEATURES:
+- Role-based access control with hierarchical permissions and inheritance
+- Advanced rate limiting with multiple strategies (token bucket, sliding window)
+- Comprehensive input sanitization and validation with security checks
+- Security event logging and monitoring with detailed analytics
+- Protection against common attack vectors (injection, abuse, XSS, etc.)
+- Cross-platform security measures and compatibility
+- Context-aware security decisions and adaptive protection
+
+RATE LIMITING CAPABILITIES:
+- Token bucket algorithm for burst traffic handling
+- Sliding window rate limiting for precise control
+- Per-user and per-channel rate limit management
+- Different limits for different permission levels
+- Automatic cleanup of expired entries and optimization
+- Configurable rate limit policies and thresholds
+- Rate limit analytics and monitoring capabilities
+
+ACCESS CONTROL SYSTEM:
+- Hierarchical permission levels (Guest, User, Moderator, Admin, Owner)
+- Role-based access control with Discord role integration
+- User permission overrides and custom configurations
+- Feature-based permission requirements and validation
+- Permission inheritance and escalation mechanisms
+- Access control analytics and audit logging
+- Security context preservation and tracking
+
+INPUT VALIDATION AND SANITIZATION:
+- Comprehensive input validation with security checks
+- HTML and script injection prevention and sanitization
+- Discord ID validation and format verification
+- Permission level validation and security enforcement
+- Input length and content restrictions
+- Dangerous pattern detection and blocking
+- Cross-platform input validation compatibility
+
+SECURITY MONITORING:
+- Security event tracking and correlation
+- Rate limit violation monitoring and alerting
+- Permission denial tracking and analysis
+- Security violation detection and reporting
+- Security analytics and trend analysis
+- Real-time security monitoring and alerting
+- Security event history and audit trails
+
+PERFORMANCE CHARACTERISTICS:
+- Efficient rate limiting with minimal overhead
+- Fast permission checking and validation
+- Optimized input validation and sanitization
+- Memory-efficient security context management
+- Low-latency security decision making
+- Scalable security monitoring and tracking
+- Configurable performance tuning and optimization
+
+ERROR HANDLING:
+- Comprehensive security error handling and reporting
+- Rate limit exceeded error handling and recovery
+- Permission denied error handling and user feedback
+- Input validation error handling and sanitization
+- Security violation error handling and logging
+- Cross-platform error handling and compatibility
+- Detailed security error context and debugging
+
+USAGE EXAMPLES:
+1. User authentication and authorization management
+2. Rate limiting and abuse prevention
+3. Input validation and security sanitization
+4. Security event monitoring and analytics
+5. Permission-based feature access control
+
+This security framework provides comprehensive protection and monitoring
+capabilities throughout the AzabBot application, ensuring secure operation
+and protection against various security threats and attack vectors.
 """
 
 import time

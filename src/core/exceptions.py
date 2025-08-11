@@ -1,25 +1,74 @@
 """
-AzabBot - Core Exceptions Module
-===================================
+Core Exceptions Module for AzabBot
+=================================
 
-This module provides a comprehensive exception hierarchy for the AzabBot application.
-It defines structured error handling with specific exception types for different
-error scenarios, enabling better error tracking, logging, and recovery.
+This module provides a comprehensive, production-grade exception hierarchy for
+the AzabBot application with structured error handling, specific exception types
+for different error scenarios, and advanced error tracking, logging, and recovery
+capabilities throughout the system.
 
-The exception hierarchy follows Python best practices with clear inheritance
-structure and proper error context preservation. Each exception type includes
-relevant context information to aid in debugging and error handling.
+DESIGN PATTERNS IMPLEMENTED:
+1. Exception Hierarchy Pattern: Structured exception inheritance and organization
+2. Context Pattern: Error context preservation and propagation
+3. Error Code Pattern: Categorized error codes for programmatic handling
+4. Decorator Pattern: Error context enhancement and logging integration
+5. Strategy Pattern: Different error handling strategies and recovery mechanisms
 
-Exception Categories:
-- Configuration errors (missing, invalid, etc.)
-- Service errors (initialization, availability, AI-specific)
-- Discord API errors (permissions, rate limits, etc.)
-- Database errors (connection, query, etc.)
-- Security errors (authentication, authorization, rate limiting)
-- Validation errors (input validation, required fields)
+EXCEPTION HIERARCHY:
+- AzabBotException: Base exception with common error functionality
+- ConfigurationError: Configuration-related errors and validation
+- ServiceError: Service initialization and availability errors
+- AIServiceError: AI service-specific errors and quota management
+- DiscordAPIError: Discord API communication and permission errors
+- DatabaseError: Database connection and query execution errors
+- SecurityError: Authentication, authorization, and security violations
+- ValidationError: Input validation and data integrity errors
 
-All exceptions inherit from AzabBotException which provides common
-functionality for error context and logging.
+EXCEPTION CATEGORIES:
+- Configuration Errors: Missing, invalid, or malformed configuration
+- Service Errors: Service initialization, availability, and lifecycle errors
+- AI Service Errors: AI generation, quota, and content policy violations
+- Discord API Errors: Permissions, rate limits, and API communication
+- Database Errors: Connection failures, query errors, and data integrity
+- Security Errors: Authentication, authorization, and rate limiting violations
+- Validation Errors: Input validation, required fields, and data format errors
+
+ERROR CONTEXT MANAGEMENT:
+- Structured error context with relevant information
+- Error code categorization for programmatic handling
+- Context preservation across exception propagation
+- Debugging information and stack trace enhancement
+- User-friendly error messages with technical details
+- Error correlation and tracking capabilities
+
+ERROR HANDLING FEATURES:
+- Comprehensive error categorization and classification
+- Context-aware error reporting and logging
+- Error code system for automated handling
+- Exception chaining and context preservation
+- Debugging information and stack trace analysis
+- Error recovery and fallback mechanisms
+- Security-conscious error information handling
+
+PERFORMANCE CHARACTERISTICS:
+- Lightweight exception objects with minimal overhead
+- Efficient error context storage and retrieval
+- Fast exception creation and propagation
+- Memory-efficient error information management
+- Optimized error logging and reporting
+- Minimal impact on application performance
+- Efficient error recovery and handling
+
+USAGE EXAMPLES:
+1. Configuration validation and error handling
+2. Service initialization and lifecycle management
+3. AI service error handling and quota management
+4. Discord API error handling and rate limiting
+5. Database error handling and recovery
+
+This exception system provides comprehensive error handling capabilities
+throughout the AzabBot application, ensuring proper error tracking, logging,
+and recovery mechanisms for optimal system reliability and debugging.
 """
 
 from typing import Any, Dict, Optional

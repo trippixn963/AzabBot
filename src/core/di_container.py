@@ -1,29 +1,75 @@
 """
-AzabBot - Dependency Injection Container
-============================================
+Dependency Injection Container for AzabBot
+=========================================
 
-This module provides a professional dependency injection system for managing
-service registration, resolution, lifecycle management, and circular dependency
-detection throughout the AzabBot application.
+This module provides a comprehensive, production-grade dependency injection
+system for managing service registration, resolution, lifecycle management,
+and circular dependency detection throughout the AzabBot application with
+advanced service coordination and resource management capabilities.
 
-The DI container implements a comprehensive service management system that
-handles service instantiation, dependency resolution, and service lifecycle
-in a clean, testable, and maintainable way. It supports multiple service
-lifetime modes and provides robust error handling and monitoring.
+DESIGN PATTERNS IMPLEMENTED:
+1. Dependency Injection Pattern: Service registration and resolution
+2. Factory Pattern: Service instantiation and creation strategies
+3. Singleton Pattern: Service lifetime management and instance sharing
+4. Observer Pattern: Service lifecycle monitoring and health tracking
+5. Command Pattern: Service initialization and shutdown operations
 
-Key Features:
+DI CONTAINER COMPONENTS:
+- DIContainer: Central dependency injection container with comprehensive management
+- ServiceRegistration: Service metadata and configuration management
+- ServiceLifetime: Service lifetime modes (singleton, transient, scoped)
+- ServiceNotFoundError: Exception for missing service resolution
+- CircularDependencyError: Exception for circular dependency detection
+- Global Container: Global container instance for application-wide access
+
+SERVICE MANAGEMENT FEATURES:
 - Service registration with multiple lifetime modes (singleton, transient, scoped)
 - Automatic dependency resolution with circular dependency detection
 - Service lifecycle management (initialization, startup, shutdown)
 - Factory function support for complex service creation
 - Configuration injection and management
-- Health monitoring integration
-- Thread-safe service resolution
+- Health monitoring integration and status tracking
+- Thread-safe service resolution with async support
 - Startup order calculation and dependency graph management
 
-The container manages the entire service lifecycle from registration through
-instantiation, initialization, and cleanup, ensuring proper resource management
-and service coordination.
+LIFECYCLE MANAGEMENT:
+- Service registration and metadata tracking
+- Dependency graph construction and validation
+- Topological sorting for startup order calculation
+- Service instantiation with dependency injection
+- Service initialization and configuration
+- Service startup and health monitoring
+- Graceful shutdown and resource cleanup
+- Error handling and recovery mechanisms
+
+PERFORMANCE CHARACTERISTICS:
+- Efficient service resolution with caching
+- Minimal memory overhead for service tracking
+- Fast dependency graph traversal and validation
+- Optimized startup sequence calculation
+- Thread-safe operations with async support
+- Memory-efficient service instance management
+- Configurable service lifetime policies
+
+ERROR HANDLING:
+- Comprehensive error categorization and reporting
+- Circular dependency detection and prevention
+- Service initialization failure recovery
+- Dependency resolution error handling
+- Configuration validation and error reporting
+- Health monitoring integration for service status
+- Detailed error context and debugging information
+
+USAGE EXAMPLES:
+1. Service registration with dependency injection
+2. Factory-based service creation and management
+3. Service lifecycle management and monitoring
+4. Configuration injection and management
+5. Health monitoring and status tracking
+
+This dependency injection container provides the foundation for all service
+management in the AzabBot system, ensuring proper resource coordination,
+lifecycle management, and dependency resolution throughout the application.
 """
 
 import asyncio
