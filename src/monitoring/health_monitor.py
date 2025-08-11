@@ -720,6 +720,60 @@ class HealthMonitor(BaseService):
             except Exception as e:
                 self.logger.log_error("Error in alert callback", exception=e)
 
+    async def get_system_metrics(self) -> Dict[str, Any]:
+        """
+        Get current system metrics.
+        
+        Returns:
+            Dictionary with current system metrics
+        """
+        try:
+            # Get current CPU and memory usage
+            cpu_percent = psutil.cpu_percent(interval=1)
+            memory = psutil.virtual_memory()
+            memory_usage_mb = (memory.total - memory.available) / 1024 / 1024
+            
+            return {
+                "cpu_usage": cpu_percent,
+                "memory_usage": {
+                    "percent": memory.percent,
+                    "used_mb": memory_usage_mb,
+                    "total_mb": memory.total / 1024 / 1024
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        except Exception as e:
+            self.logger.log_error(f"Error getting system metrics: {e}")
+            return {
+                "cpu_usage": 0,
+                "memory_usage": {"percent": 0, "used_mb": 0},
+                "error": str(e)
+            }
+    
+    async def get_all_service_status(self) -> Dict[str, HealthCheckResult]:
+        """
+        Get the current status of all monitored services.
+        
+        Returns:
+            Dictionary mapping service names to their health check results
+        """
+        statuses = {}
+        for service_name, service in self.monitored_services.items():
+            try:
+                # Get the service's current status
+                statuses[service_name] = HealthCheckResult(
+                    status=service.status,
+                    message=f"Service {service_name} is {service.status.value}",
+                    details={"is_healthy": service.is_healthy()}
+                )
+            except Exception as e:
+                statuses[service_name] = HealthCheckResult(
+                    status=ServiceStatus.UNKNOWN,
+                    message=f"Error checking {service_name}",
+                    details={"error": str(e)}
+                )
+        return statuses
+    
     def get_health_summary(self) -> Dict[str, Any]:
         """
         Get comprehensive health summary.
