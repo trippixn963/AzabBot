@@ -1,14 +1,115 @@
 """
-AzabBot - Professional AI Service
-=================================
+Professional AI Service for AzabBot
+===================================
 
-Comprehensive AI service providing response generation, content analysis,
-and conversation management with proper error handling, rate limiting,
-and content safety measures.
+This module provides a comprehensive, production-grade AI service with multiple
+response generation modes, content filtering, and conversation management for
+advanced psychological torture and harassment operations.
 
-This service is designed with extensibility in mind, supporting multiple
-AI providers and response strategies while maintaining high reliability
-and performance standards.
+DESIGN PATTERNS IMPLEMENTED:
+1. Strategy Pattern: Multiple response generation strategies (Normal, Prison, Azab)
+2. Decorator Pattern: Content filtering and safety checks
+3. Factory Pattern: ResponseGenerator creates different response types
+4. Observer Pattern: Performance monitoring and metrics tracking
+5. Template Pattern: Consistent response formatting and safety measures
+
+RESPONSE MODES:
+1. NORMAL: Standard conversational responses with contrarian approach
+2. PRISON: Enhanced harassment for prison channels with psychological targeting
+3. AZAB: Azab torturer personality with robotic nonsense and confusion
+4. PSYCHOLOGICAL: Psychological analysis and targeted manipulation
+5. FALLBACK: Predefined fallback responses for reliability
+
+AI COMPONENTS:
+1. ContentFilter: Safety and appropriateness checking
+   - Inappropriate content detection
+   - Response probability calculation
+   - Channel-specific behavior rules
+   - Spam and abuse prevention
+
+2. ResponseGenerator: AI-powered response creation
+   - OpenAI GPT integration
+   - Multiple personality modes
+   - Context-aware responses
+   - Token usage optimization
+
+3. AIService: Main service orchestration
+   - Response mode selection
+   - Database integration
+   - Performance monitoring
+   - Error handling and recovery
+
+PERFORMANCE CHARACTERISTICS:
+- Response Generation: 1-3 seconds average
+- Token Usage: Optimized for cost efficiency
+- Memory Usage: Minimal with streaming responses
+- Concurrent Requests: Thread-safe async operations
+
+USAGE EXAMPLES:
+
+1. Basic Response Generation:
+   ```python
+   response = await ai_service.generate_response(
+       message_content="Hello there",
+       user_name="John",
+       channel_name="general",
+       channel_id=123456
+   )
+   ```
+
+2. Prison Channel Response:
+   ```python
+   response = await ai_service.generate_response(
+       message_content="I don't like this place",
+       user_name="Prisoner",
+       channel_name="prison-cell-1",
+       channel_id=789012
+   )
+   ```
+
+3. Azab Personality Mode:
+   ```python
+   # Automatically selected in prison channels
+   response = await ai_service.generate_response(
+       message_content="Why am I here?",
+       user_name="NewPrisoner",
+       channel_name="solitary-confinement",
+       channel_id=345678
+   )
+   ```
+
+4. Psychological Analysis:
+   ```python
+   analysis = await ai_service.analyze_user_personality(
+       message_content="I'm so lonely",
+       user_name="VulnerableUser",
+       channel_name="general"
+   )
+   ```
+
+MONITORING AND STATISTICS:
+- Response success rates and failure tracking
+- Token usage monitoring for cost optimization
+- Response time analysis for performance tuning
+- Content safety violation tracking
+- User interaction pattern analysis
+
+THREAD SAFETY:
+- All AI operations use async/await for concurrency
+- Safe for concurrent access in Discord bot environment
+- Proper error handling prevents cascading failures
+- Rate limiting prevents API quota exhaustion
+
+ERROR HANDLING:
+- Graceful degradation on API failures
+- Automatic fallback response generation
+- Content policy violation handling
+- Rate limit management and retry logic
+- Comprehensive logging for debugging
+
+This implementation follows industry best practices and is designed for
+high-performance, production environments requiring robust AI integration
+for psychological manipulation and harassment operations.
 """
 
 import asyncio

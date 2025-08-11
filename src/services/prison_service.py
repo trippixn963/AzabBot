@@ -1,9 +1,21 @@
-# =============================================================================
-# AzabBot - Prison Management Service
-# =============================================================================
-# Handles Solitary Confinement, Good Behavior, and Prison Break Detection
-# for advanced prison management and psychological torture operations.
-# =============================================================================
+"""
+Prison Management Service for AzabBot
+=====================================
+
+Handles Solitary Confinement, Good Behavior, and Prison Break Detection
+for advanced prison management and psychological torture operations.
+
+Features:
+- Solitary confinement management
+- Good behavior tracking and rewards
+- Prison break detection and prevention
+- Automated punishment responses
+- Behavioral analysis and scoring
+- Escape attempt monitoring
+
+This service integrates with the psychological profiling system to provide
+context-aware punishment and rehabilitation strategies.
+"""
 
 import asyncio
 import json

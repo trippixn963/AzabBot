@@ -1,6 +1,21 @@
 """
-Psychological Profiling Service
+Psychological Profiling Service for AzabBot
+===========================================
+
 Tracks prisoner crimes, builds psychological profiles, and manages grudges
+for advanced psychological targeting and manipulation strategies.
+
+Features:
+- Crime tracking and analysis
+- Psychological profile building
+- Grudge management and escalation
+- Conversation memory and analysis
+- Behavioral pattern recognition
+- Mute reason extraction and analysis
+- Psychological vulnerability assessment
+
+This service provides the foundation for personalized psychological
+torture and manipulation strategies based on individual prisoner profiles.
 """
 
 import asyncio

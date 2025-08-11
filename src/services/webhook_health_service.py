@@ -1,6 +1,6 @@
 """
-AzabBot - Webhook Health Check Service
-======================================
+Webhook Health Check Service for AzabBot
+========================================
 
 This service provides automated health status reporting via Discord webhooks.
 It monitors the bot's health metrics and sends hourly status reports with
@@ -14,6 +14,12 @@ Features:
 - Memory and performance tracking
 - Error rate analysis
 - Beautiful Discord embeds with bot thumbnail
+- Multiple webhook support with thread integration
+- Configurable check intervals
+- Graceful degradation on webhook failures
+
+This service ensures continuous monitoring and alerting for the bot's
+operational status and performance metrics.
 """
 
 import asyncio
@@ -130,9 +136,13 @@ class WebhookHealthService(BaseService):
         if self.health_task and not self.health_task.done():
             self.health_task.cancel()
             
-        # Start new health check task
+        # Send initial health report immediately on startup
+        self.logger.log_info("Sending initial health report on startup", "📊")
+        await self.send_health_report(force=True)
+        
+        # Start new health check task for hourly checks at the top of the hour
         self.health_task = asyncio.create_task(self._health_check_loop())
-        self.logger.log_info("Started hourly health check task", "⏰")
+        self.logger.log_info("Started hourly health check task (EST timezone)", "⏰")
         
     async def stop_health_checks(self):
         """Stop the health check task."""
@@ -145,11 +155,34 @@ class WebhookHealthService(BaseService):
             self.logger.log_info("Stopped health check task")
             
     async def _health_check_loop(self):
-        """Main loop for periodic health checks."""
+        """Main loop for periodic health checks at the top of every hour EST."""
+        import pytz
+        
         while True:
             try:
-                # Wait for next check interval
-                await asyncio.sleep(self.check_interval)
+                # Calculate time until next hour in EST
+                est = pytz.timezone("US/Eastern")
+                now_est = datetime.now(est)
+                
+                # Calculate next hour (top of the hour)
+                next_hour = now_est.replace(minute=0, second=0, microsecond=0)
+                if now_est >= next_hour:
+                    # If we're past the top of the current hour, go to next hour
+                    next_hour += timedelta(hours=1)
+                
+                # Calculate seconds until next hour
+                seconds_until_next_hour = (next_hour - now_est).total_seconds()
+                
+                # Log when next check will be
+                next_check_time = next_hour.strftime("%I:%M %p EST")
+                self.logger.log_info(
+                    f"Next health check scheduled for {next_check_time} "
+                    f"(in {int(seconds_until_next_hour)} seconds)",
+                    "⏰"
+                )
+                
+                # Wait until the top of the next hour
+                await asyncio.sleep(seconds_until_next_hour)
                 
                 # Perform health check
                 await self.send_health_report()
@@ -160,9 +193,9 @@ class WebhookHealthService(BaseService):
                 self.logger.log_error(f"Error in health check loop: {e}")
                 self.consecutive_failures += 1
                 
-                # If too many failures, increase interval
+                # If too many failures, wait 5 minutes before retry
                 if self.consecutive_failures > 3:
-                    await asyncio.sleep(self.check_interval * 2)
+                    await asyncio.sleep(300)  # 5 minutes
                     
     async def send_health_report(self, force: bool = False) -> bool:
         """
@@ -333,7 +366,7 @@ class WebhookHealthService(BaseService):
                 "url": "https://github.com/trippixn963/AzabBot"
             },
             "title": f"{status_emoji} {status_msg}",
-            "description": f"*{status_detail}*\n\n**Uptime:** `{health_data.get('uptime', 'Unknown')}`\n**Next Check:** `{self.check_interval // 3600} hour{'s' if self.check_interval // 3600 != 1 else ''}`",
+            "description": f"*{status_detail}*\n\n**Uptime:** `{health_data.get('uptime', 'Unknown')}`\n**Next Check:** At the top of next hour (EST)",
             "color": color,
             "timestamp": datetime.now().isoformat(),
             "fields": []
