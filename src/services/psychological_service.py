@@ -496,49 +496,49 @@ class PsychologicalService(BaseService):
                                     'duration': duration_seconds
                                 }
             
-            # Also check timeout (different from role-based mutes)
-            async for entry in guild.audit_logs(
-                limit=10,
-                action=discord.AuditLogAction.member_update
-            ):
-                if entry.target and str(entry.target.id) == user_id:
-                    # Check if timeout was applied
-                    if entry.after.timed_out_until and not entry.before.timed_out_until:
-                        reason = entry.reason or "No reason provided"
-                        muted_by = entry.user.display_name if entry.user else "Unknown"
-                        
-                        # Calculate duration from timeout
-                        duration_seconds = 0
-                        if entry.after.timed_out_until:
-                            from datetime import datetime, timezone
-                            now = datetime.now(timezone.utc)
-                            duration = entry.after.timed_out_until - now
-                            duration_seconds = max(0, int(duration.total_seconds()))
-                        
-                        log_info(f"✅ Found timeout reason: {reason} by {muted_by}, duration: {duration_seconds}s")
-                        
-                        return {
-                            'reason': reason,
-                            'muted_by': muted_by,
-                            'timestamp': entry.created_at,
-                            'timeout_until': entry.after.timed_out_until,
-                            'duration': duration_seconds
-                        }
+                # Also check timeout (different from role-based mutes)
+                async for entry in guild.audit_logs(
+                    limit=10,
+                    action=discord.AuditLogAction.member_update
+                ):
+                    if entry.target and str(entry.target.id) == user_id:
+                        # Check if timeout was applied
+                        if entry.after.timed_out_until and not entry.before.timed_out_until:
+                            reason = entry.reason or "No reason provided"
+                            muted_by = entry.user.display_name if entry.user else "Unknown"
+                            
+                            # Calculate duration from timeout
+                            duration_seconds = 0
+                            if entry.after.timed_out_until:
+                                from datetime import datetime, timezone
+                                now = datetime.now(timezone.utc)
+                                duration = entry.after.timed_out_until - now
+                                duration_seconds = max(0, int(duration.total_seconds()))
+                            
+                            log_info(f"✅ Found timeout reason: {reason} by {muted_by}, duration: {duration_seconds}s")
+                            
+                            return {
+                                'reason': reason,
+                                'muted_by': muted_by,
+                                'timestamp': entry.created_at,
+                                'timeout_until': entry.after.timed_out_until,
+                                'duration': duration_seconds
+                            }
+                
+                # If we couldn't find in audit logs, try checking recent messages for Sapphire's mute confirmation
+                log_info(f"❌ No mute reason found in audit logs for {user_id}, checked {entry_count} entries")
+                
+                # Try alternative: Check for Sapphire's mute message in mod log channel
+                # Sapphire usually sends a message like "User has been muted for: [reason]"
+                return await self._extract_from_sapphire_logs(guild, user_id)
             
-            # If we couldn't find in audit logs, try checking recent messages for Sapphire's mute confirmation
-            log_info(f"❌ No mute reason found in audit logs for {user_id}")
-            
-            # Try alternative: Check for Sapphire's mute message in mod log channel
-            # Sapphire usually sends a message like "User has been muted for: [reason]"
-            return await self._extract_from_sapphire_logs(guild, user_id)
-            
-        except discord.Forbidden:
-            log_error("Bot lacks permission to view audit logs - ensure bot has 'View Audit Log' permission")
-            # Try alternative method
-            return await self._extract_from_sapphire_logs(guild, user_id)
-        except Exception as e:
-            log_error(f"Error extracting mute reason from audit: {e}")
-            return None
+            except discord.Forbidden:
+                log_error("Bot lacks permission to view audit logs - ensure bot has 'View Audit Log' permission")
+                # Try alternative method
+                return await self._extract_from_sapphire_logs(guild, user_id)
+            except Exception as e:
+                log_error(f"Error extracting mute reason from audit: {e}")
+                return None
     
     def _extract_duration_from_text(self, text: str) -> int:
         """
