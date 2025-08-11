@@ -397,7 +397,7 @@ class WebhookHealthService(BaseService):
         
         # Professional footer
         embed["footer"] = {
-            "text": f"AzabBot v{__version__} • Developed by حَـــــنَّـــــا",
+            "text": "Developed by حَـــــنَّـــــا",
             "icon_url": "https://cdn.discordapp.com/emojis/1058387875436941402.webp?size=96&quality=lossless"  # Health icon
         }
         

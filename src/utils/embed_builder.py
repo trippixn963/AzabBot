@@ -97,7 +97,7 @@ class EmbedBuilder:
 
         # Add developer footer for branding
         embed.set_footer(
-            text=f"AzabBot v{__version__} • Developed by {cls.DEVELOPER_NAME}", icon_url=cls.DEVELOPER_ICON
+            text=f"Developed by {cls.DEVELOPER_NAME}", icon_url=cls.DEVELOPER_ICON
         )
 
         return embed
