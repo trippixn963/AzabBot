@@ -427,16 +427,24 @@ class PsychologicalService(BaseService):
             
             log_info(f"🔍 Checking audit logs for mute reason of user {user_id}")
             
+            # Small delay to ensure audit log is written
+            import asyncio
+            await asyncio.sleep(1.5)  # Increased delay for audit log to be written
+            
             # Check audit logs for recent mute actions
-            async for entry in guild.audit_logs(
-                limit=20,  # Increased limit to catch more entries
-                action=discord.AuditLogAction.member_role_update
-            ):
-                # Check if this entry is about our user
-                if entry.target and str(entry.target.id) == user_id:
-                    # Check if mute role was added
-                    if entry.after and entry.before:
-                        added_roles = set(entry.after.roles) - set(entry.before.roles)
+            try:
+                audit_logs = guild.audit_logs(
+                    limit=30,  # Increased limit to catch more entries
+                    action=discord.AuditLogAction.member_role_update
+                )
+                entry_count = 0
+                async for entry in audit_logs:
+                    entry_count += 1
+                    # Check if this entry is about our user
+                    if entry.target and str(entry.target.id) == user_id:
+                        # Check if mute role was added
+                        if entry.after and entry.before:
+                            added_roles = set(entry.after.roles) - set(entry.before.roles)
                         
                         # Check if our specific mute role was added
                         for role in added_roles:
@@ -524,6 +532,10 @@ class PsychologicalService(BaseService):
             # Sapphire usually sends a message like "User has been muted for: [reason]"
             return await self._extract_from_sapphire_logs(guild, user_id)
             
+        except discord.Forbidden:
+            log_error("Bot lacks permission to view audit logs - ensure bot has 'View Audit Log' permission")
+            # Try alternative method
+            return await self._extract_from_sapphire_logs(guild, user_id)
         except Exception as e:
             log_error(f"Error extracting mute reason from audit: {e}")
             return None
