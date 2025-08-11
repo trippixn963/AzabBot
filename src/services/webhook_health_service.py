@@ -18,6 +18,7 @@ Features:
 
 import asyncio
 import aiohttp
+import os
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 from enum import Enum
@@ -295,45 +296,44 @@ class WebhookHealthService(BaseService):
         perf = health_data.get("performance", {})
         services = health_data.get("services", {})
         
-        # Create status indicators with emojis
+        # Get basic metrics
         cpu_percent = perf.get('cpu_percent', 0)
         mem_percent = perf.get('memory_percent', 0)
-        
-        # CPU status bar
-        cpu_bar = self._create_progress_bar(cpu_percent, 10)
-        mem_bar = self._create_progress_bar(mem_percent, 10)
+        memory_mb = perf.get('memory_mb', 0)
         
         # Service health summary
         healthy_services = sum(1 for s in services.values() if s.get("healthy", True))
         total_services = len(services)
-        service_health_pct = (healthy_services / total_services * 100) if total_services > 0 else 100
         
         # Determine overall health emoji and message
         if status == HealthStatus.HEALTHY:
-            status_emoji = "✅"
-            status_msg = "All systems operational"
+            status_emoji = "🟢"
+            status_msg = "Bot is Online"
+            status_detail = "All systems operational"
         elif status == HealthStatus.WARNING:
-            status_emoji = "⚠️"
-            status_msg = "Minor issues detected"
+            status_emoji = "🟡"
+            status_msg = "Bot is Online"
+            status_detail = "Minor issues detected"
         elif status == HealthStatus.CRITICAL:
             status_emoji = "🔴"
-            status_msg = "Critical issues require attention"
+            status_msg = "Bot is Degraded"
+            status_detail = "Critical issues detected"
         else:
-            status_emoji = "💀"
-            status_msg = "System offline"
+            status_emoji = "⚫"
+            status_msg = "Bot is Offline"
+            status_detail = "System unavailable"
+        
+        # Get recent log lines
+        log_lines = await self._get_recent_logs(10)
         
         embed = {
             "author": {
-                "name": "AzabBot System Monitor",
+                "name": "AzabBot Status",
                 "icon_url": "https://github.com/trippixn963/AzabBot/raw/main/images/PFP.gif",
                 "url": "https://github.com/trippixn963/AzabBot"
             },
-            "title": f"{status_emoji} System Health Report",
-            "description": f"**Status:** {status_msg}\n**Uptime:** {health_data.get('uptime', 'Unknown')}\n\n"
-                          f"**Performance Overview:**\n"
-                          f"CPU Usage: {cpu_bar} {cpu_percent:.1f}%\n"
-                          f"Memory: {mem_bar} {mem_percent:.1f}%\n"
-                          f"Services: {healthy_services}/{total_services} operational ({service_health_pct:.0f}%)",
+            "title": f"{status_emoji} {status_msg}",
+            "description": f"*{status_detail}*\n\n**Uptime:** `{health_data.get('uptime', 'Unknown')}`\n**Next Check:** `{self.check_interval // 3600} hour{'s' if self.check_interval // 3600 != 1 else ''}`",
             "color": color,
             "timestamp": datetime.now().isoformat(),
             "fields": []
@@ -345,55 +345,62 @@ class WebhookHealthService(BaseService):
                 "url": str(self.bot_instance.user.avatar.url)
             }
         
-        # Network Statistics
+        # Bot Statistics - Simple and clean
         if bot_stats:
             embed["fields"].append({
-                "name": "📊 Network Statistics",
-                "value": f"**Servers:** {bot_stats.get('guilds', 0)}\n"
-                        f"**Users:** {bot_stats.get('users', 0):,}\n"
-                        f"**Latency:** {bot_stats.get('latency', 0)}ms",
+                "name": "🌐 Bot Statistics",
+                "value": f"🎯 **Servers:** `{bot_stats.get('guilds', 0)}`\n"
+                        f"👥 **Users:** `{bot_stats.get('users', 0):,}`\n"
+                        f"📡 **Latency:** `{bot_stats.get('latency', 0)}ms`",
                 "inline": True
             })
             
-            # Activity Metrics
+            # Prison Activity
             embed["fields"].append({
-                "name": "📈 Activity Metrics",
-                "value": f"**Messages Processed:** {bot_stats.get('messages_seen', 0):,}\n"
-                        f"**Responses Generated:** {bot_stats.get('responses_generated', 0):,}\n"
-                        f"**Active Prisoners:** {bot_stats.get('prisoners', 0)}",
+                "name": "⛓ Prison Activity",
+                "value": f"💬 **Messages Seen:** `{bot_stats.get('messages_seen', 0):,}`\n"
+                        f"🤖 **Responses:** `{bot_stats.get('responses_generated', 0):,}`\n"
+                        f"🔒 **Prisoners:** `{bot_stats.get('prisoners', 0)}`",
                 "inline": True
             })
         
-        # System Resources
+        # System Performance (simplified)
         if perf:
-            memory_mb = perf.get('memory_mb', 0)
             embed["fields"].append({
-                "name": "💻 System Resources",
-                "value": f"**CPU Load:** {cpu_percent:.1f}%\n"
-                        f"**RAM Usage:** {mem_percent:.1f}%\n"
-                        f"**Memory:** {memory_mb:.0f} MB",
+                "name": "⚙️ Performance",
+                "value": f"📊 **CPU:** `{cpu_percent:.1f}%`\n"
+                        f"🧮 **Memory:** `{memory_mb:.0f} MB ({mem_percent:.1f}%)`\n"
+                        f"✅ **Services:** `{healthy_services}/{total_services} Online`",
                 "inline": True
             })
         
-        # Service Health Details (if any issues)
+        # Recent Activity Logs
+        if log_lines:
+            # Format logs for Discord code block
+            log_display = "\n".join(log_lines[-10:])  # Last 10 lines
+            if len(log_display) > 1000:
+                log_display = log_display[-1000:]  # Truncate if too long
+            
+            embed["fields"].append({
+                "name": "📋 Recent Activity",
+                "value": f"```python\n{log_display}\n```",
+                "inline": False
+            })
+        else:
+            embed["fields"].append({
+                "name": "📋 Recent Activity",
+                "value": "```python\n# No recent activity logs available\n```",
+                "inline": False
+            })
+        
+        # Service Health Issues (only if there are issues)
         if services and healthy_services < total_services:
             unhealthy = [name for name, info in services.items() if not info.get("healthy", True)]
             embed["fields"].append({
                 "name": "⚠️ Service Issues",
-                "value": "\n".join([f"❌ {name}" for name in unhealthy[:5]]),
+                "value": "\n".join([f"🔴 {name}" for name in unhealthy[:3]]),
                 "inline": False
             })
-        
-        # Quick Stats Bar
-        embed["fields"].append({
-            "name": "📊 Quick Stats",
-            "value": f"```\n"
-                    f"Uptime    : {health_data.get('uptime', 'N/A')}\n"
-                    f"Health    : {status_text.split()[1]}\n"
-                    f"Next Check: {self.check_interval // 3600}h\n"
-                    f"```",
-            "inline": False
-        })
         
         # Professional footer
         embed["footer"] = {
@@ -474,6 +481,46 @@ class WebhookHealthService(BaseService):
             self.logger.log_error(f"Failed to send health report to any webhook (0/{total_webhooks})")
             return False
             
+    async def _get_recent_logs(self, lines: int = 10) -> List[str]:
+        """Get recent log lines from the systemd log."""
+        try:
+            # Try to read from systemd log file
+            log_path = "/root/AzabBot/logs/systemd.log"
+            if not os.path.exists(log_path):
+                # Fallback to local log if not on VPS
+                log_path = "logs/systemd.log"
+            
+            if os.path.exists(log_path):
+                with open(log_path, 'r') as f:
+                    all_lines = f.readlines()
+                    # Get last N lines and clean them
+                    recent = all_lines[-lines:] if len(all_lines) > lines else all_lines
+                    
+                    # Clean and format log lines for Discord display
+                    cleaned_lines = []
+                    for line in recent:
+                        # Remove ANSI color codes and excessive whitespace
+                        line = line.strip()
+                        # Remove timestamp prefix if present
+                        if ' | ' in line:
+                            parts = line.split(' | ', 2)
+                            if len(parts) >= 3:
+                                # Keep log level and message
+                                line = f"{parts[1]}: {parts[2]}"
+                        # Truncate if too long
+                        if len(line) > 100:
+                            line = line[:97] + "..."
+                        if line:
+                            cleaned_lines.append(line)
+                    
+                    return cleaned_lines
+            
+            return ["# No log file found"]
+            
+        except Exception as e:
+            self.logger.log_error(f"Error reading logs: {e}")
+            return [f"# Error reading logs: {str(e)}"]
+    
     async def perform_health_check(self) -> Dict[str, Any]:
         """Perform health check for this service."""
         return {
