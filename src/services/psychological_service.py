@@ -374,7 +374,15 @@ class PsychologicalService(BaseService):
         try:
             prisoner_id = await self._get_or_create_prisoner_id(user_id, username)
             
-            # Store in database
+            # Clean the reason and description to remove case IDs
+            import re
+            reason = crime_data.get('reason', 'No reason provided')
+            reason = re.sub(r'\s*\([A-Za-z0-9]+\)\s*$', '', reason).strip()
+            
+            description = crime_data.get('description', '')
+            description = re.sub(r'\s*\([A-Za-z0-9]+\)\s*$', '', description).strip()
+            
+            # Store in database with cleaned data
             await self.db_service.execute(
                 """INSERT INTO prisoner_crimes 
                    (prisoner_id, discord_id, crime_type, crime_description, 
@@ -382,22 +390,28 @@ class PsychologicalService(BaseService):
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (prisoner_id, user_id, 
                  crime_data.get('type', 'unknown'),
-                 crime_data.get('description', ''),
-                 crime_data.get('reason', 'No reason provided'),
+                 description,
+                 reason,
                  crime_data.get('muted_by', 'unknown'),
                  crime_data.get('duration', 0),
                  crime_data.get('severity', 5))
             )
             
-            # Update in-memory tracking
+            # Update in-memory tracking with cleaned data
             if user_id not in self.prisoner_crimes:
                 self.prisoner_crimes[user_id] = []
-            self.prisoner_crimes[user_id].append(crime_data)
+            
+            # Create cleaned crime data for memory
+            cleaned_crime_data = crime_data.copy()
+            cleaned_crime_data['reason'] = reason
+            cleaned_crime_data['description'] = description
+            
+            self.prisoner_crimes[user_id].append(cleaned_crime_data)
             
             # Update psychological profile based on crime
             await self._update_profile_from_crime(user_id, username, crime_data)
             
-            log_info(f"📝 Tracked crime for {username}: {crime_data.get('reason', 'unknown')}")
+            log_info(f"📝 Tracked crime for {username}: {reason}")
             
         except Exception as e:
             log_error(f"Error tracking crime: {e}")

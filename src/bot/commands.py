@@ -69,28 +69,7 @@ def create_activate_command(bot):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        # Activate the bot
-        bot.is_active = True
-        bot.logger.log_info("✅ Bot activated by developer command")
-        
-        # Update bot presence to show active status
-        activity = discord.Activity(
-            type=discord.ActivityType.watching, name="⛓ Sednaya"
-        )
-        await bot.change_presence(activity=activity, status=discord.Status.online)
-        
-        # Scan for current prisoners if not already done
-        await bot._scan_for_prisoners()
-        
-        # Process recent messages from prisoners
-        await bot._process_recent_prisoner_messages()
-        
-        # Start presence rotation task if not already running
-        if bot.presence_rotation_task:
-            bot.presence_rotation_task.cancel()
-        bot.presence_rotation_task = bot.loop.create_task(bot._rotate_presence())
-        
-        # Create success embed
+        # Respond to interaction immediately to avoid timeout
         embed = discord.Embed(
             title="✅ Bot Activated",
             description="AzabBot is now active and will respond to prisoners!",
@@ -104,6 +83,33 @@ def create_activate_command(bot):
         embed.add_field(name="Prisoners", value=f"{len(bot.current_prisoners)}", inline=True)
         embed.set_footer(text="Developed by حَـــــنَّـــــا")
         await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+        # Now activate the bot and do background tasks
+        bot.is_active = True
+        bot.logger.log_info("✅ Bot activated by developer command")
+        
+        # Update bot presence to show active status
+        activity = discord.Activity(
+            type=discord.ActivityType.watching, name="⛓ Sednaya"
+        )
+        await bot.change_presence(activity=activity, status=discord.Status.online)
+        
+        # Start background tasks asynchronously
+        import asyncio
+        async def activate_tasks():
+            # Scan for current prisoners if not already done
+            await bot._scan_for_prisoners()
+            
+            # Process recent messages from prisoners
+            await bot._process_recent_prisoner_messages()
+            
+            # Start presence rotation task if not already running
+            if bot.presence_rotation_task:
+                bot.presence_rotation_task.cancel()
+            bot.presence_rotation_task = bot.loop.create_task(bot._rotate_presence())
+        
+        # Run activation tasks in background
+        bot.loop.create_task(activate_tasks())
 
     return activate
 
