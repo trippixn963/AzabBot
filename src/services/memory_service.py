@@ -1,10 +1,11 @@
-# =============================================================================
-# AzabBot - Conversation Memory Service
-# =============================================================================
-# Provides persistent memory of user interactions, enabling the bot to
-# remember previous conversations, track user patterns, and build profiles
-# for more effective responses.
-# =============================================================================
+"""
+AzabBot - Conversation Memory Service
+=====================================
+
+Provides persistent memory of user interactions, enabling the bot to
+remember previous conversations, track user patterns, and build profiles
+for more effective responses.
+"""
 
 import json
 import sqlite3

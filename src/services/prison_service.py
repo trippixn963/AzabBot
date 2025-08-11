@@ -1,7 +1,9 @@
-"""
-Prison Management Service
-Handles Solitary Confinement, Good Behavior, and Prison Break Detection
-"""
+# =============================================================================
+# AzabBot - Prison Management Service
+# =============================================================================
+# Handles Solitary Confinement, Good Behavior, and Prison Break Detection
+# for advanced prison management and psychological torture operations.
+# =============================================================================
 
 import asyncio
 import json

@@ -394,13 +394,20 @@ class BotLogger:
             est = pytz.timezone("US/Eastern")
             current_date = datetime.now(est).strftime("%Y-%m-%d")
             timestamp = datetime.now(est).strftime("[%m/%d %I:%M %p EST]")
+            # Get hour for hourly folder structure
+            hour_str = datetime.now(est).strftime("%I-%p")
+            if hour_str.startswith('0'):
+                hour_str = hour_str[1:]
         except:
             current_date = datetime.now().strftime("%Y-%m-%d")
             timestamp = datetime.now().strftime("[%m/%d %I:%M %p]")
+            hour_str = datetime.now().strftime("%I-%p")
+            if hour_str.startswith('0'):
+                hour_str = hour_str[1:]
         
-        # Create debug.log path in date-based folder
+        # Create debug.log path in hourly folder
         project_root = Path(__file__).parent.parent.parent
-        debug_log_path = project_root / "logs" / current_date / "debug.log"
+        debug_log_path = project_root / "logs" / current_date / hour_str / "debug.log"
         debug_log_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Format the debug message with tree structure

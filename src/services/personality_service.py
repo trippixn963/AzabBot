@@ -1,9 +1,10 @@
-# =============================================================================
-# AzabBot - Advanced Personality Management Service
-# =============================================================================
-# Provides dynamic personality modes that adapt based on user interactions,
-# time of day, conversation context, and effectiveness metrics.
-# =============================================================================
+"""
+AzabBot - Advanced Personality Management Service
+=================================================
+
+Provides dynamic personality modes that adapt based on user interactions,
+time of day, conversation context, and effectiveness metrics.
+"""
 
 import random
 from dataclasses import dataclass

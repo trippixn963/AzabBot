@@ -1,10 +1,11 @@
-# =============================================================================
-# AzabBot - Prisoner Database Service
-# =============================================================================
-# Manages prisoner tracking, conversation history, and report generation
-# for Azab's psychological torture operations. Provides memory persistence
-# and analytics capabilities.
-# =============================================================================
+"""
+AzabBot - Prisoner Database Service
+===================================
+
+Manages prisoner tracking, conversation history, and report generation
+for Azab's psychological torture operations. Provides memory persistence
+and analytics capabilities.
+"""
 
 import asyncio
 import json

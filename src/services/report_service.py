@@ -1,9 +1,10 @@
-# =============================================================================
-# AzabBot - Report Generation Service
-# =============================================================================
-# Generates comprehensive reports on prisoner activity, torture effectiveness,
-# and Azab's performance. Provides analytics and insights for prison management.
-# =============================================================================
+"""
+AzabBot - Report Generation Service
+===================================
+
+Generates comprehensive reports on prisoner activity, torture effectiveness,
+and Azab's performance. Provides analytics and insights for prison management.
+"""
 
 from datetime import date, datetime
 from typing import Any, Dict, Optional

@@ -1,14 +1,15 @@
-# =============================================================================
-# AzabBot - Professional AI Service
-# =============================================================================
-# Comprehensive AI service providing response generation, content analysis,
-# and conversation management with proper error handling, rate limiting,
-# and content safety measures.
-#
-# This service is designed with extensibility in mind, supporting multiple
-# AI providers and response strategies while maintaining high reliability
-# and performance standards.
-# =============================================================================
+"""
+AzabBot - Professional AI Service
+=================================
+
+Comprehensive AI service providing response generation, content analysis,
+and conversation management with proper error handling, rate limiting,
+and content safety measures.
+
+This service is designed with extensibility in mind, supporting multiple
+AI providers and response strategies while maintaining high reliability
+and performance standards.
+"""
 
 import asyncio
 import random

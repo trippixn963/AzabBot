@@ -482,15 +482,32 @@ class WebhookHealthService(BaseService):
             return False
             
     async def _get_recent_logs(self, lines: int = 10) -> List[str]:
-        """Get recent log lines from the systemd log."""
+        """Get recent log lines from the current hour's log file."""
         try:
-            # Try to read from systemd log file
-            log_path = "/root/AzabBot/logs/systemd.log"
-            if not os.path.exists(log_path):
-                # Fallback to local log if not on VPS
-                log_path = "logs/systemd.log"
+            from datetime import datetime
+            import pytz
+            from pathlib import Path
             
-            if os.path.exists(log_path):
+            # Get current date and hour
+            try:
+                est = pytz.timezone("US/Eastern")
+                current_date = datetime.now(est).strftime("%Y-%m-%d")
+                hour_str = datetime.now(est).strftime("%I-%p")
+                if hour_str.startswith('0'):
+                    hour_str = hour_str[1:]
+            except:
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                hour_str = datetime.now().strftime("%I-%p")
+                if hour_str.startswith('0'):
+                    hour_str = hour_str[1:]
+            
+            # Try VPS path first, then local path
+            vps_log_path = Path(f"/root/AzabBot/logs/{current_date}/{hour_str}/log.log")
+            local_log_path = Path(f"logs/{current_date}/{hour_str}/log.log")
+            
+            log_path = vps_log_path if vps_log_path.exists() else local_log_path
+            
+            if log_path.exists():
                 with open(log_path, 'r') as f:
                     all_lines = f.readlines()
                     # Get last N lines and clean them
@@ -502,20 +519,26 @@ class WebhookHealthService(BaseService):
                         # Remove ANSI color codes and excessive whitespace
                         line = line.strip()
                         # Remove timestamp prefix if present
-                        if ' | ' in line:
-                            parts = line.split(' | ', 2)
-                            if len(parts) >= 3:
-                                # Keep log level and message
-                                line = f"{parts[1]}: {parts[2]}"
+                        if '] ' in line:
+                            # Split at first ] to remove timestamp
+                            parts = line.split('] ', 1)
+                            if len(parts) >= 2:
+                                # Keep everything after timestamp
+                                line = parts[1]
+                                # Remove log level prefix if present
+                                if line.startswith('['):
+                                    level_parts = line.split('] ', 1)
+                                    if len(level_parts) >= 2:
+                                        line = level_parts[1]
                         # Truncate if too long
                         if len(line) > 100:
                             line = line[:97] + "..."
                         if line:
                             cleaned_lines.append(line)
                     
-                    return cleaned_lines
+                    return cleaned_lines if cleaned_lines else ["# No recent activity"]
             
-            return ["# No log file found"]
+            return ["# No log file found for current hour"]
             
         except Exception as e:
             self.logger.log_error(f"Error reading logs: {e}")
