@@ -416,27 +416,32 @@ class AzabBot(discord.Client):
                 self.current_prisoners.add(after.display_name)
                 
                 # Try to extract mute reason from audit logs (for Sapphire)
+                mute_reason = None
+                muted_by = None
                 if self.psychological_service and after.guild:
                     mute_info = await self.psychological_service.extract_mute_reason_from_audit(
                         after.guild, str(after.id)
                     )
                     
                     if mute_info:
+                        mute_reason = mute_info.get('reason', 'Unknown')
+                        muted_by = mute_info.get('muted_by', 'Unknown')
+                        
                         # Track the crime
                         await self.psychological_service.track_crime(
                             str(after.id),
                             after.display_name,
                             {
                                 'type': 'mute',
-                                'reason': mute_info.get('reason', 'Unknown'),
-                                'muted_by': mute_info.get('muted_by', 'Unknown'),
-                                'description': f"Muted for: {mute_info.get('reason', 'Unknown reason')}",
+                                'reason': mute_reason,
+                                'muted_by': muted_by,
+                                'description': f"Muted for: {mute_reason}",
                                 'severity': 5
                             }
                         )
                         
                         self.logger.log_info(
-                            f"📝 Captured mute reason for {after.display_name}: {mute_info.get('reason', 'Unknown')}"
+                            f"📝 Captured mute reason for {after.display_name}: {mute_reason}"
                         )
 
                 # Find the prison channel
@@ -490,30 +495,47 @@ class AzabBot(discord.Client):
                 except Exception as e:
                     self.logger.log_warning(f"Could not check prisoner history: {e}")
 
-                # Generate appropriate message based on history
+                # Generate appropriate message based on history AND mute reason
                 if is_returning:
-                    # Messages for returning prisoners - mention their history!
-                    returning_messages = [
-                        f"LOOK WHO'S BACK! {after.mention}, this is your {previous_visits + 1}th visit to Sednaya. You never learn, do you?",
-                        f"{after.mention} AGAIN?! I KNEW you'd be back. What did you do this time?",
-                        f"Welcome back to Sednaya, {after.mention}! Missed me? I still remember everything from last time...",
-                        f"Hahaha {after.mention} returns! Visit number {previous_visits + 1}. You're becoming a regular!",
-                        f"Oh {after.mention}, back so soon? I was just telling someone about you. Same cell as before?",
-                        f"{after.mention} can't stay away! This is what, your {previous_visits + 1}th time here? What's your excuse now?",
-                        f"I TOLD YOU that you'd be back, {after.mention}! Welcome home to Sednaya, again.",
-                    ]
+                    # Messages for returning prisoners - mention their history and reason!
+                    if mute_reason and mute_reason != 'Unknown':
+                        returning_messages = [
+                            f"LOOK WHO'S BACK! {after.mention}, this is your {previous_visits + 1}th visit to Sednaya. This time for: **{mute_reason}**",
+                            f"{after.mention} AGAIN?! I KNEW you'd be back. So you got muted for **{mute_reason}** this time?",
+                            f"Welcome back to Sednaya, {after.mention}! Visit #{previous_visits + 1} for **{mute_reason}**. You never learn!",
+                            f"Hahaha {after.mention} returns! **{mute_reason}** really? That's what brought you back?",
+                            f"Oh {after.mention}, back so soon? **{mute_reason}** this time? Same cell as before!",
+                            f"{after.mention} can't stay away! Visit #{previous_visits + 1} because of **{mute_reason}**. Classic.",
+                        ]
+                    else:
+                        returning_messages = [
+                            f"LOOK WHO'S BACK! {after.mention}, this is your {previous_visits + 1}th visit to Sednaya. You never learn, do you?",
+                            f"{after.mention} AGAIN?! I KNEW you'd be back. What did you do this time?",
+                            f"Welcome back to Sednaya, {after.mention}! Missed me? I still remember everything from last time...",
+                            f"Hahaha {after.mention} returns! Visit number {previous_visits + 1}. You're becoming a regular!",
+                        ]
                     message = random.choice(returning_messages)
                 else:
-                    # Messages for first-time prisoners
-                    welcome_messages = [
-                        f"Well well well, look who just joined us. Welcome to your new home, {after.mention}.",
-                        f"Fresh meat! {after.mention}, hope you're ready for your stay here.",
-                        f"{after.mention} Welcome to Sednaya! What did you do to end up here?",
-                        f"Another one! {after.mention}, tell me - what rule did you break?",
-                        f"Oh {after.mention}, you're here now? This should be interesting...",
-                        f"New arrival! {after.mention}, confess your crimes immediately.",
-                        f"{after.mention} just got locked up! Time to learn about gardening and cooking.",
-                    ]
+                    # Messages for first-time prisoners - include reason if we know it
+                    if mute_reason and mute_reason != 'Unknown':
+                        welcome_messages = [
+                            f"Well well well, {after.mention} just got locked up for **{mute_reason}**. Welcome to Sednaya!",
+                            f"Fresh meat! {after.mention} is here for **{mute_reason}**. Hope you're ready for your stay!",
+                            f"{after.mention} Welcome to Sednaya! So **{mute_reason}** is what brought you here?",
+                            f"Another one! {after.mention} got muted for **{mute_reason}**. You'll fit right in!",
+                            f"Oh {after.mention}, you're here for **{mute_reason}**? This should be interesting...",
+                            f"New arrival! {after.mention} committed the crime of **{mute_reason}**. Confess everything!",
+                            f"{after.mention} just got locked up for **{mute_reason}**! Time to learn about gardening and cooking.",
+                        ]
+                    else:
+                        welcome_messages = [
+                            f"Well well well, look who just joined us. Welcome to your new home, {after.mention}.",
+                            f"Fresh meat! {after.mention}, hope you're ready for your stay here.",
+                            f"{after.mention} Welcome to Sednaya! What did you do to end up here?",
+                            f"Another one! {after.mention}, tell me - what rule did you break?",
+                            f"Oh {after.mention}, you're here now? This should be interesting...",
+                            f"New arrival! {after.mention}, confess your crimes immediately.",
+                        ]
                     message = random.choice(welcome_messages)
                 try:
                     await channel.send(message)
