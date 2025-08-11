@@ -188,7 +188,7 @@ class WebhookHealthService(BaseService):
             overall_status = self._determine_health_status(health_data)
             
             # Build embed
-            embed = self._build_health_embed(health_data, overall_status)
+            embed = await self._build_health_embed(health_data, overall_status)
             
             # Send webhook
             success = await self._send_webhook(embed)
@@ -287,7 +287,7 @@ class WebhookHealthService(BaseService):
         except Exception:
             return HealthStatus.WARNING
             
-    def _build_health_embed(self, health_data: Dict[str, Any], status: HealthStatus) -> Dict[str, Any]:
+    async def _build_health_embed(self, health_data: Dict[str, Any], status: HealthStatus) -> Dict[str, Any]:
         """Build Discord embed for health report."""
         status_text, color = status.value
         
