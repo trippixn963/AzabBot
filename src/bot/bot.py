@@ -1268,8 +1268,10 @@ Response Rate: {(self.metrics.responses_generated /
                  max(1, self.metrics.messages_seen)) * 100:.1f}%
 """
 
-    async def get_health_status(self) -> Dict[str, Any]:
+    async def get_health_status(self):
         """Get health status for health monitoring."""
+        from src.services.base_service import HealthCheckResult, ServiceStatus
+        
         try:
             # Check if bot is connected to Discord
             is_connected = self.is_ready() and not self.is_closed()
@@ -1289,25 +1291,44 @@ Response Rate: {(self.metrics.responses_generated /
             if self.prison_service:
                 services_healthy.append("Prison")
             
-            return {
-                "healthy": is_connected and len(self.guilds) > 0,
-                "connected": is_connected,
-                "guilds": len(self.guilds),
-                "users": sum(g.member_count for g in self.guilds),
-                "uptime": uptime_str,
-                "latency_ms": round(self.latency * 1000, 2),
-                "active": self.is_active,
-                "messages_seen": self.metrics.messages_seen,
-                "responses_generated": self.metrics.responses_generated,
-                "services": services_healthy,
-                "prisoners": len(self.current_prisoners)
-            }
+            # Determine overall status
+            if is_connected and len(self.guilds) > 0:
+                status = ServiceStatus.HEALTHY
+                message = "Bot is running normally"
+            elif is_connected:
+                status = ServiceStatus.DEGRADED
+                message = "Bot is connected but not in any guilds"
+            else:
+                status = ServiceStatus.UNHEALTHY
+                message = "Bot is not connected to Discord"
+            
+            return HealthCheckResult(
+                status=status,
+                message=message,
+                details={
+                    "healthy": is_connected and len(self.guilds) > 0,
+                    "connected": is_connected,
+                    "guilds": len(self.guilds),
+                    "users": sum(g.member_count for g in self.guilds),
+                    "uptime": uptime_str,
+                    "latency_ms": round(self.latency * 1000, 2),
+                    "active": self.is_active,
+                    "messages_seen": self.metrics.messages_seen,
+                    "responses_generated": self.metrics.responses_generated,
+                    "services": services_healthy,
+                    "prisoners": len(self.current_prisoners)
+                }
+            )
         except Exception as e:
-            return {
-                "healthy": False,
-                "error": str(e),
-                "connected": False
-            }
+            return HealthCheckResult(
+                status=ServiceStatus.UNHEALTHY,
+                message=f"Error getting health status: {str(e)}",
+                details={
+                    "healthy": False,
+                    "error": str(e),
+                    "connected": False
+                }
+            )
     
     async def cleanup_task(self):
         """Periodic cleanup task."""
