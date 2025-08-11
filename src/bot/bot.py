@@ -423,6 +423,7 @@ class AzabBot(discord.Client):
                 # Try to extract mute reason from audit logs (for Sapphire)
                 mute_reason = None
                 muted_by = None
+                mute_duration = 0
                 if self.psychological_service and after.guild:
                     mute_info = await self.psychological_service.extract_mute_reason_from_audit(
                         after.guild, str(after.id)
@@ -431,8 +432,9 @@ class AzabBot(discord.Client):
                     if mute_info:
                         mute_reason = mute_info.get('reason', 'Unknown')
                         muted_by = mute_info.get('muted_by', 'Unknown')
+                        mute_duration = mute_info.get('duration', 0)
                         
-                        # Track the crime
+                        # Track the crime with duration
                         await self.psychological_service.track_crime(
                             str(after.id),
                             after.display_name,
@@ -441,12 +443,23 @@ class AzabBot(discord.Client):
                                 'reason': mute_reason,
                                 'muted_by': muted_by,
                                 'description': f"Muted for: {mute_reason}",
+                                'duration': mute_duration,
                                 'severity': 5
                             }
                         )
                         
+                        # Format duration for logging
+                        duration_str = ""
+                        if mute_duration > 0:
+                            hours = mute_duration // 3600
+                            minutes = (mute_duration % 3600) // 60
+                            if hours > 0:
+                                duration_str = f" for {hours}h {minutes}m"
+                            else:
+                                duration_str = f" for {minutes}m"
+                        
                         self.logger.log_info(
-                            f"📝 Captured mute reason for {after.display_name}: {mute_reason}"
+                            f"📝 Captured mute reason for {after.display_name}: {mute_reason}{duration_str}"
                         )
 
                 # Find the prison channel
@@ -500,17 +513,34 @@ class AzabBot(discord.Client):
                 except Exception as e:
                     self.logger.log_warning(f"Could not check prisoner history: {e}")
 
+                # Format duration string for messages
+                duration_msg = ""
+                if mute_duration > 0:
+                    hours = mute_duration // 3600
+                    minutes = (mute_duration % 3600) // 60
+                    days = hours // 24
+                    remaining_hours = hours % 24
+                    
+                    if days > 0:
+                        duration_msg = f" for **{days} days**"
+                    elif hours > 0:
+                        duration_msg = f" for **{hours} hours**"
+                    elif minutes > 0:
+                        duration_msg = f" for **{minutes} minutes**"
+                    else:
+                        duration_msg = f" for **{mute_duration} seconds**"
+                
                 # Generate appropriate message based on history AND mute reason
                 if is_returning:
                     # Messages for returning prisoners - mention their history and reason!
                     if mute_reason and mute_reason != 'Unknown':
                         returning_messages = [
-                            f"LOOK WHO'S BACK! {after.mention}, this is your {previous_visits + 1}th visit to Sednaya. This time for: **{mute_reason}**",
-                            f"{after.mention} AGAIN?! I KNEW you'd be back. So you got muted for **{mute_reason}** this time?",
-                            f"Welcome back to Sednaya, {after.mention}! Visit #{previous_visits + 1} for **{mute_reason}**. You never learn!",
-                            f"Hahaha {after.mention} returns! **{mute_reason}** really? That's what brought you back?",
-                            f"Oh {after.mention}, back so soon? **{mute_reason}** this time? Same cell as before!",
-                            f"{after.mention} can't stay away! Visit #{previous_visits + 1} because of **{mute_reason}**. Classic.",
+                            f"LOOK WHO'S BACK! {after.mention}, this is your {previous_visits + 1}th visit to Sednaya. This time for: **{mute_reason}**{duration_msg}",
+                            f"{after.mention} AGAIN?! I KNEW you'd be back. So you got muted{duration_msg} for **{mute_reason}** this time?",
+                            f"Welcome back to Sednaya, {after.mention}! Visit #{previous_visits + 1} for **{mute_reason}**{duration_msg}. You never learn!",
+                            f"Hahaha {after.mention} returns! **{mute_reason}**{duration_msg} really? That's what brought you back?",
+                            f"Oh {after.mention}, back so soon? **{mute_reason}** this time{duration_msg}? Same cell as before!",
+                            f"{after.mention} can't stay away! Visit #{previous_visits + 1} because of **{mute_reason}**{duration_msg}. Classic.",
                         ]
                     else:
                         returning_messages = [
@@ -524,16 +554,16 @@ class AzabBot(discord.Client):
                     # Messages for first-time prisoners - include reason if we know it
                     if mute_reason and mute_reason != 'Unknown':
                         welcome_messages = [
-                            f"Well well well, {after.mention}. I know exactly why you're here - **{mute_reason}**. Welcome to Sednaya!",
-                            f"Fresh meat! {after.mention}, you committed **{mute_reason}**. Hope you're ready for what's coming.",
-                            f"{after.mention} Welcome to Sednaya! So you're the one who committed **{mute_reason}**?",
-                            f"Another prisoner! {after.mention}, you got caught for **{mute_reason}**. You'll fit right in with the others!",
-                            f"Oh {after.mention}, so you're the one who committed **{mute_reason}**? This should be interesting...",
-                            f"New arrival! {after.mention}, you committed **{mute_reason}**. Now confess - was it worth it?",
-                            f"{after.mention}, locked up for **{mute_reason}**! Time to teach you about gardening and proper cooking.",
-                            f"I see everything, {after.mention}. You committed **{mute_reason}** and now you're mine.",
-                            f"Welcome {after.mention}! Your crime of **{mute_reason}** has earned you a special place here.",
-                            f"Ah {after.mention}, finally here for **{mute_reason}**. I've been expecting you.",
+                            f"Well well well, {after.mention}. I know exactly why you're here - **{mute_reason}**{duration_msg}. Welcome to Sednaya!",
+                            f"Fresh meat! {after.mention}, you committed **{mute_reason}** and got locked up{duration_msg}. Hope you're ready for what's coming.",
+                            f"{after.mention} Welcome to Sednaya! So you're the one who committed **{mute_reason}**{duration_msg}?",
+                            f"Another prisoner! {after.mention}, you got caught for **{mute_reason}** and sentenced{duration_msg}. You'll fit right in with the others!",
+                            f"Oh {after.mention}, so you're the one who committed **{mute_reason}**{duration_msg}? This should be interesting...",
+                            f"New arrival! {after.mention}, you committed **{mute_reason}** and got{duration_msg}. Now confess - was it worth it?",
+                            f"{after.mention}, locked up{duration_msg} for **{mute_reason}**! Time to teach you about gardening and proper cooking.",
+                            f"I see everything, {after.mention}. You committed **{mute_reason}** and now you're mine{duration_msg}.",
+                            f"Welcome {after.mention}! Your crime of **{mute_reason}** has earned you a special place here{duration_msg}.",
+                            f"Ah {after.mention}, finally here{duration_msg} for **{mute_reason}**. I've been expecting you.",
                         ]
                     else:
                         welcome_messages = [
@@ -1046,6 +1076,7 @@ class AzabBot(discord.Client):
                             'description': f"Muted for: {mute_data.get('reason', 'Unknown reason')}",
                             'reason': mute_data.get('reason', 'Unknown reason'),
                             'muted_by': mute_data.get('muted_by', 'Unknown'),
+                            'duration': mute_data.get('duration', 0),
                             'severity': 5
                         })
                         self.logger.log_info(
@@ -1064,13 +1095,20 @@ class AzabBot(discord.Client):
                 # Get grudge level
                 grudge_level, grudge_desc = self.psychological_service.get_grudge_level(user_id)
                 
+                # Get the latest crime's duration if available
+                mute_duration = 0
+                if dossier.get('crimes'):
+                    latest_crime = dossier['crimes'][-1]
+                    mute_duration = latest_crime.get('mute_duration', 0)
+                
                 psychological_context = {
                     'crimes': dossier.get('crimes', [])[-3:],  # Last 3 crimes
                     'personality': dossier.get('profile', {}).get('personality_type', 'unknown'),
                     'triggers': dossier.get('profile', {}).get('triggers', []),
                     'grudge_level': grudge_level,
                     'grudge_description': grudge_desc,
-                    'past_memories': dossier.get('memories', [])[-2:]  # Last 2 memorable conversations
+                    'past_memories': dossier.get('memories', [])[-2:],  # Last 2 memorable conversations
+                    'mute_duration': mute_duration
                 }
                 
                 self.logger.log_info(
@@ -1104,6 +1142,7 @@ class AzabBot(discord.Client):
                         "crimes": psychological_context.get('crimes', []),
                         "grudge_level": psychological_context.get('grudge_level', 0),
                         "personality_type": psychological_context.get('personality', 'unknown'),
+                        "mute_duration": psychological_context.get('mute_duration', 0),
                     },
                 )
 

@@ -404,7 +404,7 @@ class PsychologicalService(BaseService):
     
     async def extract_mute_reason_from_audit(self, guild: discord.Guild, user_id: str) -> Optional[dict]:
         """
-        Try to extract mute reason from audit logs.
+        Try to extract mute reason and duration from audit logs.
         Works with Sapphire and other moderation bots.
         """
         try:
@@ -438,13 +438,17 @@ class PsychologicalService(BaseService):
                                 import re
                                 reason = re.sub(r'\s*\([A-Za-z0-9]+\)\s*$', '', reason).strip()
                                 
-                                log_info(f"✅ Found mute reason: {reason} by {muted_by}")
+                                # Try to extract duration from reason
+                                duration_seconds = self._extract_duration_from_text(reason)
+                                
+                                log_info(f"✅ Found mute reason: {reason} by {muted_by}, duration: {duration_seconds}s")
                                 
                                 return {
                                     'reason': reason,
                                     'muted_by': muted_by,
                                     'timestamp': entry.created_at,
-                                    'role_name': role.name
+                                    'role_name': role.name,
+                                    'duration': duration_seconds
                                 }
                             
                             # Fallback: check by role name
@@ -457,13 +461,17 @@ class PsychologicalService(BaseService):
                                 import re
                                 reason = re.sub(r'\s*\([A-Za-z0-9]+\)\s*$', '', reason).strip()
                                 
-                                log_info(f"✅ Found mute by role name: {reason} by {muted_by}")
+                                # Try to extract duration from reason
+                                duration_seconds = self._extract_duration_from_text(reason)
+                                
+                                log_info(f"✅ Found mute by role name: {reason} by {muted_by}, duration: {duration_seconds}s")
                                 
                                 return {
                                     'reason': reason,
                                     'muted_by': muted_by,
                                     'timestamp': entry.created_at,
-                                    'role_name': role.name
+                                    'role_name': role.name,
+                                    'duration': duration_seconds
                                 }
             
             # Also check timeout (different from role-based mutes)
@@ -477,11 +485,22 @@ class PsychologicalService(BaseService):
                         reason = entry.reason or "No reason provided"
                         muted_by = entry.user.display_name if entry.user else "Unknown"
                         
+                        # Calculate duration from timeout
+                        duration_seconds = 0
+                        if entry.after.timed_out_until:
+                            from datetime import datetime, timezone
+                            now = datetime.now(timezone.utc)
+                            duration = entry.after.timed_out_until - now
+                            duration_seconds = max(0, int(duration.total_seconds()))
+                        
+                        log_info(f"✅ Found timeout reason: {reason} by {muted_by}, duration: {duration_seconds}s")
+                        
                         return {
                             'reason': reason,
                             'muted_by': muted_by,
                             'timestamp': entry.created_at,
-                            'timeout_until': entry.after.timed_out_until
+                            'timeout_until': entry.after.timed_out_until,
+                            'duration': duration_seconds
                         }
             
             # If we couldn't find in audit logs, try checking recent messages for Sapphire's mute confirmation
@@ -494,6 +513,54 @@ class PsychologicalService(BaseService):
         except Exception as e:
             log_error(f"Error extracting mute reason from audit: {e}")
             return None
+    
+    def _extract_duration_from_text(self, text: str) -> int:
+        """
+        Extract duration from text like "5 minutes", "1 hour", "30m", "2h", etc.
+        Returns duration in seconds.
+        """
+        import re
+        
+        # Common duration patterns
+        patterns = [
+            (r'(\d+)\s*(?:second|sec|s)\b', 1),           # seconds
+            (r'(\d+)\s*(?:minute|min|m)\b', 60),          # minutes  
+            (r'(\d+)\s*(?:hour|hr|h)\b', 3600),           # hours
+            (r'(\d+)\s*(?:day|d)\b', 86400),              # days
+            (r'(\d+)\s*(?:week|w)\b', 604800),            # weeks
+        ]
+        
+        total_seconds = 0
+        for pattern, multiplier in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                try:
+                    value = int(match)
+                    total_seconds += value * multiplier
+                except (ValueError, TypeError):
+                    continue
+        
+        # If no duration found, check for specific bot patterns
+        # Sapphire often uses formats like "Muted for: 5m" or "Duration: 1h"
+        if total_seconds == 0:
+            # Try extracting from common bot formats
+            duration_match = re.search(r'(?:for|duration)[:\s]+(\d+[smhd])', text, re.IGNORECASE)
+            if duration_match:
+                duration_str = duration_match.group(1)
+                # Parse compact format (5m, 1h, etc)
+                compact_patterns = [
+                    (r'(\d+)s', 1),
+                    (r'(\d+)m', 60),
+                    (r'(\d+)h', 3600),
+                    (r'(\d+)d', 86400),
+                ]
+                for pattern, multiplier in compact_patterns:
+                    match = re.match(pattern, duration_str)
+                    if match:
+                        total_seconds = int(match.group(1)) * multiplier
+                        break
+        
+        return total_seconds
     
     async def _extract_from_sapphire_logs(self, guild: discord.Guild, user_id: str) -> Optional[dict]:
         """
