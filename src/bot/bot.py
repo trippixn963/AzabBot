@@ -375,33 +375,39 @@ class AzabBot(discord.Client):
                 # Remove from current prisoners set
                 self.current_prisoners.discard(after.display_name)
                 
-                # Send message in general chat
-                general_channel_id = self.config.get("GENERAL_CHANNEL_ID")
-                if not general_channel_id:
-                    self.logger.log_warning("GENERAL_CHANNEL_ID not configured, skipping release announcement")
-                    return
+                # Only send release message if bot is active
+                if self.is_active:
+                    # Send message in general chat
+                    general_channel_id = self.config.get("GENERAL_CHANNEL_ID")
+                    if not general_channel_id:
+                        self.logger.log_warning("GENERAL_CHANNEL_ID not configured, skipping release announcement")
+                        return
+                        
+                    self.logger.log_info(f"Using general channel ID: {general_channel_id}")
+                    general_channel = after.guild.get_channel(general_channel_id)
+                    self.logger.log_info(f"General channel object: {general_channel}")
                     
-                self.logger.log_info(f"Using general channel ID: {general_channel_id}")
-                general_channel = after.guild.get_channel(general_channel_id)
-                self.logger.log_info(f"General channel object: {general_channel}")
-                
-                if general_channel:
-                    try:
-                        # Generate AI-based release message based on their history
-                        release_message = await self._generate_release_message(after)
-                        
-                        # Send the personalized message
-                        await general_channel.send(release_message)
-                        
-                        self.logger.log_info(
-                            f"✅ Posted unmute notification for {after.display_name} in #{general_channel.name} (ID: {general_channel.id})"
-                        )
-                    except Exception as e:
-                        self.logger.log_error(
-                            f"Failed to send unmute message: {e}"
-                        )
+                    if general_channel:
+                        try:
+                            # Generate AI-based release message based on their history
+                            release_message = await self._generate_release_message(after)
+                            
+                            # Send the personalized message
+                            await general_channel.send(release_message)
+                            
+                            self.logger.log_info(
+                                f"✅ Posted unmute notification for {after.display_name} in #{general_channel.name} (ID: {general_channel.id})"
+                            )
+                        except Exception as e:
+                            self.logger.log_error(
+                                f"Failed to send unmute message: {e}"
+                            )
+                    else:
+                        self.logger.log_error(f"Could not find general channel with ID {general_channel_id}")
                 else:
-                    self.logger.log_error(f"Could not find general channel with ID {general_channel_id}")
+                    self.logger.log_debug(
+                        f"Bot is inactive, skipping release announcement for {after.display_name}"
+                    )
                         
             # If they just got the muted role
             elif not had_role and has_role:
@@ -575,24 +581,31 @@ class AzabBot(discord.Client):
                             f"New arrival! {after.mention}, confess your crimes immediately.",
                         ]
                     message = random.choice(welcome_messages)
-                try:
-                    await channel.send(message)
-                    self.logger.log_info(
-                        f"✅ Sent welcome message to new prisoner {after.display_name} in #{channel.name}"
-                    )
-                except discord.Forbidden:
-                    log_error(
-                        "No permission to send message in prison channel",
-                        context={
-                            "channel_id": channel.id,
-                            "channel_name": channel.name,
-                        },
-                    )
-                except discord.HTTPException as e:
-                    log_error(
-                        "Failed to send welcome message",
-                        exception=e,
-                        context={"user_id": after.id, "channel_id": channel.id},
+                
+                # Only send welcome message if bot is active
+                if self.is_active:
+                    try:
+                        await channel.send(message)
+                        self.logger.log_info(
+                            f"✅ Sent welcome message to new prisoner {after.display_name} in #{channel.name}"
+                        )
+                    except discord.Forbidden:
+                        log_error(
+                            "No permission to send message in prison channel",
+                            context={
+                                "channel_id": channel.id,
+                                "channel_name": channel.name,
+                            },
+                        )
+                    except discord.HTTPException as e:
+                        log_error(
+                            "Failed to send welcome message",
+                            exception=e,
+                            context={"user_id": after.id, "channel_id": channel.id},
+                        )
+                else:
+                    self.logger.log_debug(
+                        f"Bot is inactive, skipping welcome message for {after.display_name}"
                     )
 
                 # Log the event
