@@ -977,6 +977,86 @@ class PsychologicalService(BaseService):
         level = self.grudge_list[user_id].get('grudge_level', 0)
         return level, self.GRUDGE_LEVELS.get(level, "neutral")
     
+    async def get_remaining_mute_time(self, guild: discord.Guild, user_id: str) -> Optional[dict]:
+        """
+        Get the remaining time on a user's mute.
+        Returns dict with 'duration_seconds' and 'formatted' time.
+        """
+        try:
+            # Check if user has timeout
+            member = guild.get_member(int(user_id))
+            if member and member.timed_out_until:
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc)
+                remaining = member.timed_out_until - now
+                remaining_seconds = max(0, int(remaining.total_seconds()))
+                
+                # Format the time
+                hours = remaining_seconds // 3600
+                minutes = (remaining_seconds % 3600) // 60
+                seconds = remaining_seconds % 60
+                days = hours // 24
+                remaining_hours = hours % 24
+                
+                if days > 0:
+                    formatted = f"{days} days, {remaining_hours} hours"
+                elif hours > 0:
+                    formatted = f"{hours} hours, {minutes} minutes"
+                elif minutes > 0:
+                    formatted = f"{minutes} minutes, {seconds} seconds"
+                else:
+                    formatted = f"{seconds} seconds"
+                
+                return {
+                    'duration_seconds': remaining_seconds,
+                    'formatted': formatted,
+                    'type': 'timeout'
+                }
+            
+            # Check role-based mute by looking at the latest crime
+            crimes = await self.db_service.fetch_all(
+                """SELECT mute_duration, crime_time FROM prisoner_crimes 
+                   WHERE discord_id = ? 
+                   ORDER BY crime_time DESC 
+                   LIMIT 1""",
+                (user_id,)
+            )
+            
+            if crimes and crimes[0]['mute_duration'] > 0:
+                from datetime import datetime
+                crime_time = datetime.fromisoformat(crimes[0]['crime_time'])
+                elapsed = (datetime.utcnow() - crime_time).total_seconds()
+                remaining_seconds = max(0, crimes[0]['mute_duration'] - int(elapsed))
+                
+                if remaining_seconds > 0:
+                    # Format the time
+                    hours = remaining_seconds // 3600
+                    minutes = (remaining_seconds % 3600) // 60
+                    seconds = remaining_seconds % 60
+                    days = hours // 24
+                    remaining_hours = hours % 24
+                    
+                    if days > 0:
+                        formatted = f"{days} days, {remaining_hours} hours"
+                    elif hours > 0:
+                        formatted = f"{hours} hours, {minutes} minutes"
+                    elif minutes > 0:
+                        formatted = f"{minutes} minutes, {seconds} seconds"
+                    else:
+                        formatted = f"{seconds} seconds"
+                    
+                    return {
+                        'duration_seconds': remaining_seconds,
+                        'formatted': formatted,
+                        'type': 'role'
+                    }
+            
+            return None
+            
+        except Exception as e:
+            log_error(f"Error getting remaining mute time: {e}")
+            return None
+    
     # ============= CONVERSATION MEMORY =============
     
     async def remember_conversation(self, user_id: str, username: str,

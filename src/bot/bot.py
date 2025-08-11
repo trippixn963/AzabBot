@@ -1101,6 +1101,22 @@ class AzabBot(discord.Client):
                     latest_crime = dossier['crimes'][-1]
                     mute_duration = latest_crime.get('mute_duration', 0)
                 
+                # Check if they're asking about their mute time
+                remaining_time = None
+                asks_about_mute = any(word in combined_content.lower() for word in [
+                    'when', 'mute', 'unmute', 'free', 'release', 'how long', 'how much',
+                    'time left', 'get out', 'role gone', 'leave', 'escape', 'duration'
+                ])
+                
+                if asks_about_mute and representative_message.guild:
+                    remaining_time = await self.psychological_service.get_remaining_mute_time(
+                        representative_message.guild, user_id
+                    )
+                    if remaining_time:
+                        self.logger.log_info(
+                            f"⏰ {username} asked about mute time: {remaining_time['formatted']} left"
+                        )
+                
                 psychological_context = {
                     'crimes': dossier.get('crimes', [])[-3:],  # Last 3 crimes
                     'personality': dossier.get('profile', {}).get('personality_type', 'unknown'),
@@ -1108,7 +1124,8 @@ class AzabBot(discord.Client):
                     'grudge_level': grudge_level,
                     'grudge_description': grudge_desc,
                     'past_memories': dossier.get('memories', [])[-2:],  # Last 2 memorable conversations
-                    'mute_duration': mute_duration
+                    'mute_duration': mute_duration,
+                    'remaining_time': remaining_time
                 }
                 
                 self.logger.log_info(
@@ -1143,6 +1160,8 @@ class AzabBot(discord.Client):
                         "grudge_level": psychological_context.get('grudge_level', 0),
                         "personality_type": psychological_context.get('personality', 'unknown'),
                         "mute_duration": psychological_context.get('mute_duration', 0),
+                        "remaining_time": psychological_context.get('remaining_time', None),
+                        "asks_about_mute": asks_about_mute,
                     },
                 )
 

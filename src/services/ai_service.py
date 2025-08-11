@@ -402,6 +402,21 @@ class ResponseGenerator:
                     # We know their mute reason - reference it directly
                     history_context = f"This prisoner was muted for: '{mute_reason}'. Reference this fact directly, like 'I see you were muted for {mute_reason}' but then twist it into confusion.\n"
 
+                # Check if they're asking about their remaining mute time
+                remaining_time = context.additional_context.get("remaining_time", None)
+                asks_about_mute = context.additional_context.get("asks_about_mute", False)
+                
+                if asks_about_mute and remaining_time:
+                    # They asked about their mute time - give them a psychological response
+                    time_left = remaining_time.get('formatted', 'unknown time')
+                    history_context += f"\nIMPORTANT: The prisoner just asked about when they'll be unmuted. They have {time_left} left on their mute. "
+                    history_context += "Don't give them the exact time directly! Instead, be psychological about it - "
+                    history_context += "taunt them about how long they have left, make it seem longer than it is, "
+                    history_context += "reference how slowly time passes in prison, or confuse the time with cooking timers or gardening seasons. "
+                    history_context += f"Examples: 'Oh you want to know when? Let's see... {time_left}... but every minute feels like an hour here doesn't it?' "
+                    history_context += f"or 'Still {time_left} to go, that's like waiting for tomatoes to ripen twice!' "
+                    history_context += "Be creative and psychological, not helpful.\n"
+
                 # Add their message history
                 if context.user_history:
                     history_context += "\nPrevious messages from this prisoner:\n"
