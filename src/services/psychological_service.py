@@ -537,8 +537,13 @@ class PsychologicalService(BaseService):
                 # Try alternative method
                 return await self._extract_from_sapphire_logs(guild, user_id)
             except Exception as e:
-                log_error(f"Error extracting mute reason from audit: {e}")
-                return None
+                log_error(f"Error checking audit logs: {e}")
+                # Try alternative method
+                return await self._extract_from_sapphire_logs(guild, user_id)
+            
+        except Exception as e:
+            log_error(f"Error extracting mute reason: {e}")
+            return None
     
     def _extract_duration_from_text(self, text: str) -> int:
         """
