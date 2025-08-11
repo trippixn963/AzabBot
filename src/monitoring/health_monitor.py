@@ -438,8 +438,9 @@ class HealthMonitor(BaseService):
     async def _collect_system_metrics(self):
         """Collect system performance metrics."""
         try:
-            # CPU usage
-            cpu_percent = psutil.cpu_percent(interval=1)
+            # CPU usage - call twice to get accurate reading on some systems
+            psutil.cpu_percent(interval=None)  # Initialize
+            cpu_percent = psutil.cpu_percent(interval=0.1)  # Get actual reading
 
             # Memory usage
             memory = psutil.virtual_memory()
@@ -729,7 +730,10 @@ class HealthMonitor(BaseService):
         """
         try:
             # Get current CPU and memory usage
-            cpu_percent = psutil.cpu_percent(interval=1)
+            # Call cpu_percent twice - first call often returns 0 on some systems
+            psutil.cpu_percent(interval=None)  # Initialize
+            cpu_percent = psutil.cpu_percent(interval=0.1)  # Get actual reading
+            
             memory = psutil.virtual_memory()
             memory_usage_mb = (memory.total - memory.available) / 1024 / 1024
             
@@ -768,7 +772,7 @@ class HealthMonitor(BaseService):
                 )
             except Exception as e:
                 statuses[service_name] = HealthCheckResult(
-                    status=ServiceStatus.UNKNOWN,
+                    status=ServiceStatus.UNHEALTHY,
                     message=f"Error checking {service_name}",
                     details={"error": str(e)}
                 )
