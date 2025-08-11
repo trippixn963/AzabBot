@@ -438,9 +438,8 @@ class HealthMonitor(BaseService):
     async def _collect_system_metrics(self):
         """Collect system performance metrics."""
         try:
-            # CPU usage - call twice to get accurate reading on some systems
-            psutil.cpu_percent(interval=None)  # Initialize
-            cpu_percent = psutil.cpu_percent(interval=0.1)  # Get actual reading
+            # CPU usage - use interval=1 for accurate reading on VPS/containers
+            cpu_percent = psutil.cpu_percent(interval=1)
 
             # Memory usage
             memory = psutil.virtual_memory()
@@ -730,9 +729,8 @@ class HealthMonitor(BaseService):
         """
         try:
             # Get current CPU and memory usage
-            # Call cpu_percent twice - first call often returns 0 on some systems
-            psutil.cpu_percent(interval=None)  # Initialize
-            cpu_percent = psutil.cpu_percent(interval=0.1)  # Get actual reading
+            # Use interval=1 for accurate reading on VPS/containers
+            cpu_percent = psutil.cpu_percent(interval=1)
             
             memory = psutil.virtual_memory()
             memory_usage_mb = (memory.total - memory.available) / 1024 / 1024
