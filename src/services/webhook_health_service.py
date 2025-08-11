@@ -265,10 +265,7 @@ class WebhookHealthService(BaseService):
         if self.health_task and not self.health_task.done():
             self.health_task.cancel()
             
-        # Send initial health report immediately on startup
-        self.logger.log_info("Sending initial health report on startup", "📊")
-        await self.send_health_report(force=True)
-        
+        # Don't send initial report on startup - wait for scheduled time
         # Start new health check task for hourly checks at the top of the hour
         self.health_task = asyncio.create_task(self._health_check_loop())
         self.logger.log_info("Started hourly health check task (EST timezone)", "⏰")
@@ -455,47 +452,36 @@ class WebhookHealthService(BaseService):
         
         # Get stats
         bot_stats = health_data.get("bot_stats", {})
-        perf = health_data.get("performance", {})
-        services = health_data.get("services", {})
-        
-        # Get basic metrics
-        cpu_percent = perf.get('cpu_percent', 0)
-        mem_percent = perf.get('memory_percent', 0)
-        memory_mb = perf.get('memory_mb', 0)
-        
-        # Service health summary
-        healthy_services = sum(1 for s in services.values() if s.get("healthy", True))
-        total_services = len(services)
         
         # Determine overall health emoji and message
         if status == HealthStatus.HEALTHY:
             status_emoji = "🟢"
-            status_msg = "Bot is Online"
-            status_detail = "All systems operational"
+            status_msg = "Online"
+            status_detail = "Bot is running normally"
         elif status == HealthStatus.WARNING:
             status_emoji = "🟡"
-            status_msg = "Bot is Online"
-            status_detail = "Minor issues detected"
+            status_msg = "Online (Issues)"
+            status_detail = "Bot is running with minor issues"
         elif status == HealthStatus.CRITICAL:
             status_emoji = "🔴"
-            status_msg = "Bot is Degraded"
-            status_detail = "Critical issues detected"
+            status_msg = "Degraded"
+            status_detail = "Bot is experiencing problems"
         else:
             status_emoji = "⚫"
-            status_msg = "Bot is Offline"
-            status_detail = "System unavailable"
+            status_msg = "Offline"
+            status_detail = "Bot is not responding"
         
         # Get recent log lines
         log_lines = await self._get_recent_logs(10)
         
+        # Create clean, minimal embed
         embed = {
             "author": {
-                "name": "AzabBot Status",
-                "icon_url": "https://github.com/trippixn963/AzabBot/raw/main/images/PFP.gif",
-                "url": "https://github.com/trippixn963/AzabBot"
+                "name": "AzabBot Health Check",
+                "icon_url": "https://github.com/trippixn963/AzabBot/raw/main/images/PFP.gif"
             },
-            "title": f"{status_emoji} {status_msg}",
-            "description": f"*{status_detail}*\n\n**Uptime:** `{health_data.get('uptime', 'Unknown')}`\n**Next Check:** At the top of next hour (EST)",
+            "title": f"{status_emoji} Status: {status_msg}",
+            "description": status_detail,
             "color": color,
             "timestamp": datetime.now().isoformat(),
             "fields": []
@@ -507,67 +493,49 @@ class WebhookHealthService(BaseService):
                 "url": str(self.bot_instance.user.avatar.url)
             }
         
-        # Bot Statistics - Simple and clean
+        # Essential Information Only
         if bot_stats:
+            # Main stats in one clean field
             embed["fields"].append({
-                "name": "🌐 Bot Statistics",
-                "value": f"🎯 **Servers:** `{bot_stats.get('guilds', 0)}`\n"
-                        f"👥 **Users:** `{bot_stats.get('users', 0):,}`\n"
-                        f"📡 **Latency:** `{bot_stats.get('latency', 0)}ms`",
+                "name": "📊 Statistics",
+                "value": f"**Uptime:** `{health_data.get('uptime', 'Unknown')}`\n"
+                        f"**Latency:** `{bot_stats.get('latency', 0)}ms`\n"
+                        f"**Servers:** `{bot_stats.get('guilds', 0)}`",
                 "inline": True
             })
             
-            # Prison Activity
+            # Recent Activity
             embed["fields"].append({
-                "name": "⛓ Prison Activity",
-                "value": f"💬 **Messages Seen:** `{bot_stats.get('messages_seen', 0):,}`\n"
-                        f"🤖 **Responses:** `{bot_stats.get('responses_generated', 0):,}`\n"
-                        f"🔒 **Prisoners:** `{bot_stats.get('prisoners', 0)}`",
+                "name": "⚡ Recent Activity",
+                "value": f"**Messages:** `{bot_stats.get('messages_seen', 0):,}`\n"
+                        f"**Responses:** `{bot_stats.get('responses_generated', 0):,}`\n"
+                        f"**Prisoners:** `{bot_stats.get('prisoners', 0)}`",
                 "inline": True
             })
         
-        # System Performance (simplified)
-        if perf:
-            embed["fields"].append({
-                "name": "⚙️ Performance",
-                "value": f"📊 **CPU:** `{cpu_percent:.1f}%`\n"
-                        f"🧮 **Memory:** `{memory_mb:.0f} MB ({mem_percent:.1f}%)`\n"
-                        f"✅ **Services:** `{healthy_services}/{total_services} Online`",
-                "inline": True
-            })
-        
-        # Recent Activity Logs
+        # Recent Activity Logs (simplified - only show last 5 lines)
         if log_lines:
             # Format logs for Discord code block
-            log_display = "\n".join(log_lines[-10:])  # Last 10 lines
-            if len(log_display) > 1000:
-                log_display = log_display[-1000:]  # Truncate if too long
+            log_display = "\n".join(log_lines[-5:])  # Last 5 lines for cleaner display
+            if len(log_display) > 500:
+                log_display = log_display[-500:]  # Truncate if too long
             
             embed["fields"].append({
-                "name": "📋 Recent Activity",
+                "name": "📝 Recent Logs",
                 "value": f"```python\n{log_display}\n```",
                 "inline": False
             })
-        else:
-            embed["fields"].append({
-                "name": "📋 Recent Activity",
-                "value": "```python\n# No recent activity logs available\n```",
-                "inline": False
-            })
         
-        # Service Health Issues (only if there are issues)
-        if services and healthy_services < total_services:
-            unhealthy = [name for name, info in services.items() if not info.get("healthy", True)]
-            embed["fields"].append({
-                "name": "⚠️ Service Issues",
-                "value": "\n".join([f"🔴 {name}" for name in unhealthy[:3]]),
-                "inline": False
-            })
+        # Professional footer with next check time
+        import pytz
+        est = pytz.timezone("US/Eastern")
+        now_est = datetime.now(est)
+        next_hour = now_est.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        next_check = next_hour.strftime("%I:%M %p EST")
         
-        # Professional footer
         embed["footer"] = {
-            "text": "Developed by حَـــــنَّـــــا",
-            "icon_url": "https://cdn.discordapp.com/emojis/1058387875436941402.webp?size=96&quality=lossless"  # Health icon
+            "text": f"Developed by حَـــــنَّـــــا • Next check: {next_check}",
+            "icon_url": "https://cdn.discordapp.com/emojis/1058387875436941402.webp?size=96&quality=lossless"
         }
         
         return embed
