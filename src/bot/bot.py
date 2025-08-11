@@ -699,6 +699,9 @@ class AzabBot(discord.Client):
                 # Scan for current prisoners on startup
                 await self._scan_for_prisoners()
                 
+                # Process recent messages from prisoners
+                await self._process_recent_prisoner_messages()
+                
                 # Start presence rotation task
                 if self.presence_rotation_task:
                     self.presence_rotation_task.cancel()
@@ -1505,6 +1508,84 @@ The prisoner is: {member.display_name}"""
 
         except Exception as e:
             log_error("Failed to scan for prisoners", exception=e)
+    
+    async def _process_recent_prisoner_messages(self):
+        """Process recent messages from current prisoners upon activation."""
+        try:
+            prison_channel_id = self.config.get("PRISON_CHANNEL_IDS", "")
+            target_role_id = self.config.get("TARGET_ROLE_ID")
+            
+            if not prison_channel_id or not target_role_id:
+                return
+            
+            self.logger.log_info("🔍 Checking for recent prisoner messages to respond to...")
+            
+            # Find the prison channel
+            prison_channel = None
+            for guild in self.guilds:
+                channel = guild.get_channel(int(prison_channel_id))
+                if channel:
+                    prison_channel = channel
+                    break
+            
+            if not prison_channel:
+                return
+            
+            # Fetch recent messages (last 50 messages or 24 hours)
+            messages_to_process = []
+            async for message in prison_channel.history(limit=50):
+                # Skip bot messages
+                if message.author.bot:
+                    continue
+                    
+                # Get the member object to check current roles
+                member = prison_channel.guild.get_member(message.author.id)
+                if not member:
+                    continue
+                    
+                # Check if author CURRENTLY has the muted role
+                if hasattr(member, 'roles'):
+                    has_muted_role = any(
+                        str(role.id) == str(target_role_id) 
+                        for role in member.roles
+                    )
+                    
+                    if has_muted_role:
+                        # Check if message is recent (within last 24 hours)
+                        time_diff = discord.utils.utcnow() - message.created_at
+                        if time_diff.total_seconds() < 86400:  # 24 hours
+                            messages_to_process.append(message)
+            
+            # Group messages by user and get the most recent for each
+            user_messages = {}
+            for msg in messages_to_process:
+                if msg.author.id not in user_messages or msg.created_at > user_messages[msg.author.id].created_at:
+                    user_messages[msg.author.id] = msg
+            
+            if user_messages:
+                self.logger.log_info(f"📨 Found recent messages from {len(user_messages)} prisoners")
+                
+                # Process each prisoner's most recent message
+                for user_id, message in user_messages.items():
+                    try:
+                        # Add a small delay between responses
+                        await asyncio.sleep(2)
+                        
+                        # Simulate the message being received now
+                        self.logger.log_info(
+                            f"💬 Processing recent message from {message.author.display_name}: {message.content[:50]}..."
+                        )
+                        
+                        # Add to batch for processing
+                        await self._add_message_to_batch(message)
+                        
+                    except Exception as e:
+                        self.logger.log_error(f"Failed to process message from {message.author}: {e}")
+            else:
+                self.logger.log_info("No recent prisoner messages found")
+                
+        except Exception as e:
+            self.logger.log_error(f"Error processing recent prisoner messages: {e}")
 
     async def close(self):
         """Clean shutdown of the bot."""

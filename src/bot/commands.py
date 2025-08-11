@@ -82,6 +82,9 @@ def create_activate_command(bot):
         # Scan for current prisoners if not already done
         await bot._scan_for_prisoners()
         
+        # Process recent messages from prisoners
+        await bot._process_recent_prisoner_messages()
+        
         # Start presence rotation task if not already running
         if bot.presence_rotation_task:
             bot.presence_rotation_task.cancel()
