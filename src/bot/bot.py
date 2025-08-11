@@ -1265,6 +1265,47 @@ Response Rate: {(self.metrics.responses_generated /
                  max(1, self.metrics.messages_seen)) * 100:.1f}%
 """
 
+    async def get_health_status(self) -> Dict[str, Any]:
+        """Get health status for health monitoring."""
+        try:
+            # Check if bot is connected to Discord
+            is_connected = self.is_ready() and not self.is_closed()
+            
+            # Calculate uptime
+            uptime = datetime.datetime.now(timezone.utc) - self.metrics.uptime_start
+            uptime_str = f"{uptime.days}d {uptime.seconds // 3600}h {(uptime.seconds % 3600) // 60}m"
+            
+            # Get service statuses
+            services_healthy = []
+            if self.ai_service:
+                services_healthy.append("AI")
+            if self.memory_service:
+                services_healthy.append("Memory")
+            if self.personality_service:
+                services_healthy.append("Personality")
+            if self.prison_service:
+                services_healthy.append("Prison")
+            
+            return {
+                "healthy": is_connected and len(self.guilds) > 0,
+                "connected": is_connected,
+                "guilds": len(self.guilds),
+                "users": sum(g.member_count for g in self.guilds),
+                "uptime": uptime_str,
+                "latency_ms": round(self.latency * 1000, 2),
+                "active": self.is_active,
+                "messages_seen": self.metrics.messages_seen,
+                "responses_generated": self.metrics.responses_generated,
+                "services": services_healthy,
+                "prisoners": len(self.current_prisoners)
+            }
+        except Exception as e:
+            return {
+                "healthy": False,
+                "error": str(e),
+                "connected": False
+            }
+    
     async def cleanup_task(self):
         """Periodic cleanup task."""
         try:
