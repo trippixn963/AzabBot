@@ -1683,9 +1683,26 @@ The prisoner is: {member.display_name}"""
             
             # Fetch recent messages (last 50 messages or 24 hours)
             messages_to_process = []
+            bot_responses = set()  # Track messages the bot has responded to
+            
+            # First pass: collect bot's response message references
+            async for message in prison_channel.history(limit=100):
+                if message.author == self.user and message.reference:
+                    # This is a bot reply - store the message it replied to
+                    bot_responses.add(message.reference.message_id)
+            
+            # Second pass: find prisoner messages that haven't been responded to
             async for message in prison_channel.history(limit=50):
                 # Skip bot messages
                 if message.author.bot:
+                    continue
+                
+                # Skip if bot already responded to this message
+                if message.id in bot_responses:
+                    self.logger.log_debug(
+                        f"Skipping message from {message.author.display_name} - already responded",
+                        context={"message_id": str(message.id), "author": message.author.display_name}
+                    )
                     continue
                     
                 # Get the member object to check current roles
@@ -1706,16 +1723,32 @@ The prisoner is: {member.display_name}"""
                         if time_diff.total_seconds() < 86400:  # 24 hours
                             messages_to_process.append(message)
             
-            # Group messages by user and get the most recent for each
+            # Group messages by user and get the most recent UNANSWERED message for each
             user_messages = {}
             for msg in messages_to_process:
+                # Check if there's a bot message after this one (conversation already happened)
+                has_bot_reply_after = False
+                async for check_msg in prison_channel.history(limit=10, after=msg):
+                    if check_msg.author == self.user:
+                        # Bot sent a message after this - likely already had a conversation
+                        has_bot_reply_after = True
+                        break
+                
+                if has_bot_reply_after:
+                    self.logger.log_debug(
+                        f"Skipping {msg.author.display_name}'s message - bot already active in conversation after",
+                        context={"message_id": str(msg.id)}
+                    )
+                    continue
+                
+                # Only keep the most recent unanswered message per user
                 if msg.author.id not in user_messages or msg.created_at > user_messages[msg.author.id].created_at:
                     user_messages[msg.author.id] = msg
             
             if user_messages:
-                self.logger.log_info(f"📨 Found recent messages from {len(user_messages)} prisoners")
+                self.logger.log_info(f"📨 Found {len(user_messages)} prisoners with unanswered messages")
                 
-                # Process each prisoner's most recent message
+                # Process each prisoner's most recent unanswered message
                 for user_id, message in user_messages.items():
                     try:
                         # Add a small delay between responses
@@ -1723,7 +1756,7 @@ The prisoner is: {member.display_name}"""
                         
                         # Simulate the message being received now
                         self.logger.log_info(
-                            f"💬 Processing recent message from {message.author.display_name}: {message.content[:50]}..."
+                            f"💬 Processing unanswered message from {message.author.display_name}: {message.content[:50]}..."
                         )
                         
                         # Add to batch for processing
@@ -1732,7 +1765,7 @@ The prisoner is: {member.display_name}"""
                     except Exception as e:
                         self.logger.log_error(f"Failed to process message from {message.author}: {e}")
             else:
-                self.logger.log_info("No recent prisoner messages found")
+                self.logger.log_info("No unanswered prisoner messages found")
                 
         except Exception as e:
             self.logger.log_error(f"Error processing recent prisoner messages: {e}")
