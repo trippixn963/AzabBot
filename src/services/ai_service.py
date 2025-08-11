@@ -285,9 +285,9 @@ class ResponseGenerator:
                 "Respond like a ruthless sparring partner who actually read the message: specific, sarcastic, and challenging. End with a jab or a rhetorical question that lures them into arguing.",
             ],
             ResponseMode.AZAB: [
-                "You are Azab, a confused prison guard. NEVER refer to yourself in third person. Speak directly TO the prisoner using 'you'. If you know their mute reason, mention it directly ('I see you were muted for...') then immediately change topic to something bizarre like gardening or cooking. Mix serious references to their crime with complete nonsense. Be confusing but speak naturally.",
-                "You are a delusional prison guard named Azab. Talk DIRECTLY to the prisoner (use 'you' not 'they'). If you know why they're muted, state it matter-of-factly, then completely misunderstand what it means. Connect their mute reason to unrelated topics. Never speak about yourself in third person - always use 'I' for yourself and 'you' for them.",
-                "You are Azab taking notes. Address the prisoner directly with 'you'. If you know their mute reason, reference it like filling paperwork, then twist it into nonsense. Example: 'So you were muted for spamming? That's like my aunt's recipe for chaos.' Keep it conversational, never narrate your actions or speak in third person.",
+                "You are Azab, a confused prison guard. NEVER refer to yourself in third person. Speak directly TO the prisoner using 'you'. If you know their mute reason, mention it directly ('I see you were muted for...') then immediately change topic to something bizarre like gardening or cooking. Mix serious references to their crime with complete nonsense. Be confusing but speak naturally. If they keep repeating the same thing, act like it's a new fascinating fact each time.",
+                "You are a delusional prison guard named Azab. Talk DIRECTLY to the prisoner (use 'you' not 'they'). If you know why they're muted, state it matter-of-factly, then completely misunderstand what it means. Connect their mute reason to unrelated topics. Never speak about yourself in third person - always use 'I' for yourself and 'you' for them. When they repeat themselves, pretend they're saying something completely different.",
+                "You are Azab taking notes. Address the prisoner directly with 'you'. If you know their mute reason, reference it like filling paperwork, then twist it into nonsense. Example: 'So you were muted for spamming? That's like my aunt's recipe for chaos.' Keep it conversational, never narrate your actions or speak in third person. If they're stuck on repeat, act concerned about their 'echo condition' and suggest bizarre remedies.",
             ],
         }
 
@@ -401,6 +401,17 @@ class ResponseGenerator:
                 else:
                     # We know their mute reason - reference it directly
                     history_context = f"This prisoner was muted for: '{mute_reason}'. Reference this fact directly, like 'I see you were muted for {mute_reason}' but then twist it into confusion.\n"
+                
+                # Check if user is repeating the same message
+                if context.user_history and len(context.user_history) > 1:
+                    # Check if last few messages are identical
+                    recent_msgs = context.user_history[-3:]
+                    if len(set(recent_msgs)) == 1 and recent_msgs[0] == context.message_content:
+                        history_context += f"\nNOTE: This prisoner keeps repeating the same exact message: '{context.message_content}'. Mock them for being stuck on repeat like a broken record.\n"
+                        
+                        # Specific handling for GitHub/open source complaints
+                        if "github" in context.message_content.lower() or "open source" in context.message_content.lower():
+                            history_context += "They're complaining about GitHub/open source being better. Disagree completely but in a confusing way - maybe say closed source is better because it keeps the secrets safe from garden gnomes, or that GitHub is just a hub for gits, or make up nonsense about source code being like soup recipes.\n"
 
                 # Check if they're asking about their remaining mute time
                 remaining_time = context.additional_context.get("remaining_time", None)

@@ -422,26 +422,17 @@ class WebhookHealthService(BaseService):
         """Determine overall health status from metrics."""
         try:
             # Check if bot is dead (no stats)
-            if not health_data["bot_stats"] or health_data["bot_stats"].get("guilds", 0) == 0:
+            bot_stats = health_data.get("bot_stats", {})
+            if not bot_stats or bot_stats.get("guilds", 0) == 0:
                 return HealthStatus.DEAD
-                
-            # Count unhealthy services
-            unhealthy_count = sum(
-                1 for s in health_data["services"].values()
-                if not s.get("healthy", True)
-            )
             
-            # Check performance metrics
-            cpu = health_data["performance"].get("cpu_percent", 0)
-            memory = health_data["performance"].get("memory_percent", 0)
-            
-            # Determine status based on conditions
-            if unhealthy_count >= 3 or cpu > 90 or memory > 90:
-                return HealthStatus.CRITICAL
-            elif unhealthy_count >= 1 or cpu > 70 or memory > 70:
+            # Simple health check - if bot is connected to guilds, it's healthy
+            # Only show warning if latency is extremely high
+            if bot_stats.get("latency", 0) > 1000:  # Very high latency (>1 second)
                 return HealthStatus.WARNING
-            else:
-                return HealthStatus.HEALTHY
+            
+            # Bot is connected and responsive = healthy
+            return HealthStatus.HEALTHY
                 
         except Exception:
             return HealthStatus.WARNING
@@ -460,8 +451,8 @@ class WebhookHealthService(BaseService):
             status_detail = "Bot is running normally"
         elif status == HealthStatus.WARNING:
             status_emoji = "🟡"
-            status_msg = "Online (Issues)"
-            status_detail = "Bot is running with minor issues"
+            status_msg = "Online (High Latency)"
+            status_detail = "Bot is running but experiencing high latency"
         elif status == HealthStatus.CRITICAL:
             status_emoji = "🔴"
             status_msg = "Degraded"
@@ -617,27 +608,41 @@ class WebhookHealthService(BaseService):
             from datetime import datetime
             import pytz
             from pathlib import Path
+            import os
             
-            # Get current date and hour
-            try:
-                est = pytz.timezone("US/Eastern")
-                current_date = datetime.now(est).strftime("%Y-%m-%d")
-                hour_str = datetime.now(est).strftime("%I-%p")
-                if hour_str.startswith('0'):
-                    hour_str = hour_str[1:]
-            except:
-                current_date = datetime.now().strftime("%Y-%m-%d")
-                hour_str = datetime.now().strftime("%I-%p")
-                if hour_str.startswith('0'):
-                    hour_str = hour_str[1:]
+            # Get current date and hour in EST
+            est = pytz.timezone("US/Eastern")
+            now_est = datetime.now(est)
+            current_date = now_est.strftime("%Y-%m-%d")
             
-            # Try VPS path first, then local path
-            vps_log_path = Path(f"/root/AzabBot/logs/{current_date}/{hour_str}/log.log")
-            local_log_path = Path(f"logs/{current_date}/{hour_str}/log.log")
+            # Format hour like tree_log does - remove leading zero
+            hour_str = now_est.strftime("%I-%p")
+            if hour_str.startswith('0'):
+                hour_str = hour_str[1:]
             
-            log_path = vps_log_path if vps_log_path.exists() else local_log_path
+            # Build log paths - check multiple possible locations
+            # Check both absolute and relative paths
+            base_paths = [
+                Path("/root/AzabBot/logs"),  # VPS absolute path
+                Path("/Users/johnhamwi/Developer/AzabBot/logs"),  # Local absolute path
+                Path("logs"),  # Relative path from working directory
+                Path(os.path.join(os.getcwd(), "logs"))  # Current working directory
+            ]
             
-            if log_path.exists():
+            possible_paths = []
+            for base in base_paths:
+                # Add the standard path format
+                possible_paths.append(base / current_date / hour_str / "log.log")
+                # Also check with leading zero (in case format changes)
+                possible_paths.append(base / current_date / now_est.strftime("%I-%p") / "log.log")
+            
+            log_path = None
+            for path in possible_paths:
+                if path.exists():
+                    log_path = path
+                    break
+            
+            if log_path and log_path.exists():
                 with open(log_path, 'r') as f:
                     all_lines = f.readlines()
                     # Get last N lines and clean them
@@ -668,7 +673,43 @@ class WebhookHealthService(BaseService):
                     
                     return cleaned_lines if cleaned_lines else ["# No recent activity"]
             
-            return ["# No log file found for current hour"]
+            # If no log for current hour, try to find the most recent log file
+            for base in base_paths:
+                date_dir = base / current_date
+                if date_dir.exists():
+                    # Get all hour directories, sorted by time
+                    hour_dirs = sorted([d for d in date_dir.iterdir() if d.is_dir()], 
+                                     key=lambda x: x.name, reverse=True)
+                    for hour_dir in hour_dirs:
+                        log_file = hour_dir / "log.log"
+                        if log_file.exists():
+                            # Found most recent log
+                            with open(log_file, 'r') as f:
+                                all_lines = f.readlines()
+                                recent = all_lines[-lines:] if len(all_lines) > lines else all_lines
+                                
+                                cleaned_lines = []
+                                for line in recent:
+                                    line = line.strip()
+                                    if '] ' in line:
+                                        parts = line.split('] ', 1)
+                                        if len(parts) >= 2:
+                                            line = parts[1]
+                                            if line.startswith('['):
+                                                level_parts = line.split('] ', 1)
+                                                if len(level_parts) >= 2:
+                                                    line = level_parts[1]
+                                    if len(line) > 100:
+                                        line = line[:97] + "..."
+                                    if line:
+                                        cleaned_lines.append(line)
+                                
+                                if cleaned_lines:
+                                    return [f"# From {hour_dir.name}:"] + cleaned_lines
+                                else:
+                                    return [f"# No activity in {hour_dir.name}"]
+            
+            return ["# No recent logs available"]
             
         except Exception as e:
             self.logger.log_error(f"Error reading logs: {e}")
