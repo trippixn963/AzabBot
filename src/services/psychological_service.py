@@ -434,6 +434,10 @@ class PsychologicalService(BaseService):
                                 reason = entry.reason or "No reason provided"
                                 muted_by = entry.user.display_name if entry.user else "Sapphire"
                                 
+                                # Remove case ID in parentheses (e.g., "(LrbFp31)")
+                                import re
+                                reason = re.sub(r'\s*\([A-Za-z0-9]+\)\s*$', '', reason).strip()
+                                
                                 log_info(f"✅ Found mute reason: {reason} by {muted_by}")
                                 
                                 return {
@@ -448,6 +452,10 @@ class PsychologicalService(BaseService):
                             if any(mute_name in role.name.lower() for mute_name in mute_role_names):
                                 reason = entry.reason or "No reason provided"
                                 muted_by = entry.user.display_name if entry.user else "Sapphire"
+                                
+                                # Remove case ID in parentheses
+                                import re
+                                reason = re.sub(r'\s*\([A-Za-z0-9]+\)\s*$', '', reason).strip()
                                 
                                 log_info(f"✅ Found mute by role name: {reason} by {muted_by}")
                                 

@@ -524,13 +524,16 @@ class AzabBot(discord.Client):
                     # Messages for first-time prisoners - include reason if we know it
                     if mute_reason and mute_reason != 'Unknown':
                         welcome_messages = [
-                            f"Well well well, {after.mention} just got locked up for **{mute_reason}**. Welcome to Sednaya!",
-                            f"Fresh meat! {after.mention} is here for **{mute_reason}**. Hope you're ready for your stay!",
-                            f"{after.mention} Welcome to Sednaya! So **{mute_reason}** is what brought you here?",
-                            f"Another one! {after.mention} got muted for **{mute_reason}**. You'll fit right in!",
-                            f"Oh {after.mention}, you're here for **{mute_reason}**? This should be interesting...",
-                            f"New arrival! {after.mention} committed the crime of **{mute_reason}**. Confess everything!",
-                            f"{after.mention} just got locked up for **{mute_reason}**! Time to learn about gardening and cooking.",
+                            f"Well well well, {after.mention}. I know exactly why you're here - **{mute_reason}**. Welcome to Sednaya!",
+                            f"Fresh meat! {after.mention}, you committed **{mute_reason}**. Hope you're ready for what's coming.",
+                            f"{after.mention} Welcome to Sednaya! So you're the one who committed **{mute_reason}**?",
+                            f"Another prisoner! {after.mention}, you got caught for **{mute_reason}**. You'll fit right in with the others!",
+                            f"Oh {after.mention}, so you're the one who committed **{mute_reason}**? This should be interesting...",
+                            f"New arrival! {after.mention}, you committed **{mute_reason}**. Now confess - was it worth it?",
+                            f"{after.mention}, locked up for **{mute_reason}**! Time to teach you about gardening and proper cooking.",
+                            f"I see everything, {after.mention}. You committed **{mute_reason}** and now you're mine.",
+                            f"Welcome {after.mention}! Your crime of **{mute_reason}** has earned you a special place here.",
+                            f"Ah {after.mention}, finally here for **{mute_reason}**. I've been expecting you.",
                         ]
                     else:
                         welcome_messages = [
