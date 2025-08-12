@@ -334,15 +334,15 @@ class AzabBot(discord.Client):
                     await message.reply(embed=embed)
                 except Exception:
                     pass  # Ignore errors when sending error embeds
-            finally:
-                # Log processing time
-                elapsed_ms = (time.perf_counter() - start_time) * 1000
-                if elapsed_ms > 100:  # Only log if it took more than 100ms
-                    self.logger.log_debug(
-                        f"Message processed in {elapsed_ms:.1f}ms | "
-                        f"Channel: #{message.channel.name} | "
-                        f"User: {message.author.name}"
-                    )
+        finally:
+            # Log processing time
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            if elapsed_ms > 100:  # Only log if it took more than 100ms
+                self.logger.log_debug(
+                    f"Message processed in {elapsed_ms:.1f}ms | "
+                    f"Channel: #{message.channel.name} | "
+                    f"User: {message.author.name}"
+                )
 
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         """Handle member updates to detect new prisoners."""
