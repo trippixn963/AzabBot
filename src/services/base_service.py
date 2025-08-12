@@ -454,6 +454,7 @@ class BaseService(ABC):
                 try:
                     await self._health_check_task
                 except asyncio.CancelledError:
+                    # Task cancellation is expected during shutdown
                     pass
 
             # Call subclass stop

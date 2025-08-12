@@ -169,11 +169,9 @@ class AzabBot(discord.Client):
             # Background tasks initialization would go here if needed
 
             # Register slash commands
-            from src.bot.commands import (
-                create_activate_command,
-                create_deactivate_command,
-                create_health_command,
-            )
+            from src.bot.commands import (create_activate_command,
+                                          create_deactivate_command,
+                                          create_health_command)
 
             self.tree.add_command(create_activate_command(self))
             self.tree.add_command(create_deactivate_command(self))
@@ -211,6 +209,9 @@ class AzabBot(discord.Client):
 
     async def on_message(self, message: discord.Message):
         """Handle incoming messages."""
+        import time
+        start_time = time.perf_counter()
+        
         # Ignore bot messages
         if message.author.bot:
             return
@@ -333,6 +334,15 @@ class AzabBot(discord.Client):
                     await message.reply(embed=embed)
                 except Exception:
                     pass  # Ignore errors when sending error embeds
+            finally:
+                # Log processing time
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+                if elapsed_ms > 100:  # Only log if it took more than 100ms
+                    self.logger.log_debug(
+                        f"Message processed in {elapsed_ms:.1f}ms | "
+                        f"Channel: #{message.channel.name} | "
+                        f"User: {message.author.name}"
+                    )
 
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         """Handle member updates to detect new prisoners."""
@@ -787,7 +797,7 @@ class AzabBot(discord.Client):
                 await self.change_presence(activity=activity, status=discord.Status.idle)
                 self.logger.log_info("Bot started in INACTIVE state - waiting for /activate command", "⚠️")
 
-        except Exception as e:
+        except discord.HTTPException as e:
             log_error("Failed to set startup status", exception=e)
 
     async def _handle_developer_commands(self, message: discord.Message) -> bool:
@@ -999,6 +1009,7 @@ class AzabBot(discord.Client):
                 )
 
         except asyncio.CancelledError:
+            # Task cancelled during shutdown - this is expected
             pass
         except Exception as e:
             log_error("Error processing message batch", exception=e)
@@ -1235,7 +1246,7 @@ class AzabBot(discord.Client):
             if random.random() < 0.15:
                 await self._update_mocking_status(message.author)
 
-        except Exception as e:
+        except (discord.HTTPException, discord.Forbidden) as e:
             log_error("Error applying prison actions", exception=e)
 
     async def _send_formatted_response(
@@ -1264,9 +1275,10 @@ class AzabBot(discord.Client):
                         await message.add_reaction(reaction)
                         await asyncio.sleep(0.5)
                     except discord.HTTPException:
-                        pass
+                        # Reaction failed - likely missing permissions or message deleted
+                        continue
 
-        except Exception as e:
+        except (discord.HTTPException, discord.Forbidden, discord.NotFound) as e:
             log_error("Error sending formatted response", exception=e)
 
     def _update_metrics_and_cooldowns(self, message: discord.Message):

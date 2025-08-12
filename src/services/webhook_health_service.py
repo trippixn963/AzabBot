@@ -277,6 +277,7 @@ class WebhookHealthService(BaseService):
             try:
                 await self.health_task
             except asyncio.CancelledError:
+                # Task cancellation is expected during shutdown
                 pass
             self.logger.log_info("Stopped health check task")
             
@@ -333,6 +334,9 @@ class WebhookHealthService(BaseService):
         Returns:
             Success status
         """
+        import time
+        start_time = time.perf_counter()
+        
         try:
             # Check if we should send (unless forced)
             if not force and self.last_check:
@@ -355,8 +359,9 @@ class WebhookHealthService(BaseService):
             if success:
                 self.last_check = datetime.now()
                 self.consecutive_failures = 0
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
                 self.logger.log_info(
-                    f"Health report sent: {overall_status.value[0]}",
+                    f"Health report sent: {overall_status.value[0]} ({elapsed_ms:.1f}ms)",
                     "📊"
                 )
             else:

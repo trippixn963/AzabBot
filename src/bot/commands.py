@@ -49,67 +49,81 @@ def create_activate_command(bot):
         This command activates the bot's monitoring and response system.
         Only authorized users (developer and specific moderators) can use this command.
         """
-        # List of authorized user IDs (developer + moderators from config)
-        authorized_users = [bot.developer_id]
-        # Add moderator IDs from config if available
-        moderator_ids = bot.config.get("MODERATOR_IDS", [])
-        if moderator_ids:
-            authorized_users.extend(moderator_ids)
-        
-        # Verify the user is authorized
-        if interaction.user.id not in authorized_users:
+        try:
+            # List of authorized user IDs (developer + moderators from config)
+            authorized_users = [bot.developer_id]
+            # Add moderator IDs from config if available
+            moderator_ids = bot.config.get("MODERATOR_IDS", [])
+            if moderator_ids:
+                authorized_users.extend(moderator_ids)
+            
+            # Verify the user is authorized
+            if interaction.user.id not in authorized_users:
+                embed = discord.Embed(
+                    title="❌ Permission Denied",
+                    description="Only authorized users can use this command.",
+                    color=0xFF0000,
+                    timestamp=get_est_time()
+                )
+                if bot.user and bot.user.avatar:
+                    embed.set_thumbnail(url=bot.user.avatar.url)
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            # Respond to interaction immediately to avoid timeout
             embed = discord.Embed(
-                title="❌ Permission Denied",
-                description="Only authorized users can use this command.",
-                color=0xFF0000,
-                timestamp=get_est_time()
+                title="✅ Bot Activated",
+                description="AzabBot is now active and will respond to prisoners!",
+                color=0x00FF00,
+                timestamp=discord.utils.utcnow()
             )
             if bot.user and bot.user.avatar:
                 embed.set_thumbnail(url=bot.user.avatar.url)
+            embed.add_field(name="Status", value="🟢 Active", inline=True)
+            embed.add_field(name="Responses", value="💬 Enabled", inline=True)
+            embed.add_field(name="Prisoners", value=f"{len(bot.current_prisoners)}", inline=True)
+            embed.set_footer(text="Developed by حَـــــنَّـــــا")
             await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        # Respond to interaction immediately to avoid timeout
-        embed = discord.Embed(
-            title="✅ Bot Activated",
-            description="AzabBot is now active and will respond to prisoners!",
-            color=0x00FF00,
-            timestamp=discord.utils.utcnow()
-        )
-        if bot.user and bot.user.avatar:
-            embed.set_thumbnail(url=bot.user.avatar.url)
-        embed.add_field(name="Status", value="🟢 Active", inline=True)
-        embed.add_field(name="Responses", value="💬 Enabled", inline=True)
-        embed.add_field(name="Prisoners", value=f"{len(bot.current_prisoners)}", inline=True)
-        embed.set_footer(text="Developed by حَـــــنَّـــــا")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        
-        # Now activate the bot and do background tasks
-        bot.is_active = True
-        bot.logger.log_info("✅ Bot activated by developer command")
-        
-        # Update bot presence to show active status
-        activity = discord.Activity(
-            type=discord.ActivityType.watching, name="⛓ Sednaya"
-        )
-        await bot.change_presence(activity=activity, status=discord.Status.online)
-        
-        # Start background tasks asynchronously
-        import asyncio
-        async def activate_tasks():
-            # Scan for current prisoners if not already done
-            await bot._scan_for_prisoners()
             
-            # Process only the MOST RECENT prisoner message
-            await bot._process_recent_prisoner_messages()
+            # Now activate the bot and do background tasks
+            bot.is_active = True
+            bot.logger.log_info("✅ Bot activated by developer command")
             
-            # Start presence rotation task if not already running
-            if bot.presence_rotation_task:
-                bot.presence_rotation_task.cancel()
-            bot.presence_rotation_task = bot.loop.create_task(bot._rotate_presence())
+            # Update bot presence to show active status
+            activity = discord.Activity(
+                type=discord.ActivityType.watching, name="⛓ Sednaya"
+            )
+            await bot.change_presence(activity=activity, status=discord.Status.online)
+            
+            # Start background tasks asynchronously
+            import asyncio
+            async def activate_tasks():
+                # Scan for current prisoners if not already done
+                await bot._scan_for_prisoners()
+                
+                # Process only the MOST RECENT prisoner message
+                await bot._process_recent_prisoner_messages()
+                
+                # Start presence rotation task if not already running
+                if bot.presence_rotation_task:
+                    bot.presence_rotation_task.cancel()
+                bot.presence_rotation_task = bot.loop.create_task(bot._rotate_presence())
+            
+            # Run activation tasks in background
+            bot.loop.create_task(activate_tasks())
         
-        # Run activation tasks in background
-        bot.loop.create_task(activate_tasks())
+        except Exception as e:
+            bot.logger.log_error("Error in activate command", exception=e)
+            embed = discord.Embed(
+                title="❌ Activation Failed",
+                description=f"An error occurred: {str(e)}",
+                color=0xFF0000,
+                timestamp=discord.utils.utcnow()
+            )
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
 
     return activate
 
@@ -138,55 +152,69 @@ def create_deactivate_command(bot):
         This command deactivates the bot's monitoring and response system.
         Only authorized users (developer and specific moderators) can use this command.
         """
-        # List of authorized user IDs (developer + moderators from config)
-        authorized_users = [bot.developer_id]
-        # Add moderator IDs from config if available
-        moderator_ids = bot.config.get("MODERATOR_IDS", [])
-        if moderator_ids:
-            authorized_users.extend(moderator_ids)
-        
-        # Verify the user is authorized
-        if interaction.user.id not in authorized_users:
+        try:
+            # List of authorized user IDs (developer + moderators from config)
+            authorized_users = [bot.developer_id]
+            # Add moderator IDs from config if available
+            moderator_ids = bot.config.get("MODERATOR_IDS", [])
+            if moderator_ids:
+                authorized_users.extend(moderator_ids)
+            
+            # Verify the user is authorized
+            if interaction.user.id not in authorized_users:
+                embed = discord.Embed(
+                    title="❌ Permission Denied",
+                    description="Only authorized users can use this command.",
+                    color=0xFF0000,
+                    timestamp=get_est_time()
+                )
+                if bot.user and bot.user.avatar:
+                    embed.set_thumbnail(url=bot.user.avatar.url)
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            # Deactivate the bot
+            bot.is_active = False
+            bot.logger.log_info("🔴 Bot deactivated by developer command")
+            
+            # Update bot presence to show inactive status
+            activity = discord.Activity(
+                type=discord.ActivityType.watching, name="💤 Inactive"
+            )
+            await bot.change_presence(activity=activity, status=discord.Status.idle)
+            
+            # Stop presence rotation task
+            if bot.presence_rotation_task:
+                bot.presence_rotation_task.cancel()
+                bot.presence_rotation_task = None
+            
+            # Create deactivation embed
             embed = discord.Embed(
-                title="❌ Permission Denied",
-                description="Only authorized users can use this command.",
+                title="🔴 Bot Deactivated",
+                description="AzabBot is now inactive. Still learning but not responding.",
                 color=0xFF0000,
-                timestamp=get_est_time()
+                timestamp=discord.utils.utcnow()
             )
             if bot.user and bot.user.avatar:
                 embed.set_thumbnail(url=bot.user.avatar.url)
+            embed.add_field(name="Status", value="⭕ Inactive", inline=True)
+            embed.add_field(name="Responses", value="🔇 Disabled", inline=True)
+            embed.add_field(name="Commands", value="✅ Still Available", inline=True)
+            embed.set_footer(text="Developed by حَـــــنَّـــــا")
             await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        # Deactivate the bot
-        bot.is_active = False
-        bot.logger.log_info("🔴 Bot deactivated by developer command")
-        
-        # Update bot presence to show inactive status
-        activity = discord.Activity(
-            type=discord.ActivityType.watching, name="💤 Inactive"
-        )
-        await bot.change_presence(activity=activity, status=discord.Status.idle)
-        
-        # Stop presence rotation task
-        if bot.presence_rotation_task:
-            bot.presence_rotation_task.cancel()
-            bot.presence_rotation_task = None
-        
-        # Create deactivation embed
-        embed = discord.Embed(
-            title="🔴 Bot Deactivated",
-            description="AzabBot is now inactive. Still learning but not responding.",
-            color=0xFF0000,
-            timestamp=discord.utils.utcnow()
-        )
-        if bot.user and bot.user.avatar:
-            embed.set_thumbnail(url=bot.user.avatar.url)
-        embed.add_field(name="Status", value="⭕ Inactive", inline=True)
-        embed.add_field(name="Responses", value="🔇 Disabled", inline=True)
-        embed.add_field(name="Commands", value="✅ Still Available", inline=True)
-        embed.set_footer(text="Developed by حَـــــنَّـــــا")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            bot.logger.log_error("Error in deactivate command", exception=e)
+            embed = discord.Embed(
+                title="❌ Deactivation Failed",
+                description=f"An error occurred: {str(e)}",
+                color=0xFF0000,
+                timestamp=discord.utils.utcnow()
+            )
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
 
     return deactivate
 
@@ -214,57 +242,71 @@ def create_health_command(bot):
         
         Triggers an immediate health status report via webhook.
         """
-        # Verify the user is the authorized developer
-        if interaction.user.id != bot.developer_id:
-            embed = discord.Embed(
-                title="❌ Permission Denied",
-                description="Only the developer can use this command.",
-                color=0xFF0000,
-                timestamp=get_est_time()
-            )
-            if bot.user and bot.user.avatar:
-                embed.set_thumbnail(url=bot.user.avatar.url)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-            
-        # Defer response since health check might take a moment
-        await interaction.response.defer(ephemeral=True)
-        
-        # Trigger health check
-        if hasattr(bot, 'webhook_health') and bot.webhook_health:
-            success = await bot.webhook_health.send_health_report(force=True)
-            if success:
+        try:
+            # Verify the user is the authorized developer
+            if interaction.user.id != bot.developer_id:
                 embed = discord.Embed(
-                    title="✅ Health Report Sent",
-                    description="Health status report has been sent to the webhook successfully!",
-                    color=0x00FF00,
-                    timestamp=get_est_time()
-                )
-                if bot.user and bot.user.avatar:
-                    embed.set_thumbnail(url=bot.user.avatar.url)
-                embed.set_footer(text="Developed by حَـــــنَّـــــا")
-                await interaction.followup.send(embed=embed, ephemeral=True)
-            else:
-                embed = discord.Embed(
-                    title="❌ Health Report Failed",
-                    description="Failed to send health report. Check webhook configuration and logs for details.",
+                    title="❌ Permission Denied",
+                    description="Only the developer can use this command.",
                     color=0xFF0000,
                     timestamp=get_est_time()
                 )
                 if bot.user and bot.user.avatar:
                     embed.set_thumbnail(url=bot.user.avatar.url)
-                embed.add_field(name="Troubleshooting", value="• Check HEALTH_WEBHOOK_URL in .env\n• Verify webhook is valid\n• Check logs for error details", inline=False)
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+                
+            # Defer response since health check might take a moment
+            await interaction.response.defer(ephemeral=True)
+            
+            # Trigger health check
+            if hasattr(bot, 'webhook_health') and bot.webhook_health:
+                success = await bot.webhook_health.send_health_report(force=True)
+                if success:
+                    embed = discord.Embed(
+                        title="✅ Health Report Sent",
+                        description="Health status report has been sent to the webhook successfully!",
+                        color=0x00FF00,
+                        timestamp=get_est_time()
+                    )
+                    if bot.user and bot.user.avatar:
+                        embed.set_thumbnail(url=bot.user.avatar.url)
+                    embed.set_footer(text="Developed by حَـــــنَّـــــا")
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                else:
+                    embed = discord.Embed(
+                        title="❌ Health Report Failed",
+                        description="Failed to send health report. Check webhook configuration and logs for details.",
+                        color=0xFF0000,
+                        timestamp=get_est_time()
+                    )
+                    if bot.user and bot.user.avatar:
+                        embed.set_thumbnail(url=bot.user.avatar.url)
+                    embed.add_field(name="Troubleshooting", value="• Check HEALTH_WEBHOOK_URL in .env\n• Verify webhook is valid\n• Check logs for error details", inline=False)
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+            else:
+                embed = discord.Embed(
+                    title="⚠️ Service Not Configured",
+                    description="Health webhook service is not configured or initialized.",
+                    color=0xFFFF00,
+                    timestamp=get_est_time()
+                )
+                if bot.user and bot.user.avatar:
+                    embed.set_thumbnail(url=bot.user.avatar.url)
+                embed.add_field(name="Configuration", value="Set HEALTH_WEBHOOK_URL in your .env file", inline=False)
                 await interaction.followup.send(embed=embed, ephemeral=True)
-        else:
+                
+        except Exception as e:
+            bot.logger.log_error("Error in health command", exception=e)
             embed = discord.Embed(
-                title="⚠️ Service Not Configured",
-                description="Health webhook service is not configured or initialized.",
-                color=0xFFFF00,
+                title="❌ Health Check Failed",
+                description=f"An error occurred: {str(e)}",
+                color=0xFF0000,
                 timestamp=get_est_time()
             )
-            if bot.user and bot.user.avatar:
-                embed.set_thumbnail(url=bot.user.avatar.url)
-            embed.add_field(name="Configuration", value="Set HEALTH_WEBHOOK_URL in your .env file", inline=False)
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
     
     return health

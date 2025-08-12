@@ -340,8 +340,8 @@ class BaseRepository:
             # Rollback on any error
             try:
                 await self.db_service.execute("ROLLBACK")
-            except:
-                pass
+            except Exception:
+                pass  # Rollback failed, but original error is more important
             
             logger.log_error(
                 "Transaction failed, rolled back",

@@ -278,6 +278,42 @@ class ConfigurationManager:
                 description="Maximum responses per day",
                 validator=lambda x: x > 0,
             ),
+            # AI Service Configuration
+            ConfigField(
+                name="AI_TIMEOUT_SECONDS",
+                field_type=int,
+                default=30,
+                description="Timeout for AI API requests in seconds",
+                validator=lambda x: x > 0 and x <= 120,
+            ),
+            ConfigField(
+                name="AI_MAX_TOKENS_DEFAULT",
+                field_type=int,
+                default=200,
+                description="Default maximum tokens for AI responses",
+                validator=lambda x: x > 0 and x <= 1000,
+            ),
+            ConfigField(
+                name="AI_MAX_TOKENS_INSULT",
+                field_type=int,
+                default=120,
+                description="Maximum tokens for insult mode responses",
+                validator=lambda x: x > 0 and x <= 500,
+            ),
+            ConfigField(
+                name="AI_MAX_TOKENS_SHORT",
+                field_type=int,
+                default=60,
+                description="Maximum tokens for short responses",
+                validator=lambda x: x > 0 and x <= 200,
+            ),
+            ConfigField(
+                name="AI_TEMPERATURE_DEFAULT",
+                field_type=float,
+                default=0.8,
+                description="Default temperature for AI responses",
+                validator=lambda x: x >= 0.0 and x <= 2.0,
+            ),
             # Feature Toggles
             # Syrian Context
             ConfigField(

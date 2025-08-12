@@ -318,10 +318,12 @@ class InstanceManager:
                                     f"Found stale PID file for process {old_pid}"
                                 )
                         except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            pass
+                            # Process doesn't exist or we can't access it - PID file is stale
+                            self.logger.log_debug(f"Process {old_pid} not found or inaccessible")
 
                 except (ValueError, IOError):
-                    pass
+                    # Invalid PID file contents - will be removed
+                    self.logger.log_debug("Invalid PID file contents, removing stale file")
 
                 # Remove stale PID file
                 pid_file.unlink()

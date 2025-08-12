@@ -155,12 +155,10 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from src.core.exceptions import (
-    DatabaseConnectionError,
-    DatabaseError,
-    DatabaseQueryError,
-)
-from src.services.base_service import BaseService, HealthCheckResult, ServiceStatus
+from src.core.exceptions import (DatabaseConnectionError, DatabaseError,
+                                 DatabaseQueryError)
+from src.services.base_service import (BaseService, HealthCheckResult,
+                                       ServiceStatus)
 
 
 @dataclass
@@ -241,8 +239,11 @@ class PrisonerDatabaseService(BaseService):
         self.db_path: Optional[Path] = None
         self.connection: Optional[sqlite3.Connection] = None
         self._lock = asyncio.Lock()
+        
+        # Separate lock for session cache to prevent deadlocks
+        self._session_lock = asyncio.Lock()
 
-        # Cache for active sessions
+        # Cache for active sessions (protected by _session_lock)
         self._active_sessions: Dict[str, TortureSession] = {}
 
         # Performance metrics
@@ -285,8 +286,11 @@ class PrisonerDatabaseService(BaseService):
 
     async def stop(self) -> None:
         """Stop the database service."""
-        # Close active sessions
-        for session in self._active_sessions.values():
+        # Close active sessions (with lock)
+        async with self._session_lock:
+            sessions_to_close = list(self._active_sessions.values())
+        
+        for session in sessions_to_close:
             await self.end_torture_session(session.id)
 
         self.logger.log_info("Database service stopped")
@@ -393,8 +397,12 @@ class PrisonerDatabaseService(BaseService):
                     f"Failed to connect to database: {str(e)}"
                 ) from e
             finally:
-                if "conn" in locals():
-                    conn.close()
+                # Ensure connection is always closed properly
+                if "conn" in locals() and conn is not None:
+                    try:
+                        await asyncio.get_event_loop().run_in_executor(None, conn.close)
+                    except Exception:
+                        pass  # Best effort cleanup
                 self._total_queries += 1
 
     # Prisoner Management Methods
@@ -445,6 +453,9 @@ class PrisonerDatabaseService(BaseService):
 
     async def get_prisoner_by_discord_id(self, discord_id: str) -> Optional[Prisoner]:
         """Get prisoner by Discord ID."""
+        import time
+        start_time = time.perf_counter()
+        
         try:
             async with self._get_connection() as conn:
                 cursor = await conn.execute(
@@ -453,8 +464,13 @@ class PrisonerDatabaseService(BaseService):
                 row = await cursor.fetchone()
 
                 if row:
-                    return self._row_to_prisoner(row)
+                    prisoner = self._row_to_prisoner(row)
+                    elapsed_ms = (time.perf_counter() - start_time) * 1000
+                    self.logger.log_debug(f"Retrieved prisoner {discord_id} in {elapsed_ms:.1f}ms")
+                    return prisoner
 
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+                self.logger.log_debug(f"Prisoner {discord_id} not found ({elapsed_ms:.1f}ms)")
                 return None
 
         except Exception as e:
@@ -507,10 +523,10 @@ class PrisonerDatabaseService(BaseService):
 
         try:
             async with self._get_connection() as conn:
-                await conn.execute(
-                    f"UPDATE prisoners SET {', '.join(updates)} WHERE id = ?",  # nosec B608
-                    params,
-                )
+                # Safe: Column names are code-controlled, not user input
+                # Using parameterized values for all user data
+                query = f"UPDATE prisoners SET {', '.join(updates)} WHERE id = ?"
+                await conn.execute(query, params)
                 await conn.commit()
 
         except Exception as e:
@@ -539,11 +555,15 @@ class PrisonerDatabaseService(BaseService):
         self, prisoner_id: int, channel_id: str, channel_name: Optional[str] = None
     ) -> TortureSession:
         """Start a new torture session."""
+        import time
+        start_time = time.perf_counter()
+        
         try:
-            # Check if there's already an active session
+            # Check if there's already an active session (with lock)
             session_key = f"{prisoner_id}:{channel_id}"
-            if session_key in self._active_sessions:
-                return self._active_sessions[session_key]
+            async with self._session_lock:
+                if session_key in self._active_sessions:
+                    return self._active_sessions[session_key]
 
             async with self._get_connection() as conn:
                 cursor = await conn.execute(
@@ -564,8 +584,9 @@ class PrisonerDatabaseService(BaseService):
                     start_time=datetime.now(),
                 )
 
-                # Cache active session
-                self._active_sessions[session_key] = session
+                # Cache active session (with lock)
+                async with self._session_lock:
+                    self._active_sessions[session_key] = session
 
                 # Update prisoner session count
                 await conn.execute(
@@ -574,6 +595,8 @@ class PrisonerDatabaseService(BaseService):
                 )
                 await conn.commit()
 
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+                self.logger.log_info(f"Started torture session {session.id} in {elapsed_ms:.1f}ms")
                 return session
 
         except Exception as e:
@@ -614,24 +637,25 @@ class PrisonerDatabaseService(BaseService):
                     updates.append("session_notes = ?")
                     params.append(session_notes)
 
-                # Add topics and methods as JSON
+                # Add topics and methods as JSON (with lock)
                 session_key = f"{row['prisoner_id']}:{row['channel_id']}"
-                if session_key in self._active_sessions:
-                    session = self._active_sessions[session_key]
-                    updates.append("topics_discussed = ?")
-                    params.append(json.dumps(session.topics_discussed))
-                    updates.append("torture_methods = ?")
-                    params.append(json.dumps(session.torture_methods))
+                async with self._session_lock:
+                    if session_key in self._active_sessions:
+                        session = self._active_sessions[session_key]
+                        updates.append("topics_discussed = ?")
+                        params.append(json.dumps(session.topics_discussed))
+                        updates.append("torture_methods = ?")
+                        params.append(json.dumps(session.torture_methods))
 
-                    # Remove from active sessions
-                    del self._active_sessions[session_key]
+                        # Remove from active sessions
+                        del self._active_sessions[session_key]
 
                 params.append(session_id)
 
-                await conn.execute(
-                    f"UPDATE torture_sessions SET {', '.join(updates)} WHERE id = ?",  # nosec B608
-                    params,
-                )
+                # Safe: Column names are code-controlled, not user input
+                # Using parameterized values for all user data
+                query = f"UPDATE torture_sessions SET {', '.join(updates)} WHERE id = ?"
+                await conn.execute(query, params)
                 await conn.commit()
 
         except Exception as e:

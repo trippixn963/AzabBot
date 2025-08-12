@@ -538,27 +538,51 @@ class PrisonService(BaseService):
     
     async def start(self):
         """Start the prison service."""
-        logger.log_info("Prison service started")
+        try:
+            logger.log_info("Prison service started")
+        except Exception as e:
+            logger.log_error("Failed to start prison service", exception=e)
+            raise
     
     async def stop(self):
         """Stop the prison service."""
-        logger.log_info("Prison service stopped")
+        try:
+            logger.log_info("Prison service stopped")
+        except Exception as e:
+            logger.log_error("Error stopping prison service", exception=e)
     
     async def health_check(self):
         """Health check for the prison service."""
-        from src.services.base_service import HealthCheckResult, ServiceStatus
-        
-        return HealthCheckResult(
-            status=ServiceStatus.HEALTHY,
-            message="Prison service operational",
-            details={
-                "solitary_prisoners": len(self.solitary_prisoners),
-                "good_behavior_tracking": len(self.good_behavior_tracking),
-                "escape_attempts": len(self.escape_attempts)
-            }
-        )
+        try:
+            from src.services.base_service import HealthCheckResult, ServiceStatus
+            
+            return HealthCheckResult(
+                status=ServiceStatus.HEALTHY,
+                message="Prison service operational",
+                details={
+                    "solitary_prisoners": len(self.solitary_prisoners),
+                    "good_behavior_tracking": len(self.good_behavior_tracking),
+                    "escape_attempts": len(self.escape_attempts)
+                }
+            )
+        except Exception as e:
+            logger.log_error("Health check failed", exception=e)
+            from src.services.base_service import HealthCheckResult, ServiceStatus
+            return HealthCheckResult(
+                status=ServiceStatus.UNHEALTHY,
+                message=f"Health check error: {str(e)}",
+                details={}
+            )
     
     async def shutdown(self):
         """Shutdown the prison service."""
-        logger.log_info("Prison service shutting down...")
-        await super().shutdown()
+        try:
+            logger.log_info("Prison service shutting down...")
+            await super().shutdown()
+        except Exception as e:
+            logger.log_error("Error during prison service shutdown", exception=e)
+            # Still try to call parent shutdown
+            try:
+                await super().shutdown()
+            except:
+                pass

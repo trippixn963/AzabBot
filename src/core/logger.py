@@ -89,12 +89,8 @@ from enum import Enum
 from typing import Any, Dict, Optional, Union
 
 from src.core.exceptions import AzabBotException
-from src.utils.tree_log import (
-    TreeLogger,
-    log_error_with_traceback,
-    log_perfect_tree_section,
-    log_status,
-)
+from src.utils.tree_log import (TreeLogger, log_error_with_traceback,
+                                log_perfect_tree_section, log_status)
 
 
 class LogLevel(Enum):
@@ -442,8 +438,9 @@ class BotLogger:
             context: Additional debug context
         """
         # Write to debug.log file directly with tree format
-        from pathlib import Path
         from datetime import datetime
+        from pathlib import Path
+
         import pytz
         
         try:
@@ -454,7 +451,8 @@ class BotLogger:
             hour_str = datetime.now(est).strftime("%I-%p")
             if hour_str.startswith('0'):
                 hour_str = hour_str[1:]
-        except:
+        except (ImportError, AttributeError):
+            # Fallback if pytz is not available or timezone issues
             current_date = datetime.now().strftime("%Y-%m-%d")
             timestamp = datetime.now().strftime("[%m/%d %I:%M %p]")
             hour_str = datetime.now().strftime("%I-%p")

@@ -116,7 +116,7 @@ class LogDeletionManager:
         retention_days: int = 7,
         compress_after_days: int = 1,
         error_retention_days: int = 30,
-    ):
+    ) -> None:
         """
         Initialize the log deletion manager with configuration.
         
@@ -147,7 +147,7 @@ class LogDeletionManager:
             "last_cleanup": None,
         }
 
-    async def start(self):
+    async def start(self) -> None:
         """
         Start the automatic log deletion and compression process.
         
@@ -163,7 +163,7 @@ class LogDeletionManager:
         # Start background task for periodic cleanup
         self._deletion_task = asyncio.create_task(self._deletion_loop())
 
-    async def stop(self):
+    async def stop(self) -> None:
         """
         Stop the log deletion process gracefully.
         
@@ -177,6 +177,7 @@ class LogDeletionManager:
             try:
                 await self._deletion_task
             except asyncio.CancelledError:
+                # Task cancellation is expected during shutdown
                 pass
 
         self.logger.log_info(

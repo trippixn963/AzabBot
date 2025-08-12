@@ -122,13 +122,11 @@ from typing import Any, Dict, List, Optional
 import openai
 from openai import AsyncOpenAI
 
-from src.core.exceptions import (
-    AIGenerationError,
-    AIInappropriateContentError,
-    AIQuotaExceededError,
-    AIServiceError,
-)
-from src.services.base_service import BaseService, HealthCheckResult, ServiceStatus
+from src.core.exceptions import (AIGenerationError,
+                                 AIInappropriateContentError,
+                                 AIQuotaExceededError, AIServiceError)
+from src.services.base_service import (BaseService, HealthCheckResult,
+                                       ServiceStatus)
 
 
 class ResponseMode(Enum):
@@ -309,6 +307,71 @@ class ResponseGenerator:
             ],
         }
 
+    def _build_system_prompt(self, mode: ResponseMode, personality_prompt: Optional[str], 
+                            additional_context: Dict) -> str:
+        """Build the system prompt based on mode and context."""
+        # Use personality prompt if provided, otherwise use default prompts
+        if personality_prompt:
+            system_prompt = personality_prompt
+        else:
+            system_prompt = random.choice(
+                self.prompts.get(mode, self.prompts[ResponseMode.NORMAL])
+            )
+        
+        # Add Syrian context if enabled
+        if additional_context.get("syrian_context", True):
+            if mode == ResponseMode.PRISON:
+                system_prompt += " Use Syrian references sparingly and only when relevant (e.g., Damascus, Aleppo)."
+            else:
+                system_prompt += " Use Syrian cultural references only when they actually fit the topic."
+        
+        # Add style guidelines
+        system_prompt += self._get_style_guidelines()
+        
+        return system_prompt
+    
+    def _get_style_guidelines(self) -> str:
+        """Get the style and language guidelines for responses."""
+        return (
+            " CRITICAL RULES: "
+            "1. NEVER speak in third person - always use 'I' for yourself and 'you' for the user. "
+            "2. Respond in English ONLY, even if user writes in Arabic. "
+            "3. Keep responses SHORT - maximum 2 sentences. "
+            "4. Actually READ and RESPOND to what they said - don't just spam random insults. "
+            "5. If multiple messages, respond to the OVERALL conversation, not each message separately. "
+            "6. Be specific - reference their actual words, not generic responses. "
+            "7. No narration like '*laughs*' or describing your actions. "
+            "8. Speak naturally like a real person would. "
+            "9. NEVER ask 'What did [name] say?' or 'Why should I believe it?' - you already KNOW what they said, mock it directly. "
+            "10. NEVER ask for evidence or concrete proof - just mock and annoy them about what they actually said. "
+            "11. IMPORTANT: Be CLEVER and CREATIVE. Don't just say 'that's dumb' - explain WHY it's dumb in a funny way. "
+            "12. Use their exact words against them. If they say 'GitHub is better', mock specifically GitHub, not just 'your opinion'."
+        )
+    
+    def _extract_mute_reason(self, additional_context: Dict) -> Optional[str]:
+        """Extract mute reason from context."""
+        # Check if we have crimes/mute reasons from psychological service
+        crimes = additional_context.get("crimes", [])
+        mute_reason = None
+        
+        # Extract mute reason from crimes list
+        if crimes:
+            for crime in crimes:
+                if crime.get('type') == 'mute' and crime.get('reason'):
+                    mute_reason = crime.get('reason')
+                    break
+            # If no mute crime, use the description of the first crime
+            if not mute_reason and crimes[0].get('description'):
+                mute_reason = crimes[0].get('description')
+        
+        # Also check the old way for backwards compatibility
+        if not mute_reason:
+            has_mute_reason = additional_context.get("has_mute_reason", False)
+            if has_mute_reason:
+                mute_reason = additional_context.get("mute_reason", None)
+        
+        return mute_reason
+
     async def generate_response(
         self,
         context: ResponseContext,
@@ -335,39 +398,9 @@ class ResponseGenerator:
         try:
             # Select appropriate prompt
             mode = context.response_mode
-
-            # Use personality prompt if provided, otherwise use default prompts
-            if personality_prompt:
-                system_prompt = personality_prompt
-            else:
-                system_prompt = random.choice(
-                    self.prompts.get(mode, self.prompts[ResponseMode.NORMAL])
-                )
-
-            # Add Syrian context if enabled
-            if context.additional_context.get("syrian_context", True):
-                if mode == ResponseMode.PRISON:
-                    system_prompt += " Use Syrian references sparingly and only when relevant (e.g., Damascus, Aleppo)."
-                else:
-                    system_prompt += " Use Syrian cultural references only when they actually fit the topic."
-
-            # Add style and language guidelines
-            style_guidelines = (
-                " CRITICAL RULES: "
-                "1. NEVER speak in third person - always use 'I' for yourself and 'you' for the user. "
-                "2. Respond in English ONLY, even if user writes in Arabic. "
-                "3. Keep responses SHORT - maximum 2 sentences. "
-                "4. Actually READ and RESPOND to what they said - don't just spam random insults. "
-                "5. If multiple messages, respond to the OVERALL conversation, not each message separately. "
-                "6. Be specific - reference their actual words, not generic responses. "
-                "7. No narration like '*laughs*' or describing your actions. "
-                "8. Speak naturally like a real person would. "
-                "9. NEVER ask 'What did [name] say?' or 'Why should I believe it?' - you already KNOW what they said, mock it directly. "
-                "10. NEVER ask for evidence or concrete proof - just mock and annoy them about what they actually said. "
-                "11. IMPORTANT: Be CLEVER and CREATIVE. Don't just say 'that's dumb' - explain WHY it's dumb in a funny way. "
-                "12. Use their exact words against them. If they say 'GitHub is better', mock specifically GitHub, not just 'your opinion'."
-            )
-            system_prompt += style_guidelines
+            
+            # Build system prompt using helper method
+            system_prompt = self._build_system_prompt(mode, personality_prompt, context.additional_context)
 
             # Prepare conversation
             user_context = (
@@ -472,10 +505,11 @@ class ResponseGenerator:
                         presence_penalty=0.2 if mode == ResponseMode.PRISON else 0.1,
                         frequency_penalty=0.2 if mode == ResponseMode.PRISON else 0.1,
                     ),
-                    timeout=30.0,  # 30 second timeout
+                    timeout=float(self.config.get("AI_TIMEOUT_SECONDS", 30)),
                 )
             except asyncio.TimeoutError:
-                raise AIGenerationError("OpenAI API request timed out after 30 seconds")
+                timeout_seconds = self.config.get("AI_TIMEOUT_SECONDS", 30)
+                raise AIGenerationError(f"OpenAI API request timed out after {timeout_seconds} seconds")
 
             if not response.choices or not response.choices[0].message:
                 raise AIGenerationError("No response generated from AI model")
@@ -946,10 +980,10 @@ class AIService(BaseService):
                 max_tokens = 150  # More tokens for Azab's confusing responses
                 temperature = 0.95  # Higher temperature for more unpredictability
             elif response_mode == ResponseMode.PRISON:
-                max_tokens = 120  # More tokens for creative insults
+                max_tokens = self.config.get("AI_MAX_TOKENS_INSULT", 120)  # More tokens for creative insults
                 temperature = 0.9  # Higher temp for more creative mockery
             else:
-                max_tokens = 200
+                max_tokens = self.config.get("AI_MAX_TOKENS_DEFAULT", 200)
                 temperature = 0.85  # Slightly higher for more variation
 
             # Always use AI generation (including for Azab) with error handling
@@ -986,6 +1020,13 @@ class AIService(BaseService):
 
             response_time = (datetime.now() - start_time).total_seconds() * 1000
             self._update_average_response_time(response_time)
+
+            # Log response time for performance monitoring
+            self.logger.log_info(
+                f"AI response generated in {response_time:.1f}ms | "
+                f"Tokens: {ai_response.tokens_used} | "
+                f"Mode: {response_mode.value}"
+            )
 
             self.record_request(True, response_time)
 
@@ -1233,7 +1274,7 @@ Generate 1-2 SHORT, BRUTAL sentences that target their specific psychological vu
                     },
                     {"role": "user", "content": targeted_prompt},
                 ],
-                max_tokens=60,
+                max_tokens=self.config.get("AI_MAX_TOKENS_SHORT", 60),
                 temperature=0.9,
             )
 

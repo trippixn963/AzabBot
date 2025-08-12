@@ -303,6 +303,7 @@ class HealthMonitor(BaseService):
             try:
                 await self.monitoring_task
             except asyncio.CancelledError:
+                # Task cancellation is expected during shutdown
                 pass
 
         if self.metrics_task:
@@ -310,6 +311,7 @@ class HealthMonitor(BaseService):
             try:
                 await self.metrics_task
             except asyncio.CancelledError:
+                # Task cancellation is expected during shutdown
                 pass
 
         self.logger.log_info("Health monitoring stopped")

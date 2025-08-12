@@ -606,7 +606,7 @@ class PersistentCache:
             try:
                 with open(self.index_file, "r") as f:
                     self._index = json.load(f)
-            except Exception as e:
+            except (json.JSONDecodeError, IOError) as e:
                 logger.log_warning(f"Failed to load cache index: {e}")
                 self._index = {}
     
@@ -625,7 +625,7 @@ class PersistentCache:
         try:
             with open(self.index_file, "w") as f:
                 json.dump(self._index, f)
-        except Exception as e:
+        except (IOError, OSError) as e:
             logger.log_error(f"Failed to save cache index: {e}")
     
     def _get_cache_path(self, key: str) -> Path:
@@ -952,6 +952,7 @@ class CacheManager:
             try:
                 await self._cleanup_task
             except asyncio.CancelledError:
+                # Task cancellation is expected during shutdown
                 pass
         logger.log_info("Cache manager stopped")
     
