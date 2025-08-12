@@ -772,7 +772,7 @@ class AzabBot(discord.Client):
                 # Scan for current prisoners on startup
                 await self._scan_for_prisoners()
                 
-                # Process recent messages from prisoners
+                # Process only the MOST RECENT prisoner message on startup
                 await self._process_recent_prisoner_messages()
                 
                 # Start presence rotation task
@@ -1736,8 +1736,8 @@ The prisoner is: {member.display_name}"""
                         if time_diff.total_seconds() < 86400:  # 24 hours
                             messages_to_process.append(message)
             
-            # Group messages by user and get the most recent UNANSWERED message for each
-            user_messages = {}
+            # Only respond to the SINGLE most recent prisoner message
+            most_recent_message = None
             for msg in messages_to_process:
                 # Check if there's a bot message after this one (conversation already happened)
                 has_bot_reply_after = False
@@ -1754,29 +1754,29 @@ The prisoner is: {member.display_name}"""
                     )
                     continue
                 
-                # Only keep the most recent unanswered message per user
-                if msg.author.id not in user_messages or msg.created_at > user_messages[msg.author.id].created_at:
-                    user_messages[msg.author.id] = msg
+                # Keep only the most recent unanswered message overall
+                if not most_recent_message or msg.created_at > most_recent_message.created_at:
+                    most_recent_message = msg
             
-            if user_messages:
-                self.logger.log_info(f"📨 Found {len(user_messages)} prisoners with unanswered messages")
+            if most_recent_message:
+                self.logger.log_info(f"📨 Found 1 recent prisoner message to respond to")
                 
-                # Process each prisoner's most recent unanswered message
-                for user_id, message in user_messages.items():
-                    try:
-                        # Add a small delay between responses
-                        await asyncio.sleep(2)
-                        
-                        # Simulate the message being received now
-                        self.logger.log_info(
-                            f"💬 Processing unanswered message from {message.author.display_name}: {message.content[:50]}..."
-                        )
-                        
-                        # Add to batch for processing
-                        await self._add_message_to_batch(message)
-                        
-                    except Exception as e:
-                        self.logger.log_error(f"Failed to process message from {message.author}: {e}")
+                # Process only the most recent prisoner message
+                message = most_recent_message
+                try:
+                    # Add a small delay before responding
+                    await asyncio.sleep(2)
+                    
+                    # Simulate the message being received now
+                    self.logger.log_info(
+                        f"💬 Processing unanswered message from {message.author.display_name}: {message.content[:50]}..."
+                    )
+                    
+                    # Add to batch for processing
+                    await self._add_message_to_batch(message)
+                    
+                except Exception as e:
+                    self.logger.log_error(f"Failed to process message from {message.author}: {e}")
             else:
                 self.logger.log_info("No unanswered prisoner messages found")
                 
