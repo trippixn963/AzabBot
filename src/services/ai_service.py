@@ -259,16 +259,18 @@ class ContentFilter:
 class ResponseGenerator:
     """AI response generation with multiple strategies."""
 
-    def __init__(self, client: AsyncOpenAI, model: str = "gpt-3.5-turbo"):
+    def __init__(self, client: AsyncOpenAI, model: str = "gpt-3.5-turbo", config: dict = None):
         """
         Initialize response generator.
 
         Args:
             client: OpenAI client instance
             model: AI model to use
+            config: Configuration dictionary
         """
         self.client = client
         self.model = model
+        self.config = config or {}
 
         # Response prompts by mode
         self.prompts = {
@@ -694,7 +696,7 @@ class AIService(BaseService):
 
         # Initialize components
         self.content_filter = ContentFilter()
-        self.response_generator = ResponseGenerator(self.client, self.model)
+        self.response_generator = ResponseGenerator(self.client, self.model, config)
 
         # Configure Azab mode from config
         self.azab_mode_enabled = config.get("AZAB_MODE_ENABLED", True)
