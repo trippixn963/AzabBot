@@ -12,7 +12,7 @@ proper permission checks to ensure only authorized users can execute them.
 Available Commands:
 - /activate: Developer command to check bot status
 - /deactivate: Developer command that demonstrates bot permanence
-- /health: Developer command to manually trigger health report
+- /ignore: Manage ignored users (add/remove from ignore list)
 """
 
 import discord
@@ -219,35 +219,118 @@ def create_deactivate_command(bot):
     return deactivate
 
 
-def create_health_command(bot):
+def create_ignore_command(bot):
     """
-    Create a health check command to manually trigger health report.
+    Create an ignore command that manages the bot's ignore list.
     
-    This command allows the developer to manually trigger a health status
-    report to be sent via webhook, useful for testing or immediate status checks.
+    This command allows authorized users to add or remove users from the ignore list,
+    preventing the bot from responding to messages from ignored users.
     
     Args:
-        bot: The AzabBot instance
+        bot: The AzabBot instance that contains the developer_id
         
     Returns:
-        The health command function
+        The ignore command function that can be added to the command tree
     """
-    
-    @app_commands.command(
-        name="health", description="Send health status report (Developer only)"
-    )
-    async def health(interaction: discord.Interaction):
+
+    async def ignored_users_autocomplete(
+        interaction: discord.Interaction, 
+        current: str
+    ) -> list[app_commands.Choice[str]]:
         """
-        Handle the health command interaction.
+        Autocomplete function for ignored users when removing from ignore list.
         
-        Triggers an immediate health status report via webhook.
+        Args:
+            interaction: The Discord interaction
+            current: The current input string
+            
+        Returns:
+            List of choices for autocomplete
+        """
+        # Only show autocomplete if the action is "remove"
+        # We need to check the current interaction data
+        try:
+            # Get the action from the current interaction
+            action_data = interaction.data.get("options", [])
+            action_value = None
+            for option in action_data:
+                if option.get("name") == "action":
+                    action_value = option.get("value")
+                    break
+            
+            # Only show autocomplete for "remove" action
+            if action_value != "remove":
+                return []
+        except:
+            # If we can't determine the action, don't show autocomplete
+            return []
+        
+        # Initialize ignore list if it doesn't exist
+        if not hasattr(bot, 'ignored_users'):
+            bot.ignored_users = set()
+        
+        choices = []
+        
+        # Get all ignored users and their names
+        for user_id in bot.ignored_users:
+            try:
+                user = await bot.fetch_user(user_id)
+                username = user.display_name or user.name
+                # Create choice with both username and ID
+                choice_text = f"{username} ({user_id})"
+                choice_value = str(user_id)
+                
+                # Filter by current input (case insensitive)
+                if current.lower() in choice_text.lower():
+                    choices.append(app_commands.Choice(name=choice_text, value=choice_value))
+            except:
+                # If we can't fetch user, just show the ID
+                choice_text = f"Unknown User ({user_id})"
+                choice_value = str(user_id)
+                
+                if current.lower() in choice_text.lower():
+                    choices.append(app_commands.Choice(name=choice_text, value=choice_value))
+        
+        # Limit to 25 choices (Discord limit)
+        return choices[:25]
+
+    @app_commands.command(
+        name="ignore", 
+        description="Manage ignored users - add or remove users from ignore list"
+    )
+    @app_commands.describe(
+        action="Whether to add or remove the user from ignore list",
+        user_id="The Discord user ID to ignore/unignore (autocomplete available for remove)"
+    )
+    @app_commands.choices(action=[
+        app_commands.Choice(name="Add to ignore list", value="add"),
+        app_commands.Choice(name="Remove from ignore list", value="remove"),
+        app_commands.Choice(name="List ignored users", value="list")
+    ])
+    async def ignore(
+        interaction: discord.Interaction, 
+        action: app_commands.Choice[str], 
+        user_id: str = None
+    ):
+        """
+        Handle the ignore command interaction.
+        
+        This command manages the bot's ignore list, allowing authorized users to
+        add or remove users from the ignore list to prevent bot responses.
         """
         try:
-            # Verify the user is the authorized developer
-            if interaction.user.id != bot.developer_id:
+            # List of authorized user IDs (developer + moderators from config)
+            authorized_users = [bot.developer_id]
+            # Add moderator IDs from config if available
+            moderator_ids = bot.config.get("MODERATOR_IDS", [])
+            if moderator_ids:
+                authorized_users.extend(moderator_ids)
+            
+            # Verify the user is authorized
+            if interaction.user.id not in authorized_users:
                 embed = discord.Embed(
                     title="❌ Permission Denied",
-                    description="Only the developer can use this command.",
+                    description="Only authorized users can manage the ignore list.",
                     color=0xFF0000,
                     timestamp=get_est_time()
                 )
@@ -255,58 +338,174 @@ def create_health_command(bot):
                     embed.set_thumbnail(url=bot.user.avatar.url)
                 await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
-                
-            # Defer response since health check might take a moment
-            await interaction.response.defer(ephemeral=True)
             
-            # Trigger health check
-            if hasattr(bot, 'webhook_health') and bot.webhook_health:
-                success = await bot.webhook_health.send_health_report(force=True)
-                if success:
+            # Initialize ignore list if it doesn't exist
+            if not hasattr(bot, 'ignored_users'):
+                bot.ignored_users = set()
+            
+            # Handle different actions
+            if action.value == "add":
+                if not user_id:
                     embed = discord.Embed(
-                        title="✅ Health Report Sent",
-                        description="Health status report has been sent to the webhook successfully!",
-                        color=0x00FF00,
-                        timestamp=get_est_time()
-                    )
-                    if bot.user and bot.user.avatar:
-                        embed.set_thumbnail(url=bot.user.avatar.url)
-                    embed.set_footer(text="Developed by حَـــــنَّـــــا")
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                else:
-                    embed = discord.Embed(
-                        title="❌ Health Report Failed",
-                        description="Failed to send health report. Check webhook configuration and logs for details.",
+                        title="❌ Missing User ID",
+                        description="Please provide a user ID to add to the ignore list.",
                         color=0xFF0000,
                         timestamp=get_est_time()
                     )
                     if bot.user and bot.user.avatar:
                         embed.set_thumbnail(url=bot.user.avatar.url)
-                    embed.add_field(name="Troubleshooting", value="• Check HEALTH_WEBHOOK_URL in .env\n• Verify webhook is valid\n• Check logs for error details", inline=False)
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-            else:
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                    return
+                
+                try:
+                    user_id_int = int(user_id)
+                    bot.ignored_users.add(user_id_int)
+                    
+                    # Try to get user info for display
+                    try:
+                        user = await bot.fetch_user(user_id_int)
+                        username = user.display_name or user.name
+                    except:
+                        username = f"User {user_id}"
+                    
+                    embed = discord.Embed(
+                        title="✅ User Added to Ignore List",
+                        description=f"**{username}** (`{user_id}`) has been added to the ignore list.\nThe bot will no longer respond to messages from this user.",
+                        color=0x00FF00,
+                        timestamp=get_est_time()
+                    )
+                    if bot.user and bot.user.avatar:
+                        embed.set_thumbnail(url=bot.user.avatar.url)
+                    embed.add_field(name="Total Ignored", value=f"{len(bot.ignored_users)}", inline=True)
+                    embed.set_footer(text="Developed by حَـــــنَّـــــا")
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                    
+                    bot.logger.log_info(f"User {username} ({user_id}) added to ignore list")
+                    
+                except ValueError:
+                    embed = discord.Embed(
+                        title="❌ Invalid User ID",
+                        description="Please provide a valid numeric user ID.",
+                        color=0xFF0000,
+                        timestamp=get_est_time()
+                    )
+                    if bot.user and bot.user.avatar:
+                        embed.set_thumbnail(url=bot.user.avatar.url)
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                    return
+                    
+            elif action.value == "remove":
+                if not user_id:
+                    embed = discord.Embed(
+                        title="❌ Missing User ID",
+                        description="Please provide a user ID to remove from the ignore list.",
+                        color=0xFF0000,
+                        timestamp=get_est_time()
+                    )
+                    if bot.user and bot.user.avatar:
+                        embed.set_thumbnail(url=bot.user.avatar.url)
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                    return
+                
+                try:
+                    user_id_int = int(user_id)
+                    if user_id_int in bot.ignored_users:
+                        bot.ignored_users.remove(user_id_int)
+                        
+                        # Try to get user info for display
+                        try:
+                            user = await bot.fetch_user(user_id_int)
+                            username = user.display_name or user.name
+                        except:
+                            username = f"User {user_id}"
+                        
+                        embed = discord.Embed(
+                            title="✅ User Removed from Ignore List",
+                            description=f"**{username}** (`{user_id}`) has been removed from the ignore list.\nThe bot will now respond to messages from this user.",
+                            color=0x00FF00,
+                            timestamp=get_est_time()
+                        )
+                        if bot.user and bot.user.avatar:
+                            embed.set_thumbnail(url=bot.user.avatar.url)
+                        embed.add_field(name="Total Ignored", value=f"{len(bot.ignored_users)}", inline=True)
+                        embed.set_footer(text="Developed by حَـــــنَّـــــا")
+                        await interaction.response.send_message(embed=embed, ephemeral=True)
+                        
+                        bot.logger.log_info(f"User {username} ({user_id}) removed from ignore list")
+                    else:
+                        embed = discord.Embed(
+                            title="ℹ️ User Not in Ignore List",
+                            description=f"User ID `{user_id}` is not currently in the ignore list.",
+                            color=0xFFA500,
+                            timestamp=get_est_time()
+                        )
+                        if bot.user and bot.user.avatar:
+                            embed.set_thumbnail(url=bot.user.avatar.url)
+                        await interaction.response.send_message(embed=embed, ephemeral=True)
+                        
+                except ValueError:
+                    embed = discord.Embed(
+                        title="❌ Invalid User ID",
+                        description="Please provide a valid numeric user ID.",
+                        color=0xFF0000,
+                        timestamp=get_est_time()
+                    )
+                    if bot.user and bot.user.avatar:
+                        embed.set_thumbnail(url=bot.user.avatar.url)
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                    return
+                    
+            elif action.value == "list":
+                if not bot.ignored_users:
+                    embed = discord.Embed(
+                        title="📋 Ignore List",
+                        description="No users are currently in the ignore list.",
+                        color=0x00FF00,
+                        timestamp=get_est_time()
+                    )
+                    if bot.user and bot.user.avatar:
+                        embed.set_thumbnail(url=bot.user.avatar.url)
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                    return
+                
+                # Create list of ignored users with their names
+                ignored_list = []
+                for ignored_id in bot.ignored_users:
+                    try:
+                        user = await bot.fetch_user(ignored_id)
+                        username = user.display_name or user.name
+                        ignored_list.append(f"• **{username}** (`{ignored_id}`)")
+                    except:
+                        ignored_list.append(f"• Unknown User (`{ignored_id}`)")
+                
                 embed = discord.Embed(
-                    title="⚠️ Service Not Configured",
-                    description="Health webhook service is not configured or initialized.",
-                    color=0xFFFF00,
+                    title="📋 Ignore List",
+                    description="Users currently in the ignore list:\n\n" + "\n".join(ignored_list),
+                    color=0x00FF00,
                     timestamp=get_est_time()
                 )
                 if bot.user and bot.user.avatar:
                     embed.set_thumbnail(url=bot.user.avatar.url)
-                embed.add_field(name="Configuration", value="Set HEALTH_WEBHOOK_URL in your .env file", inline=False)
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                
+                embed.add_field(name="Total Ignored", value=f"{len(bot.ignored_users)}", inline=True)
+                embed.set_footer(text="Developed by حَـــــنَّـــــا")
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+        
         except Exception as e:
-            bot.logger.log_error("Error in health command", exception=e)
+            bot.logger.log_error("Error in ignore command", exception=e)
             embed = discord.Embed(
-                title="❌ Health Check Failed",
+                title="❌ Command Failed",
                 description=f"An error occurred: {str(e)}",
                 color=0xFF0000,
-                timestamp=get_est_time()
+                timestamp=discord.utils.utcnow()
             )
             if not interaction.response.is_done():
                 await interaction.response.send_message(embed=embed, ephemeral=True)
             else:
                 await interaction.followup.send(embed=embed, ephemeral=True)
-    
-    return health
+
+    # Add autocomplete to the user_id parameter
+    ignore.autocomplete("user_id")(ignored_users_autocomplete)
+
+    return ignore
+
+

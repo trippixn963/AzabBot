@@ -25,6 +25,7 @@ import asyncio
 import signal
 import sys
 from pathlib import Path
+from typing import Optional
 
 from src import __version__
 from src.bot.bot import AzabBot
@@ -38,17 +39,24 @@ from src.services.database_service import DatabaseService
 from src.services.memory_service import MemoryService
 from src.services.personality_service import PersonalityService
 from src.services.report_service import ReportService
-from src.services.webhook_health_service import WebhookHealthService
 from src.services.prison_service import PrisonService
 from src.services.psychological_service import PsychologicalService
+from src.services.dashboard_service import DashboardService
+from src.utils.db_pool import DatabasePool
+from src.utils.cache import get_cache_manager
+from src.utils.message_queue import MessageQueue
+from src.utils.cooldowns import get_cooldown_manager
+from src.utils.shutdown import get_shutdown_handler
+from src.utils.backup import BackupManager
+from src.utils.memory_optimizer import get_memory_optimizer
 
 # Global references for signal handlers
 # These are needed because signal handlers can't be async functions
-bot_instance = None
-logger = None
+bot_instance: Optional[AzabBot] = None
+logger: Optional[BotLogger] = None
 
 
-def signal_handler(signum, frame):
+def signal_handler(signum: int, frame: Optional[object]) -> None:
     """
     Handle shutdown signals gracefully.
     
@@ -67,7 +75,7 @@ def signal_handler(signum, frame):
         sys.exit(0)
 
 
-async def shutdown_bot():
+async def shutdown_bot() -> None:
     """
     Gracefully shutdown the bot.
     
@@ -85,7 +93,31 @@ async def shutdown_bot():
             bot_instance = None
 
 
-async def run_bot():
+async def process_message_batch(batch):
+    """
+    Process a batch of messages from the queue.
+    
+    Args:
+        batch: List of QueuedMessage objects
+        
+    Returns:
+        List of success/failure booleans
+    """
+    results = []
+    for message in batch:
+        try:
+            # Process message (placeholder - actual implementation would send to Discord)
+            if logger:
+                logger.log_debug(f"Processing queued message for user {message.user_id}")
+            results.append(True)
+        except Exception as e:
+            if logger:
+                logger.log_error(f"Failed to process message for user {message.user_id}", exception=e)
+            results.append(False)
+    return results
+
+
+async def run_bot() -> None:
     """
     Main bot execution function that orchestrates the complete bot lifecycle.
     
@@ -107,6 +139,12 @@ async def run_bot():
     bot_logger = BotLogger()
     logger = bot_logger
     instance_manager = get_instance_manager()
+    
+    # Initialize optimization systems
+    cache_manager = get_cache_manager()
+    cooldown_manager = get_cooldown_manager()
+    shutdown_handler = get_shutdown_handler()
+    memory_optimizer = get_memory_optimizer()
 
     # Log startup with version information
     bot_logger.log_startup(__version__)
@@ -152,9 +190,26 @@ async def run_bot():
         container = get_container()
         container.set_container_config(config.get_all())
 
+        # Initialize database pool and backup manager
+        db_path = Path("data/azab.db")
+        db_pool = DatabasePool(db_path, max_connections=5)
+        backup_manager = BackupManager(db_path, Path("backups"))
+        
+        # Initialize message queue
+        message_queue = MessageQueue(batch_size=10, batch_interval=1.0)
+        
+        # Register shutdown handler
+        shutdown_handler.register_signal_handlers()
+        
         # Register core services with appropriate lifetimes
         register_factory("Config", lambda: config, lifetime=ServiceLifetime.SINGLETON)
         register_service("Logger", type(bot_logger), lifetime=ServiceLifetime.SINGLETON)
+        register_factory("DatabasePool", lambda: db_pool, lifetime=ServiceLifetime.SINGLETON)
+        register_factory("BackupManager", lambda: backup_manager, lifetime=ServiceLifetime.SINGLETON)
+        register_factory("MessageQueue", lambda: message_queue, lifetime=ServiceLifetime.SINGLETON)
+        register_factory("CacheManager", lambda: cache_manager, lifetime=ServiceLifetime.SINGLETON)
+        register_factory("CooldownManager", lambda: cooldown_manager, lifetime=ServiceLifetime.SINGLETON)
+        register_factory("MemoryOptimizer", lambda: memory_optimizer, lifetime=ServiceLifetime.SINGLETON)
         register_service(
             "DatabaseService", DatabaseService, lifetime=ServiceLifetime.SINGLETON
         )
@@ -182,12 +237,6 @@ async def run_bot():
             "HealthMonitor", HealthMonitor, lifetime=ServiceLifetime.SINGLETON
         )
         register_service(
-            "WebhookHealthService", 
-            WebhookHealthService, 
-            lifetime=ServiceLifetime.SINGLETON,
-            dependencies=["Config", "HealthMonitor"]
-        )
-        register_service(
             "PrisonService",
             PrisonService,
             lifetime=ServiceLifetime.SINGLETON,
@@ -199,6 +248,15 @@ async def run_bot():
             lifetime=ServiceLifetime.SINGLETON,
             dependencies=["Config", "DatabaseService", "AIService"]
         )
+        
+        # Register Dashboard Service if enabled
+        if config.get("DASHBOARD_ENABLED", "false").lower() == "true":
+            register_service(
+                "DashboardService",
+                DashboardService,
+                lifetime=ServiceLifetime.SINGLETON
+            )
+            bot_logger.log_info("Dashboard service registered")
 
         bot_logger.log_initialization_step(
             "DI Container", "success", "Services registered", "✅"
@@ -206,7 +264,7 @@ async def run_bot():
 
         # Step 4: Create and configure the Discord bot instance
         bot_logger.log_initialization_step("Bot", "creating", "Creating bot instance")
-        bot_instance = AzabBot(config)
+        bot_instance = AzabBot(config.get_all())
         bot_logger.log_initialization_step(
             "Bot", "success", "Bot instance created", "✅"
         )
@@ -215,6 +273,19 @@ async def run_bot():
         signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
         signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
 
+        # Start optimization services
+        await cache_manager.start()
+        await backup_manager.start(interval=3600)  # Hourly backups
+        await memory_optimizer.start(check_interval=60)  # Check every minute
+        await message_queue.start(lambda batch: process_message_batch(batch))
+        
+        # Register cleanup callbacks
+        shutdown_handler.register_callback(cache_manager.stop)
+        shutdown_handler.register_callback(backup_manager.stop)
+        shutdown_handler.register_callback(memory_optimizer.stop)
+        shutdown_handler.register_callback(message_queue.stop)
+        shutdown_handler.register_callback(db_pool.close)
+        
         # Step 6: Start the bot and connect to Discord
         bot_logger.log_initialization_step(
             "Bot", "starting", "Starting bot connection to Discord"
@@ -243,6 +314,13 @@ async def run_bot():
         # Step 7: Cleanup and shutdown procedures
         bot_logger.log_shutdown("Bot shutdown initiated")
 
+        # Stop optimization services
+        await cache_manager.stop()
+        await backup_manager.stop()
+        await memory_optimizer.stop()
+        await message_queue.stop()
+        await db_pool.close()
+        
         # Clean up instance management resources
         instance_manager.cleanup_pid_file()
 
@@ -253,7 +331,7 @@ async def run_bot():
         bot_logger.log_shutdown("Shutdown complete")
 
 
-def main():
+def main() -> None:
     """
     Entry point for the application.
     

@@ -200,6 +200,10 @@ class ReportService(BaseService):
     async def generate_daily_summary(self) -> str:
         """Generate a formatted daily summary report."""
         try:
+            # Check if database service is available
+            if not self.db_service:
+                return "📊 **Daily Report**: Database service not available"
+
             # Get today's report data
             report_data = await self.db_service.generate_daily_report()
 
@@ -242,6 +246,10 @@ class ReportService(BaseService):
     async def generate_prisoner_profile(self, prisoner_identifier: str) -> str:
         """Generate a detailed prisoner profile report."""
         try:
+            # Check if database service is available
+            if not self.db_service:
+                return f"❌ Database service not available"
+
             # Try to find prisoner by username or discord ID
             report_data = await self.db_service.generate_prisoner_report(
                 prisoner_identifier
@@ -308,6 +316,10 @@ class ReportService(BaseService):
     async def generate_effectiveness_report(self) -> str:
         """Generate torture effectiveness report."""
         try:
+            # Check if database service is available
+            if not self.db_service:
+                return "🎯 **Effectiveness Report**: Database service not available"
+
             # Get effectiveness metrics from database
             async with self.db_service._get_connection() as conn:
                 # Get confusion technique effectiveness
@@ -379,6 +391,10 @@ class ReportService(BaseService):
     async def generate_azab_status(self) -> str:
         """Generate Azab's current operational status."""
         try:
+            # Check if database service is available
+            if not self.db_service:
+                return "🤖 **Azab Status**: Database service not available"
+
             # Get current statistics
             async with self.db_service._get_connection() as conn:
                 # Today's activity

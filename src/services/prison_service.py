@@ -584,5 +584,5 @@ class PrisonService(BaseService):
             # Still try to call parent shutdown
             try:
                 await super().shutdown()
-            except:
-                pass
+            except Exception:
+                pass  # Already logged, just ensure cleanup attempts

@@ -314,7 +314,7 @@ class BaseService(ABC):
         )
 
     @abstractmethod
-    async def initialize(self, config: Dict[str, Any], **kwargs) -> None:
+    async def initialize(self, config: Dict[str, Any], **kwargs: Any) -> None:
         """
         Initialize the service with configuration and dependencies.
 
@@ -367,7 +367,7 @@ class BaseService(ABC):
         """
         pass
 
-    async def initialize_base(self, config: Dict[str, Any], **kwargs) -> None:
+    async def initialize_base(self, config: Dict[str, Any], **kwargs: Any) -> None:
         """
         Perform base initialization common to all services.
 
@@ -519,7 +519,7 @@ class BaseService(ABC):
 
         return self.metrics
 
-    def record_request(self, success: bool, response_time_ms: Optional[float] = None):
+    def record_request(self, success: bool, response_time_ms: Optional[float] = None) -> None:
         """
         Record a service request for metrics.
 
@@ -543,7 +543,7 @@ class BaseService(ABC):
                 current_avg * (total_requests - 1) + response_time_ms
             ) / total_requests
 
-    def _record_error(self, error_type: str, error_message: str):
+    def _record_error(self, error_type: str, error_message: str) -> None:
         """Record an error for tracking and analysis."""
         error_record = {
             "type": error_type,
@@ -562,10 +562,10 @@ class BaseService(ABC):
         self.metrics.last_error = error_message
         self.metrics.last_error_timestamp = datetime.utcnow()
 
-    async def _start_health_monitoring(self):
+    async def _start_health_monitoring(self) -> None:
         """Start periodic health check monitoring."""
 
-        async def health_monitor():
+        async def health_monitor() -> None:
             while self.status not in [
                 ServiceStatus.SHUTDOWN,
                 ServiceStatus.SHUTTING_DOWN,

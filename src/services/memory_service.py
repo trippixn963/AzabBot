@@ -250,7 +250,7 @@ class MemoryService(BaseService):
 
         self.logger.log_info("Memory service initialized")
 
-    def _create_tables(self):
+    def _create_tables(self) -> None:
         """Create database tables for persistent storage."""
         cursor = self.connection.cursor()
 
@@ -303,7 +303,7 @@ class MemoryService(BaseService):
 
         self.connection.commit()
 
-    def _load_memories(self):
+    def _load_memories(self) -> None:
         """Load existing memories from database."""
         cursor = self.connection.cursor()
 

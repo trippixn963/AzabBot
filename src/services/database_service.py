@@ -341,6 +341,7 @@ class PrisonerDatabaseService(BaseService):
                 pass
         
         schema_path = Path(__file__).parent.parent.parent / "data" / "schema.sql"
+        indexes_path = Path(__file__).parent.parent.parent / "data" / "indexes.sql"
 
         if not schema_path.exists():
             raise DatabaseError(f"Schema file not found: {schema_path}")
@@ -353,6 +354,14 @@ class PrisonerDatabaseService(BaseService):
                 # Use executescript but handle existing objects gracefully
                 try:
                     await conn.executescript(schema)
+                    
+                    # Apply indexes if the file exists
+                    if indexes_path.exists():
+                        with open(indexes_path, "r") as f:
+                            indexes = f.read()
+                        await conn.executescript(indexes)
+                        self.logger.log_info("Database indexes applied for optimization")
+                    
                     await conn.commit()
                 except Exception as e:
                     # If it's an "already exists" error, that's fine
@@ -489,8 +498,8 @@ class PrisonerDatabaseService(BaseService):
         status: Optional[str] = None,
     ):
         """Update prisoner's psychological profile."""
-        updates = []
-        params = []
+        updates: list[str] = []
+        params: list[Any] = []
 
         if psychological_profile is not None:
             updates.append("psychological_profile = ?")
@@ -622,8 +631,8 @@ class PrisonerDatabaseService(BaseService):
                     return
 
                 # Update session
-                updates = ["end_time = CURRENT_TIMESTAMP"]
-                params = []
+                updates: list[str] = ["end_time = CURRENT_TIMESTAMP"]
+                params: list[Any] = []
 
                 if confusion_level is not None:
                     updates.append("confusion_level = ?")

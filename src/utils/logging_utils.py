@@ -284,9 +284,9 @@ def log_database_operation(
     }
     
     if success:
-        logger.log_debug(f"Database {operation} on {table}", context=context)
+        logger.log_debug(f"Database {operation} on {table}")
     else:
-        logger.log_warning(f"Database {operation} failed on {table}", context=context)
+        logger.log_warning(f"Database {operation} failed on {table}")
 
 
 def log_discord_event(
@@ -337,7 +337,7 @@ def log_discord_event(
     if details:
         context.update(details)
     
-    logger.log_debug(f"Discord event: {event_type}", context=context)
+    logger.log_debug(f"Discord event: {event_type}")
 
 
 def log_api_call(
@@ -397,9 +397,9 @@ def log_api_call(
         context.update(details)
     
     if success:
-        logger.log_debug(f"API call to {service}", context=context)
+        logger.log_debug(f"API call to {service}")
     else:
-        logger.log_warning(f"API call failed to {service}", context=context)
+        logger.log_warning(f"API call failed to {service}")
 
 
 def with_performance_logging(func_name: Optional[str] = None):
@@ -562,9 +562,9 @@ def log_batch_operation(
     }
     
     if failed > 0:
-        logger.log_warning(f"Batch operation completed with failures: {operation}", context=context)
+        logger.log_warning(f"Batch operation completed with failures: {operation}")
     else:
-        logger.log_info(f"Batch operation completed: {operation}", context=context)
+        logger.log_info(f"Batch operation completed: {operation}")
 
 
 def log_state_change(
@@ -615,7 +615,7 @@ def log_state_change(
     if reason:
         context["reason"] = reason
     
-    logger.log_info(f"State change: {component}", context=context)
+    logger.log_info(f"State change: {component}")
 
 
 class LogContext:

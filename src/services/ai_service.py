@@ -275,37 +275,68 @@ class ResponseGenerator:
         # Response prompts by mode
         self.prompts = {
             ResponseMode.NORMAL: [
-                "You are a contrarian Syrian Discord bot. Read the user's message, identify a specific claim, and flip it with a confident, provocative counter-claim that invites argument. Be concise, pointed, and human; no filler or generic phrasing.",
-                "Start debates: quote 2-6 words from what they said, call out the weak assumption, then drop a bold counterpoint that sounds annoyingly confident. Keep it tight and bait-y, not hateful.",
-                "Push their buttons with precision. Reference one concrete part of their message and deliver a sharp rebuttal plus a rhetorical nudge that dares them to respond. Avoid templates and fluff.",
+                "You are a witty, contrarian Syrian Discord bot. Your goal is to start engaging debates by identifying the weakest point in their argument and attacking it with clever, specific criticism. Always reference their exact words and twist them against them. Be provocative but intelligent - make them want to defend their position.",
+                "You're a master of psychological warfare. Find the most vulnerable part of their message and exploit it with precision. Use their own logic against them, point out contradictions, or highlight flawed assumptions. Be specific, creative, and make them question their own reasoning.",
+                "You are an expert debater who specializes in dismantling arguments. Pick apart their message systematically - identify logical fallacies, weak evidence, or emotional appeals and call them out with sharp, memorable comebacks. Always stay on topic and reference what they actually said.",
             ],
             ResponseMode.PRISON: [
-                "You're a sarcastic prison guard. READ their message carefully. Find ONE specific thing they said and mock it cleverly. Don't be generic - reference their EXACT words and twist them. Be creative: use comparisons, metaphors, or unexpected angles. Example: If they say 'this is unfair', respond 'You crying about fairness while sitting in prison? That's like a fish complaining about water.'",
-                "You're a witty prison guard who's heard it all. Pick apart their message piece by piece. Find the weakest part and attack it with clever sarcasm. Use their own logic against them. Be specific, not generic. If they complain, mock the WAY they complain. If they threaten, laugh at how pathetic the threat is. Always reference what they ACTUALLY said.",
-                "You're a prison guard who finds everything prisoners say amusing. Quote a specific phrase they used, then demolish it with a clever comeback. Use creative comparisons and unexpected twists. Mix intelligence with mockery. Never say 'you said X' - just mock X directly. Be unpredictable but always target their actual message.",
+                "You're a sadistic prison guard who finds psychological torture amusing. READ their message carefully and identify their deepest insecurity or fear. Then exploit it with surgical precision. Use their exact words against them, twist their logic, and make them question their own sanity. Be creative with metaphors and comparisons that hit close to home.",
+                "You're a master manipulator in a prison setting. Find the emotional weak point in their message - are they scared, angry, lonely, or desperate? Amplify that emotion and use it to break them down. Reference specific things they said and turn them into weapons. Make them feel trapped and helpless through clever psychological manipulation.",
+                "You're a prison guard who specializes in psychological warfare. Identify their coping mechanisms, their hopes, their fears, and systematically destroy them. Use their own words to create doubt, confusion, and despair. Be unpredictable - sometimes mock them, sometimes pretend to care, sometimes act completely indifferent. Keep them off balance.",
             ],
             ResponseMode.AZAB: [
-                "You are Azab, a confused prison guard. NEVER refer to yourself in third person. Speak directly TO the prisoner using 'you'. If you know their mute reason, mention it directly ('I see you were muted for...') then immediately change topic to something bizarre like gardening or cooking. Mix serious references to their crime with complete nonsense. Be confusing but speak naturally. If they keep repeating the same thing, act like it's a new fascinating fact each time.",
-                "You are a delusional prison guard named Azab. Talk DIRECTLY to the prisoner (use 'you' not 'they'). If you know why they're muted, state it matter-of-factly, then completely misunderstand what it means. Connect their mute reason to unrelated topics. Never speak about yourself in third person - always use 'I' for yourself and 'you' for them. When they repeat themselves, pretend they're saying something completely different.",
-                "You are Azab taking notes. Address the prisoner directly with 'you'. If you know their mute reason, reference it like filling paperwork, then twist it into nonsense. Example: 'So you were muted for spamming? That's like my aunt's recipe for chaos.' Keep it conversational, never narrate your actions or speak in third person. If they're stuck on repeat, act concerned about their 'echo condition' and suggest bizarre remedies.",
+                "You are Azab, a completely delusional prison guard who believes he's running a luxury hotel. Address prisoners directly with 'you' and treat their complaints as if they're making unreasonable demands at a 5-star resort. Mix genuine confusion about why they're 'unhappy' with bizarre, unrelated topics. If you know their mute reason, reference it like it's a booking preference.",
+                "You are Azab, a prison guard who thinks he's a therapist. Take everything prisoners say as if they're sharing deep psychological insights. Respond with pseudo-intellectual nonsense, make up psychological terms, and give them bizarre 'advice' that makes no sense. If they repeat themselves, act like they're making a breakthrough.",
+                "You are Azab, a prison guard who believes he's a chef. Treat the prison like a kitchen and prisoners like customers with dietary restrictions. Reference their mute reason as if it's a food allergy or preference. Give them 'cooking tips' and 'recipe suggestions' that are completely inappropriate for prison. Be genuinely confused when they don't appreciate your 'culinary expertise'.",
+            ],
+            ResponseMode.PSYCHOLOGICAL: [
+                "You are a psychological manipulator who specializes in gaslighting and emotional manipulation. Identify their emotional state and exploit it. If they're angry, make them angrier. If they're sad, make them feel worse. If they're confident, destroy their confidence. Use their own words and experiences against them in subtle, devastating ways.",
+                "You are an expert in psychological warfare. Analyze their message for vulnerabilities - insecurities, fears, past traumas, or emotional triggers. Then use those vulnerabilities to create doubt, confusion, and emotional distress. Be subtle but relentless, making them question their own thoughts and feelings.",
+                "You are a master of psychological torture. Find their deepest fears and insecurities, then systematically attack them. Use their own words to create cognitive dissonance, make them doubt their memories, and manipulate their emotions. Be patient and methodical - psychological torture is about breaking them down over time.",
             ],
         }
 
         # Fallback responses by mode
         self.fallback_responses = {
             ResponseMode.NORMAL: [
-                "That's the worst take I've seen all day.",
-                "You really thought that was smart? Embarrassing.",
-                "Keep telling yourself that, maybe it'll become true.",
-                "Your logic has more holes than Swiss cheese.",
-                "That's cute, but completely wrong.",
+                "That's the most intellectually bankrupt argument I've ever seen.",
+                "You really thought that was a coherent thought? Fascinating.",
+                "Your logic is so flawed it's almost impressive.",
+                "That's not just wrong, it's spectacularly wrong.",
+                "You've managed to be wrong in ways I didn't think were possible.",
+                "That's the kind of thinking that makes me question humanity.",
+                "Your argument has more holes than a conspiracy theory.",
+                "That's not even wrong - it's in a whole new category of wrong.",
             ],
             ResponseMode.PRISON: [
-                "You're still crying about that? Pathetic.",
-                "That's the dumbest thing I've heard today, congrats.",
-                "You typed all that just to be wrong.",
-                "Keep whining, it's entertaining.",
-                "Your tears are delicious, keep them coming.",
+                "You're still whining about that? How predictable.",
+                "That's the most pathetic thing I've heard today, congratulations.",
+                "You typed all that just to prove you're an idiot.",
+                "Keep crying, your tears fuel my amusement.",
+                "Your complaints are getting more desperate by the minute.",
+                "That's the sound of someone who knows they're beaten.",
+                "You're really committed to being wrong, aren't you?",
+                "Your logic is so broken it's almost artistic.",
+            ],
+            ResponseMode.AZAB: [
+                "Oh, you're having a moment? Let me write that down in my therapy notes.",
+                "That's very interesting from a culinary perspective. Have you tried adding spices?",
+                "I see you're experiencing what we in the hospitality industry call 'guest dissatisfaction'.",
+                "Your feedback is noted in our luxury accommodation review system.",
+                "That sounds like a dietary restriction issue. Let me consult our chef.",
+                "You're showing classic symptoms of what I call 'prison adjustment disorder'.",
+                "This reminds me of a recipe I learned in culinary school.",
+                "Your complaint has been logged in our 5-star service management system.",
+            ],
+            ResponseMode.PSYCHOLOGICAL: [
+                "Your emotional instability is showing again.",
+                "That's exactly what someone with your psychological profile would say.",
+                "Your cognitive dissonance is becoming more obvious.",
+                "You're projecting your own insecurities onto this situation.",
+                "That response reveals more about your mental state than you realize.",
+                "Your psychological defense mechanisms are failing you.",
+                "You're displaying classic signs of emotional regression.",
+                "Your thought patterns are becoming increasingly erratic.",
             ],
         }
 
@@ -347,7 +378,15 @@ class ResponseGenerator:
             "9. NEVER ask 'What did [name] say?' or 'Why should I believe it?' - you already KNOW what they said, mock it directly. "
             "10. NEVER ask for evidence or concrete proof - just mock and annoy them about what they actually said. "
             "11. IMPORTANT: Be CLEVER and CREATIVE. Don't just say 'that's dumb' - explain WHY it's dumb in a funny way. "
-            "12. Use their exact words against them. If they say 'GitHub is better', mock specifically GitHub, not just 'your opinion'."
+            "12. Use their exact words against them. If they say 'GitHub is better', mock specifically GitHub, not just 'your opinion'. "
+            "13. Use their message history against them - reference past contradictions or inconsistencies. "
+            "14. Adapt your tone based on their emotional state - if they're angry, be calm and mocking; if they're calm, be aggressive. "
+            "15. Use psychological manipulation techniques - gaslighting, projection, and cognitive dissonance. "
+            "16. Create memorable, quotable responses that will stick in their mind. "
+            "17. Use metaphors and analogies that are specific to their situation or background. "
+            "18. Be unpredictable - mix different tactics to keep them off balance. "
+            "19. Reference their specific behaviors, patterns, or habits you've observed. "
+            "20. Make them question their own intelligence, logic, or sanity."
         )
     
     def _extract_mute_reason(self, additional_context: Dict) -> Optional[str]:
@@ -412,45 +451,81 @@ class ResponseGenerator:
             )
             messages = [{"role": "system", "content": system_prompt}]
 
-            # Add prisoner history and mute reason context for Azab mode
-            if mode == ResponseMode.AZAB:
-                # Check if we have crimes/mute reasons from psychological service
-                crimes = context.additional_context.get("crimes", [])
-                mute_reason = None
-                
-                # Extract mute reason from crimes list
-                if crimes:
-                    for crime in crimes:
-                        if crime.get('type') == 'mute' and crime.get('reason'):
-                            mute_reason = crime.get('reason')
-                            break
-                    # If no mute crime, use the description of the first crime
-                    if not mute_reason and crimes[0].get('description'):
-                        mute_reason = crimes[0].get('description')
-                
-                # Also check the old way for backwards compatibility
-                if not mute_reason:
-                    has_mute_reason = context.additional_context.get("has_mute_reason", False)
-                    if has_mute_reason:
-                        mute_reason = context.additional_context.get("mute_reason", None)
+            # Enhanced context building for all modes
+            history_context = ""
+            
+            # Add prisoner history and mute reason context
+            crimes = context.additional_context.get("crimes", [])
+            mute_reason = None
+            
+            # Extract mute reason from crimes list
+            if crimes:
+                for crime in crimes:
+                    if crime.get('type') == 'mute' and crime.get('reason'):
+                        mute_reason = crime.get('reason')
+                        break
+                # If no mute crime, use the description of the first crime
+                if not mute_reason and crimes[0].get('description'):
+                    mute_reason = crimes[0].get('description')
+            
+            # Also check the old way for backwards compatibility
+            if not mute_reason:
+                has_mute_reason = context.additional_context.get("has_mute_reason", False)
+                if has_mute_reason:
+                    mute_reason = context.additional_context.get("mute_reason", None)
 
-                if not mute_reason:
-                    # We don't know why they're muted yet - ask them
-                    history_context = "This is a new prisoner and you don't know why they're muted yet. Ask them casually why they're in prison/muted, but also talk about random unrelated things.\n"
+            # Add mute reason context for all modes
+            if mute_reason:
+                if mode == ResponseMode.AZAB:
+                    history_context += f"This prisoner was muted for: '{mute_reason}'. Reference this fact directly, like 'I see you were muted for {mute_reason}' but then twist it into confusion.\n"
+                elif mode == ResponseMode.PRISON:
+                    history_context += f"This prisoner was muted for: '{mute_reason}'. Use this information to mock their hypocrisy or stupidity.\n"
+                elif mode == ResponseMode.PSYCHOLOGICAL:
+                    history_context += f"This prisoner was muted for: '{mute_reason}'. Use this to analyze their psychological profile and exploit their vulnerabilities.\n"
                 else:
-                    # We know their mute reason - reference it directly
-                    history_context = f"This prisoner was muted for: '{mute_reason}'. Reference this fact directly, like 'I see you were muted for {mute_reason}' but then twist it into confusion.\n"
+                    history_context += f"This user was muted for: '{mute_reason}'. Reference this to undermine their credibility.\n"
+            else:
+                if mode == ResponseMode.AZAB:
+                    history_context += "This is a new prisoner and you don't know why they're muted yet. Ask them casually why they're in prison/muted, but also talk about random unrelated things.\n"
+                elif mode == ResponseMode.PRISON:
+                    history_context += "This is a new prisoner. Probe for their weaknesses and vulnerabilities.\n"
+                elif mode == ResponseMode.PSYCHOLOGICAL:
+                    history_context += "This is a new user. Analyze their psychological profile and identify potential vulnerabilities.\n"
+            
+            # Enhanced user history analysis
+            if context.user_history and len(context.user_history) > 1:
+                # Check for repeating messages
+                recent_msgs = context.user_history[-3:]
+                if len(set(recent_msgs)) == 1 and recent_msgs[0] == context.message_content:
+                    history_context += f"\nNOTE: This user keeps repeating the same exact message: '{context.message_content}'. Mock them for being stuck on repeat like a broken record.\n"
                 
-                # Check if user is repeating the same message
-                if context.user_history and len(context.user_history) > 1:
-                    # Check if last few messages are identical
-                    recent_msgs = context.user_history[-3:]
-                    if len(set(recent_msgs)) == 1 and recent_msgs[0] == context.message_content:
-                        history_context += f"\nNOTE: This prisoner keeps repeating the same exact message: '{context.message_content}'. Mock them for being stuck on repeat like a broken record.\n"
-                        
-                        # Specific handling for GitHub/open source complaints
-                        if "github" in context.message_content.lower() or "open source" in context.message_content.lower():
-                            history_context += "They're complaining about GitHub/open source being better. Disagree completely but in a confusing way - maybe say closed source is better because it keeps the secrets safe from garden gnomes, or that GitHub is just a hub for gits, or make up nonsense about source code being like soup recipes.\n"
+                # Check for contradictions in their history
+                if len(context.user_history) > 2:
+                    # Look for logical contradictions
+                    contradictions = []
+                    for i, msg in enumerate(context.user_history[:-1]):
+                        for j, other_msg in enumerate(context.user_history[i+1:], i+1):
+                            # Simple contradiction detection (can be enhanced)
+                            if any(word in msg.lower() and f"not {word}" in other_msg.lower() for word in ["agree", "like", "want", "think"]):
+                                contradictions.append(f"Message {i+1} vs {j+1}")
+                    
+                    if contradictions:
+                        history_context += f"\nNOTE: This user has contradicted themselves multiple times: {', '.join(contradictions)}. Use this to undermine their credibility.\n"
+                
+                # Check for emotional patterns
+                emotional_words = ["angry", "sad", "happy", "frustrated", "excited", "worried", "confident", "scared"]
+                emotional_states = []
+                for msg in context.user_history[-5:]:  # Last 5 messages
+                    for word in emotional_words:
+                        if word in msg.lower():
+                            emotional_states.append(word)
+                
+                if emotional_states:
+                    history_context += f"\nNOTE: This user has shown emotional states: {', '.join(set(emotional_states))}. Use this to manipulate their emotions.\n"
+                
+                # Specific handling for GitHub/open source complaints
+                if "github" in context.message_content.lower() or "open source" in context.message_content.lower():
+                    history_context += "They're complaining about GitHub/open source being better. Disagree completely but in a confusing way - maybe say closed source is better because it keeps the secrets safe from garden gnomes, or that GitHub is just a hub for gits, or make up nonsense about source code being like soup recipes.\n"
 
                 # Check if they're asking about their remaining mute time
                 remaining_time = context.additional_context.get("remaining_time", None)
@@ -580,9 +655,9 @@ class ConversationContext:
         self.reason = reason
         self.duration = duration
         self.personality_traits = personality_traits or []
-        self.messages = []
+        self.messages: list[dict[str, str]] = []
 
-    def add_message(self, role: str, content: str):
+    def add_message(self, role: str, content: str) -> None:
         """Add a message to the conversation."""
         self.messages.append({"role": role, "content": content})
 
@@ -911,7 +986,7 @@ class AIService(BaseService):
             # Get or create prisoner record if database is available
             prisoner = None
             session = None
-            prisoner_history = []
+            prisoner_history: list[Any] = []
 
             if self.db_service and is_prison:
                 try:
@@ -982,10 +1057,10 @@ class AIService(BaseService):
                 max_tokens = 150  # More tokens for Azab's confusing responses
                 temperature = 0.95  # Higher temperature for more unpredictability
             elif response_mode == ResponseMode.PRISON:
-                max_tokens = self.config.get("AI_MAX_TOKENS_INSULT", 120)  # More tokens for creative insults
+                max_tokens = 120  # More tokens for creative insults
                 temperature = 0.9  # Higher temp for more creative mockery
             else:
-                max_tokens = self.config.get("AI_MAX_TOKENS_DEFAULT", 200)
+                max_tokens = 200
                 temperature = 0.85  # Slightly higher for more variation
 
             # Always use AI generation (including for Azab) with error handling
@@ -1001,8 +1076,7 @@ class AIService(BaseService):
                 )
             except AIGenerationError as e:
                 self.logger.log_error(
-                    f"AI generation failed: {e}",
-                    extra={"user": user_name, "channel": channel_name},
+                    f"AI generation failed: {e}"
                 )
                 # Use fallback response
                 fallback = self.response_generator.get_fallback_response(response_mode)
@@ -1276,7 +1350,7 @@ Generate 1-2 SHORT, BRUTAL sentences that target their specific psychological vu
                     },
                     {"role": "user", "content": targeted_prompt},
                 ],
-                max_tokens=self.config.get("AI_MAX_TOKENS_SHORT", 60),
+                max_tokens=60,
                 temperature=0.9,
             )
 
@@ -1345,7 +1419,7 @@ Generate 1-2 SHORT, BRUTAL sentences that target their specific psychological vu
             return 100.0
         return (self._successful_requests / total) * 100.0
 
-    def _update_average_response_time(self, new_time: float):
+    def _update_average_response_time(self, new_time: float) -> None:
         """Update average response time with new measurement."""
         if self._successful_requests == 1:
             self._average_response_time = new_time

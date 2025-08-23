@@ -72,7 +72,7 @@ logger = get_logger()
 class BaseRepository:
     """Base repository with common database operations."""
     
-    def __init__(self, db_service):
+    def __init__(self, db_service: Any) -> None:
         """
         Initialize repository with database service.
         

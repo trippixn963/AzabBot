@@ -422,13 +422,13 @@ async def _handle_azabbot_error(
     
     # Log based on severity level
     if error.severity == ErrorSeverity.CRITICAL:
-        logger.log_error(f"CRITICAL: {error}", exception=error, context=context)
+        logger.log_error(f"CRITICAL: {error}", exception=error)
     elif error.severity == ErrorSeverity.HIGH:
-        logger.log_error(f"HIGH: {error}", exception=error, context=context)
+        logger.log_error(f"HIGH: {error}", exception=error)
     elif error.severity == ErrorSeverity.MEDIUM:
-        logger.log_warning(f"MEDIUM: {error}", context=context)
+        logger.log_warning(f"MEDIUM: {error}")
     else:
-        logger.log_debug(f"LOW: {error}", context=context)
+        logger.log_debug(f"LOW: {error}")
 
 
 def _handle_azabbot_error_sync(
@@ -459,9 +459,9 @@ def _handle_azabbot_error_sync(
     }
     
     if error.severity in [ErrorSeverity.CRITICAL, ErrorSeverity.HIGH]:
-        logger.log_error(str(error), exception=error, context=context)
+        logger.log_error(str(error), exception=error)
     else:
-        logger.log_warning(str(error), context=context)
+        logger.log_warning(str(error))
 
 
 async def _handle_generic_error(

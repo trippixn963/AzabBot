@@ -386,56 +386,6 @@ class ConfigurationManager:
                 description="Maximum log file size in MB before rotation",
                 validator=lambda x: x >= 1,
             ),
-            # Health Webhook Configuration
-            # Primary webhook
-            ConfigField(
-                name="HEALTH_WEBHOOK_URL_1",
-                field_type=str,
-                default="",
-                description="Primary Discord webhook URL for health status reports",
-                sensitive=True,
-            ),
-            ConfigField(
-                name="HEALTH_THREAD_ID_1",
-                field_type=str,
-                default="",
-                description="Thread ID for primary webhook posts",
-            ),
-            # Secondary webhook
-            ConfigField(
-                name="HEALTH_WEBHOOK_URL_2",
-                field_type=str,
-                default="",
-                description="Secondary Discord webhook URL for health status reports",
-                sensitive=True,
-            ),
-            ConfigField(
-                name="HEALTH_THREAD_ID_2",
-                field_type=str,
-                default="",
-                description="Thread ID for secondary webhook posts",
-            ),
-            # Legacy support (maps to primary)
-            ConfigField(
-                name="HEALTH_WEBHOOK_URL",
-                field_type=str,
-                default="",
-                description="Discord webhook URL for health status reports (legacy)",
-                sensitive=True,
-            ),
-            ConfigField(
-                name="HEALTH_THREAD_ID",
-                field_type=str,
-                default="",
-                description="Thread ID for health webhook posts (legacy)",
-            ),
-            ConfigField(
-                name="HEALTH_CHECK_INTERVAL_HOURS",
-                field_type=float,
-                default=1.0,
-                description="Interval between health checks in hours",
-                validator=lambda x: x >= 0.1,
-            ),
         ]
 
         for field in fields:
@@ -486,7 +436,7 @@ class ConfigurationManager:
                 raise
             raise ConfigurationError(f"Failed to load configuration: {str(e)}") from e
 
-    def _load_env_file(self):
+    def _load_env_file(self) -> None:
         """Load environment variables from .env file."""
         if not self.env_file.exists():
             # Create config directory if it doesn't exist
@@ -544,6 +494,7 @@ class ConfigurationManager:
 
         try:
             # Convert to appropriate type
+            processed_value: Any
             if field_def.field_type is bool:
                 processed_value = self._parse_bool(raw_value)
             elif field_def.field_type is int:

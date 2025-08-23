@@ -139,7 +139,7 @@ class LogDeletionManager:
         self._shutdown = False
 
         # Statistics tracking for monitoring and reporting
-        self.stats = {
+        self.stats: Dict[str, Any] = {
             "files_deleted": 0,
             "files_compressed": 0,
             "bytes_freed": 0,
@@ -185,7 +185,7 @@ class LogDeletionManager:
             "🛑",
         )
 
-    async def _deletion_loop(self):
+    async def _deletion_loop(self) -> None:
         """
         Background loop for periodic log cleanup operations.
         
@@ -204,7 +204,7 @@ class LogDeletionManager:
             except Exception as e:
                 self.logger.log_error(f"Log cleanup error: {e}")
 
-    async def cleanup_logs(self):
+    async def cleanup_logs(self) -> None:
         """Perform log cleanup - compress and delete old files."""
         if not self.log_dir.exists():
             return
@@ -274,7 +274,7 @@ class LogDeletionManager:
 
     def _get_all_log_files(self) -> list[Path]:
         """Get all log files in the directory recursively."""
-        log_files = []
+        log_files: list[Path] = []
 
         for pattern in ["*.log", "*.json", "*.log.gz", "*.json.gz"]:
             log_files.extend(self.log_dir.rglob(pattern))
@@ -345,11 +345,12 @@ class LogDeletionManager:
 
     def _format_bytes(self, bytes_value: int) -> str:
         """Format bytes into human-readable string."""
+        value = float(bytes_value)
         for unit in ["B", "KB", "MB", "GB"]:
-            if bytes_value < 1024.0:
-                return f"{bytes_value:.1f} {unit}"
-            bytes_value /= 1024.0
-        return f"{bytes_value:.1f} TB"
+            if value < 1024.0:
+                return f"{value:.1f} {unit}"
+            value /= 1024.0
+        return f"{value:.1f} TB"
 
     def get_stats(self) -> Dict[str, Any]:
         """Get cleanup statistics."""

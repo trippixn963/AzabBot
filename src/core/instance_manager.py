@@ -286,8 +286,7 @@ class InstanceManager:
             return True
         else:
             self.logger.log_warning(
-                f"Terminated {terminated_count} instances, " f"{failed_count} failed",
-                "⚠️",
+                f"Terminated {terminated_count} instances, " f"{failed_count} failed"
             )
             # Still proceed if we terminated some
             return terminated_count > 0 or failed_count < len(processes)
@@ -315,7 +314,8 @@ class InstanceManager:
                             # Verify it's a Python process
                             if "python" in old_proc.name().lower():
                                 self.logger.log_warning(
-                                    f"Found stale PID file for process {old_pid}"
+                                    f"Found stale PID file for process {old_pid}",
+                                    context={"old_pid": old_pid}
                                 )
                         except (psutil.NoSuchProcess, psutil.AccessDenied):
                             # Process doesn't exist or we can't access it - PID file is stale

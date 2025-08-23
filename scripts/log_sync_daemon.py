@@ -77,14 +77,14 @@ class LogSyncDaemon:
         signal.signal(signal.SIGTERM, self.handle_shutdown)
         signal.signal(signal.SIGINT, self.handle_shutdown)
         
-    def handle_shutdown(self, signum, frame):
+    def handle_shutdown(self, signum: int, frame: Optional[object]) -> None:
         """Handle shutdown signals gracefully."""
         logger.info(f"Received signal {signum}, shutting down gracefully...")
         self.running = False
         self.save_stats()
         sys.exit(0)
         
-    def save_stats(self):
+    def save_stats(self) -> None:
         """Save statistics to file."""
         stats_file = Path(self.config["local_path"]) / "sync_stats.json"
         try:
@@ -202,7 +202,7 @@ class LogSyncDaemon:
             self.consecutive_failures += 1
             return False
             
-    def parse_rsync_output(self, output: str):
+    def parse_rsync_output(self, output: str) -> None:
         """Parse rsync output for statistics."""
         try:
             # Look for transferred bytes in rsync output
@@ -238,7 +238,7 @@ class LogSyncDaemon:
         # Use normal interval
         return self.config["sync_interval"]
         
-    def run(self):
+    def run(self) -> None:
         """Main daemon loop."""
         logger.info("=" * 60)
         logger.info("AzabBot Log Sync Daemon Starting")
@@ -297,7 +297,6 @@ class LogSyncDaemon:
                 break
             except Exception as e:
                 logger.error(f"Unexpected error in main loop: {e}")
-                time.sleep(self.config["retry_delay"])
                 
         # Cleanup
         self.save_stats()

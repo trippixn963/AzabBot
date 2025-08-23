@@ -269,7 +269,9 @@ class ExternalServiceError(ServiceError):
         self.service = service
         self.operation = operation
         super().__init__(
-            f"External service error in {service} during {operation}: {message}"
+            service,
+            f"External service error during {operation}: {message}",
+            context={"operation": operation}
         )
 
 

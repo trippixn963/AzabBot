@@ -19,7 +19,7 @@ import datetime
 import random
 from dataclasses import dataclass
 from datetime import timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import discord
 from discord import app_commands
@@ -106,9 +106,12 @@ class AzabBot(discord.Client):
         self.developer_id = config.get("DEVELOPER_ID")  # Developer from config
         if not self.developer_id:
             raise ValueError("DEVELOPER_ID must be set in configuration")
+        
+        # Ignore list for users the bot should not respond to
+        self.ignored_users: set[int] = set()
 
         # Presence management
-        self.current_prisoners = set()  # Track prisoners in jail
+        self.current_prisoners: set[str] = set()  # Track prisoners in jail
         self.presence_rotation_task = None
         self.presence_index = 0
 
@@ -120,13 +123,12 @@ class AzabBot(discord.Client):
 
         self.logger.log_info("AzabBot initialized", "🤖")
 
-    async def setup_hook(self):
+    async def setup_hook(self) -> None:
         """Set up the bot after login but before ready event."""
         try:
             # Resolve services from DI container
             self.ai_service = await resolve("AIService")
             self.health_monitor = await resolve("HealthMonitor")
-            self.webhook_health = await resolve("WebhookHealthService")
             
             # Start health monitor's monitoring tasks
             if self.health_monitor:
@@ -148,18 +150,25 @@ class AzabBot(discord.Client):
             except Exception as e:
                 self.logger.log_warning(f"Psychological service not available: {e}")
                 self.psychological_service = None
+            
+            # Try to resolve dashboard service (optional)
+            try:
+                if self.config.get("DASHBOARD_ENABLED", "false").lower() == "true":
+                    self.dashboard_service = await resolve("DashboardService")
+                    if self.dashboard_service:
+                        self.dashboard_service.bot = self
+                        await self.dashboard_service.start()
+                        self.logger.log_info("Dashboard service connected")
+                else:
+                    self.dashboard_service = None
+            except Exception as e:
+                self.logger.log_warning(f"Dashboard service not available: {e}")
+                self.dashboard_service = None
 
             # Register bot for health monitoring
             if self.health_monitor:
                 self.health_monitor.register_service(self)
                 
-            # Set up webhook health service
-            if self.webhook_health:
-                self.webhook_health.set_bot_instance(self)
-                if self.health_monitor:
-                    self.webhook_health.set_health_monitor(self.health_monitor)
-                await self.webhook_health.start_health_checks()
-
             # Reset daily counter if new day
             today = datetime.date.today()
             if self.metrics.last_response_date != today:
@@ -171,11 +180,11 @@ class AzabBot(discord.Client):
             # Register slash commands
             from src.bot.commands import (create_activate_command,
                                           create_deactivate_command,
-                                          create_health_command)
+                                          create_ignore_command)
 
             self.tree.add_command(create_activate_command(self))
             self.tree.add_command(create_deactivate_command(self))
-            self.tree.add_command(create_health_command(self))
+            self.tree.add_command(create_ignore_command(self))
 
             # Sync slash commands
             await self.tree.sync()
@@ -267,16 +276,27 @@ class AzabBot(discord.Client):
                 except Exception as e:
                     self.logger.log_warning(f"Failed to store message in memory: {e}")
 
+            # Check if user is in ignore list
+            user_is_ignored = message.author.id in self.ignored_users
+            
             # Check if bot should respond
             should_respond = (
                 self.is_active and  # Bot must be activated
                 is_prison_channel and  # Must be in prison channel
-                user_has_role  # User must have the target role
+                user_has_role and  # User must have the target role
+                not user_is_ignored  # User must not be in ignore list
             )
 
             if not should_respond:
+                reason = f"Active={self.is_active}, Prison={is_prison_channel}, Role={user_has_role}, Ignored={user_is_ignored}"
                 debug_context["decision"] = "NOT RESPONDING"
-                debug_context["reason"] = f"Active={self.is_active}, Prison={is_prison_channel}, Role={user_has_role}"
+                debug_context["reason"] = reason
+                debug_context["user_ignored"] = user_is_ignored
+                
+                # Log specifically if user is ignored
+                if user_is_ignored:
+                    self.logger.log_info(f"🤐 Ignoring message from {message.author.display_name} (user is in ignore list)")
+                
                 self.logger.log_debug(
                     f"📥 Message received - {message.author} in #{message.channel.name}",
                     context=debug_context
@@ -506,26 +526,16 @@ class AzabBot(discord.Client):
                 is_returning = False
                 previous_visits = 0
 
-                # Try to check user history
+                # Try to check user history using memory service
                 try:
-                    # Check database for previous interactions
-                    import sqlite3
-
-                    conn = sqlite3.connect("data/memory.db")
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "SELECT total_interactions FROM user_memories WHERE user_id = ?",
-                        (str(after.id),),
-                    )
-                    result = cursor.fetchone()
-                    conn.close()
-
-                    if result and result[0] > 0:
-                        is_returning = True
-                        previous_visits = result[0]
-                        self.logger.log_info(
-                            f"🔄 RETURNING PRISONER: {after.display_name} has {previous_visits} previous interactions!"
-                        )
+                    if self.memory_service:
+                        user_memory = await self.memory_service.get_user_memory(after.id)
+                        if user_memory and user_memory.get("total_interactions", 0) > 0:
+                            is_returning = True
+                            previous_visits = user_memory.get("total_interactions", 0)
+                            self.logger.log_info(
+                                f"🔄 RETURNING PRISONER: {after.display_name} has {previous_visits} previous interactions!"
+                            )
                 except Exception as e:
                     self.logger.log_warning(f"Could not check prisoner history: {e}")
 
@@ -1052,8 +1062,8 @@ class AzabBot(discord.Client):
 
             # Check prison service features if available
             harassment_intensity = 1.0
-            prisoner_status = {}
-            psychological_context = {}
+            prisoner_status: dict[str, Any] = {}
+            psychological_context: dict[str, Any] = {}
             
             if self.prison_service and is_prison:
                 user_id = str(representative_message.author.id)
@@ -1127,7 +1137,7 @@ class AzabBot(discord.Client):
                 
                 # Check if they're asking about their mute time
                 remaining_time = None
-                asks_about_mute = any(word in combined_content.lower() for word in [
+                asks_about_mute: bool = any(word in combined_content.lower() for word in [
                     'when', 'mute', 'unmute', 'free', 'release', 'how long', 'how much',
                     'time left', 'get out', 'role gone', 'leave', 'escape', 'duration'
                 ])
@@ -1299,7 +1309,7 @@ class AzabBot(discord.Client):
             for user_id, _ in oldest_users:
                 del self.user_cooldowns[user_id]
 
-    async def _update_mocking_status(self, user: discord.Member):
+    async def _update_mocking_status(self, user: Union[discord.User, discord.Member]):
         """Update bot status to mock user."""
         try:
             mocking_statuses = [

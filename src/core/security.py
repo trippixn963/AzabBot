@@ -210,15 +210,13 @@ class RateLimiter:
         """
         # Request history for sliding window rate limiting
         # Format: {limit_key: {user_id: deque of timestamps}}
-        self._request_history: Dict[str, Dict[int, deque]] = defaultdict(
+        self._request_history: Dict[str, Dict[int, Any]] = defaultdict(
             lambda: defaultdict(deque)
         )
 
         # Token buckets for burst handling and advanced rate limiting
         # Format: {limit_key: {user_id: {'tokens': int, 'last_refill': float}}}
-        self._token_buckets: Dict[
-            str, Dict[int, Dict[str, Union[int, float]]]
-        ] = defaultdict(lambda: defaultdict(dict))
+        self._token_buckets: Dict[str, Dict[int, Dict[str, Any]]] = defaultdict(lambda: defaultdict(dict))
 
     def check_rate_limit(
         self,
@@ -831,7 +829,7 @@ class SecurityManager:
         ]
 
         # Count events by type
-        event_counts = defaultdict(int)
+        event_counts: Dict[str, int] = defaultdict(int)
         for event in recent_events:
             event_counts[event["event_type"]] += 1
 

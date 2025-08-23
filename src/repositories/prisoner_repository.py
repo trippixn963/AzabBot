@@ -202,12 +202,7 @@ class PrisonerRepository(BaseRepository):
             )
             
             logger.log_info(
-                f"Recorded mute for prisoner {prisoner_id}",
-                context={
-                    "discord_id": discord_id,
-                    "reason": reason,
-                    "muted_by": muted_by
-                }
+                f"Recorded mute for prisoner {prisoner_id}"
             )
         
         return success
@@ -236,8 +231,7 @@ class PrisonerRepository(BaseRepository):
         
         if success:
             logger.log_info(
-                f"Recorded unmute for prisoner {prisoner_id}",
-                context={"prisoner_id": prisoner_id}
+                f"Recorded unmute for prisoner {prisoner_id}"
             )
         
         return success
@@ -417,8 +411,7 @@ class PrisonerRepository(BaseRepository):
         
         if success:
             logger.log_info(
-                f"Cleaned up data older than {days} days",
-                context={"cutoff_date": cutoff_date.isoformat()}
+                f"Cleaned up data older than {days} days"
             )
         
         return success
