@@ -138,8 +138,14 @@ def create_activate_command(bot):
                 
                 context_data = {
                     "user_id": str(interaction.user.id),
+                    "user_name": interaction.user.display_name,
+                    "user_username": interaction.user.name,
+                    "guild_id": str(interaction.guild_id) if interaction.guild_id else "None",
+                    "channel_id": str(interaction.channel_id) if interaction.channel_id else "None",
                     "guild_count": len(bot.guilds),
-                    "channel_count": sum(len(guild.channels) for guild in bot.guilds)
+                    "channel_count": sum(len(guild.channels) for guild in bot.guilds),
+                    "command_used": "activate",
+                    "authorized": "yes"
                 }
                 
                 log_enhanced_tree_section(
@@ -218,7 +224,45 @@ def create_deactivate_command(bot):
             
             # Deactivate the bot
             bot.is_active = False
-            bot.logger.log_info("🔴 Bot deactivated by developer command")
+            
+            # Use enhanced tree logging for deactivation
+            from src.utils.tree_log import log_enhanced_tree_section_global as log_enhanced_tree_section, log_status
+            import time
+            
+            deactivation_start = time.perf_counter()
+            
+            # Create enhanced tree log for deactivation
+            deactivation_items = [
+                ("status", "Bot deactivated"),
+                ("presence", "Updated to watching 💤 Inactive"),
+                ("background_tasks", "Stopping...")
+            ]
+            
+            performance_metrics = {
+                "deactivation_time_ms": 0,  # Will be calculated after operations
+                "tasks_stopped": 1,
+                "services_deactivated": 1
+            }
+            
+            context_data = {
+                "user_id": str(interaction.user.id),
+                "user_name": interaction.user.display_name,
+                "user_username": interaction.user.name,
+                "guild_id": str(interaction.guild_id) if interaction.guild_id else "None",
+                "channel_id": str(interaction.channel_id) if interaction.channel_id else "None",
+                "command_used": "deactivate",
+                "authorized": "yes"
+            }
+            
+            log_enhanced_tree_section(
+                "Bot Deactivation",
+                deactivation_items,
+                performance_metrics=performance_metrics,
+                context_data=context_data,
+                emoji="🔴"
+            )
+            
+            log_status("Bot deactivated by developer command", emoji="🔴")
             
             # Update bot presence to show inactive status
             activity = discord.Activity(
@@ -427,7 +471,37 @@ def create_ignore_command(bot):
                     )
                     await interaction.response.send_message(embed=embed, ephemeral=True)
                     
-                    bot.logger.log_info(f"User {username} ({user_id}) added to ignore list")
+                    # Use enhanced tree logging for ignore command
+                    from src.utils.tree_log import log_enhanced_tree_section_global as log_enhanced_tree_section, log_status
+                    
+                    ignore_items = [
+                        ("action", "add user to ignore list"),
+                        ("user_id", user_id),
+                        ("username", username),
+                        ("total_ignored", str(len(bot.ignored_users)))
+                    ]
+                    
+                    context_data = {
+                        "user_id": str(interaction.user.id),
+                        "user_name": interaction.user.display_name,
+                        "user_username": interaction.user.name,
+                        "guild_id": str(interaction.guild_id) if interaction.guild_id else "None",
+                        "channel_id": str(interaction.channel_id) if interaction.channel_id else "None",
+                        "command_used": "ignore",
+                        "subcommand": "add",
+                        "target_user_id": user_id,
+                        "target_username": username,
+                        "authorized": "yes"
+                    }
+                    
+                    log_enhanced_tree_section(
+                        "Ignore List Management",
+                        ignore_items,
+                        context_data=context_data,
+                        emoji="🚫"
+                    )
+                    
+                    log_status(f"User {username} ({user_id}) added to ignore list", emoji="🚫")
                     
                 except ValueError:
                     embed = discord.Embed(
@@ -478,7 +552,35 @@ def create_ignore_command(bot):
                         embed.set_footer(text="Developed by حَـــــنَّـــــا", icon_url="https://cdn.discordapp.com/avatars/259725211664908288/default.png")
                         await interaction.response.send_message(embed=embed, ephemeral=True)
                         
-                        bot.logger.log_info(f"User {username} ({user_id}) removed from ignore list")
+                        # Use enhanced tree logging for ignore remove command
+                        ignore_items = [
+                            ("action", "remove user from ignore list"),
+                            ("user_id", user_id),
+                            ("username", username),
+                            ("total_ignored", str(len(bot.ignored_users)))
+                        ]
+                        
+                        context_data = {
+                            "user_id": str(interaction.user.id),
+                            "user_name": interaction.user.display_name,
+                            "user_username": interaction.user.name,
+                            "guild_id": str(interaction.guild_id) if interaction.guild_id else "None",
+                            "channel_id": str(interaction.channel_id) if interaction.channel_id else "None",
+                            "command_used": "ignore",
+                            "subcommand": "remove",
+                            "target_user_id": user_id,
+                            "target_username": username,
+                            "authorized": "yes"
+                        }
+                        
+                        log_enhanced_tree_section(
+                            "Ignore List Management",
+                            ignore_items,
+                            context_data=context_data,
+                            emoji="✅"
+                        )
+                        
+                        log_status(f"User {username} ({user_id}) removed from ignore list", emoji="✅")
                     else:
                         embed = discord.Embed(
                             title="ℹ️ User Not in Ignore List",

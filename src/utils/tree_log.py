@@ -268,6 +268,18 @@ def _write_to_log_files(message: str, level: str, category: str):
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(f"{_get_timestamp()} [{level}] ℹ️ {message}\n")
         
+        # Write to debug.log file if DEBUG level
+        if level == "DEBUG":
+            debug_log_file = log_dir / "debug.log"
+            with open(debug_log_file, "a", encoding="utf-8") as f:
+                f.write(f"{_get_timestamp()} [{level}] 🔍 {message}\n")
+        
+        # Write to error.log file if ERROR or CRITICAL level
+        if level in ["ERROR", "CRITICAL"]:
+            error_log_file = log_dir / "error.log"
+            with open(error_log_file, "a", encoding="utf-8") as f:
+                f.write(f"{_get_timestamp()} [{level}] ❌ {message}\n")
+        
         # Write to JSON log file
         json_log_file = log_dir / "logs.json"
         log_entry = {
