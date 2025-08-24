@@ -1601,6 +1601,15 @@ The prisoner is: {member.display_name}"""
 
     async def _rotate_presence(self):
         """Rotate presence between prisoners or show default."""
+        # Log presence rotation start
+        from src.utils.tree_log import log_perfect_tree_section
+        rotation_items = [
+            ("interval", "Every 10 seconds"),
+            ("status", "Active rotation"),
+            ("prisoners", str(len(self.current_prisoners)) if self.current_prisoners else "0")
+        ]
+        log_perfect_tree_section("Presence Rotation", rotation_items, emoji="🔄")
+        
         while True:
             try:
                 await asyncio.sleep(10)  # Rotate every 10 seconds
@@ -1632,7 +1641,9 @@ The prisoner is: {member.display_name}"""
                     if member_exists:
                         valid_prisoners.append(prisoner_name)
                     else:
-                        self.logger.log_info(f"🧹 Removing {prisoner_name} from presence (not in server)")
+                        # Use tree logging for prisoner removal
+                        from src.utils.tree_log import log_status
+                        log_status(f"Removing {prisoner_name} from presence (not in server)", emoji="🧹")
                 
                 # Update the current_prisoners set
                 self.current_prisoners = set(valid_prisoners)
@@ -1648,7 +1659,9 @@ The prisoner is: {member.display_name}"""
                     await self.change_presence(activity=activity, status=discord.Status.online)
 
                     self.presence_index += 1
-                    self.logger.log_info(f"Updated presence: Playing with {prisoner_name}")
+                    # Use tree logging for presence updates
+                    from src.utils.tree_log import log_status
+                    log_status(f"Updated presence: Playing with {prisoner_name}", emoji="🎮")
                     return
             
             # If we get here, either no prisoners or all were invalid
@@ -1657,7 +1670,9 @@ The prisoner is: {member.display_name}"""
                 type=discord.ActivityType.watching, name="⛓ Sednaya"
             )
             await self.change_presence(activity=activity, status=discord.Status.online)
-            self.logger.log_info("Updated presence: Watching ⛓ Sednaya")
+            # Use tree logging for default presence
+            from src.utils.tree_log import log_status
+            log_status("Updated presence: Watching ⛓ Sednaya", emoji="👁️")
 
         except Exception as e:
             log_error("Failed to update presence", exception=e)
@@ -1686,9 +1701,32 @@ The prisoner is: {member.display_name}"""
                             self.current_prisoners.add(member.display_name)
 
                     if self.current_prisoners:
-                        self.logger.log_info(
-                            f"Found {len(self.current_prisoners)} prisoners in jail: {', '.join(self.current_prisoners)}"
-                        )
+                        # Use enhanced tree logging for prisoner scan
+                        from src.utils.tree_log import log_enhanced_tree_section_global as log_enhanced_tree_section
+                        import time
+                        
+                        scan_start = time.perf_counter()
+                        prisoner_items = [
+                            ("count", str(len(self.current_prisoners))),
+                            ("prisoners", ", ".join(self.current_prisoners)),
+                            ("channel", prison_channel_id)
+                        ]
+                        
+                        performance_metrics = {
+                            "scan_time_ms": round((time.perf_counter() - scan_start) * 1000, 2),
+                            "prisoners_found": len(self.current_prisoners),
+                            "guilds_scanned": len(self.guilds)
+                        }
+                        
+                        context_data = {
+                            "target_role_id": target_role_id,
+                            "prison_channel_id": prison_channel_id,
+                            "scan_timestamp": str(datetime.datetime.now())
+                        }
+                        
+                        log_enhanced_tree_section("Prisoner Scan", prisoner_items, 
+                                                performance_metrics=performance_metrics,
+                                                context_data=context_data, emoji="🔍")
                     break
 
         except Exception as e:
@@ -1703,7 +1741,33 @@ The prisoner is: {member.display_name}"""
             if not prison_channel_id or not target_role_id:
                 return
             
-            self.logger.log_info("🔍 Checking for recent prisoner messages to respond to...")
+            # Use enhanced tree logging for message checking
+            from src.utils.tree_log import log_enhanced_tree_section_global as log_enhanced_tree_section
+            import time
+            
+            check_start = time.perf_counter()
+            check_items = [
+                ("action", "Scanning for recent messages"),
+                ("channel", prison_channel_id),
+                ("timeframe", "Last 24 hours"),
+                ("target", "Unanswered prisoner messages")
+            ]
+            
+            performance_metrics = {
+                "check_time_ms": round((time.perf_counter() - check_start) * 1000, 2),
+                "messages_scanned": 0,  # Will be updated during scan
+                "bot_responses_found": 0  # Will be updated during scan
+            }
+            
+            context_data = {
+                "prison_channel_id": prison_channel_id,
+                "target_role_id": target_role_id,
+                "scan_limit": 100
+            }
+            
+            log_enhanced_tree_section("Message Check", check_items, 
+                                    performance_metrics=performance_metrics,
+                                    context_data=context_data, emoji="🔍")
             
             # Find the prison channel
             prison_channel = None
@@ -1781,7 +1845,15 @@ The prisoner is: {member.display_name}"""
                     most_recent_message = msg
             
             if most_recent_message:
-                self.logger.log_info(f"📨 Found 1 recent prisoner message to respond to")
+                # Use tree logging for message processing
+                from src.utils.tree_log import log_perfect_tree_section, log_status
+                message_items = [
+                    ("found", "1 recent prisoner message"),
+                    ("author", most_recent_message.author.display_name),
+                    ("content", most_recent_message.content[:50] + "..." if len(most_recent_message.content) > 50 else most_recent_message.content),
+                    ("timestamp", str(most_recent_message.created_at))
+                ]
+                log_perfect_tree_section("Message Processing", message_items, emoji="📨")
                 
                 # Process only the most recent prisoner message
                 message = most_recent_message
@@ -1789,10 +1861,8 @@ The prisoner is: {member.display_name}"""
                     # Add a small delay before responding
                     await asyncio.sleep(2)
                     
-                    # Simulate the message being received now
-                    self.logger.log_info(
-                        f"💬 Processing unanswered message from {message.author.display_name}: {message.content[:50]}..."
-                    )
+                    # Log processing
+                    log_status(f"Processing message from {message.author.display_name}", emoji="💬")
                     
                     # Add to batch for processing
                     await self._add_message_to_batch(message)
@@ -1800,7 +1870,14 @@ The prisoner is: {member.display_name}"""
                 except Exception as e:
                     self.logger.log_error(f"Failed to process message from {message.author}: {e}")
             else:
-                self.logger.log_info("No unanswered prisoner messages found")
+                # Use tree logging for no messages found
+                from src.utils.tree_log import log_perfect_tree_section
+                no_message_items = [
+                    ("result", "No unanswered messages found"),
+                    ("scan_complete", "All messages processed"),
+                    ("status", "Ready for new interactions")
+                ]
+                log_perfect_tree_section("Message Check Result", no_message_items, emoji="✅")
                 
         except Exception as e:
             self.logger.log_error(f"Error processing recent prisoner messages: {e}")

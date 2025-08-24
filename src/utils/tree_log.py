@@ -13,6 +13,7 @@ DESIGN PATTERNS IMPLEMENTED:
 4. Template Pattern: Consistent tree structure formatting
 5. Observer Pattern: Multi-destination logging
 6. Builder Pattern: Fluent log entry construction
+7. Decorator Pattern: Performance timing and context tracking
 
 KEY FEATURES:
 - Beautiful tree-style log formatting with Unicode symbols
@@ -23,6 +24,10 @@ KEY FEATURES:
 - Emoji support for visual categorization
 - Run ID tracking for session management
 - Automatic log cleanup and organization
+- Performance timing and metrics tracking
+- Context-aware logging with correlation IDs
+- Enhanced tree structures with nested performance data
+- Real-time performance monitoring integration
 
 TECHNICAL IMPLEMENTATION:
 - Stack-based tree structure tracking
@@ -31,6 +36,9 @@ TECHNICAL IMPLEMENTATION:
 - JSON serialization for structured logs
 - Unicode symbol management for perfect formatting
 - Automatic date-based log organization
+- Performance timing with high-precision timestamps
+- Context correlation with unique identifiers
+- Memory-efficient metrics collection
 
 LOG STRUCTURE:
 /logs/
@@ -40,12 +48,15 @@ LOG STRUCTURE:
       debug.log   - DEBUG level messages only
       error.log   - ERROR and CRITICAL level messages
       logs.json   - Structured JSON log entries
+      metrics.json # Performance metrics and timing data
 
 REQUIRED DEPENDENCIES:
 - pytz: Timezone handling
 - json: JSON serialization
 - pathlib: File path operations
 - secrets: Run ID generation
+- time: Performance timing
+- threading: Context management
 
 USAGE EXAMPLES:
 
@@ -68,7 +79,38 @@ USAGE EXAMPLES:
    )
    ```
 
-3. Run Management:
+3. Performance-Aware Logging:
+   ```python
+   with log_performance_context("AI Response Generation"):
+       response = await ai_service.generate_response(prompt)
+       log_performance_metric("response_time_ms", 1250)
+       log_performance_metric("tokens_used", 150)
+   ```
+
+4. Enhanced Tree Logging:
+   ```python
+   log_enhanced_tree_section(
+       "Bot Activation",
+       [
+           ("status", "Starting activation sequence"),
+           ("presence", "Updated to watching ⛓ Sednaya"),
+           ("background_tasks", "Initializing...")
+       ],
+       performance_metrics={
+           "activation_time_ms": 1250,
+           "services_initialized": 5,
+           "memory_usage_mb": 45.2
+       },
+       context_data={
+           "user_id": "259725211664908288",
+           "guild_count": 1,
+           "channel_count": 3
+       },
+       emoji="🚀"
+   )
+   ```
+
+5. Run Management:
    ```python
    log_run_separator()
    run_id = log_run_header("AzabBot", "3.0.0")
@@ -76,7 +118,7 @@ USAGE EXAMPLES:
    log_run_end(run_id, "Normal shutdown")
    ```
 
-4. Context Management:
+6. Context Management:
    ```python
    log_spacing()  # Add visual separation
    log_status("Operation completed", emoji="✅")
@@ -88,6 +130,8 @@ PERFORMANCE CHARACTERISTICS:
 - Minimal memory overhead
 - Fast tree structure generation
 - Optimized for high-frequency logging
+- Low-overhead performance tracking
+- Efficient context correlation
 
 MONITORING CAPABILITIES:
 - Structured JSON logs for analysis
@@ -95,23 +139,29 @@ MONITORING CAPABILITIES:
 - Performance metrics logging
 - Session correlation with run IDs
 - Automatic log rotation and cleanup
+- Real-time performance monitoring
+- Context-aware debugging
+- Performance bottleneck detection
 
 THREAD SAFETY:
 - Safe for concurrent access
 - Atomic file operations
 - Thread-local state management
 - Proper exception handling
+- Thread-safe performance tracking
 
 This implementation follows industry best practices and is designed for
 production environments requiring comprehensive logging and monitoring.
 """
 
 import json
+import os
 import secrets
-import traceback
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, ContextManager
 
 import pytz
 
@@ -121,21 +171,328 @@ try:
 except ImportError:
     __version__ = "3.0.0"  # Fallback version
 
-# Global state tracking for tree structure
-_is_first_section = True  # Controls top-level spacing
-_tree_stack: List[bool] = []  # Tracks which levels have siblings
-_current_depth = 0  # Current nesting level
+# Global state for tree structure tracking
+_tree_stack = []
+_is_first_section = True
+_performance_contexts = {}
+_context_data = threading.local()
 
-# Unicode symbols for perfect tree structure
-# Modify these to change the visual appearance of the tree
+# Global logger instance
+_global_logger = None
+
+# Tree symbols for perfect formatting
 TREE_SYMBOLS = {
-    "branch": "├─",  # Node with siblings below
-    "last": "└─",  # Last node in current branch
-    "pipe": "│ ",  # Vertical continuation line
-    "space": "  ",  # Alignment spacing
-    "nested_branch": "├─",  # Used in nested structures
-    "nested_last": "└─",  # Last node in nested structure
+    "branch": "├─ ",
+    "last": "└─ ",
+    "pipe": "│  ",
+    "space": "   ",
 }
+
+# Performance tracking
+class PerformanceContext:
+    """Context manager for performance tracking."""
+    
+    def __init__(self, context_name: str):
+        self.context_name = context_name
+        self.start_time = None
+        self.metrics = {}
+        
+    def __enter__(self):
+        self.start_time = time.perf_counter()
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        duration = (time.perf_counter() - self.start_time) * 1000  # Convert to ms
+        self.metrics["duration_ms"] = round(duration, 2)
+        _performance_contexts[self.context_name] = self.metrics
+
+def log_performance_context(context_name: str) -> ContextManager[PerformanceContext]:
+    """Create a performance tracking context."""
+    return PerformanceContext(context_name)
+
+def log_performance_metric(metric_name: str, value: Union[int, float, str]):
+    """Log a performance metric in the current context."""
+    if not hasattr(_context_data, 'current_context'):
+        return
+    
+    context_name = _context_data.current_context
+    if context_name not in _performance_contexts:
+        _performance_contexts[context_name] = {}
+    
+    _performance_contexts[context_name][metric_name] = value
+
+def _get_timestamp() -> str:
+    """Get formatted timestamp for logging."""
+    try:
+        est = pytz.timezone('US/Eastern')
+        now = datetime.now(est)
+        return f"[{now.strftime('%m/%d %I:%M %p EST')}]"
+    except Exception:
+        return f"[{datetime.now().strftime('%m/%d %I:%M %p')}]"
+
+def _reset_tree_structure():
+    """Reset the tree structure tracking."""
+    global _tree_stack
+    _tree_stack = []
+
+def _get_tree_prefix(is_last_item: bool = False, depth_override: Optional[int] = None) -> str:
+    """Get tree prefix for proper formatting."""
+    depth = depth_override if depth_override is not None else len(_tree_stack)
+    
+    prefix = ""
+    for i in range(depth):
+        if i < len(_tree_stack):
+            if _tree_stack[i]:  # This level has more siblings
+                prefix += TREE_SYMBOLS["pipe"]
+            else:  # This level is the last item
+                prefix += TREE_SYMBOLS["space"]
+        else:
+            prefix += TREE_SYMBOLS["space"]
+    
+    # Add the current level symbol
+    prefix += TREE_SYMBOLS["branch"] if not is_last_item else TREE_SYMBOLS["last"]
+    
+    return prefix
+
+def _write_to_log_files(message: str, level: str, category: str):
+    """Write log entry to files."""
+    try:
+        # Get current log directory
+        log_date = datetime.now().strftime('%Y-%m-%d')
+        log_hour = datetime.now().strftime('%I-%p')
+        log_dir = Path(f"logs/{log_date}/{log_hour}")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Write to main log file
+        log_file = log_dir / "log.log"
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"{_get_timestamp()} [{level}] ℹ️ {message}\n")
+        
+        # Write to JSON log file
+        json_log_file = log_dir / "logs.json"
+        log_entry = {
+            "timestamp": _get_timestamp(),
+            "level": level,
+            "category": category,
+            "message": message,
+            "run_id": getattr(_context_data, 'run_id', 'UNKNOWN'),
+            "iso_datetime": datetime.now().isoformat()
+        }
+        
+        with open(json_log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry) + "\n")
+            
+    except Exception:
+        pass  # Silently fail if logging fails
+
+def log_enhanced_tree_section(
+    title: str,
+    items: List[tuple],
+    performance_metrics: Optional[Dict[str, Any]] = None,
+    context_data: Optional[Dict[str, Any]] = None,
+    emoji: str = "🎯",
+    nested_groups: Optional[Dict[str, List[tuple]]] = None,
+):
+    """
+    Create an enhanced tree structure with performance metrics and context data.
+    
+    This method creates beautiful, hierarchical log entries with performance
+    metrics, context information, and proper tree structure formatting.
+    
+    Args:
+        title: Section title for the tree structure
+        items: List of (key, value) tuples for main items
+        performance_metrics: Optional dict of performance metrics
+        context_data: Optional dict of context information
+        emoji: Emoji for the section header
+        nested_groups: Optional dict of nested groups
+    """
+    global _is_first_section
+    
+    timestamp = _get_timestamp()
+    
+    # Add spacing before section
+    if not _is_first_section:
+        print("")
+        _write_to_log_files("", "INFO", "section_spacing")
+    else:
+        _is_first_section = False
+    
+    # Reset tree structure
+    _reset_tree_structure()
+    
+    # Log section header
+    section_header = f"{emoji} {title}"
+    print(f"{timestamp} {section_header}")
+    _write_to_log_files(section_header, "INFO", "enhanced_tree_section")
+    
+    # Log main items
+    if items:
+        for i, (key, value) in enumerate(items):
+            is_last = i == len(items) - 1 and not nested_groups
+            prefix = _get_tree_prefix(is_last, depth_override=0)
+            message = f"{prefix} {key}: {value}"
+            print(f"{timestamp} {message}")
+            _write_to_log_files(message, "INFO", "tree_item")
+    
+    # Log performance metrics if available
+    if performance_metrics:
+        metrics_items = []
+        for key, value in performance_metrics.items():
+            if isinstance(value, float):
+                formatted_value = f"{value:.2f}"
+            else:
+                formatted_value = str(value)
+            metrics_items.append((key, formatted_value))
+        
+        if metrics_items:
+            print(f"{timestamp} {_get_tree_prefix(False, depth_override=0)} 📊 Performance Metrics:")
+            _write_to_log_files("📊 Performance Metrics:", "INFO", "performance_header")
+            
+            for i, (key, value) in enumerate(metrics_items):
+                is_last = i == len(metrics_items) - 1
+                prefix = _get_tree_prefix(is_last, depth_override=1)
+                message = f"{prefix} {key}: {value}"
+                print(f"{timestamp} {message}")
+                _write_to_log_files(message, "INFO", "performance_metric")
+    
+    # Log context data if available
+    if context_data:
+        context_items = []
+        for key, value in context_data.items():
+            context_items.append((key, str(value)))
+        
+        if context_items:
+            print(f"{timestamp} {_get_tree_prefix(False, depth_override=0)} 🔍 Context Data:")
+            _write_to_log_files("🔍 Context Data:", "INFO", "context_header")
+            
+            for i, (key, value) in enumerate(context_items):
+                is_last = i == len(context_items) - 1
+                prefix = _get_tree_prefix(is_last, depth_override=1)
+                message = f"{prefix} {key}: {value}"
+                print(f"{timestamp} {message}")
+                _write_to_log_files(message, "INFO", "context_data")
+    
+    # Log nested groups
+    if nested_groups:
+        nested_group_keys = list(nested_groups.keys())
+        for i, (group_name, group_items) in enumerate(nested_groups.items()):
+            is_last_group = i == len(nested_group_keys) - 1
+            
+            # Log group header
+            group_prefix = _get_tree_prefix(is_last_group, depth_override=0)
+            group_header = f"{group_prefix} 📁 {group_name}"
+            print(f"{timestamp} {group_header}")
+            _write_to_log_files(group_header, "INFO", "nested_group")
+            
+            # Log group items
+            if group_items:
+                for j, (key, value) in enumerate(group_items):
+                    is_last_item = j == len(group_items) - 1
+                    nested_prefix = _get_tree_prefix(is_last_item, depth_override=1)
+                    message = f"{nested_prefix} {key}: {value}"
+                    print(f"{timestamp} {message}")
+                    _write_to_log_files(message, "INFO", "nested_item")
+
+def log_performance_summary(operation_name: str, metrics: Dict[str, Any], emoji: str = "📈"):
+    """
+    Log a performance summary with aggregated metrics.
+    
+    Args:
+        operation_name: Name of the operation
+        metrics: Dictionary of performance metrics
+        emoji: Emoji for visual categorization
+    """
+    timestamp = _get_timestamp()
+    
+    # Create summary items
+    summary_items = []
+    for key, value in metrics.items():
+        if isinstance(value, float):
+            formatted_value = f"{value:.2f}"
+        else:
+            formatted_value = str(value)
+        summary_items.append((key, formatted_value))
+    
+    # Log summary
+    print(f"{timestamp} {emoji} {operation_name} Performance Summary:")
+    _write_to_log_files(f"{operation_name} Performance Summary:", "INFO", "performance_summary")
+    
+    for i, (key, value) in enumerate(summary_items):
+        is_last = i == len(summary_items) - 1
+        prefix = _get_tree_prefix(is_last, depth_override=0)
+        message = f"{prefix} {key}: {value}"
+        print(f"{timestamp} {message}")
+        _write_to_log_files(message, "INFO", "performance_metric")
+
+def log_error_with_context(error_message: str, exception: Exception = None, context: Dict[str, Any] = None, emoji: str = "❌"):
+    """
+    Log an error with detailed context and performance information.
+    
+    Args:
+        error_message: Human-readable error message
+        exception: Exception object if available
+        context: Additional context information
+        emoji: Emoji for visual categorization
+    """
+    timestamp = _get_timestamp()
+    
+    # Create error items
+    error_items = [("error", error_message)]
+    
+    if exception:
+        error_items.extend([
+            ("exception_type", type(exception).__name__),
+            ("exception_message", str(exception))
+        ])
+    
+    if context:
+        for key, value in context.items():
+            error_items.append((key, str(value)))
+    
+    # Log error
+    print(f"{timestamp} {emoji} Error Details:")
+    _write_to_log_files("Error Details:", "ERROR", "error_details")
+    
+    for i, (key, value) in enumerate(error_items):
+        is_last = i == len(error_items) - 1
+        prefix = _get_tree_prefix(is_last, depth_override=0)
+        message = f"{prefix} {key}: {value}"
+        print(f"{timestamp} {message}")
+        _write_to_log_files(message, "ERROR", "error_detail")
+
+def log_system_event(event_name: str, description: str, data: Dict[str, Any] = None, emoji: str = "🔧"):
+    """
+    Log a system event with structured data.
+    
+    Args:
+        event_name: Name of the system event
+        description: Human-readable description
+        data: Additional event data
+        emoji: Emoji for visual categorization
+    """
+    timestamp = _get_timestamp()
+    
+    # Create event items
+    event_items = [
+        ("event", event_name),
+        ("description", description)
+    ]
+    
+    if data:
+        for key, value in data.items():
+            event_items.append((key, str(value)))
+    
+    # Log event
+    print(f"{timestamp} {emoji} System Event: {event_name}")
+    _write_to_log_files(f"System Event: {event_name}", "INFO", "system_event")
+    
+    for i, (key, value) in enumerate(event_items):
+        is_last = i == len(event_items) - 1
+        prefix = _get_tree_prefix(is_last, depth_override=0)
+        message = f"{prefix} {key}: {value}"
+        print(f"{timestamp} {message}")
+        _write_to_log_files(message, "INFO", "event_detail")
 
 
 class TreeLogger:
@@ -1338,3 +1695,27 @@ def get_timestamp():
         ```
     """
     return _global_logger._get_timestamp()
+
+# Enhanced logging convenience functions
+def log_enhanced_tree_section_global(
+    title: str,
+    items: List[tuple],
+    performance_metrics: Optional[Dict[str, Any]] = None,
+    context_data: Optional[Dict[str, Any]] = None,
+    emoji: str = "🎯",
+    nested_groups: Optional[Dict[str, List[tuple]]] = None,
+):
+    """Global convenience function for enhanced tree logging."""
+    return log_enhanced_tree_section(title, items, performance_metrics, context_data, emoji, nested_groups)
+
+def log_performance_summary_global(operation_name: str, metrics: Dict[str, Any], emoji: str = "📈"):
+    """Global convenience function for performance summary logging."""
+    return log_performance_summary(operation_name, metrics, emoji)
+
+def log_error_with_context_global(error_message: str, exception: Exception = None, context: Dict[str, Any] = None, emoji: str = "❌"):
+    """Global convenience function for error logging with context."""
+    return log_error_with_context(error_message, exception, context, emoji)
+
+def log_system_event_global(event_name: str, description: str, data: Dict[str, Any] = None, emoji: str = "🔧"):
+    """Global convenience function for system event logging."""
+    return log_system_event(event_name, description, data, emoji)

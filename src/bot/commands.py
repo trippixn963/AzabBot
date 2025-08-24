@@ -90,7 +90,13 @@ def create_activate_command(bot):
             
             # Now activate the bot and do background tasks
             bot.is_active = True
-            bot.logger.log_info("✅ Bot activated by developer command")
+            
+            # Use enhanced tree logging for activation
+            from src.utils.tree_log import log_enhanced_tree_section_global as log_enhanced_tree_section, log_status
+            import time
+            
+            start_time = time.perf_counter()
+            log_status("Bot activated by developer command", emoji="✅")
             
             # Update bot presence to show active status
             activity = discord.Activity(
@@ -101,6 +107,8 @@ def create_activate_command(bot):
             # Start background tasks asynchronously
             import asyncio
             async def activate_tasks():
+                activation_start = time.perf_counter()
+                
                 # Scan for current prisoners if not already done
                 await bot._scan_for_prisoners()
                 
@@ -111,6 +119,39 @@ def create_activate_command(bot):
                 if bot.presence_rotation_task:
                     bot.presence_rotation_task.cancel()
                 bot.presence_rotation_task = bot.loop.create_task(bot._rotate_presence())
+                
+                # Calculate performance metrics
+                activation_time = (time.perf_counter() - activation_start) * 1000
+                
+                # Create enhanced tree log for activation sequence
+                activation_items = [
+                    ("status", "Starting activation sequence"),
+                    ("presence", "Updated to watching ⛓ Sednaya"),
+                    ("background_tasks", "Initializing...")
+                ]
+                
+                performance_metrics = {
+                    "activation_time_ms": round(activation_time, 2),
+                    "prisoners_found": len(bot.current_prisoners),
+                    "services_initialized": 3
+                }
+                
+                context_data = {
+                    "user_id": str(interaction.user.id),
+                    "guild_count": len(bot.guilds),
+                    "channel_count": sum(len(guild.channels) for guild in bot.guilds)
+                }
+                
+                log_enhanced_tree_section(
+                    "Bot Activation",
+                    activation_items,
+                    performance_metrics=performance_metrics,
+                    context_data=context_data,
+                    emoji="🚀"
+                )
+                
+                # Log completion
+                log_status("Activation sequence completed", emoji="✅")
             
             # Run activation tasks in background
             bot.loop.create_task(activate_tasks())
