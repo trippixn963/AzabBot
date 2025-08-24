@@ -3,7 +3,7 @@
 # Continuously syncs logs from VPS to local machine
 
 # Configuration
-REMOTE_HOST="root@159.89.90.90"
+REMOTE_HOST="root@5.161.220.19"
 REMOTE_PATH="/root/AzabBot/logs/"
 LOCAL_PATH="/Users/johnhamwi/Developer/AzabBot/logs/"
 SYNC_INTERVAL=30  # Sync every 30 seconds

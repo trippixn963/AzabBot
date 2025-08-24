@@ -8,12 +8,6 @@ Common utilities for creating Discord embeds with consistent styling.
 import discord
 from typing import Optional, List, Tuple
 from datetime import datetime
-import pytz
-
-def get_est_time() -> datetime:
-    """Get current time in EST timezone."""
-    est = pytz.timezone('US/Eastern')
-    return datetime.now(est)
 
 def create_error_embed(
     title: str = "❌ Error",
@@ -25,8 +19,7 @@ def create_error_embed(
     embed = discord.Embed(
         title=title,
         description=description,
-        color=0xFF0000,
-        timestamp=get_est_time()
+        color=0xFF0000
     )
     
     if thumbnail_url:
@@ -36,7 +29,11 @@ def create_error_embed(
         for name, value, inline in fields:
             embed.add_field(name=name, value=value, inline=inline)
     
-    embed.set_footer(text="Developed by حَـــــنَّـــــا")
+    # Add developer footer with profile picture
+    embed.set_footer(
+        text="Developed by حَـــــنَّـــــا",
+        icon_url="https://cdn.discordapp.com/avatars/259725211664908288/default.png"
+    )
     return embed
 
 def create_success_embed(
@@ -49,8 +46,7 @@ def create_success_embed(
     embed = discord.Embed(
         title=title,
         description=description,
-        color=0x00FF00,
-        timestamp=get_est_time()
+        color=0x00FF00
     )
     
     if thumbnail_url:
@@ -60,7 +56,11 @@ def create_success_embed(
         for name, value, inline in fields:
             embed.add_field(name=name, value=value, inline=inline)
     
-    embed.set_footer(text="Developed by حَـــــنَّـــــا")
+    # Add developer footer with profile picture
+    embed.set_footer(
+        text="Developed by حَـــــنَّـــــا",
+        icon_url="https://cdn.discordapp.com/avatars/259725211664908288/default.png"
+    )
     return embed
 
 def create_warning_embed(
@@ -73,8 +73,7 @@ def create_warning_embed(
     embed = discord.Embed(
         title=title,
         description=description,
-        color=0xFFFF00,
-        timestamp=get_est_time()
+        color=0xFFFF00
     )
     
     if thumbnail_url:
@@ -84,7 +83,11 @@ def create_warning_embed(
         for name, value, inline in fields:
             embed.add_field(name=name, value=value, inline=inline)
     
-    embed.set_footer(text="Developed by حَـــــنَّـــــا")
+    # Add developer footer with profile picture
+    embed.set_footer(
+        text="Developed by حَـــــنَّـــــا",
+        icon_url="https://cdn.discordapp.com/avatars/259725211664908288/default.png"
+    )
     return embed
 
 def create_info_embed(
@@ -98,8 +101,7 @@ def create_info_embed(
     embed = discord.Embed(
         title=title,
         description=description,
-        color=color,
-        timestamp=get_est_time()
+        color=color
     )
     
     if thumbnail_url:
@@ -109,5 +111,9 @@ def create_info_embed(
         for name, value, inline in fields:
             embed.add_field(name=name, value=value, inline=inline)
     
-    embed.set_footer(text="Developed by حَـــــنَّـــــا")
+    # Add developer footer with profile picture
+    embed.set_footer(
+        text="Developed by حَـــــنَّـــــا",
+        icon_url="https://cdn.discordapp.com/avatars/259725211664908288/default.png"
+    )
     return embed

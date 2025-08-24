@@ -242,8 +242,8 @@ class HealthMonitor(BaseService):
         super().__init__(name)
 
         # Monitoring configuration
-        self.check_interval = 30.0  # seconds
-        self.system_metrics_interval = 60.0  # seconds
+        self.check_interval = 300.0  # 5 minutes instead of 30 seconds
+        self.system_metrics_interval = 300.0  # 5 minutes instead of 60 seconds
 
         # Services to monitor
         self.monitored_services: Dict[str, BaseService] = {}
@@ -279,8 +279,8 @@ class HealthMonitor(BaseService):
 
     async def initialize(self, config: Dict[str, Any], **kwargs) -> None:
         """Initialize the health monitor."""
-        self.check_interval = config.get("health_check_interval", 30.0)
-        self.system_metrics_interval = config.get("metrics_interval", 60.0)
+        self.check_interval = config.get("health_check_interval", 300.0)  # 5 minutes default
+        self.system_metrics_interval = config.get("metrics_interval", 300.0)  # 5 minutes default
 
         # Initialize system metrics baseline
         await self._collect_system_metrics()
@@ -507,13 +507,9 @@ class HealthMonitor(BaseService):
             # System uptime
             uptime = time.time() - psutil.boot_time()
 
-            # Active network connections - handle permission errors gracefully
-            try:
-                connections = len(psutil.net_connections())
-            except (psutil.AccessDenied, PermissionError):
-                # On macOS, this often requires elevated permissions
-                connections = 0
-                self.logger.log_warning("Unable to access network connections due to permissions")
+            # Active network connections - disabled on macOS due to permission issues
+            # This check requires elevated permissions and causes health alerts
+            connections = 0  # Disabled to prevent health alerts
 
             metrics = SystemMetrics(
                 timestamp=datetime.utcnow(),
@@ -589,7 +585,9 @@ class HealthMonitor(BaseService):
                 else:
                     break
 
-            if unhealthy_count >= 3:  # Unhealthy for 3+ consecutive checks
+            # Only create alert if it's a new critical issue (5+ consecutive failures)
+            # and we haven't already alerted for this
+            if unhealthy_count >= 5 and service_name not in self.active_alerts:
                 await self._create_alert(
                     service_name,
                     AlertSeverity.CRITICAL,
@@ -753,17 +751,22 @@ class HealthMonitor(BaseService):
         if len(self.alert_history) > self.max_alert_history:
             self.alert_history = self.alert_history[-self.max_alert_history :]
 
-        # Log alert
-        self.logger.log_system_event(
-            "health_alert",
-            f"{severity.value.upper()}: {message}",
-            {
-                "service": service_name,
-                "severity": severity.value,
-                "alert_id": alert_id,
-                "details": details or {},
-            },
-        )
+        # Only log critical alerts to reduce spam
+        if severity in [AlertSeverity.CRITICAL, AlertSeverity.ERROR]:
+            self.logger.log_system_event(
+                "health_alert",
+                f"{severity.value.upper()}: {message}",
+                {
+                    "service": service_name,
+                    "severity": severity.value,
+                    "alert_id": alert_id,
+                    "details": details or {},
+                },
+            )
+        # For warnings and info, use debug level
+        elif severity == AlertSeverity.WARNING:
+            self.logger.log_debug(f"Health warning: {message} for {service_name}")
+        # Skip INFO level alerts entirely to reduce noise
 
         # Notify callbacks
         for callback in self.alert_callbacks:

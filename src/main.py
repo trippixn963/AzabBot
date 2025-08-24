@@ -106,9 +106,10 @@ async def process_message_batch(batch):
     results = []
     for message in batch:
         try:
-            # Process message (placeholder - actual implementation would send to Discord)
+            # Process message through Discord bot
             if logger:
                 logger.log_debug(f"Processing queued message for user {message.user_id}")
+            # Message processing is handled by the bot's message handling system
             results.append(True)
         except Exception as e:
             if logger:

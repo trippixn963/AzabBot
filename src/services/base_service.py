@@ -299,7 +299,7 @@ class BaseService(ABC):
         # Metrics and monitoring setup
         self.metrics = ServiceMetrics(name=name, status=self.status)
         self._start_time: Optional[datetime] = None
-        self._health_check_interval = 60.0  # seconds
+        self._health_check_interval = 300.0  # 5 minutes to reduce log spam
         self._health_check_task: Optional[asyncio.Task] = None
 
         # Error tracking

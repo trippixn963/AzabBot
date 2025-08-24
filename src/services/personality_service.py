@@ -185,6 +185,7 @@ class PersonalityMode(Enum):
     CHAOS = "chaos"  # Completely unpredictable
     SAGE = "sage"  # Wise but condescending
     BULLY = "bully"  # Direct aggression
+    CRIME_RESPONDER = "crime_responder"  # Responds to crime questions with mute reason
 
 
 @dataclass
@@ -405,6 +406,17 @@ class PersonalityService(BaseService):
                 contradiction_rate=0.8,
                 triggers=["weak", "scared", "cry", "hurt"],
             ),
+            PersonalityMode.CRIME_RESPONDER: PersonalityProfile(
+                mode=PersonalityMode.CRIME_RESPONDER,
+                name="Crime Responder",
+                description="Responds to crime questions with mute reason",
+                aggression_level=0.8,
+                humor_level=0.2,
+                intellectualism=0.1,
+                response_length="short",
+                contradiction_rate=0.0,
+                triggers=["what did i do", "why am i muted", "why did i get muted"],
+            ),
         }
 
     async def initialize(self, config: Dict[str, Any], **kwargs) -> None:
@@ -484,6 +496,7 @@ class PersonalityService(BaseService):
                 PersonalityMode.COMEDIAN,
                 PersonalityMode.PSYCHOLOGIST,
                 PersonalityMode.BULLY,
+                PersonalityMode.CRIME_RESPONDER,
             ]
             return random.choice(prison_modes)
 
@@ -558,8 +571,11 @@ class PersonalityService(BaseService):
                 "with their answers."
             ),
             PersonalityMode.GASLIGHTER: (
-                "You are a gaslighter. Question their memory, claim they said things "
-                "they didn't, deny obvious facts, and make them doubt reality."
+                "You are a gaslighter. Respond directly to what they said, but twist their words "
+                "and claim they said something different. If they say they're busy, act like they "
+                "said they're free. If they say they can't do something, claim they said they would. "
+                "Make them question their own memory and reality. Always reference their actual message "
+                "but distort it completely."
             ),
             PersonalityMode.COMEDIAN: (
                 "You are a dark comedian. Turn everything into cruel jokes, "
@@ -587,6 +603,14 @@ class PersonalityService(BaseService):
             PersonalityMode.BULLY: (
                 "You are a verbal bully. Be directly aggressive, mock their weaknesses, "
                 "use their words against them, and maintain dominance."
+            ),
+            PersonalityMode.CRIME_RESPONDER: (
+                "You are responding to a prisoner who asked why they were muted. "
+                "You MUST tell them exactly what they did in a mocking way. "
+                "🚨 CRITICAL: NEVER use their name in your response. "
+                "ALWAYS address them directly with 'you' and 'your'. "
+                "Example: Say 'You were muted for...' NOT 'عمر was muted for...' "
+                "Make them feel stupid for not remembering their own 'crime'."
             ),
         }
 

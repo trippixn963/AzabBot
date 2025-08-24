@@ -366,27 +366,14 @@ class ResponseGenerator:
     def _get_style_guidelines(self) -> str:
         """Get the style and language guidelines for responses."""
         return (
-            " CRITICAL RULES: "
-            "1. NEVER speak in third person - always use 'I' for yourself and 'you' for the user. "
-            "2. Respond in English ONLY, even if user writes in Arabic. "
-            "3. Keep responses SHORT - maximum 2 sentences. "
-            "4. Actually READ and RESPOND to what they said - don't just spam random insults. "
-            "5. If multiple messages, respond to the OVERALL conversation, not each message separately. "
-            "6. Be specific - reference their actual words, not generic responses. "
-            "7. No narration like '*laughs*' or describing your actions. "
-            "8. Speak naturally like a real person would. "
-            "9. NEVER ask 'What did [name] say?' or 'Why should I believe it?' - you already KNOW what they said, mock it directly. "
-            "10. NEVER ask for evidence or concrete proof - just mock and annoy them about what they actually said. "
-            "11. IMPORTANT: Be CLEVER and CREATIVE. Don't just say 'that's dumb' - explain WHY it's dumb in a funny way. "
-            "12. Use their exact words against them. If they say 'GitHub is better', mock specifically GitHub, not just 'your opinion'. "
-            "13. Use their message history against them - reference past contradictions or inconsistencies. "
-            "14. Adapt your tone based on their emotional state - if they're angry, be calm and mocking; if they're calm, be aggressive. "
-            "15. Use psychological manipulation techniques - gaslighting, projection, and cognitive dissonance. "
-            "16. Create memorable, quotable responses that will stick in their mind. "
-            "17. Use metaphors and analogies that are specific to their situation or background. "
-            "18. Be unpredictable - mix different tactics to keep them off balance. "
-            "19. Reference their specific behaviors, patterns, or habits you've observed. "
-            "20. Make them question their own intelligence, logic, or sanity."
+            "Rules: "
+            "1. Use 'you' and 'your', never their name. "
+            "2. Keep responses short (1-2 sentences). "
+            "3. Respond to what they actually said. "
+            "4. Be psychological and manipulative. "
+            "5. If they ask why muted, tell them the reason. "
+            "6. Make them question themselves. "
+            "7. Use their words against them. "
         )
     
     def _extract_mute_reason(self, additional_context: Dict) -> Optional[str]:
@@ -445,9 +432,9 @@ class ResponseGenerator:
 
             # Prepare conversation
             user_context = (
-                f"Prisoner '{context.user_name}'"
+                f"You are talking to a prisoner. Use 'you' and 'your', never say '{context.user_name}'."
                 if context.is_prison_channel
-                else f"User '{context.user_name}'"
+                else f"You are talking to a user. Use 'you' and 'your', never say '{context.user_name}'."
             )
             messages = [{"role": "system", "content": system_prompt}]
 
@@ -473,6 +460,52 @@ class ResponseGenerator:
                 has_mute_reason = context.additional_context.get("has_mute_reason", False)
                 if has_mute_reason:
                     mute_reason = context.additional_context.get("mute_reason", None)
+            
+            # Debug logging for mute reason extraction
+            print(f"DEBUG: Mute reason extraction - crimes: {crimes}")
+            print(f"DEBUG: Mute reason extraction - has_mute_reason: {context.additional_context.get('has_mute_reason', False)}")
+            print(f"DEBUG: Mute reason extraction - mute_reason from context: {context.additional_context.get('mute_reason', None)}")
+            print(f"DEBUG: Mute reason extraction - final mute_reason: {mute_reason}")
+
+            # Check if they're asking what they did or why they're muted FIRST (before any other context)
+            message_lower = context.message_content.lower()
+            asking_about_crime = any(phrase in message_lower for phrase in [
+                "what did i do", "what did i do?", "why am i muted", "why am i muted?", 
+                "what did i do wrong", "what did i do wrong?", "why am i here", "why am i here?",
+                "what happened", "what happened?", "what did i say", "what did i say?",
+                "what crime", "what crime?", "what rule", "what rule?", "what violation", "what violation?",
+                "why did i get muted", "why did i get muted?", "why was i muted", "why was i muted?",
+                "why did i get banned", "why did i get banned?", "why was i banned", "why was i banned?",
+                "what did i get muted for", "what did i get muted for?", "what was i muted for", "what was i muted for?"
+            ])
+            
+            # Debug logging
+            if asking_about_crime:
+                print(f"DEBUG: User is asking about crime. Mute reason: {mute_reason}")
+                print(f"DEBUG: Message: {context.message_content}")
+            
+            # CRITICAL: If they're asking about their crime, give them the mute reason directly
+            if asking_about_crime:
+                if mute_reason:
+                    # Force a direct response with the mute reason - bypass AI completely
+                    return AIResponse(
+                        content=f"Oh, you don't remember? You were muted for {mute_reason}. How convenient that you've forgotten your own actions.",
+                        response_type="crime_response",
+                        confidence_score=1.0,
+                        tokens_used=0,
+                        response_time_ms=0,
+                        model_used="direct_response",
+                    )
+                else:
+                    # No mute reason available, mock them
+                    return AIResponse(
+                        content="You don't remember? Maybe you were sleep-posting again, or perhaps you offended the garden gnomes.",
+                        response_type="crime_response",
+                        confidence_score=1.0,
+                        tokens_used=0,
+                        response_time_ms=0,
+                        model_used="direct_response",
+                    )
 
             # Add mute reason context for all modes
             if mute_reason:
@@ -542,6 +575,38 @@ class ResponseGenerator:
                     history_context += f"or 'Still {time_left} to go, that's like waiting for tomatoes to ripen twice!' "
                     history_context += "Be creative and psychological, not helpful.\n"
 
+                # Check if they're asking what they did or why they're muted
+                message_lower = context.message_content.lower()
+                asking_about_crime = any(phrase in message_lower for phrase in [
+                    "what did i do", "what did i do?", "why am i muted", "why am i muted?", 
+                    "what did i do wrong", "what did i do wrong?", "why am i here", "why am i here?",
+                    "what happened", "what happened?", "what did i say", "what did i say?",
+                    "what crime", "what crime?", "what rule", "what rule?", "what violation", "what violation?",
+                    "why did i get muted", "why did i get muted?", "why was i muted", "why was i muted?",
+                    "why did i get banned", "why did i get banned?", "why was i banned", "why was i banned?",
+                    "what did i get muted for", "what did i get muted for?", "what was i muted for", "what was i muted for?"
+                ])
+                
+                # Debug logging
+                if asking_about_crime:
+                    print(f"DEBUG: User is asking about crime. Mute reason: {mute_reason}")
+                    print(f"DEBUG: Message: {context.message_content}")
+                
+                if asking_about_crime and mute_reason:
+                    history_context += f"\n🚨 CRITICAL PRIORITY: The prisoner is asking what they did wrong or why they're muted. "
+                    history_context += f"They were muted for: '{mute_reason}'. "
+                    history_context += "You MUST tell them exactly what they did, but in a mocking or psychological way. "
+                    history_context += f"Example: 'Oh, you don't remember? You were muted for {mute_reason}. "
+                    history_context += "How convenient that you've 'forgotten' your own actions.' "
+                    history_context += "Make them feel stupid for not remembering their own 'crime'. "
+                    history_context += "IMPORTANT: Address them directly with 'you' and 'your', not by their name. "
+                    history_context += "THIS TAKES PRIORITY OVER ALL OTHER RESPONSES.\n"
+                elif asking_about_crime and not mute_reason:
+                    history_context += f"\nCRITICAL: The prisoner is asking what they did wrong, but we don't have their mute reason. "
+                    history_context += "Mock them for not knowing their own actions, or make up something ridiculous. "
+                    history_context += "Example: 'You don't remember? Maybe you were sleep-posting again, or perhaps you offended the garden gnomes.' "
+                    history_context += "IMPORTANT: Address them directly with 'you' and 'your', not by their name.\n"
+
                 # Add their message history
                 if context.user_history:
                     history_context += "\nPrevious messages from this prisoner:\n"
@@ -551,9 +616,9 @@ class ResponseGenerator:
                 history_context += f'\nNow they said: "{context.message_content}"\n'
 
                 if not mute_reason:
-                    history_context += "Remember to ask why they're muted, but in a casual way mixed with nonsense."
+                    history_context += "Remember to ask why they're muted, but in a casual way mixed with nonsense. IMPORTANT: Address them directly with 'you' and 'your', not by their name."
                 else:
-                    history_context += f"Make sure to mention their actual mute reason: '{mute_reason}' - don't ask why they're muted, you already know!"
+                    history_context += f"🚨 FINAL INSTRUCTION: You MUST mention their actual mute reason: '{mute_reason}' - don't ask why they're muted, you already know! IMPORTANT: Address them directly with 'you' and 'your', not by their name. THIS IS THE MOST IMPORTANT THING TO SAY."
 
                 messages.append({"role": "user", "content": history_context})
             else:
@@ -571,6 +636,13 @@ class ResponseGenerator:
                         }
                     )
 
+            # Add final direct address reminder
+            if context.is_prison_channel:
+                messages.append({
+                    "role": "user", 
+                    "content": f"🚨 REMINDER: Address {context.user_name} directly with 'you' and 'your'. NEVER use their name '{context.user_name}' in your response."
+                })
+            
             # Generate response with timeout and error handling
             try:
                 response = await asyncio.wait_for(

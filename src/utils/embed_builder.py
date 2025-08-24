@@ -166,7 +166,7 @@ class EmbedBuilder:
 
     # Developer information for consistent footer branding
     DEVELOPER_NAME = "حَـــــنَّـــــا"  # Arabic developer name for authenticity
-    DEVELOPER_ICON = "https://cdn.discordapp.com/embed/avatars/0.png"  # Default avatar fallback
+    DEVELOPER_ICON = "https://cdn.discordapp.com/embed/avatars/0.png"  # Developer avatar (default)
 
     @classmethod
     def create_base_embed(

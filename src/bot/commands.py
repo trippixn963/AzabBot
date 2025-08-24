@@ -22,7 +22,7 @@ import pytz
 
 from src import __version__
 from src.utils.embed_builder import EmbedBuilder
-from src.utils.time_utils import get_est_time
+
 
 
 def create_activate_command(bot):
@@ -63,7 +63,7 @@ def create_activate_command(bot):
                     title="❌ Permission Denied",
                     description="Only authorized users can use this command.",
                     color=0xFF0000,
-                    timestamp=get_est_time()
+                    
                 )
                 if bot.user and bot.user.avatar:
                     embed.set_thumbnail(url=bot.user.avatar.url)
@@ -75,14 +75,17 @@ def create_activate_command(bot):
                 title="✅ Bot Activated",
                 description="AzabBot is now active and will respond to prisoners!",
                 color=0x00FF00,
-                timestamp=discord.utils.utcnow()
+                
             )
             if bot.user and bot.user.avatar:
                 embed.set_thumbnail(url=bot.user.avatar.url)
             embed.add_field(name="Status", value="🟢 Active", inline=True)
             embed.add_field(name="Responses", value="💬 Enabled", inline=True)
             embed.add_field(name="Prisoners", value=f"{len(bot.current_prisoners)}", inline=True)
-            embed.set_footer(text="Developed by حَـــــنَّـــــا")
+            embed.set_footer(
+                text="Developed by حَـــــنَّـــــا",
+                icon_url="https://cdn.discordapp.com/avatars/259725211664908288/default.png"
+            )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             
             # Now activate the bot and do background tasks
@@ -117,8 +120,7 @@ def create_activate_command(bot):
             embed = discord.Embed(
                 title="❌ Activation Failed",
                 description=f"An error occurred: {str(e)}",
-                color=0xFF0000,
-                timestamp=discord.utils.utcnow()
+                color=0xFF0000
             )
             if not interaction.response.is_done():
                 await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -166,7 +168,7 @@ def create_deactivate_command(bot):
                     title="❌ Permission Denied",
                     description="Only authorized users can use this command.",
                     color=0xFF0000,
-                    timestamp=get_est_time()
+                    
                 )
                 if bot.user and bot.user.avatar:
                     embed.set_thumbnail(url=bot.user.avatar.url)
@@ -193,14 +195,17 @@ def create_deactivate_command(bot):
                 title="🔴 Bot Deactivated",
                 description="AzabBot is now inactive. Still learning but not responding.",
                 color=0xFF0000,
-                timestamp=discord.utils.utcnow()
+                
             )
             if bot.user and bot.user.avatar:
                 embed.set_thumbnail(url=bot.user.avatar.url)
             embed.add_field(name="Status", value="⭕ Inactive", inline=True)
             embed.add_field(name="Responses", value="🔇 Disabled", inline=True)
             embed.add_field(name="Commands", value="✅ Still Available", inline=True)
-            embed.set_footer(text="Developed by حَـــــنَّـــــا")
+            embed.set_footer(
+                text="Developed by حَـــــنَّـــــا",
+                icon_url="https://cdn.discordapp.com/avatars/259725211664908288/default.png"
+            )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             
         except Exception as e:
@@ -208,8 +213,7 @@ def create_deactivate_command(bot):
             embed = discord.Embed(
                 title="❌ Deactivation Failed",
                 description=f"An error occurred: {str(e)}",
-                color=0xFF0000,
-                timestamp=discord.utils.utcnow()
+                color=0xFF0000
             )
             if not interaction.response.is_done():
                 await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -332,7 +336,7 @@ def create_ignore_command(bot):
                     title="❌ Permission Denied",
                     description="Only authorized users can manage the ignore list.",
                     color=0xFF0000,
-                    timestamp=get_est_time()
+                    
                 )
                 if bot.user and bot.user.avatar:
                     embed.set_thumbnail(url=bot.user.avatar.url)
@@ -350,7 +354,7 @@ def create_ignore_command(bot):
                         title="❌ Missing User ID",
                         description="Please provide a user ID to add to the ignore list.",
                         color=0xFF0000,
-                        timestamp=get_est_time()
+                        
                     )
                     if bot.user and bot.user.avatar:
                         embed.set_thumbnail(url=bot.user.avatar.url)
@@ -371,13 +375,15 @@ def create_ignore_command(bot):
                     embed = discord.Embed(
                         title="✅ User Added to Ignore List",
                         description=f"**{username}** (`{user_id}`) has been added to the ignore list.\nThe bot will no longer respond to messages from this user.",
-                        color=0x00FF00,
-                        timestamp=get_est_time()
+                        color=0x00FF00
                     )
                     if bot.user and bot.user.avatar:
                         embed.set_thumbnail(url=bot.user.avatar.url)
                     embed.add_field(name="Total Ignored", value=f"{len(bot.ignored_users)}", inline=True)
-                    embed.set_footer(text="Developed by حَـــــنَّـــــا")
+                    embed.set_footer(
+                        text="Developed by حَـــــنَّـــــا",
+                        icon_url="https://cdn.discordapp.com/avatars/259725211664908288/default.png"
+                    )
                     await interaction.response.send_message(embed=embed, ephemeral=True)
                     
                     bot.logger.log_info(f"User {username} ({user_id}) added to ignore list")
@@ -387,7 +393,7 @@ def create_ignore_command(bot):
                         title="❌ Invalid User ID",
                         description="Please provide a valid numeric user ID.",
                         color=0xFF0000,
-                        timestamp=get_est_time()
+                        
                     )
                     if bot.user and bot.user.avatar:
                         embed.set_thumbnail(url=bot.user.avatar.url)
@@ -400,7 +406,7 @@ def create_ignore_command(bot):
                         title="❌ Missing User ID",
                         description="Please provide a user ID to remove from the ignore list.",
                         color=0xFF0000,
-                        timestamp=get_est_time()
+                        
                     )
                     if bot.user and bot.user.avatar:
                         embed.set_thumbnail(url=bot.user.avatar.url)
@@ -423,12 +429,12 @@ def create_ignore_command(bot):
                             title="✅ User Removed from Ignore List",
                             description=f"**{username}** (`{user_id}`) has been removed from the ignore list.\nThe bot will now respond to messages from this user.",
                             color=0x00FF00,
-                            timestamp=get_est_time()
+                            
                         )
                         if bot.user and bot.user.avatar:
                             embed.set_thumbnail(url=bot.user.avatar.url)
                         embed.add_field(name="Total Ignored", value=f"{len(bot.ignored_users)}", inline=True)
-                        embed.set_footer(text="Developed by حَـــــنَّـــــا")
+                        embed.set_footer(text="Developed by حَـــــنَّـــــا", icon_url="https://cdn.discordapp.com/avatars/259725211664908288/default.png")
                         await interaction.response.send_message(embed=embed, ephemeral=True)
                         
                         bot.logger.log_info(f"User {username} ({user_id}) removed from ignore list")
@@ -437,7 +443,7 @@ def create_ignore_command(bot):
                             title="ℹ️ User Not in Ignore List",
                             description=f"User ID `{user_id}` is not currently in the ignore list.",
                             color=0xFFA500,
-                            timestamp=get_est_time()
+                            
                         )
                         if bot.user and bot.user.avatar:
                             embed.set_thumbnail(url=bot.user.avatar.url)
@@ -448,7 +454,7 @@ def create_ignore_command(bot):
                         title="❌ Invalid User ID",
                         description="Please provide a valid numeric user ID.",
                         color=0xFF0000,
-                        timestamp=get_est_time()
+                        
                     )
                     if bot.user and bot.user.avatar:
                         embed.set_thumbnail(url=bot.user.avatar.url)
@@ -461,7 +467,7 @@ def create_ignore_command(bot):
                         title="📋 Ignore List",
                         description="No users are currently in the ignore list.",
                         color=0x00FF00,
-                        timestamp=get_est_time()
+                        
                     )
                     if bot.user and bot.user.avatar:
                         embed.set_thumbnail(url=bot.user.avatar.url)
@@ -482,12 +488,12 @@ def create_ignore_command(bot):
                     title="📋 Ignore List",
                     description="Users currently in the ignore list:\n\n" + "\n".join(ignored_list),
                     color=0x00FF00,
-                    timestamp=get_est_time()
+                    
                 )
                 if bot.user and bot.user.avatar:
                     embed.set_thumbnail(url=bot.user.avatar.url)
                 embed.add_field(name="Total Ignored", value=f"{len(bot.ignored_users)}", inline=True)
-                embed.set_footer(text="Developed by حَـــــنَّـــــا")
+                embed.set_footer(text="Developed by حَـــــنَّـــــا", icon_url="https://cdn.discordapp.com/avatars/259725211664908288/default.png")
                 await interaction.response.send_message(embed=embed, ephemeral=True)
         
         except Exception as e:
@@ -496,7 +502,7 @@ def create_ignore_command(bot):
                 title="❌ Command Failed",
                 description=f"An error occurred: {str(e)}",
                 color=0xFF0000,
-                timestamp=discord.utils.utcnow()
+                
             )
             if not interaction.response.is_done():
                 await interaction.response.send_message(embed=embed, ephemeral=True)

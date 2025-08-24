@@ -12,6 +12,8 @@
   [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
   [![OpenAI](https://img.shields.io/badge/OpenAI-GPT--3.5-412991?style=for-the-badge&logo=openai&logoColor=white)](https://openai.com/)
   [![Status](https://img.shields.io/badge/Status-Active-success?style=for-the-badge)](https://github.com/trippixn963/AzabBot)
+  [![Documentation](https://img.shields.io/badge/Documentation-Complete-brightgreen?style=for-the-badge)](https://github.com/trippixn963/AzabBot)
+  [![Tests](https://img.shields.io/badge/Tests-Comprehensive-brightgreen?style=for-the-badge)](https://github.com/trippixn963/AzabBot)
   
   *A psychological torture specialist for your Discord server's prison channels*
   
@@ -31,6 +33,9 @@
 - [Technical Architecture](#-technical-architecture)
 - [Personality Modes](#-personality-modes)
 - [Memory System](#-memory-system)
+- [Security Features](#-security-features)
+- [Performance Monitoring](#-performance-monitoring)
+- [Testing](#-testing)
 - [FAQ](#-faq)
 - [Disclaimer](#-disclaimer)
 
@@ -48,6 +53,7 @@ Originally created for the **Syria Discord Server** ([discord.gg/syria](https://
 - **Entertainment Value**: Turns timeouts into an interactive experience
 - **Memory System**: Remembers every prisoner and their history
 - **Adaptive AI**: Learns what annoys each user most
+- **Production Ready**: Comprehensive error handling, monitoring, and security
 
 ---
 
@@ -58,6 +64,7 @@ Originally created for the **Syria Discord Server** ([discord.gg/syria](https://
 - Tracks conversation history and behavior patterns
 - Identifies returning prisoners and mentions their visit count
 - Builds personality profiles for each user
+- Psychological profiling and grudge tracking
 
 ### 🎭 **13 Dynamic Personality Modes**
 - **Azab the Torturer**: Confused interrogator asking nonsensical questions
@@ -73,6 +80,7 @@ Originally created for the **Syria Discord Server** ([discord.gg/syria](https://
 - **Political Extremist**: Makes everything political
 - **Religious Debater**: Theological arguments
 - **Gaslighting Expert**: "That never happened"
+- **Crime Responder**: Responds with actual mute reasons
 
 ### 🔄 **Automatic Features**
 - **Auto-Detection**: Detects when users get muted/unmuted
@@ -80,18 +88,35 @@ Originally created for the **Syria Discord Server** ([discord.gg/syria](https://
 - **Release Notifications**: AI-generated sarcastic messages when unmuted
 - **Presence Rotation**: Shows "Playing with [prisoner name]"
 - **Always Online**: Green status dot, always watching
+- **Mute Reason Extraction**: Automatically retrieves and uses actual mute reasons
 
 ### 💬 **AI-Powered Responses**
 - Uses GPT-3.5 for human-like confusion
 - Context-aware responses based on conversation
 - Adapts personality based on user reactions
 - Generates unique content for each interaction
+- Direct address with "you" instead of third person
 
 ### 📊 **Advanced Analytics**
 - Tracks effectiveness of different approaches
 - Monitors user engagement patterns
 - Counts debates won/lost
 - Records ignored responses
+- Performance monitoring and optimization
+
+### 🔒 **Security Features**
+- Input validation and sanitization
+- Rate limiting and abuse prevention
+- Threat detection and blocking
+- Permission-based access control
+- Security event monitoring
+
+### ⚡ **Performance Monitoring**
+- Real-time performance metrics
+- Response time tracking
+- Resource utilization monitoring
+- Performance optimization recommendations
+- Automated alerting
 
 ---
 
@@ -102,230 +127,40 @@ Originally created for the **Syria Discord Server** ([discord.gg/syria](https://
 ```mermaid
 graph TD
     A[User Gets Muted] --> B[AzabBot Detects]
-    B --> C[Checks Memory Database]
-    C --> D{First Time?}
-    D -->|Yes| E[Welcome New Prisoner]
-    D -->|No| F[Mock Returning Prisoner]
-    E --> G[Start Harassment]
-    F --> G
-    G --> H[Analyze Responses]
-    H --> I[Adapt Personality]
-    I --> G
-    J[User Gets Unmuted] --> K[Generate AI Farewell]
-    K --> L[Post in General Chat]
+    B --> C[Extract Mute Reason]
+    C --> D[Select Personality]
+    D --> E[Generate Response]
+    E --> F[Send to Discord]
+    F --> G[Update Memory]
+    G --> H[Track Performance]
+    
+    I[User Asks "Why am I muted?"] --> J[Crime Detection]
+    J --> K[Return Mute Reason]
+    K --> L[Direct Response]
 ```
 
-### Core Logic
+### Core Components
 
-1. **Detection Phase**
-   - Monitors role changes for muted role
-   - Identifies prison channel by ID
-   - Checks user history in database
+1. **Bot Core**: Discord.py integration with event handling
+2. **AI Service**: OpenAI GPT-3.5 integration for response generation
+3. **Personality Service**: Dynamic personality selection and management
+4. **Memory Service**: User interaction tracking and history
+5. **Prison Service**: Prison-specific features and mute detection
+6. **Security System**: Input validation, rate limiting, threat detection
+7. **Performance Monitor**: Real-time metrics and optimization
+8. **Health Monitor**: System health and resource monitoring
 
-2. **Engagement Phase**
-   - Selects personality based on user profile
-   - Generates contextual responses
-   - Implements 10-second cooldown between messages
-   - Batches multiple messages for context
-
-3. **Memory Phase**
-   - Stores all conversations
-   - Updates personality profile
-   - Tracks effectiveness metrics
-   - Adjusts approach for next time
-
----
-
-## 🚀 Installation
-
-### Prerequisites
-
-- **Python 3.11+** installed
-- **Discord Bot** created with token
-- **OpenAI API Key** for GPT-3.5
-- **Discord Server** with admin permissions
-
-### Step-by-Step Setup
-
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/trippixn963/AzabBot.git
-   cd AzabBot
-   ```
-
-2. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Create Environment File**
-   ```bash
-   # Create .env file in root directory
-   touch .env
-   ```
-
-4. **Configure Environment Variables**
-   ```env
-   # Discord Configuration
-   DISCORD_TOKEN=your_discord_bot_token_here
-   DEVELOPER_ID=your_discord_user_id
-   
-   # OpenAI Configuration
-   OPENAI_API_KEY=your_openai_api_key_here
-   
-   # Prison Configuration
-   TARGET_ROLE_ID=muted_role_id_here
-   PRISON_CHANNEL_IDS=prison_channel_id_here
-   
-   # Optional Settings
-   RESPONSE_PROBABILITY=70
-   AI_MODEL=gpt-3.5-turbo
-   MAX_RESPONSE_LENGTH=150
-   ```
-
-5. **Run the Bot**
-   ```bash
-   python main.py
-   ```
-
----
-
-## ⚙️ Configuration
-
-### Required Settings
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DISCORD_TOKEN` | Your bot's Discord token | `MTk2Mzk2...` |
-| `OPENAI_API_KEY` | OpenAI API key for GPT-3.5 | `sk-proj-...` |
-| `DEVELOPER_ID` | Your Discord user ID for admin commands | `270904126974590976` |
-| `TARGET_ROLE_ID` | The muted/timeout role ID | `1402287996648030249` |
-| `PRISON_CHANNEL_IDS` | Channel ID where bot operates | `1402671536866984067` |
-
-### Optional Settings
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `RESPONSE_PROBABILITY` | Chance to respond (0-100) | `70` |
-| `AI_MODEL` | OpenAI model to use | `gpt-3.5-turbo` |
-| `MAX_RESPONSE_LENGTH` | Maximum response length | `150` |
-| `COOLDOWN_SECONDS` | Seconds between responses | `10` |
-| `BATCH_WAIT_TIME` | Time to wait for message batching | `2` |
-
-### Getting Discord IDs
-
-1. **Enable Developer Mode**
-   - User Settings → Advanced → Developer Mode
-
-2. **Get Role ID**
-   - Server Settings → Roles → Right-click role → Copy ID
-
-3. **Get Channel ID**
-   - Right-click channel → Copy ID
-
-4. **Get User ID**
-   - Right-click username → Copy ID
-
----
-
-## 💬 Commands
-
-### Slash Commands
-
-| Command | Description | Permission |
-|---------|-------------|------------|
-| `/activate` | Activates the bot (always on) | Developer Only |
-| `/deactivate` | Deactivates the bot (can't actually deactivate) | Developer Only |
-
-Both commands are restricted to the developer for security reasons. The bot humor is that it's always active and can never truly be deactivated.
-
----
-
-## 🤖 Bot Behavior
-
-### Message Patterns
-
-**New Prisoner Arrival:**
-```
-🚨 Welcome to Sednaya, [username]! 
-Why did you steal the bread? CONFESS!
-```
-
-**Returning Prisoner:**
-```
-🔄 Back again, [username]? This is your 3rd visit!
-I knew you couldn't stay away from me.
-```
-
-**During Conversation:**
-- Asks nonsensical questions
-- Accuses of random crimes
-- Misunderstands everything
-- Changes personality based on reactions
-
-**Release Message (in general chat):**
-```
-🔓 @user is FREE! Even the guards couldn't handle your endless debates anymore.
-```
-
-### Response Triggers
-
-The bot responds when:
-- User has the muted role
-- User is in the prison channel
-- Cooldown period has passed (10 seconds)
-- Response probability check passes (70%)
-
-### Personality Adaptation
-
-The bot tracks:
-- **Aggression Level**: How hostile the user is
-- **Humor Appreciation**: Response to jokes
-- **Debate Tendency**: Argumentative behavior
-- **Ignore Rate**: How often they don't respond
-- **Confusion Level**: How confused they get
-
-Based on these metrics, it selects the most effective personality mode.
-
----
-
-## 🏗️ Technical Architecture
-
-### Project Structure
-
-```
-AzabBot/
-├── src/
-│   ├── bot/
-│   │   ├── bot.py           # Main bot class
-│   │   └── commands.py       # Slash commands
-│   ├── services/
-│   │   ├── ai_service.py     # OpenAI integration
-│   │   ├── memory_service.py # Database operations
-│   │   └── personality_service.py # Personality modes
-│   ├── core/
-│   │   ├── config.py         # Configuration management
-│   │   ├── logger.py         # Logging system
-│   │   └── di_container.py   # Dependency injection
-│   └── utils/
-│       └── embed_builder.py  # Discord embeds
-├── data/
-│   └── memory.db             # SQLite database
-├── logs/                     # Log files
-├── images/                   # Bot images
-├── main.py                   # Entry point
-├── requirements.txt          # Dependencies
-└── .env                      # Configuration
-```
-
-### Technology Stack
+### Technical Stack
 
 - **Language**: Python 3.11+
-- **Discord Library**: discord.py 2.3.2
-- **AI**: OpenAI GPT-3.5 Turbo
-- **Database**: SQLite3
+- **Discord API**: discord.py 2.6.0
+- **AI Model**: OpenAI GPT-3.5 Turbo
+- **Database**: SQLite3 with connection pooling
 - **Async Framework**: asyncio
 - **Logging**: Custom tree-style logger
+- **Testing**: pytest with comprehensive coverage
+- **Security**: Enhanced security system with threat detection
+- **Monitoring**: Performance and health monitoring
 
 ### Database Schema
 
@@ -375,6 +210,11 @@ Each mode has unique characteristics:
 - "Why did the prisoner cross the road? They didn't, they're in jail!"
 - Mocks everything
 
+### Crime Responder
+- Responds with actual mute reasons
+- "You were muted for [actual reason]"
+- Direct and mocking responses
+
 ---
 
 ## 💾 Memory System
@@ -405,6 +245,89 @@ All data is stored locally in SQLite database. No data is sent to external serve
 
 ---
 
+## 🔒 Security Features
+
+### Input Validation
+- Message content sanitization
+- Length and pattern validation
+- Malicious content detection
+- URL and link validation
+
+### Rate Limiting
+- Per-user rate limiting
+- Per-channel rate limiting
+- Global rate limiting
+- Adaptive rate limiting
+
+### Threat Detection
+- Spam detection
+- Malicious content detection
+- Bot abuse prevention
+- Suspicious behavior detection
+
+### Permission System
+- Role-based access control
+- User permission validation
+- Command permission checking
+- Channel access control
+
+---
+
+## ⚡ Performance Monitoring
+
+### Metrics Tracked
+- Response time (AI generation, Discord API)
+- Resource utilization (CPU, memory, disk)
+- Error rates and success rates
+- User interaction patterns
+- System health indicators
+
+### Optimization Features
+- Performance bottleneck detection
+- Automated optimization recommendations
+- Resource usage alerts
+- Performance trend analysis
+
+### Alerting System
+- Configurable performance thresholds
+- Real-time alert notifications
+- Performance degradation detection
+- Resource exhaustion warnings
+
+---
+
+## 🧪 Testing
+
+### Test Coverage
+- **Unit Tests**: All core functionality
+- **Integration Tests**: Service interactions
+- **Performance Tests**: Load and stress testing
+- **Security Tests**: Input validation and threat detection
+
+### Running Tests
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src
+
+# Run specific test categories
+pytest tests/test_bot.py
+pytest tests/test_ai_service.py
+```
+
+### Test Categories
+- Bot initialization and configuration
+- Message handling and response generation
+- Command processing and validation
+- Service integration and dependency injection
+- Error handling and recovery mechanisms
+- Performance and resource management
+- Security validation and threat detection
+
+---
+
 ## ❓ FAQ
 
 **Q: Why isn't the bot responding?**
@@ -429,6 +352,17 @@ All data is stored locally in SQLite database. No data is sent to external serve
 **Q: Can I disable the AI?**
 - Not recommended, core functionality depends on it
 - You can use fallback responses by removing API key
+
+**Q: How do I get the bot to respond with mute reasons?**
+- The bot automatically detects questions like "Why am I muted?"
+- It extracts the actual mute reason from Discord audit logs
+- Responds directly with the reason in a mocking way
+
+**Q: What if the bot stops responding to messages?**
+- Check the bot's health status
+- Verify all dependencies are installed
+- Check for rate limiting or cooldown issues
+- Review logs for error messages
 
 ---
 
@@ -457,7 +391,7 @@ This project is provided as-is with no license. Use at your own risk.
 
 Developed by **حَـــــنَّـــــا** (John Hamwi) for [discord.gg/syria](https://discord.gg/syria)
 
-**Version:** 3.0.0 | **Status:** Personal Project | **Support:** None
+**Version:** 3.0.0 | **Status:** Production Ready | **Support:** None
 
 ---
 
