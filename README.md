@@ -43,7 +43,7 @@
 
 ## 🎭 About
 
-**AzabBot** is an advanced Discord bot designed to psychologically torment users in timeout/mute channels. Inspired by the infamous Sednaya prison, this bot acts as a confused, incompetent guard who harasses prisoners with nonsensical questions and accusations.
+**AzabBot** is an advanced Discord bot designed to psychologically torment users in timeout/mute channels. Inspired by prison systems, this bot acts as a confused, incompetent guard who harasses prisoners with nonsensical questions and accusations.
 
 Originally created for the **Syria Discord Server** ([discord.gg/syria](https://discord.gg/syria)), AzabBot uses GPT-3.5 to generate contextually aware, dynamically adaptive responses that evolve based on each prisoner's behavior and history.
 
@@ -399,6 +399,6 @@ Developed by **حَـــــنَّـــــا** (John Hamwi) for [discord.gg/s
   
   ![PFP](images/PFP.gif)
   
-  **"Welcome to Sednaya. You'll never leave."**
+  **"Welcome to Prison. You'll never leave."**
   
 </div>

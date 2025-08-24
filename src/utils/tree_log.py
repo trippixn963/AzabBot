@@ -93,7 +93,7 @@ USAGE EXAMPLES:
        "Bot Activation",
        [
            ("status", "Starting activation sequence"),
-           ("presence", "Updated to watching ⛓ Sednaya"),
+                           ("presence", "Updated to watching ⛓ Prison"),
            ("background_tasks", "Initializing...")
        ],
        performance_metrics={
@@ -159,6 +159,7 @@ import os
 import secrets
 import threading
 import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, ContextManager
@@ -266,7 +267,7 @@ def _write_to_log_files(message: str, level: str, category: str):
         # Write to main log file
         log_file = log_dir / "log.log"
         with open(log_file, "a", encoding="utf-8") as f:
-            f.write(f"{_get_timestamp()} [{level}] ℹ️ {message}\n")
+            f.write(f"{_get_timestamp()} [{level}] {message}\n")
         
         # Write to debug.log file if DEBUG level
         if level == "DEBUG":

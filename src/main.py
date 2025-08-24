@@ -30,7 +30,7 @@ from typing import Optional
 from src import __version__
 from src.bot.bot import AzabBot
 from src.config.config import get_config
-from src.core.di_container import ServiceLifetime, register_service
+# DI container removed - using direct service instantiation
 from src.core.instance_manager import get_instance_manager
 from src.core.logger import BotLogger
 from src.monitoring.health_monitor import HealthMonitor
@@ -41,7 +41,6 @@ from src.services.personality_service import PersonalityService
 from src.services.report_service import ReportService
 from src.services.prison_service import PrisonService
 from src.services.psychological_service import PsychologicalService
-from src.services.dashboard_service import DashboardService
 from src.utils.db_pool import DatabasePool
 from src.utils.cache import get_cache_manager
 from src.utils.message_queue import MessageQueue
@@ -135,6 +134,9 @@ async def run_bot() -> None:
     at each step of the initialization process.
     """
     global bot_instance, logger
+    
+    # Import tree logging functions
+    from src.utils.tree_log import log_enhanced_tree_section
 
     # Initialize core components
     bot_logger = BotLogger()
@@ -146,24 +148,77 @@ async def run_bot() -> None:
     cooldown_manager = get_cooldown_manager()
     shutdown_handler = get_shutdown_handler()
     memory_optimizer = get_memory_optimizer()
+    
+    # Initialize variables for cleanup
+    db_pool = None
+    backup_manager = None
+    message_queue = None
+    database_service = None
+    memory_service = None
+    personality_service = None
+    ai_service = None
+    report_service = None
+    health_monitor = None
+    prison_service = None
+    psychological_service = None
 
     # Log startup with version information
     bot_logger.log_startup(__version__)
 
     try:
         # Step 1: Load and validate configuration
-        bot_logger.log_initialization_step(
-            "Configuration", "loading", "Loading environment configuration"
+        log_enhanced_tree_section(
+            "Configuration Loading",
+            [
+                ("status", "Loading environment configuration"),
+                ("method", "Environment variables")
+            ],
+            performance_metrics={
+                "loading_method": "env_vars"
+            },
+            context_data={
+                "loading_type": "configuration",
+                "method": "environment_variables"
+            },
+            emoji="⚙️"
         )
+        
         config = get_config()
         config.load_configuration()
-        bot_logger.log_initialization_step(
-            "Configuration", "success", "Configuration loaded successfully", "✅"
+        
+        log_enhanced_tree_section(
+            "Configuration Loaded",
+            [
+                ("status", "Configuration loaded successfully"),
+                ("config_keys", str(len(config.get_all()))),
+                ("method", "Environment variables")
+            ],
+            performance_metrics={
+                "config_keys_count": len(config.get_all()),
+                "loading_success": True
+            },
+            context_data={
+                "loading_type": "configuration_complete",
+                "config_keys": list(config.get_all().keys())
+            },
+            emoji="✅"
         )
 
         # Step 2: Instance management - ensure only one bot instance runs
-        bot_logger.log_initialization_step(
-            "Instance Manager", "checking", "Checking for existing instances"
+        log_enhanced_tree_section(
+            "Instance Management",
+            [
+                ("status", "Checking for existing instances"),
+                ("method", "PID file check")
+            ],
+            performance_metrics={
+                "check_method": "pid_file"
+            },
+            context_data={
+                "management_type": "instance_check",
+                "method": "pid_file_validation"
+            },
+            emoji="🔒"
         )
 
         # Check and terminate any existing bot instances
@@ -175,24 +230,44 @@ async def run_bot() -> None:
         # Create PID file to track this instance
         instance_manager.create_pid_file()
 
-        bot_logger.log_initialization_step(
-            "Instance Manager", "success", "Instance lock acquired", "✅"
+        log_enhanced_tree_section(
+            "Instance Lock Acquired",
+            [
+                ("status", "Instance lock acquired successfully"),
+                ("pid_file", "Created"),
+                ("method", "PID file management")
+            ],
+            performance_metrics={
+                "lock_acquired": True,
+                "pid_file_created": True
+            },
+            context_data={
+                "management_type": "instance_lock",
+                "method": "pid_file_management"
+            },
+            emoji="✅"
         )
 
-        # Step 3: Register all services in dependency injection container
-        bot_logger.log_initialization_step(
-            "DI Container", "registering", "Registering services"
+        # Step 3: Initialize services directly
+        log_enhanced_tree_section(
+            "Service Initialization",
+            [
+                ("status", "Initializing services directly"),
+                ("approach", "Direct instantiation"),
+                ("no_di", "DI container removed")
+            ],
+            performance_metrics={
+                "initialization_method": "direct"
+            },
+            context_data={
+                "initialization_type": "service_setup",
+                "method": "direct_instantiation"
+            },
+            emoji="🔧"
         )
-
-        # Import here to avoid circular imports
-        from src.core.di_container import register_factory, get_container
-
-        # Set container-wide configuration
-        container = get_container()
-        container.set_container_config(config.get_all())
 
         # Initialize database pool and backup manager
-        db_path = Path("data/azab.db")
+        db_path = Path("data/prisoners.db")
         db_pool = DatabasePool(db_path, max_connections=5)
         backup_manager = BackupManager(db_path, Path("backups"))
         
@@ -202,72 +277,108 @@ async def run_bot() -> None:
         # Register shutdown handler
         shutdown_handler.register_signal_handlers()
         
-        # Register core services with appropriate lifetimes
-        register_factory("Config", lambda: config, lifetime=ServiceLifetime.SINGLETON)
-        register_service("Logger", type(bot_logger), lifetime=ServiceLifetime.SINGLETON)
-        register_factory("DatabasePool", lambda: db_pool, lifetime=ServiceLifetime.SINGLETON)
-        register_factory("BackupManager", lambda: backup_manager, lifetime=ServiceLifetime.SINGLETON)
-        register_factory("MessageQueue", lambda: message_queue, lifetime=ServiceLifetime.SINGLETON)
-        register_factory("CacheManager", lambda: cache_manager, lifetime=ServiceLifetime.SINGLETON)
-        register_factory("CooldownManager", lambda: cooldown_manager, lifetime=ServiceLifetime.SINGLETON)
-        register_factory("MemoryOptimizer", lambda: memory_optimizer, lifetime=ServiceLifetime.SINGLETON)
-        register_service(
-            "DatabaseService", DatabaseService, lifetime=ServiceLifetime.SINGLETON
-        )
-        register_service(
-            "MemoryService", MemoryService, lifetime=ServiceLifetime.SINGLETON
-        )
-        register_service(
-            "PersonalityService", PersonalityService, lifetime=ServiceLifetime.SINGLETON
-        )
+        # Initialize services directly
+        database_service = DatabaseService()
+        memory_service = MemoryService()
+        personality_service = PersonalityService()
+        ai_service = AIService()
+        report_service = ReportService()
+        health_monitor = HealthMonitor()
+        prison_service = PrisonService()
+        psychological_service = PsychologicalService()
         
-        # Register services with dependencies
-        register_service(
-            "AIService",
-            AIService,
-            lifetime=ServiceLifetime.SINGLETON,
-            dependencies=["Config", "PersonalityService", "MemoryService"],
-        )
-        register_service(
-            "ReportService",
-            ReportService,
-            lifetime=ServiceLifetime.SINGLETON,
-            dependencies=["DatabaseService"],
-        )
-        register_service(
-            "HealthMonitor", HealthMonitor, lifetime=ServiceLifetime.SINGLETON
-        )
-        register_service(
-            "PrisonService",
-            PrisonService,
-            lifetime=ServiceLifetime.SINGLETON,
-            dependencies=["Config", "DatabaseService", "AIService"]
-        )
-        register_service(
-            "PsychologicalService",
-            PsychologicalService,
-            lifetime=ServiceLifetime.SINGLETON,
-            dependencies=["Config", "DatabaseService", "AIService"]
-        )
+        # Initialize services with dependencies
+        await database_service.initialize_base(config.get_all())
+        await memory_service.initialize_base(config.get_all())
+        await personality_service.initialize_base(config.get_all())
+        await ai_service.initialize_base(config.get_all(), 
+                                       PersonalityService=personality_service,
+                                       MemoryService=memory_service,
+                                       PrisonerDatabaseService=database_service)
+        await report_service.initialize_base(config.get_all(), 
+                                           PrisonerDatabaseService=database_service)
+        await health_monitor.initialize_base(config.get_all())
+        await prison_service.initialize_base(config.get_all(),
+                                           DatabaseService=database_service,
+                                           AIService=ai_service)
+        await psychological_service.initialize_base(config.get_all(),
+                                                  DatabaseService=database_service,
+                                                  AIService=ai_service)
         
-        # Register Dashboard Service if enabled
-        if config.get("DASHBOARD_ENABLED", "false").lower() == "true":
-            register_service(
-                "DashboardService",
-                DashboardService,
-                lifetime=ServiceLifetime.SINGLETON
-            )
-            bot_logger.log_info("Dashboard service registered")
-
-        bot_logger.log_initialization_step(
-            "DI Container", "success", "Services registered", "✅"
+        # Start services
+        await database_service.start_base()
+        await memory_service.start_base()
+        await personality_service.start_base()
+        await ai_service.start_base()
+        await report_service.start_base()
+        await health_monitor.start_base()
+        await prison_service.start_base()
+        await psychological_service.start_base()
+        
+        log_enhanced_tree_section(
+            "Service Initialization Complete",
+            [
+                ("status", "All services initialized and started"),
+                ("total_services", "8"),
+                ("method", "Direct instantiation")
+            ],
+            performance_metrics={
+                "services_initialized": 8,
+                "initialization_success_rate": 100.0
+            },
+            context_data={
+                "initialization_type": "service_setup_complete",
+                "services_list": ["DatabaseService", "MemoryService", "PersonalityService", 
+                                "AIService", "ReportService", "HealthMonitor", 
+                                "PrisonService", "PsychologicalService"]
+            },
+            emoji="✅"
         )
 
         # Step 4: Create and configure the Discord bot instance
-        bot_logger.log_initialization_step("Bot", "creating", "Creating bot instance")
+        log_enhanced_tree_section(
+            "Bot Instance Creation",
+            [
+                ("status", "Creating bot instance"),
+                ("method", "Direct instantiation")
+            ],
+            performance_metrics={
+                "creation_method": "direct"
+            },
+            context_data={
+                "creation_type": "bot_instance",
+                "method": "direct_instantiation"
+            },
+            emoji="🤖"
+        )
+        
         bot_instance = AzabBot(config.get_all())
-        bot_logger.log_initialization_step(
-            "Bot", "success", "Bot instance created", "✅"
+        
+        # Pass services to the bot
+        bot_instance.ai_service = ai_service
+        bot_instance.health_monitor = health_monitor
+        bot_instance.prison_service = prison_service
+        bot_instance.psychological_service = psychological_service
+        bot_instance.memory_service = memory_service
+        bot_instance.personality_service = personality_service
+        
+        log_enhanced_tree_section(
+            "Bot Instance Created",
+            [
+                ("status", "Bot instance created successfully"),
+                ("services_attached", "6 services"),
+                ("method", "Direct service injection")
+            ],
+            performance_metrics={
+                "services_attached": 6,
+                "injection_method": "direct"
+            },
+            context_data={
+                "creation_type": "bot_instance_complete",
+                "services_attached": ["ai_service", "health_monitor", "prison_service", 
+                                    "psychological_service", "memory_service", "personality_service"]
+            },
+            emoji="✅"
         )
 
         # Step 5: Set up signal handlers for graceful shutdown
@@ -288,8 +399,20 @@ async def run_bot() -> None:
         shutdown_handler.register_callback(db_pool.close)
         
         # Step 6: Start the bot and connect to Discord
-        bot_logger.log_initialization_step(
-            "Bot", "starting", "Starting bot connection to Discord"
+        log_enhanced_tree_section(
+            "Bot Connection",
+            [
+                ("status", "Starting bot connection to Discord"),
+                ("method", "Discord.py connection")
+            ],
+            performance_metrics={
+                "connection_method": "discord_py"
+            },
+            context_data={
+                "connection_type": "discord_connection",
+                "method": "discord_py_start"
+            },
+            emoji="🚀"
         )
 
         bot_logger.log_system_event(
@@ -316,11 +439,16 @@ async def run_bot() -> None:
         bot_logger.log_shutdown("Bot shutdown initiated")
 
         # Stop optimization services
-        await cache_manager.stop()
-        await backup_manager.stop()
-        await memory_optimizer.stop()
-        await message_queue.stop()
-        await db_pool.close()
+        if cache_manager:
+            await cache_manager.stop()
+        if backup_manager:
+            await backup_manager.stop()
+        if memory_optimizer:
+            await memory_optimizer.stop()
+        if message_queue:
+            await message_queue.stop()
+        if db_pool:
+            await db_pool.close()
         
         # Clean up instance management resources
         instance_manager.cleanup_pid_file()

@@ -514,7 +514,7 @@ class EmbedBuilder:
 
         # Add bot avatar for visual identity
         if bot_avatar_url:
-            embed.set_author(name="Sednaya Prison Database", icon_url=bot_avatar_url)
+            embed.set_author(name="Prison Database", icon_url=bot_avatar_url)
 
         # Add basic prisoner information
         embed.add_field(

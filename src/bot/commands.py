@@ -100,7 +100,7 @@ def create_activate_command(bot):
             
             # Update bot presence to show active status
             activity = discord.Activity(
-                type=discord.ActivityType.watching, name="⛓ Sednaya"
+                type=discord.ActivityType.watching, name="⛓ Prison"
             )
             await bot.change_presence(activity=activity, status=discord.Status.online)
             
@@ -126,7 +126,7 @@ def create_activate_command(bot):
                 # Create enhanced tree log for activation sequence
                 activation_items = [
                     ("status", "Starting activation sequence"),
-                    ("presence", "Updated to watching ⛓ Sednaya"),
+                    ("presence", "Updated to watching ⛓ Prison"),
                     ("background_tasks", "Initializing...")
                 ]
                 

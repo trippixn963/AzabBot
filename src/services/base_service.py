@@ -309,8 +309,26 @@ class BaseService(ABC):
         # Configuration
         self._config: Dict[str, Any] = {}
 
-        self.logger.log_initialization_step(
-            self.name, "success", "Base service initialized"
+        # Use tree logging for service initialization
+        from src.utils.tree_log import log_enhanced_tree_section
+        
+        log_enhanced_tree_section(
+            f"{self.name} Base Initialization",
+            [
+                ("status", "Base service initialized"),
+                ("name", self.name),
+                ("dependencies", str(self.dependencies)),
+                ("lifetime", "singleton")
+            ],
+            performance_metrics={
+                "initialization_time_ms": 0.0,
+                "memory_usage_mb": 0.0
+            },
+            context_data={
+                "service_type": "base_service",
+                "service_name": self.name
+            },
+            emoji="🔧"
         )
 
     @abstractmethod
@@ -380,8 +398,27 @@ class BaseService(ABC):
             self._config = config.copy()
             self._start_time = datetime.utcnow()
 
-            self.logger.log_initialization_step(
-                self.name, "in_progress", "Starting service initialization"
+            # Use tree logging for service initialization
+            from src.utils.tree_log import log_enhanced_tree_section
+            import time
+            
+            start_time = time.perf_counter()
+            
+            log_enhanced_tree_section(
+                f"{self.name} Initialization",
+                [
+                    ("status", "Starting service initialization"),
+                    ("config_keys", str(list(config.keys()))),
+                    ("dependencies", str(list(kwargs.keys())))
+                ],
+                performance_metrics={
+                    "start_time_ms": start_time * 1000
+                },
+                context_data={
+                    "service_type": "service_initialization",
+                    "service_name": self.name
+                },
+                emoji="🔄"
             )
 
             # Call subclass initialization
@@ -393,9 +430,27 @@ class BaseService(ABC):
 
             self.status = ServiceStatus.HEALTHY
             self.metrics.status = self.status
+            
+            end_time = time.perf_counter()
+            init_time_ms = (end_time - start_time) * 1000
 
-            self.logger.log_initialization_step(
-                self.name, "success", "Service initialized successfully"
+            log_enhanced_tree_section(
+                f"{self.name} Initialization Complete",
+                [
+                    ("status", "Service initialized successfully"),
+                    ("health_status", self.status.value),
+                    ("health_monitoring", "enabled" if not config.get("test_mode", False) else "disabled")
+                ],
+                performance_metrics={
+                    "initialization_time_ms": init_time_ms,
+                    "total_time_ms": init_time_ms
+                },
+                context_data={
+                    "service_type": "service_initialization_complete",
+                    "service_name": self.name,
+                    "final_status": self.status.value
+                },
+                emoji="✅"
             )
 
         except Exception as e:
@@ -421,11 +476,40 @@ class BaseService(ABC):
                     error_code="INVALID_STATE",
                 )
 
-            self.logger.log_info(f"Starting service: {self.name}")
+            from src.utils.tree_log import log_enhanced_tree_section
+            log_enhanced_tree_section(
+                f"🚀 Starting service: {self.name}",
+                items=[
+                    ("status", "Initializing service"),
+                    ("method", "Base service initialization")
+                ],
+                performance_metrics={
+                    "service_name": self.name,
+                    "initialization_type": "service_start"
+                },
+                context_data={
+                    "service_type": "base_service",
+                    "initialization_phase": "start"
+                }
+            )
 
             await self.start()
 
-            self.logger.log_info(f"Service started successfully: {self.name}")
+            log_enhanced_tree_section(
+                f"✅ Service started successfully: {self.name}",
+                items=[
+                    ("status", "Service initialization complete"),
+                    ("method", "Base service startup")
+                ],
+                performance_metrics={
+                    "service_name": self.name,
+                    "initialization_type": "service_start_complete"
+                },
+                context_data={
+                    "service_type": "base_service",
+                    "initialization_phase": "complete"
+                }
+            )
 
         except Exception as e:
             self.status = ServiceStatus.UNHEALTHY
@@ -446,7 +530,22 @@ class BaseService(ABC):
             self.status = ServiceStatus.SHUTTING_DOWN
             self.metrics.status = self.status
 
-            self.logger.log_info(f"Stopping service: {self.name}")
+            from src.utils.tree_log import log_enhanced_tree_section
+            log_enhanced_tree_section(
+                f"🛑 Stopping service: {self.name}",
+                items=[
+                    ("status", "Service shutdown initiated"),
+                    ("method", "Base service shutdown")
+                ],
+                performance_metrics={
+                    "service_name": self.name,
+                    "shutdown_type": "service_stop"
+                },
+                context_data={
+                    "service_type": "base_service",
+                    "shutdown_phase": "start"
+                }
+            )
 
             # Stop health monitoring
             if self._health_check_task and not self._health_check_task.done():
@@ -463,7 +562,21 @@ class BaseService(ABC):
             self.status = ServiceStatus.SHUTDOWN
             self.metrics.status = self.status
 
-            self.logger.log_info(f"Service stopped: {self.name}")
+            log_enhanced_tree_section(
+                f"🏁 Service stopped: {self.name}",
+                items=[
+                    ("status", "Service shutdown complete"),
+                    ("method", "Base service shutdown")
+                ],
+                performance_metrics={
+                    "service_name": self.name,
+                    "shutdown_type": "service_stop_complete"
+                },
+                context_data={
+                    "service_type": "base_service",
+                    "shutdown_phase": "complete"
+                }
+            )
 
         except Exception as e:
             self.status = ServiceStatus.UNHEALTHY

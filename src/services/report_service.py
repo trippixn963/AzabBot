@@ -215,7 +215,7 @@ class ReportService(BaseService):
             most_active = report_data.get("most_active_prisoners", [])
 
             # Format report
-            report = f"""📊 **SEDNAYA PRISON DAILY REPORT** 📊
+            report = f"""📊 **PRISON DAILY REPORT** 📊
 *Date: {date.today().strftime('%B %d, %Y')}*
 
 **🔒 Prisoner Statistics**

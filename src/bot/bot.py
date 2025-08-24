@@ -24,11 +24,12 @@ from typing import Any, Dict, List, Optional, Union
 import discord
 from discord import app_commands
 
-from src.core.di_container import resolve
+# DI container removed - services passed directly
 from src.core.logger import get_logger, log_error, log_system_event
 from src.monitoring.health_monitor import HealthMonitor
 from src.services.ai_service import AIService
 from src.utils.embed_builder import EmbedBuilder
+from src.utils.tree_log import log_enhanced_tree_section
 
 
 @dataclass
@@ -126,48 +127,15 @@ class AzabBot(discord.Client):
     async def setup_hook(self) -> None:
         """Set up the bot after login but before ready event."""
         try:
-            # Resolve services from DI container
-            self.ai_service = await resolve("AIService")
-            self.health_monitor = await resolve("HealthMonitor")
+            # Services are passed directly to the bot
+            self.ai_service = None
+            self.health_monitor = None
+            self.prison_service = None
+            self.psychological_service = None
             
-            # Start health monitor's monitoring tasks
-            if self.health_monitor:
-                await self.health_monitor.start()
-                self.logger.log_info("Health monitor tasks started")
             
-            # Try to resolve prison service (optional)
-            try:
-                self.prison_service = await resolve("PrisonService")
-                self.logger.log_info("Prison service loaded successfully")
-            except Exception as e:
-                self.logger.log_warning(f"Prison service not available: {e}")
-                self.prison_service = None
-            
-            # Try to resolve psychological service (optional)
-            try:
-                self.psychological_service = await resolve("PsychologicalService")
-                self.logger.log_info("Psychological service loaded successfully")
-            except Exception as e:
-                self.logger.log_warning(f"Psychological service not available: {e}")
-                self.psychological_service = None
-            
-            # Try to resolve dashboard service (optional)
-            try:
-                if self.config.get("DASHBOARD_ENABLED", "false").lower() == "true":
-                    self.dashboard_service = await resolve("DashboardService")
-                    if self.dashboard_service:
-                        self.dashboard_service.bot = self
-                        await self.dashboard_service.start()
-                        self.logger.log_info("Dashboard service connected")
-                else:
-                    self.dashboard_service = None
-            except Exception as e:
-                self.logger.log_warning(f"Dashboard service not available: {e}")
-                self.dashboard_service = None
 
-            # Register bot for health monitoring
-            if self.health_monitor:
-                self.health_monitor.register_service(self)
+            # Health monitoring is handled by the health monitor service
                 
             # Reset daily counter if new day
             today = datetime.date.today()
@@ -264,14 +232,21 @@ class AzabBot(discord.Client):
             # Store message in memory service for learning
             if self.memory_service:
                 try:
-                    await self.memory_service.store_message(
-                        message.author.id,
-                        message.content,
-                        message.channel.id,
-                        message.guild.id if message.guild else None
+                    self.memory_service.remember_user_interaction(
+                        user_id=message.author.id,
+                        username=message.author.display_name,
+                        message=message.content,
+                        channel_id=message.channel.id
                     )
-                    self.logger.log_info(
-                        f"📚 Stored message from {message.author.display_name} for learning"
+                    log_enhanced_tree_section(
+                        "📚 Memory Storage",
+                        [("status", f"Stored message from {message.author.display_name} for learning")],
+                        context_data={
+                            "user_id": message.author.id,
+                            "username": message.author.display_name,
+                            "channel_id": message.channel.id,
+                            "message_length": len(message.content)
+                        }
                     )
                 except Exception as e:
                     self.logger.log_warning(f"Failed to store message in memory: {e}")
@@ -295,7 +270,16 @@ class AzabBot(discord.Client):
                 
                 # Log specifically if user is ignored
                 if user_is_ignored:
-                    self.logger.log_info(f"🤐 Ignoring message from {message.author.display_name} (user is in ignore list)")
+                    log_enhanced_tree_section(
+                        "🤐 Message Ignored",
+                        f"Ignoring message from {message.author.display_name} (user is in ignore list)",
+                        context_data={
+                            "user_id": message.author.id,
+                            "username": message.author.display_name,
+                            "channel_id": message.channel.id,
+                            "action": "message_ignored"
+                        }
+                    )
                 
                 self.logger.log_debug(
                     f"📥 Message received - {message.author} in #{message.channel.name}",
@@ -449,8 +433,15 @@ class AzabBot(discord.Client):
                     )
                     return
                     
-                self.logger.log_info(
-                    f"🚨 New prisoner detected: {after.display_name} just got muted!"
+                log_enhanced_tree_section(
+                    "🚨 New Prisoner Detected",
+                    f"{after.display_name} just got muted!",
+                    context_data={
+                        "user_id": after.id,
+                        "username": after.display_name,
+                        "guild_id": after.guild.id if after.guild else None,
+                        "action": "mute_detected"
+                    }
                 )
 
                 # Add to current prisoners set
@@ -494,8 +485,17 @@ class AzabBot(discord.Client):
                             else:
                                 duration_str = f" for {minutes}m"
                         
-                        self.logger.log_info(
-                            f"📝 Captured mute reason for {after.display_name}: {mute_reason}{duration_str}"
+                        log_enhanced_tree_section(
+                            "📝 Mute Reason Captured",
+                            f"Captured mute reason for {after.display_name}: {mute_reason}{duration_str}",
+                            context_data={
+                                "user_id": after.id,
+                                "username": after.display_name,
+                                "mute_reason": mute_reason,
+                                "muted_by": muted_by,
+                                "duration": mute_duration,
+                                "action": "mute_reason_captured"
+                            }
                         )
 
                 # Find the prison channel
@@ -529,12 +529,19 @@ class AzabBot(discord.Client):
                 # Try to check user history using memory service
                 try:
                     if self.memory_service:
-                        user_memory = await self.memory_service.get_user_memory(after.id)
+                        user_memory = await self.memory_service.get_user_context(after.id)
                         if user_memory and user_memory.get("total_interactions", 0) > 0:
                             is_returning = True
                             previous_visits = user_memory.get("total_interactions", 0)
-                            self.logger.log_info(
-                                f"🔄 RETURNING PRISONER: {after.display_name} has {previous_visits} previous interactions!"
+                            log_enhanced_tree_section(
+                                "🔄 Returning Prisoner",
+                                f"{after.display_name} has {previous_visits} previous interactions!",
+                                context_data={
+                                    "user_id": after.id,
+                                    "username": after.display_name,
+                                    "previous_visits": previous_visits,
+                                    "action": "returning_prisoner"
+                                }
                             )
                 except Exception as e:
                     self.logger.log_warning(f"Could not check prisoner history: {e}")
@@ -561,18 +568,18 @@ class AzabBot(discord.Client):
                     # Messages for returning prisoners - mention their history and reason!
                     if mute_reason and mute_reason != 'Unknown':
                         returning_messages = [
-                            f"LOOK WHO'S BACK! {after.mention}, this is your {previous_visits + 1}th visit to Sednaya. This time for: **{mute_reason}**{duration_msg}",
+                            f"LOOK WHO'S BACK! {after.mention}, this is your {previous_visits + 1}th visit to Prison. This time for: **{mute_reason}**{duration_msg}",
                             f"{after.mention} AGAIN?! I KNEW you'd be back. So you got muted{duration_msg} for **{mute_reason}** this time?",
-                            f"Welcome back to Sednaya, {after.mention}! Visit #{previous_visits + 1} for **{mute_reason}**{duration_msg}. You never learn!",
+                            f"Welcome back to Prison, {after.mention}! Visit #{previous_visits + 1} for **{mute_reason}**{duration_msg}. You never learn!",
                             f"Hahaha {after.mention} returns! **{mute_reason}**{duration_msg} really? That's what brought you back?",
                             f"Oh {after.mention}, back so soon? **{mute_reason}** this time{duration_msg}? Same cell as before!",
                             f"{after.mention} can't stay away! Visit #{previous_visits + 1} because of **{mute_reason}**{duration_msg}. Classic.",
                         ]
                     else:
                         returning_messages = [
-                            f"LOOK WHO'S BACK! {after.mention}, this is your {previous_visits + 1}th visit to Sednaya. You never learn, do you?",
+                            f"LOOK WHO'S BACK! {after.mention}, this is your {previous_visits + 1}th visit to Prison. You never learn, do you?",
                             f"{after.mention} AGAIN?! I KNEW you'd be back. What did you do this time?",
-                            f"Welcome back to Sednaya, {after.mention}! Missed me? I still remember everything from last time...",
+                            f"Welcome back to Prison, {after.mention}! Missed me? I still remember everything from last time...",
                             f"Hahaha {after.mention} returns! Visit number {previous_visits + 1}. You're becoming a regular!",
                         ]
                     message = random.choice(returning_messages)
@@ -580,9 +587,9 @@ class AzabBot(discord.Client):
                     # Messages for first-time prisoners - include reason if we know it
                     if mute_reason and mute_reason != 'Unknown':
                         welcome_messages = [
-                            f"Well well well, {after.mention}. I know exactly why you're here - **{mute_reason}**{duration_msg}. Welcome to Sednaya!",
+                            f"Well well well, {after.mention}. I know exactly why you're here - **{mute_reason}**{duration_msg}. Welcome to Prison!",
                             f"Fresh meat! {after.mention}, you committed **{mute_reason}** and got locked up{duration_msg}. Hope you're ready for what's coming.",
-                            f"{after.mention} Welcome to Sednaya! So you're the one who committed **{mute_reason}**{duration_msg}?",
+                            f"{after.mention} Welcome to Prison! So you're the one who committed **{mute_reason}**{duration_msg}?",
                             f"Another prisoner! {after.mention}, you got caught for **{mute_reason}** and sentenced{duration_msg}. You'll fit right in with the others!",
                             f"Oh {after.mention}, so you're the one who committed **{mute_reason}**{duration_msg}? This should be interesting...",
                             f"New arrival! {after.mention}, you committed **{mute_reason}** and got{duration_msg}. Now confess - was it worth it?",
@@ -595,7 +602,7 @@ class AzabBot(discord.Client):
                         welcome_messages = [
                             f"Well well well, look who just joined us. Welcome to your new home, {after.mention}.",
                             f"Fresh meat! {after.mention}, hope you're ready for your stay here.",
-                            f"{after.mention} Welcome to Sednaya! What did you do to end up here?",
+                            f"{after.mention} Welcome to Prison! What did you do to end up here?",
                             f"Another one! {after.mention}, tell me - what rule did you break?",
                             f"Oh {after.mention}, you're here now? This should be interesting...",
                             f"New arrival! {after.mention}, confess your crimes immediately.",
@@ -784,7 +791,7 @@ class AzabBot(discord.Client):
             if self.is_active:
                 # Set initial online status with default presence
                 activity = discord.Activity(
-                    type=discord.ActivityType.watching, name="⛓ Sednaya"
+                    type=discord.ActivityType.watching, name="⛓ Prison"
                 )
                 await self.change_presence(activity=activity, status=discord.Status.online)
                 self.logger.log_info("Bot started in active state")
@@ -1593,7 +1600,7 @@ The prisoner is: {member.display_name}"""
             fallback_messages = [
                 f"🔓 {member.mention} has been released. The guards got tired of you.",
                 f"🔓 {member.mention} is free... for now. We know you'll be back.",
-                f"🔓 {member.mention} has been released. Even Sednaya couldn't handle you.",
+                f"🔓 {member.mention} has been released. Even Prison couldn't handle you.",
                 f"🔓 {member.mention} escaped... just kidding, we let you go. See you soon.",
             ]
             import random
@@ -1667,12 +1674,12 @@ The prisoner is: {member.display_name}"""
             # If we get here, either no prisoners or all were invalid
             # Default presence when no prisoners
             activity = discord.Activity(
-                type=discord.ActivityType.watching, name="⛓ Sednaya"
+                type=discord.ActivityType.watching, name="⛓ Prison"
             )
             await self.change_presence(activity=activity, status=discord.Status.online)
             # Use tree logging for default presence
             from src.utils.tree_log import log_status
-            log_status("Updated presence: Watching ⛓ Sednaya", emoji="👁️")
+            log_status("Updated presence: Watching ⛓ Prison", emoji="👁️")
 
         except Exception as e:
             log_error("Failed to update presence", exception=e)

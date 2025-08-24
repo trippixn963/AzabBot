@@ -418,7 +418,7 @@ class BotLogger:
         self.python_logger.warning(message)
 
     
-    def log_info(self, message: str, emoji: str = "ℹ️"):
+    def log_info(self, message: str, emoji: str = ""):
         """
         Log informational messages.
 
@@ -620,7 +620,7 @@ def log_warning(message: str, context: Optional[Dict[str, Any]] = None):
     return _global_bot_logger.log_warning(message, context)
 
 
-def log_info(message: str, emoji: str = "ℹ️"):
+def log_info(message: str, emoji: str = ""):
     """Log informational message."""
     return _global_bot_logger.log_info(message, emoji)
 

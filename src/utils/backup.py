@@ -135,8 +135,7 @@ class BackupManager:
             
             # Create backup
             self.logger.log_debug(
-                f"Creating backup: {backup_path.name}",
-                context={"reason": reason}
+                f"Creating backup: {backup_path.name} - reason: {reason}"
             )
             
             if self.compress:
@@ -164,12 +163,7 @@ class BackupManager:
             self.stats["total_size_saved"] += backup_path.stat().st_size
             
             self.logger.log_info(
-                f"Backup created successfully",
-                context={
-                    "file": backup_path.name,
-                    "size": f"{backup_path.stat().st_size / 1024:.1f}KB",
-                    "reason": reason
-                }
+                f"Backup created successfully: {backup_path.name} ({backup_path.stat().st_size / 1024:.1f}KB) - {reason}"
             )
             
             # Rotate old backups
@@ -298,11 +292,7 @@ class BackupManager:
                     actual_checksum = await self._calculate_checksum(backup_path)
                     if actual_checksum != expected_checksum:
                         self.logger.log_error(
-                            "Backup checksum mismatch",
-                            context={
-                                "expected": expected_checksum,
-                                "actual": actual_checksum
-                            }
+                            f"Backup checksum mismatch - expected: {expected_checksum}, actual: {actual_checksum}"
                         )
                         return False
             
