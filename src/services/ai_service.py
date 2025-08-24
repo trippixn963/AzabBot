@@ -460,12 +460,12 @@ class ResponseGenerator:
                 has_mute_reason = context.additional_context.get("has_mute_reason", False)
                 if has_mute_reason:
                     mute_reason = context.additional_context.get("mute_reason", None)
-            
-            # Debug logging for mute reason extraction
-            print(f"DEBUG: Mute reason extraction - crimes: {crimes}")
-            print(f"DEBUG: Mute reason extraction - has_mute_reason: {context.additional_context.get('has_mute_reason', False)}")
-            print(f"DEBUG: Mute reason extraction - mute_reason from context: {context.additional_context.get('mute_reason', None)}")
-            print(f"DEBUG: Mute reason extraction - final mute_reason: {mute_reason}")
+                    
+                    # Debug logging for mute reason extraction
+                    self.logger.log_debug(f"Mute reason extraction - crimes: {crimes}")
+                    self.logger.log_debug(f"Mute reason extraction - has_mute_reason: {context.additional_context.get('has_mute_reason', False)}")
+                    self.logger.log_debug(f"Mute reason extraction - mute_reason from context: {context.additional_context.get('mute_reason', None)}")
+                    self.logger.log_debug(f"Mute reason extraction - final mute_reason: {mute_reason}")
 
             # Check if they're asking what they did or why they're muted FIRST (before any other context)
             message_lower = context.message_content.lower()
@@ -481,8 +481,8 @@ class ResponseGenerator:
             
             # Debug logging
             if asking_about_crime:
-                print(f"DEBUG: User is asking about crime. Mute reason: {mute_reason}")
-                print(f"DEBUG: Message: {context.message_content}")
+                self.logger.log_debug(f"User is asking about crime. Mute reason: {mute_reason}")
+                self.logger.log_debug(f"Message: {context.message_content}")
             
             # CRITICAL: If they're asking about their crime, give them the mute reason directly
             if asking_about_crime:
@@ -589,8 +589,8 @@ class ResponseGenerator:
                 
                 # Debug logging
                 if asking_about_crime:
-                    print(f"DEBUG: User is asking about crime. Mute reason: {mute_reason}")
-                    print(f"DEBUG: Message: {context.message_content}")
+                    self.logger.log_debug(f"User is asking about crime. Mute reason: {mute_reason}")
+                    self.logger.log_debug(f"Message: {context.message_content}")
                 
                 if asking_about_crime and mute_reason:
                     history_context += f"\n🚨 CRITICAL PRIORITY: The prisoner is asking what they did wrong or why they're muted. "
