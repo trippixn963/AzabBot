@@ -28,6 +28,12 @@
 ### ⚠️ **Important Notice**
 This bot was custom-built for **discord.gg/syria** and is provided as-is for educational purposes. **No support will be provided** for setup, configuration, or troubleshooting.
 
+### 🆕 **What's New**
+- **🎮 Rich Presence System**: Real-time Discord status updates showing prisoner count
+- **📊 Visual Architecture**: Interactive diagrams showing bot workflow and system structure
+- **🔧 Enhanced Documentation**: Complete setup guides and technical specifications
+- **⚡ Performance Improvements**: Optimized message processing and error handling
+
 ---
 
 ## ✨ Features
@@ -50,12 +56,13 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 - **Prison Channel**: Dedicated space for ragebaiting activities
 - **Contextual Responses**: Uses actual mute reasons for maximum impact
 
-### 🎮 **Dynamic Rich Presence**
+### 🎮 **Dynamic Rich Presence** ⭐ *NEW!*
 - **Real-Time Status**: Shows current prisoner count when active
 - **Activity Updates**: Displays "Watching X prisoners" during ragebaiting
 - **Event Notifications**: Special presence updates for prisoner arrivals/releases
 - **Sleep Mode**: Shows "💤 Sleeping" when bot is inactive
 - **Auto-Updates**: Presence refreshes every 30 seconds
+- **Live Feedback**: See bot activity directly in Discord status
 
 ### 📊 **Analytics & Logging**
 - **Message Tracking**: Logs all user interactions to SQLite database
@@ -416,6 +423,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **⭐ Star this repository if you find it interesting!**
 
-[Report Bug](https://github.com/yourusername/azab-discord-bot/issues) • [Request Feature](https://github.com/yourusername/azab-discord-bot/issues) • [Discord Server](https://discord.gg/syria)
+[Report Bug](https://github.com/trippixn963/AzabBot/issues) • [Request Feature](https://github.com/trippixn963/AzabBot/issues) • [Discord Server](https://discord.gg/syria)
 
 </div>
