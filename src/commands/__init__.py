@@ -1,0 +1,21 @@
+"""
+Azab Discord Bot - Commands Package
+==================================
+
+Slash command implementations for the Azab Discord bot.
+This package contains all Discord slash commands organized
+in separate modules for maintainability.
+
+Available Commands:
+- /activate: Activate bot's ragebaiting mode
+- /deactivate: Deactivate bot and return to standby
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
+Version: Modular
+"""
+
+from .activate import ActivateCommand
+from .deactivate import DeactivateCommand
+
+__all__ = ['ActivateCommand', 'DeactivateCommand']
