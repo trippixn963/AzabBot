@@ -1,8 +1,14 @@
-# Security Policy
+# 🔒 Azab Discord Bot - Security Policy
 
-## 🔒 Security Considerations
+<div align="center">
 
-This Discord bot handles user data and interactions. Please be aware of the following security considerations:
+**Security considerations for the Azab Discord Bot**
+
+*Built specifically for discord.gg/syria*
+
+</div>
+
+---
 
 ## 🛡️ Data Handling
 
@@ -79,4 +85,10 @@ This bot is provided for educational purposes only. Users are responsible for:
 
 ---
 
-**Remember**: This is a personal project with no support. Use at your own risk!
+<div align="center">
+
+**⭐ Star this repository if you find it useful!**
+
+[Report Issues](https://github.com/trippixn963/AzabBot/issues) • [Discord Server](https://discord.gg/syria)
+
+</div>

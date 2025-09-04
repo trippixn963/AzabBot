@@ -1,6 +1,14 @@
-# Contributing to Azab Discord Bot
+# 🤝 Azab Discord Bot - Contributing Guide
 
-Thank you for your interest in contributing to the Azab Discord Bot! However, please note that this is a **personal project** with **no support provided**.
+<div align="center">
+
+**Contributing guidelines for the Azab Discord Bot**
+
+*Built specifically for discord.gg/syria*
+
+</div>
+
+---
 
 ## ⚠️ Important Notice
 
@@ -55,4 +63,10 @@ If you use this code in your own project, please credit:
 
 ---
 
-**Remember**: This is a personal project with no support. Use at your own risk!
+<div align="center">
+
+**⭐ Star this repository if you find it useful!**
+
+[Report Issues](https://github.com/trippixn963/AzabBot/issues) • [Discord Server](https://discord.gg/syria)
+
+</div>
