@@ -1,8 +1,14 @@
-# Deployment Guide
+# 🚀 Azab Discord Bot - Deployment Guide
 
-## 🚀 Deployment Options
+<div align="center">
 
-This guide covers different deployment methods for the Azab Discord Bot.
+**Simple deployment guide for the Azab Discord Bot**
+
+*Built specifically for discord.gg/syria*
+
+</div>
+
+---
 
 ## 📋 Prerequisites
 
@@ -358,4 +364,10 @@ grep "Response time" logs/azab_*.log
 
 ---
 
-**Remember**: This is a personal project with no support. Use at your own risk!
+<div align="center">
+
+**⭐ Star this repository if you find it useful!**
+
+[Report Issues](https://github.com/trippixn963/AzabBot/issues) • [Discord Server](https://discord.gg/syria)
+
+</div>
