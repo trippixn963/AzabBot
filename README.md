@@ -402,7 +402,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-![Developer Avatar](images/PFP.gif)
+![Developer Avatar](images/AUTHOR.jpg)
 
 **حَـــــنَّـــــا** - Custom Discord Bot Developer
 
