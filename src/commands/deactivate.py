@@ -13,7 +13,7 @@ Version: Modular
 
 import discord
 from discord import app_commands
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from src.core.logger import logger
 
@@ -61,23 +61,23 @@ class DeactivateCommand:
             """
             # Check if bot is already inactive
             if not self.bot.is_active:
-                # Create warning embed for already inactive state
-                embed = discord.Embed(
-                    title="⚠️ Already Inactive",
-                    description="Bot is already inactive!\n\nUse `/activate` to start ragebaiting mode.",
-                    color=0xFFAA00  # Orange/warning color
-                )
-                embed.set_footer(text="Developed By: حَـــــنَّـــــا")
-                
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+                await interaction.response.send_message("Already inactive!", ephemeral=True)
                 return
             
             # Deactivate bot's ragebaiting mode
             self.bot.is_active = False
             
-            # Log deactivation event
-            logger.activation_change(False, str(interaction.user))
-            logger.command_used("deactivate", str(interaction.user), interaction.guild.name)
+            # Update presence to sleeping status
+            await self.bot.presence_handler.update_presence()
+            
+            # Log deactivation event with details
+            # Use EST timezone for consistency
+            est = timezone(timedelta(hours=-5))
+            logger.tree("BOT DEACTIVATED", [
+                ("By", str(interaction.user)),
+                ("Time", datetime.now(est).strftime('%I:%M %p EST')),
+                ("Status", "Sleeping")
+            ], "💤")
             
             # Create deactivation confirmation embed
             embed = discord.Embed(
@@ -97,11 +97,10 @@ class DeactivateCommand:
             embed.add_field(name="⏱️ Mode", value="Sleeping", inline=True)
             
             embed.set_thumbnail(url=self.bot.user.avatar.url if self.bot.user.avatar else None)
-            # Use developer's profile picture for footer branding
-            embed.set_footer(
-                text="Developed by حَـــــنَّـــــا",
-                icon_url="https://cdn.discordapp.com/avatars/1404020045876690985/a_1234567890abcdef1234567890abcdef.webp"
-            )
+            # Get developer's avatar instead of server icon
+            developer = await self.bot.fetch_user(interaction.user.id)
+            developer_avatar = developer.avatar.url if developer and developer.avatar else None
+            embed.set_footer(text="Developed By: حَـــــنَّـــــا", icon_url=developer_avatar)
             
             await interaction.response.send_message(embed=embed, ephemeral=True)
         

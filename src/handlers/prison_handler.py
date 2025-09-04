@@ -58,21 +58,22 @@ class PrisonHandler:
             member (discord.Member): The newly muted Discord member
         """
         try:
-            logger.prisoner_event("ARRIVING", member.name)
+            logger.info(f"Handling new prisoner: {member.name} (ID: {member.id})")
             
             # Get required channels
             logs_channel = self.bot.get_channel(self.bot.logs_channel_id)
             prison_channel = self.bot.get_channel(self.bot.prison_channel_id)
             
+            logger.info(f"Channels - Logs: {logs_channel}, Prison: {prison_channel}")
             
             # Validate channels exist
             if not logs_channel or not prison_channel:
-                logger.error("Channel Config", "Prison or logs channel not found")
+                logger.error(f"Channels not found - logs: {self.bot.logs_channel_id}, prison: {self.bot.prison_channel_id}")
                 return
             
             # FIRST: Extract mute reason from logs channel
             # Wait for the mute embed to appear in logs (moderation bots need time to post)
-            # Wait for mute embed silently
+            logger.info(f"Waiting for mute embed to appear in logs for {member.name}")
             await asyncio.sleep(5)  # Give enough time for the mute bot to post the embed
             
             # Check if we already have the mute reason stored
@@ -80,12 +81,11 @@ class PrisonHandler:
             mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(member.name.lower())
             
             if mute_reason:
-                # Found stored reason
-                pass
+                logger.info(f"Found stored mute reason for {member.name}: {mute_reason}")
             else:
                 # Scan logs channel for mute embed
                 # Look through recent messages to find the mute embed
-                # Scanning for mute reason
+                logger.info(f"Scanning logs channel for {member.name}'s mute reason...")
                 
                 messages_checked = 0
                 async for message in logs_channel.history(limit=50):  # Check more messages
@@ -97,17 +97,17 @@ class PrisonHandler:
                         # Check if we now have the reason for this specific user
                         mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(member.name.lower())
                         if mute_reason:
-                            # Found reason after scanning
+                            logger.success(f"Found mute reason for {member.name}: {mute_reason}")
                             break
                 
-                # Scanned messages for reason
+                logger.info(f"Scanned {messages_checked} messages in logs channel")
             
             if not mute_reason:
-                logger.warning("Mute Reason", f"Not found for {member.name}")
+                logger.warning(f"Could not find mute reason for {member.name} - will use generic welcome")
             
             # SECOND: Generate contextual welcome message AFTER extracting reason
             # Create different prompts based on whether we found the mute reason
-            # Generate welcome message
+            logger.info(f"Generating welcome message for {member.name} with reason: {mute_reason or 'None'}")
             
             if mute_reason:
                 # Contextual prompt with specific mute reason for savage mocking
@@ -141,11 +141,18 @@ class PrisonHandler:
             welcome_msg = f"🔒 **NEW PRISONER ARRIVAL** 🔒\n\n{member.mention}\n\n{response}"
             await prison_channel.send(welcome_msg)
             
+            # Update presence to show prisoner arrival
+            asyncio.create_task(self.bot.presence_handler.show_prisoner_arrived())
+            
             # Log the welcome event
-            logger.prisoner_event("WELCOMED", str(member), mute_reason)
+            logger.tree("NEW PRISONER WELCOMED", [
+                ("Prisoner", str(member)),
+                ("Reason", mute_reason[:50] if mute_reason else "Unknown"),
+                ("Welcome", response[:50])
+            ], "⛓️")
             
         except Exception as e:
-            logger.error("Prisoner Welcome", str(e))
+            logger.error(f"Failed to welcome prisoner: {e}")
     
     async def handle_prisoner_release(self, member: discord.Member):
         """
@@ -158,13 +165,13 @@ class PrisonHandler:
             member (discord.Member): The newly unmuted Discord member
         """
         try:
-            logger.prisoner_event("RELEASING", member.name)
+            logger.info(f"Handling prisoner release: {member.name} (ID: {member.id})")
             
             # Get the general channel
             general_channel = self.bot.get_channel(self.bot.general_channel_id)
             
             if not general_channel:
-                logger.error("Channel Config", "General channel not found")
+                logger.error(f"General channel not found: {self.bot.general_channel_id}")
                 return
             
             # Get their mute reason if we have it
@@ -205,6 +212,9 @@ class PrisonHandler:
             release_msg = f"🔓 **PRISONER RELEASED** 🔓\n\n{member.mention} {response}"
             await general_channel.send(release_msg)
             
+            # Update presence to show prisoner release
+            asyncio.create_task(self.bot.presence_handler.show_prisoner_released())
+            
             # Clear their mute reason since they're free now
             # Clean up both user ID and username mappings
             if member.id in self.mute_reasons:
@@ -213,7 +223,11 @@ class PrisonHandler:
                 del self.mute_reasons[member.name.lower()]
             
             # Log the release event
-            logger.prisoner_event("FREED", str(member), mute_reason)
+            logger.tree("PRISONER RELEASED", [
+                ("Ex-Prisoner", str(member)),
+                ("Previous Offense", mute_reason[:50] if mute_reason else "Unknown"),
+                ("Release Message", response[:50])
+            ], "🔓")
             
         except Exception as e:
-            logger.error("Prisoner Release", str(e))
+            logger.error(f"Failed to handle prisoner release: {e}")

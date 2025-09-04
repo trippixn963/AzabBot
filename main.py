@@ -23,7 +23,6 @@ import sys
 from dotenv import load_dotenv
 
 from src.core.logger import logger
-from src.utils.version import Version
 from src.bot import AzabBot
 
 
@@ -45,30 +44,34 @@ async def main() -> None:
     # Required: DISCORD_TOKEN, OPENAI_API_KEY
     load_dotenv()
     
-    # Display startup information with version
-    version_info = Version.get_full_info()
-    version_info["release_type"] = Version.get_release_type()
-    logger.bot_start(version_info)
+    # Display startup information for debugging
+    logger.tree("AZAB STARTING", [
+        ("Version", "Modular"),
+        ("Server", "discord.gg/syria"),
+        ("Structure", "Organized with src/"),
+        ("Commands", "/activate and /deactivate only")
+    ], "🔥")
     
     # Validate Discord bot token from environment
     # Bot token is required for Discord API authentication
     token = os.getenv('DISCORD_TOKEN')
     if not token:
-        logger.error("Configuration", "No DISCORD_TOKEN found in .env file")
+        logger.error("❌ No DISCORD_TOKEN found in .env file!")
+        logger.error("   Please add your bot token to the .env file")
         sys.exit(1)
     
     # Initialize bot instance and connect to Discord
     # AzabBot handles all Discord events and command interactions
     try:
         bot = AzabBot()
-        logger.service_status("Bot Instance", "created")
+        logger.info("🤖 Bot instance created successfully")
         
         # Start the bot and connect to Discord Gateway
         # This will trigger on_ready event when connection is established
         await bot.start(token)
         
     except Exception as e:
-        logger.error("Bot Startup", str(e))
+        logger.error(f"❌ Failed to start bot: {e}")
         sys.exit(1)
 
 
@@ -76,7 +79,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.service_status("Bot", "stopped by user")
+        logger.info("🛑 Bot stopped by user (Ctrl+C)")
     except Exception as e:
-        logger.error("Unexpected", str(e))
+        logger.error(f"💥 Unexpected error: {e}")
         sys.exit(1)

@@ -13,7 +13,7 @@ Version: Modular
 
 import discord
 from discord import app_commands
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from src.core.logger import logger
 
@@ -61,19 +61,14 @@ class ActivateCommand:
             """
             # Check if bot is already active (bot starts as active by default)
             if self.bot.is_active:
-                # Create warning embed for already active state
-                embed = discord.Embed(
-                    title="⚠️ Already Active",
-                    description="Bot is already active!\n\nUse `/deactivate` first if you want to restart.",
-                    color=0xFFAA00  # Orange/warning color
-                )
-                embed.set_footer(text="Developed By: حَـــــنَّـــــا")
-                
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+                await interaction.response.send_message("Bot is already active! Use `/deactivate` first if you want to restart.", ephemeral=True)
                 return
             
             # Activate bot's ragebaiting mode
             self.bot.is_active = True
+            
+            # Update presence to active status
+            await self.bot.presence_handler.update_presence()
             
             # Check for currently muted users (both timeout and role)
             muted_count = 0
@@ -81,11 +76,17 @@ class ActivateCommand:
                 for member in interaction.guild.members:
                     if self.bot.is_user_muted(member):
                         muted_count += 1
-                        # Count muted users
+                        logger.info(f"Found muted user on activation: {member.name} (ID: {member.id})")
             
-            # Log activation event
-            logger.activation_change(True, str(interaction.user), muted_count)
-            logger.command_used("activate", str(interaction.user), interaction.guild.name)
+            # Log activation event with details
+            # Use EST timezone for consistency
+            est = timezone(timedelta(hours=-5))
+            logger.tree("BOT ACTIVATED", [
+                ("By", str(interaction.user)),
+                ("Time", datetime.now(est).strftime('%I:%M %p EST')),
+                ("Status", "Ragebaiting ACTIVE"),
+                ("Muted Users Found", str(muted_count))
+            ], "🔴")
             
             # Create activation confirmation embed
             embed = discord.Embed(
@@ -105,11 +106,10 @@ class ActivateCommand:
             embed.add_field(name="🔧 Commands", value="`2 Active`", inline=True)
             
             embed.set_thumbnail(url=self.bot.user.avatar.url if self.bot.user.avatar else None)
-            # Use developer's profile picture for footer branding
-            embed.set_footer(
-                text="Developed by حَـــــنَّـــــا",
-                icon_url="https://cdn.discordapp.com/avatars/1404020045876690985/a_1234567890abcdef1234567890abcdef.webp"
-            )
+            # Get developer's avatar instead of server icon
+            developer = await self.bot.fetch_user(interaction.user.id)
+            developer_avatar = developer.avatar.url if developer and developer.avatar else None
+            embed.set_footer(text="Developed By: حَـــــنَّـــــا", icon_url=developer_avatar)
             
             await interaction.response.send_message(embed=embed, ephemeral=True)
         

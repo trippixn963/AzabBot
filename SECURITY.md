@@ -1,20 +1,14 @@
-# 🔒 Azab Discord Bot - Security Policy
+# Security Policy
 
-<div align="center">
+## 🔒 Security Considerations
 
-**Security considerations for the Azab Discord Bot**
-
-*Built specifically for discord.gg/syria*
-
-</div>
-
----
+This Discord bot handles user data and interactions. Please be aware of the following security considerations:
 
 ## 🛡️ Data Handling
 
 ### What Data is Stored
 - **User Messages**: Stored locally in SQLite database
-- **User IDs**: For tracking and identification  
+- **User IDs**: For tracking and identification
 - **Interaction History**: For AI response context
 - **Mute Reasons**: Extracted from Discord embeds
 
@@ -22,8 +16,6 @@
 - **Local Storage**: All data stored locally, not sent to external servers
 - **No Personal Info**: Only Discord usernames and message content
 - **Temporary Data**: Mute reasons stored temporarily for context
-
----
 
 ## ⚠️ Security Warnings
 
@@ -42,7 +34,16 @@
 - **Length Limits**: Message content is truncated to prevent abuse
 - **Rate Limiting**: Built-in cooldowns prevent spam
 
----
+## 🚨 Reporting Security Issues
+
+**This is a personal project with no support provided.**
+
+If you discover a security vulnerability:
+
+1. **Do NOT create a public issue**
+2. **Do NOT post about it publicly**
+3. **This project is not maintained**
+4. **Use at your own risk**
 
 ## 🔧 Security Best Practices
 
@@ -58,8 +59,6 @@
 - **Error Handling**: Don't expose sensitive information in errors
 - **Logging**: Be careful not to log sensitive data
 
----
-
 ## 📋 Security Checklist
 
 - [ ] API keys stored in environment variables
@@ -69,21 +68,6 @@
 - [ ] Error handling secure
 - [ ] Logging doesn't expose sensitive data
 - [ ] Dependencies updated regularly
-
----
-
-## 🚨 Reporting Security Issues
-
-**This is a personal project with no support provided.**
-
-If you discover a security vulnerability:
-
-1. **Do NOT create a public issue**
-2. **Do NOT post about it publicly**
-3. **This project is not maintained**
-4. **Use at your own risk**
-
----
 
 ## ⚖️ Legal Notice
 
@@ -95,10 +79,4 @@ This bot is provided for educational purposes only. Users are responsible for:
 
 ---
 
-<div align="center">
-
-**⭐ Star this repository if you find it useful!**
-
-[Report Issues](https://github.com/trippixn963/AzabBot/issues) • [Discord Server](https://discord.gg/syria)
-
-</div>
+**Remember**: This is a personal project with no support. Use at your own risk!

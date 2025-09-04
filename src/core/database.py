@@ -20,6 +20,7 @@ Version: Modular
 import sqlite3
 import asyncio
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 
 
 class Database:
@@ -99,9 +100,11 @@ class Database:
             conn.execute('INSERT OR REPLACE INTO users (user_id, username) VALUES (?, ?)',
                         (user_id, username))
             
-            # Insert message log
-            conn.execute('INSERT INTO messages (user_id, content, channel_id, guild_id) VALUES (?, ?, ?, ?)',
-                        (user_id, content[:500], channel_id, guild_id))
+            # Insert message log with EST timestamp
+            est = timezone(timedelta(hours=-5))
+            est_timestamp = datetime.now(est).strftime('%Y-%m-%d %H:%M:%S')
+            conn.execute('INSERT INTO messages (user_id, content, channel_id, guild_id, timestamp) VALUES (?, ?, ?, ?, ?)',
+                        (user_id, content[:500], channel_id, guild_id, est_timestamp))
             
             # Increment user's message count
             conn.execute('UPDATE users SET messages_count = messages_count + 1 WHERE user_id = ?',

@@ -61,6 +61,8 @@ class MuteHandler:
             message (discord.Message): Message containing mute embed
         """
         for embed in message.embeds:
+            # Debug log the embed structure
+            logger.info(f"Processing embed - Title: {embed.title}, Author: {embed.author}")
             
             # Look for mute embeds (check title, author name, or description)
             # Combine all text fields to search for mute-related keywords
@@ -71,11 +73,11 @@ class MuteHandler:
             if 'mute' not in embed_text and 'timeout' not in embed_text:
                 continue
             
+            logger.info(f"Found mute embed with {len(embed.fields)} fields")
+            
             user_id = None
             user_name = None
             reason = None
-            moderator = None
-            duration = None
             
             # First try to extract from description if it exists
             # Some moderation bots put user mentions in the description
@@ -84,11 +86,13 @@ class MuteHandler:
                 match = re.search(r'<@!?(\d+)>', embed.description)
                 if match:
                     user_id = int(match.group(1))
+                    logger.info(f"Found user ID in description: {user_id}")
             
             # Extract info from embed fields
             # Most moderation bots use structured fields for user and reason
             for field in embed.fields:
                 field_name_lower = field.name.lower()
+                logger.info(f"Field: {field.name} = {field.value[:100]}")
                 
                 # Check for user field (might be called User, Member, Target, etc.)
                 # Different moderation bots use different field names
@@ -99,35 +103,20 @@ class MuteHandler:
                         match = re.search(r'<@!?(\d+)>', field.value)
                         if match:
                             user_id = int(match.group(1))
+                            logger.info(f"Extracted user ID: {user_id}")
                     
                     # Also extract username (remove mention part if exists)
                     # This handles cases where both username and mention are present
                     user_name_match = re.search(r'([^<>@]+?)(?:\s*<@|$)', field.value)
                     if user_name_match:
                         user_name = user_name_match.group(1).strip()
+                        logger.info(f"Extracted username: {user_name}")
                     
                 # Check for reason field
                 # Look for fields containing the mute reason
                 elif 'reason' in field_name_lower:
                     reason = field.value.strip()
-                
-                # Check for moderator field
-                elif any(x in field_name_lower for x in ['moderator', 'mod', 'by', 'shield']):
-                    moderator = field.value[:30]
-                
-                # Check for duration field  
-                elif any(x in field_name_lower for x in ['duration', 'time', 'length']):
-                    duration = field.value
-            
-            # Log the processed embed
-            if user_id or user_name or reason:
-                logger.mute_embed_found(
-                    user_id=str(user_id) if user_id else None,
-                    username=user_name,
-                    reason=reason,
-                    moderator=moderator,
-                    duration=duration
-                )
+                    logger.info(f"Extracted reason: {reason}")
             
             # Store the reason if we found it
             # Store both user_id and username mappings for maximum reliability
@@ -135,11 +124,13 @@ class MuteHandler:
                 if user_id:
                     # Primary storage by user ID (most reliable)
                     self.prison_handler.mute_reasons[user_id] = reason
+                    logger.success(f"Stored mute reason for user ID {user_id}: {reason}")
                 if user_name:
                     # Also store by username for fallback (case-insensitive)
                     self.prison_handler.mute_reasons[user_name.lower()] = reason
-                
-                # Reason stored successfully
+                    logger.success(f"Stored mute reason for username {user_name}: {reason}")
+            else:
+                logger.warning("Could not extract mute reason from embed")
     
     def is_user_muted(self, member: discord.Member, muted_role_id: int) -> bool:
         """
