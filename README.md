@@ -196,6 +196,62 @@ Azab: "That's what they all say in jail 💀 Maybe next time don't spam the chat
 
 ## 🏗️ Architecture
 
+### Bot Workflow Diagram
+
+```mermaid
+graph TD
+    A[Discord Message] --> B{Bot Active?}
+    B -->|No| C[Ignore Message]
+    B -->|Yes| D[Log to Database]
+    D --> E{User Muted?}
+    E -->|No| F[No Response]
+    E -->|Yes| G[Check Mute Reason]
+    G --> H[Generate AI Response]
+    H --> I[Send Ragebait Reply]
+    
+    J[User Gets Muted] --> K[Detect Role Change]
+    K --> L[Scan Logs Channel]
+    L --> M[Extract Mute Reason]
+    M --> N[Send Welcome to Prison]
+    
+    O[User Gets Unmuted] --> P[Detect Role Removal]
+    P --> Q[Send Release Message]
+    Q --> R[Clear Mute Reason]
+    
+    S[/activate Command] --> T[Enable Ragebaiting]
+    U[/deactivate Command] --> V[Disable Ragebaiting]
+```
+
+### System Architecture
+
+```mermaid
+graph LR
+    A[AzabBot] --> B[Commands]
+    A --> C[Handlers]
+    A --> D[Services]
+    A --> E[Core]
+    A --> F[Utils]
+    
+    B --> B1[ActivateCommand]
+    B --> B2[DeactivateCommand]
+    
+    C --> C1[PrisonHandler]
+    C --> C2[MuteHandler]
+    
+    D --> D1[AIService]
+    
+    E --> E1[Database]
+    E --> E2[Logger]
+    
+    F --> F1[Version]
+    
+    C1 --> D1
+    C2 --> C1
+    A --> D1
+    A --> E1
+    A --> E2
+```
+
 ### Project Structure
 
 ```
