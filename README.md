@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Azab Banner](https://raw.githubusercontent.com/johnhamwi/AzabBot/main/images/BANNER.gif)
+![Azab Banner](https://raw.githubusercontent.com/trippixn963/AzabBot/main/images/BANNER.gif)
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
 ![Discord.py](https://img.shields.io/badge/Discord.py-2.3.2+-green.svg)
@@ -73,7 +73,7 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/johnhamwi/AzabBot.git
+git clone https://github.com/trippixn963/AzabBot.git
 cd AzabBot
 ```
 
@@ -152,7 +152,7 @@ COOLDOWN_SECONDS=10
 <div align="center">
 
 ### Bot in Action
-![Azab Bot Avatar](https://raw.githubusercontent.com/johnhamwi/AzabBot/main/images/PFP.gif)
+![Azab Bot Avatar](https://raw.githubusercontent.com/trippixn963/AzabBot/main/images/PFP.gif)
 
 *The Azab bot ready to engage in psychological warfare*
 
@@ -324,7 +324,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-![Developer Avatar](https://raw.githubusercontent.com/johnhamwi/AzabBot/main/images/AUTHOR.jpg)
+![Developer Avatar](https://raw.githubusercontent.com/trippixn963/AzabBot/main/images/AUTHOR.jpg)
 
 **حَـــــنَّـــــا** - Custom Discord Bot Developer
 
@@ -338,6 +338,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **⭐ Star this repository if you find it interesting!**
 
-[Report Bug](https://github.com/johnhamwi/AzabBot/issues) • [Request Feature](https://github.com/johnhamwi/AzabBot/issues) • [Discord Server](https://discord.gg/syria)
+[Report Bug](https://github.com/trippixn963/AzabBot/issues) • [Request Feature](https://github.com/trippixn963/AzabBot/issues) • [Discord Server](https://discord.gg/syria)
 
 </div>
