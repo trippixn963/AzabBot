@@ -24,10 +24,9 @@ import os
 
 from src.core.logger import logger
 from src.core.database import Database
-from src.utils.version import Version
 from src.services.ai_service import AIService
 from src.commands import ActivateCommand, DeactivateCommand
-from src.handlers import PrisonHandler, MuteHandler
+from src.handlers import PrisonHandler, MuteHandler, PresenceHandler
 
 
 class AzabBot(discord.Client):
@@ -48,6 +47,7 @@ class AzabBot(discord.Client):
         tree (app_commands.CommandTree): Discord slash command tree
         prison_handler (PrisonHandler): Handler for prisoner operations
         mute_handler (MuteHandler): Handler for mute detection
+        presence_handler (PresenceHandler): Handler for rich presence updates
     """
     
     def __init__(self):
@@ -74,7 +74,7 @@ class AzabBot(discord.Client):
         prison_channels = os.getenv('PRISON_CHANNEL_IDS', '')
         self.allowed_channels = {int(ch) for ch in prison_channels.split(',') if ch.strip()}
         if self.allowed_channels:
-            logger.service_status("Channel Restriction", f"{len(self.allowed_channels)} channels")
+            logger.info(f"Bot restricted to channels: {self.allowed_channels}")
         
         # Load channel and role IDs for mute detection
         self.logs_channel_id = int(os.getenv('LOGS_CHANNEL_ID', '1404020045876690985'))
@@ -85,6 +85,7 @@ class AzabBot(discord.Client):
         # Initialize handlers
         self.prison_handler = PrisonHandler(self, self.ai)
         self.mute_handler = MuteHandler(self.prison_handler)
+        self.presence_handler = PresenceHandler(self)
         
         # Register all slash commands
         self._register_commands()
@@ -116,7 +117,7 @@ class AzabBot(discord.Client):
         self.tree.add_command(activate_cmd.create_command())
         self.tree.add_command(deactivate_cmd.create_command())
         
-        logger.service_status("Commands", "2 slash commands registered")
+        logger.info("Commands registered: /activate, /deactivate")
     
     async def setup_hook(self):
         """
@@ -126,7 +127,7 @@ class AzabBot(discord.Client):
         This ensures commands are available in all connected servers.
         """
         await self.tree.sync()
-        logger.service_status("Discord Sync", f"{len(self.tree.get_commands())} commands synced")
+        logger.success(f"Synced {len(self.tree.get_commands())} commands")
     
     async def on_ready(self):
         """
@@ -134,15 +135,17 @@ class AzabBot(discord.Client):
         
         Called when bot successfully connects to Discord Gateway.
         Displays bot status information and confirms connection.
+        Starts the presence update loop.
         """
-        # Get version information for status display
-        version_info = Version.get_full_info()
+        logger.tree("BOT ONLINE", [
+            ("Name", self.user.name),
+            ("ID", str(self.user.id)),
+            ("Servers", str(len(self.guilds))),
+            ("Status", "ACTIVE - Ragebaiting enabled")
+        ], "🚀")
         
-        logger.bot_ready(
-            f"{self.user.name} ({version_info['version']})", 
-            str(self.user.id), 
-            len(self.guilds)
-        )
+        # Start presence updates
+        await self.presence_handler.start_presence_loop()
     
     async def on_message(self, message: discord.Message):
         """
@@ -202,7 +205,11 @@ class AzabBot(discord.Client):
                 
                 # Special logging for muted users (ragebait responses)
                 if is_muted:
-                    logger.ragebait_sent(str(message.author))
+                    logger.tree("RAGEBAITED PRISONER", [
+                        ("Target", str(message.author)),
+                        ("Message", message.content[:50]),
+                        ("Response", response[:50])
+                    ], "😈")
     
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         """
@@ -225,10 +232,10 @@ class AzabBot(discord.Client):
         
         # User just got muted (new prisoner)
         if not had_muted_role and has_muted_role:
-            logger.prisoner_event("DETECTED", after.name)
+            logger.success(f"New prisoner detected: {after.name}")
             await self.prison_handler.handle_new_prisoner(after)
         
         # User just got unmuted (freed from prison)
         elif had_muted_role and not has_muted_role:
-            logger.prisoner_event("RELEASED", after.name)
+            logger.success(f"Prisoner released: {after.name}")
             await self.prison_handler.handle_prisoner_release(after)

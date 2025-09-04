@@ -48,9 +48,9 @@ class AIService:
         self.enabled = bool(api_key)
         if self.enabled:
             openai.api_key = api_key
-            logger.service_status("AI", "online")
+            logger.success("AI Service Ready")
         else:
-            logger.service_status("AI", "offline - fallback mode")
+            logger.error("No OpenAI API key - using fallback responses")
     
     def should_respond(self, message: str, mentioned: bool, is_muted: bool) -> bool:
         """
@@ -89,7 +89,7 @@ class AIService:
         """
         if not self.enabled:
             # Use fallback responses when AI is not configured
-            return self._fallback(is_muted, mute_reason, message)
+            return self._fallback(is_muted, mute_reason)
         
         try:
             # Create different system prompts based on user status
@@ -102,30 +102,19 @@ class AIService:
                 
                 # Add mute reason if available
                 if mute_reason:
-                    # Special handling for "why am I muted" questions
-                    if any(phrase in message.lower() for phrase in ['why am i muted', 'why was i muted', 'why did i get muted', 'what did i do']):
-                        base_prompt += f"They were muted for: {mute_reason}. "
-                        base_prompt += (
-                            "The user is asking why they're muted. Give a SHORT, DIRECT response that: "
-                            "1) States the exact reason they were muted "
-                            "2) Mocks them about it "
-                            "Keep it under 20 words. Example: 'You posted unsafe links, genius 🙄 Enjoy jail!'"
-                        )
-                    else:
-                        base_prompt += (
-                            f"Context: They were muted for '{mute_reason}' but DON'T mention this unless: "
-                            "1) They ask about it, 2) It's directly relevant to their message, or 3) It makes the joke funnier. "
-                            "Focus on responding to what they actually said, not why they're muted. "
-                            "Be creative and contextual with your responses. "
-                        )
+                    base_prompt += f"They were muted for: {mute_reason}. "
+                    base_prompt += (
+                        "If they ask why they're muted, MOCK them about the reason. "
+                        "Use the mute reason to make fun of them specifically about what they did. "
+                    )
                 
                 base_prompt += (
-                    "Your job is to respond to WHAT THEY SAID and mock them about being stuck in prison/jail. "
-                    "FOCUS on their actual message - twist their words to mock them. "
-                    "Don't just randomly insult them - make it relevant to what they typed. "
-                    "Be creative, contextual, and savage but PG-13. "
-                    "Mock them for being trapped in the prison channel. "
-                    "Keep responses under 50 words. Use emojis sparingly. "
+                    "Your job is to mock them about being stuck in prison/jail and their messages. "
+                    "Reference what they said and twist it to mock them. Be creative and contextual. "
+                    "Use their own words against them. Be savage but PG-13. "
+                    "Mock them for being trapped in the prison channel, not for being unable to respond. "
+                    "They're stuck here talking to you, the prison bot. Make fun of that. "
+                    "Keep responses under 100 words. Use emojis. "
                     "IMPORTANT: Use their name directly without quotes (e.g., 'Golden' should be just Golden). "
                     "NEVER say they can't respond or can't reply - they CAN respond, they're just stuck in jail."
                 )
@@ -154,21 +143,14 @@ class AIService:
             return response.choices[0].message.content
             
         except Exception as e:
-            logger.error("OpenAI API", str(e)[:50])
+            logger.error(f"OpenAI API error: {e}")
             # Use fallback responses instead of error messages
-            return self._fallback(is_muted, mute_reason, message)
+            return self._fallback(is_muted, mute_reason)
     
-    def _fallback(self, is_muted: bool, mute_reason: str = None, message: str = "") -> str:
+    def _fallback(self, is_muted: bool, mute_reason: str = None) -> str:
         """Fallback responses when AI is unavailable"""
         import random
         if is_muted:
-            # Check if user is asking why they're muted
-            if any(phrase in message.lower() for phrase in ['why am i muted', 'why was i muted', 'why did i get muted']):
-                if mute_reason:
-                    return f"You're muted for: {mute_reason} 🤡"
-                else:
-                    return "Ask the mods, not me 🙄"
-            
             if mute_reason:
                 return random.choice([
                     f"HAHAHA YOU'RE IN JAIL FOR {mute_reason.upper()}! 🔒",

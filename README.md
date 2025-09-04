@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Azab Banner](https://raw.githubusercontent.com/trippixn963/AzabBot/main/images/BANNER.gif)
+![Azab Banner](images/BANNER.gif)
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
 ![Discord.py](https://img.shields.io/badge/Discord.py-2.3.2+-green.svg)
@@ -48,6 +48,13 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 - **Prison Channel**: Dedicated space for ragebaiting activities
 - **Contextual Responses**: Uses actual mute reasons for maximum impact
 
+### 🎮 **Dynamic Rich Presence**
+- **Real-Time Status**: Shows current prisoner count when active
+- **Activity Updates**: Displays "Watching X prisoners" during ragebaiting
+- **Event Notifications**: Special presence updates for prisoner arrivals/releases
+- **Sleep Mode**: Shows "💤 Sleeping" when bot is inactive
+- **Auto-Updates**: Presence refreshes every 30 seconds
+
 ### 📊 **Analytics & Logging**
 - **Message Tracking**: Logs all user interactions to SQLite database
 - **Run ID System**: Unique session tracking for debugging
@@ -73,8 +80,8 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/trippixn963/AzabBot.git
-cd AzabBot
+git clone https://github.com/yourusername/azab-discord-bot.git
+cd azab-discord-bot
 ```
 
 2. **Create virtual environment**
@@ -152,7 +159,7 @@ COOLDOWN_SECONDS=10
 <div align="center">
 
 ### Bot in Action
-![Azab Bot Avatar](https://raw.githubusercontent.com/trippixn963/AzabBot/main/images/PFP.gif)
+![Azab Bot Avatar](images/PFP.gif)
 
 *The Azab bot ready to engage in psychological warfare*
 
@@ -196,62 +203,6 @@ Azab: "That's what they all say in jail 💀 Maybe next time don't spam the chat
 
 ## 🏗️ Architecture
 
-### Bot Workflow Diagram
-
-```mermaid
-graph TD
-    A[Discord Message] --> B{Bot Active?}
-    B -->|No| C[Ignore Message]
-    B -->|Yes| D[Log to Database]
-    D --> E{User Muted?}
-    E -->|No| F[No Response]
-    E -->|Yes| G[Check Mute Reason]
-    G --> H[Generate AI Response]
-    H --> I[Send Ragebait Reply]
-    
-    J[User Gets Muted] --> K[Detect Role Change]
-    K --> L[Scan Logs Channel]
-    L --> M[Extract Mute Reason]
-    M --> N[Send Welcome to Prison]
-    
-    O[User Gets Unmuted] --> P[Detect Role Removal]
-    P --> Q[Send Release Message]
-    Q --> R[Clear Mute Reason]
-    
-    S["/activate Command"] --> T[Enable Ragebaiting]
-    U["/deactivate Command"] --> V[Disable Ragebaiting]
-```
-
-### System Architecture
-
-```mermaid
-graph LR
-    A[AzabBot] --> B[Commands]
-    A --> C[Handlers]
-    A --> D[Services]
-    A --> E[Core]
-    A --> F[Utils]
-    
-    B --> B1[ActivateCommand]
-    B --> B2[DeactivateCommand]
-    
-    C --> C1[PrisonHandler]
-    C --> C2[MuteHandler]
-    
-    D --> D1[AIService]
-    
-    E --> E1[Database]
-    E --> E2[Logger]
-    
-    F --> F1[Version]
-    
-    C1 --> D1
-    C2 --> C1
-    A --> D1
-    A --> E1
-    A --> E2
-```
-
 ### Project Structure
 
 ```
@@ -264,10 +215,15 @@ azab-discord-bot/
 │   ├── core/
 │   │   ├── database.py        # SQLite database wrapper
 │   │   └── logger.py          # Custom logging system
+│   ├── handlers/
+│   │   ├── prison_handler.py  # Prisoner welcome/release management
+│   │   ├── mute_handler.py    # Mute embed processing
+│   │   └── presence_handler.py # Dynamic rich presence updates
 │   ├── services/
 │   │   └── ai_service.py      # OpenAI integration
 │   └── utils/
-│       └── __init__.py        # Utility functions
+│       ├── version.py         # Version management system
+│       └── update_version.py  # Version update script
 ├── data/
 │   └── azab.db               # SQLite database
 ├── logs/
@@ -283,6 +239,12 @@ azab-discord-bot/
 - Main Discord client with event handlers
 - Mute detection and prison management
 - AI response coordination
+- Rich presence management
+
+**Handlers**
+- **PrisonHandler**: Manages prisoner welcome/release messages
+- **MuteHandler**: Processes mute embeds and extracts reasons
+- **PresenceHandler**: Manages dynamic Discord rich presence
 
 **AIService**
 - OpenAI API integration
@@ -380,7 +342,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-![Developer Avatar](https://raw.githubusercontent.com/trippixn963/AzabBot/main/images/AUTHOR.jpg)
+![Developer Avatar](images/PFP.gif)
 
 **حَـــــنَّـــــا** - Custom Discord Bot Developer
 
@@ -394,6 +356,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **⭐ Star this repository if you find it interesting!**
 
-[Report Bug](https://github.com/trippixn963/AzabBot/issues) • [Request Feature](https://github.com/trippixn963/AzabBot/issues) • [Discord Server](https://discord.gg/syria)
+[Report Bug](https://github.com/yourusername/azab-discord-bot/issues) • [Request Feature](https://github.com/yourusername/azab-discord-bot/issues) • [Discord Server](https://discord.gg/syria)
 
 </div>
