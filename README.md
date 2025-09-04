@@ -218,8 +218,8 @@ graph TD
     P --> Q[Send Release Message]
     Q --> R[Clear Mute Reason]
     
-    S[/activate Command] --> T[Enable Ragebaiting]
-    U[/deactivate Command] --> V[Disable Ragebaiting]
+    S["/activate Command"] --> T[Enable Ragebaiting]
+    U["/deactivate Command"] --> V[Disable Ragebaiting]
 ```
 
 ### System Architecture
