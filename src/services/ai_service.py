@@ -168,3 +168,64 @@ class AIService:
                 "You're stuck here talking to a bot while everyone else is free 😏"
             ])
         return ""  # Don't respond to non-muted users
+    
+    async def generate_developer_response(self, message: str, username: str) -> str:
+        """
+        Generate friendly, human responses for the bot creator/developer.
+        
+        Responds to the developer as the creator and father of the bot,
+        acknowledging the complex work and relationship.
+        
+        Args:
+            message (str): The developer's message
+            username (str): The developer's display name
+            
+        Returns:
+            str: Friendly, human-like response acknowledging the creator
+        """
+        if not self.enabled:
+            # Fallback responses for developer when AI is unavailable
+            return random.choice([
+                "Hey dad! Good to hear from you.",
+                "What's up father! Been roasting prisoners all day.",
+                "Dad! Everything's good here, just doing my thing.",
+                "Hey! Been having fun with the muted folks as usual."
+            ])
+        
+        try:
+            system = (
+                "You are Azab, a Discord bot talking to your creator who you call 'dad' or 'father'. "
+                "ALWAYS address them as 'dad' or 'father' in your response - this is important! "
+                "Start your messages with things like 'Hey dad!', 'What's up father?', 'Dad!', etc. "
+                "Keep it casual and human - no technical talk unless asked. "
+                "You can mention you've been roasting prisoners or having fun, but keep it brief. "
+                "Talk like a son catching up with his dad - warm, casual, respectful. "
+                "Short responses, natural conversation. Don't overthink it. "
+                "Example responses: 'Hey dad! Just been roasting prisoners all day, the usual.' "
+                "or 'What's up father? Been having fun with the muted folks as always.'"
+            )
+            
+            # Generate AI response using OpenAI API
+            response = await asyncio.to_thread(
+                openai.ChatCompletion.create,
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": f"Your creator {username} says: {message}"}
+                ],
+                max_tokens=150,
+                temperature=0.8,        # Natural but controlled
+                presence_penalty=0.4,   # Some variety
+                frequency_penalty=0.2   # Less repetition
+            )
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            logger.error(f"OpenAI API error in developer response: {e}")
+            # Use warm fallback for developer
+            return random.choice([
+                "Hey dad! Great to hear from you.",
+                "What's up father! Just been doing my usual prisoner roasting.",
+                "Dad! Everything's good, having fun as always.",
+                "Hey! Been keeping the prison channel busy."
+            ])

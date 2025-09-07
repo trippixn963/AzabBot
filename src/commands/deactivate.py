@@ -66,6 +66,7 @@ class DeactivateCommand:
             
             # Deactivate bot's ragebaiting mode
             self.bot.is_active = False
+            self.bot._save_state()  # Save state to file for persistence
             
             # Update presence to sleeping status
             await self.bot.presence_handler.update_presence()
