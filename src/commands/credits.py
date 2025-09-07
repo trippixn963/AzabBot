@@ -112,22 +112,6 @@ class CreditsCommand:
                     inline=True
                 )
                 
-                # Add spacing and description
-                embed.add_field(name="\u200b", value="\u200b", inline=False)
-                embed.add_field(
-                    name="\u200b",
-                    value=(
-                        "```\n"
-                        "Advanced Discord bot that monitors muted users and\n"
-                        "generates AI-powered responses to create engaging\n"
-                        "interactions. Features intelligent ragebaiting with\n"
-                        "GPT-3.5, persistent state management, and automated\n"
-                        "prisoner tracking system.\n"
-                        "```"
-                    ),
-                    inline=False
-                )
-                
                 # Add spacing
                 embed.add_field(name="\u200b", value="\u200b", inline=False)
                 
