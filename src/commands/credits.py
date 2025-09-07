@@ -167,9 +167,9 @@ class CreditsCommand:
                     inline=False
                 )
                 
-                # Set thumbnail to bot avatar
-                if self.bot.user.avatar:
-                    embed.set_thumbnail(url=self.bot.user.avatar.url)
+                # Set thumbnail to developer avatar
+                if developer_avatar:
+                    embed.set_thumbnail(url=developer_avatar)
                 
                 # Set footer with developer info and avatar
                 embed.set_footer(
