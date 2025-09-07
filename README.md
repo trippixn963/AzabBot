@@ -4,10 +4,11 @@
 
 ![Azab Banner](images/BANNER.gif)
 
-![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
+![Python](https://img.shields.io/badge/Python-3.12-blue.svg)
 ![Discord.py](https://img.shields.io/badge/Discord.py-2.3.2+-green.svg)
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--3.5--turbo-orange.svg)
 ![License](https://img.shields.io/badge/License-MIT-red.svg)
+![Latest Release](https://img.shields.io/github/v/release/trippixn963/AzabBot?label=Latest%20Release&color=purple)
 
 **A sophisticated Discord bot designed for psychological warfare against muted users**
 
@@ -28,11 +29,12 @@
 ### ⚠️ **Important Notice**
 This bot was custom-built for **discord.gg/syria** and is provided as-is for educational purposes. **No support will be provided** for setup, configuration, or troubleshooting.
 
-### 🆕 **What's New**
+### 🆕 **What's New in v2.1.0**
+- **👑 Developer Recognition**: Bot recognizes creator with special friendly responses
+- **📊 Prisoner History Database**: Comprehensive tracking of all mute events and repeat offenders
+- **💾 Persistent State**: Bot remembers active/inactive state across restarts
 - **🎮 Rich Presence System**: Real-time Discord status updates showing prisoner count
-- **📊 Visual Architecture**: Interactive diagrams showing bot workflow and system structure
-- **🔧 Enhanced Documentation**: Complete setup guides and technical specifications
-- **⚡ Performance Improvements**: Optimized message processing and error handling
+- **🔧 Stability Improvements**: Fixed memory crashes and duplicate message issues
 
 ---
 
@@ -55,6 +57,8 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 - **Channel Integration**: Monitors logs channel for mute information
 - **Prison Channel**: Dedicated space for ragebaiting activities
 - **Contextual Responses**: Uses actual mute reasons for maximum impact
+- **Prisoner History**: Tracks repeat offenders with comprehensive mute statistics
+- **Enhanced Roasting**: Special messages for users with multiple prison visits
 
 ### 🎮 **Dynamic Rich Presence** ⭐ *NEW!*
 - **Real-Time Status**: Shows current prisoner count when active
@@ -66,22 +70,25 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 
 ### 📊 **Analytics & Logging**
 - **Message Tracking**: Logs all user interactions to SQLite database
+- **Prisoner History**: Complete database of all mute events with timestamps
 - **Run ID System**: Unique session tracking for debugging
 - **Structured Logging**: Professional logging with EST timezone
 - **Performance Monitoring**: Tracks bot performance and errors
+- **Persistent State**: Saves activation state to survive restarts
 
 ### 🎮 **Command System**
 - **Slash Commands**: Modern Discord slash command interface
 - **Admin Controls**: `/activate` and `/deactivate` commands
 - **Permission System**: Administrator-only access to controls
 - **Ephemeral Responses**: Private command confirmations
+- **Developer Override**: Creator bypasses all restrictions and deactivation
 
 ---
 
 ## 🚀 Installation
 
 ### Prerequisites
-- Python 3.11 or higher
+- Python 3.12 (Note: 3.13 not supported due to audioop removal)
 - Discord Bot Token
 - OpenAI API Key (optional but recommended)
 
@@ -383,6 +390,20 @@ CREATE TABLE messages (
     channel_id INTEGER,
     guild_id INTEGER,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Prisoner history table (v2.1.0)
+CREATE TABLE prisoner_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    username TEXT,
+    mute_reason TEXT,
+    muted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    unmuted_at TIMESTAMP,
+    duration_minutes INTEGER,
+    muted_by TEXT,
+    unmuted_by TEXT,
+    is_active BOOLEAN DEFAULT 1
 );
 ```
 
