@@ -170,12 +170,6 @@ class CreditsCommand:
                 if developer_avatar:
                     embed.set_thumbnail(url=developer_avatar)
                 
-                # Set footer with developer info and avatar
-                embed.set_footer(
-                    text=f"Developed with ❤️ by {developer_name}",
-                    icon_url=developer_avatar
-                )
-                
                 # Create view with buttons
                 view = View()
                 
