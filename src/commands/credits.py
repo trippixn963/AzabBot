@@ -92,7 +92,7 @@ class CreditsCommand:
                 embed.add_field(
                     name="Developer",
                     value=(
-                        f"**{developer_name}**"
+                        f"<@{self.bot.developer_id}>"
                     ),
                     inline=True
                 )
@@ -131,26 +131,26 @@ class CreditsCommand:
                     inline=True
                 )
                 
-                # Infrastructure
+                # Code statistics
                 embed.add_field(
-                    name="Infrastructure",
+                    name="Code Statistics",
                     value=(
-                        "**Database:** SQLite3\n"
-                        "**Hosting:** Hetzner VPS\n"
-                        "**Process:** PM2 Daemon\n"
-                        "**OS:** Ubuntu Linux"
+                        "**bot.py:** 384 lines\n"
+                        "**ai_service.py:** 242 lines\n"
+                        "**prison_handler.py:** 350 lines\n"
+                        "**Total Project:** 3,057 lines"
                     ),
                     inline=True
                 )
                 
-                # Architecture details
+                # Development time
                 embed.add_field(
-                    name="Architecture",
+                    name="Development",
                     value=(
-                        "**Design:** Modular MVC\n"
-                        "**Commands:** Slash-based\n"
-                        "**State:** Persistent JSON\n"
-                        "**Logging:** Custom system"
+                        "**Time Invested:** 40-60 hours\n"
+                        "**Solo Developer:** Yes\n"
+                        "**Custom Built:** Syria Server\n"
+                        "**Active Since:** Dec 2024"
                     ),
                     inline=True
                 )
@@ -163,13 +163,6 @@ class CreditsCommand:
                 embed.set_footer(
                     text=f"Developed with ❤️ by {developer_name}",
                     icon_url=developer_avatar
-                )
-                
-                # Set author field
-                embed.set_author(
-                    name="Azab Bot",
-                    icon_url=self.bot.user.avatar.url if self.bot.user.avatar else None,
-                    url="https://github.com/trippixn963/AzabBot"
                 )
                 
                 # Create view with buttons
