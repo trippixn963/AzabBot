@@ -1,12 +1,13 @@
 """
-Azab Discord Bot - Utilities Package
-===================================
+Azab Discord Bot - Utils Package
+================================
 
-Utility functions and helper modules for the Azab Discord bot.
-This package contains reusable components and helper functions
-used throughout the bot's functionality.
+Utility modules for the Azab Discord bot.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: Modular
 """
+
+from .version import Version, get_version_string, get_version_info
+
+__all__ = ['Version', 'get_version_string', 'get_version_info']
