@@ -117,14 +117,9 @@ class CreditsCommand:
                 
                 # Technology Stack
                 embed.add_field(
-                    name="🔧 Technology Stack",
+                    name="Technology Stack",
                     value=(
-                        "• **Python 3.12**\n"
-                        "• **Discord.py 2.3.2**\n"
-                        "• **GPT-3.5-turbo**\n"
-                        "• **OpenAI 0.28.1**\n"
-                        "• **SQLite3**\n"
-                        "• **PM2 Process Manager**"
+                        "`Python 3.12 | Discord.py 2.3.2 | GPT-3.5-turbo`"
                     ),
                     inline=False
                 )
