@@ -66,6 +66,7 @@ class ActivateCommand:
             
             # Activate bot's ragebaiting mode
             self.bot.is_active = True
+            self.bot._save_state()  # Save state to file for persistence
             
             # Update presence to active status
             await self.bot.presence_handler.update_presence()

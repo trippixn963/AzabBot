@@ -80,6 +80,9 @@ class PrisonHandler:
             # Try both user ID and username (case-insensitive) for maximum reliability
             mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(member.name.lower())
             
+            # Get prisoner's history for enhanced roasting
+            prisoner_stats = await self.bot.db.get_prisoner_stats(member.id)
+            
             if mute_reason:
                 logger.info(f"Found stored mute reason for {member.name}: {mute_reason}")
             else:
@@ -110,11 +113,22 @@ class PrisonHandler:
             logger.info(f"Generating welcome message for {member.name} with reason: {mute_reason or 'None'}")
             
             if mute_reason:
-                # Contextual prompt with specific mute reason for savage mocking
+                # Contextual prompt with specific mute reason and history for savage mocking
                 welcome_prompt = (
                     f"Welcome a prisoner who just got thrown in jail for: '{mute_reason}'. "
                     f"Mock them brutally and specifically about why they got jailed. "
-                    f"Make fun of their mute reason. Be savage and reference their specific offense. "
+                )
+                
+                # Add history roasting if they're a repeat offender
+                if prisoner_stats['total_mutes'] > 0:
+                    welcome_prompt += (
+                        f"This is their {prisoner_stats['total_mutes'] + 1}th time in prison! "
+                        f"They've spent {prisoner_stats['total_minutes'] or 0} total minutes locked up before. "
+                        f"Mock them for being a repeat offender who never learns. "
+                    )
+                
+                welcome_prompt += (
+                    f"Be savage and reference their specific offense. "
                     f"Tell them they're stuck in prison now with you, the prison bot. "
                     f"IMPORTANT: Do NOT mention their name, just refer to them as 'you' since they will be pinged."
                 )
@@ -144,10 +158,19 @@ class PrisonHandler:
             # Update presence to show prisoner arrival
             asyncio.create_task(self.bot.presence_handler.show_prisoner_arrived())
             
+            # Record mute in database
+            await self.bot.db.record_mute(
+                user_id=member.id,
+                username=member.name,
+                reason=mute_reason or "Unknown",
+                muted_by=None  # We could extract this from embeds later
+            )
+            
             # Log the welcome event
             logger.tree("NEW PRISONER WELCOMED", [
                 ("Prisoner", str(member)),
                 ("Reason", mute_reason[:50] if mute_reason else "Unknown"),
+                ("Times Muted", str(prisoner_stats['total_mutes'] + 1)),
                 ("Welcome", response[:50])
             ], "⛓️")
             
@@ -177,6 +200,9 @@ class PrisonHandler:
             # Get their mute reason if we have it
             # Try both user ID and username for maximum reliability
             mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(member.name.lower())
+            
+            # Get prisoner's history
+            prisoner_stats = await self.bot.db.get_prisoner_stats(member.id)
             
             # Generate a release message
             # Create different prompts based on whether we have the original offense
@@ -215,6 +241,12 @@ class PrisonHandler:
             # Update presence to show prisoner release
             asyncio.create_task(self.bot.presence_handler.show_prisoner_released())
             
+            # Record unmute in database
+            await self.bot.db.record_unmute(
+                user_id=member.id,
+                unmuted_by=None  # We could track who unmuted later
+            )
+            
             # Clear their mute reason since they're free now
             # Clean up both user ID and username mappings
             if member.id in self.mute_reasons:
@@ -226,6 +258,7 @@ class PrisonHandler:
             logger.tree("PRISONER RELEASED", [
                 ("Ex-Prisoner", str(member)),
                 ("Previous Offense", mute_reason[:50] if mute_reason else "Unknown"),
+                ("Total Times Muted", str(prisoner_stats['total_mutes'])),
                 ("Release Message", response[:50])
             ], "🔓")
             

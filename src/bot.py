@@ -21,6 +21,7 @@ from discord import app_commands
 from datetime import datetime
 import asyncio
 import os
+import json
 
 from src.core.logger import logger
 from src.core.database import Database
@@ -67,7 +68,11 @@ class AzabBot(discord.Client):
         # Initialize core services
         self.db = Database()                                    # Message logging database
         self.ai = AIService(os.getenv('OPENAI_API_KEY'))       # AI response generation
-        self.is_active = True                                   # Bot starts in active state
+        
+        # Load activation state from file (persistent across restarts)
+        self.state_file = 'bot_state.json'
+        self.is_active = self._load_state()                     # Load saved state or default to True
+        
         self.tree = app_commands.CommandTree(self)             # Discord slash command tree
         
         # Load channel IDs from environment
@@ -82,6 +87,9 @@ class AzabBot(discord.Client):
         self.muted_role_id = int(os.getenv('MUTED_ROLE_ID', '1402287996648030249'))
         self.general_channel_id = int(os.getenv('GENERAL_CHANNEL_ID', '1350540215797940245'))
         
+        # Developer/Creator ID
+        self.developer_id = int(os.getenv('DEVELOPER_ID', '259725211664908288'))
+        
         # Initialize handlers
         self.prison_handler = PrisonHandler(self, self.ai)
         self.mute_handler = MuteHandler(self.prison_handler)
@@ -89,6 +97,33 @@ class AzabBot(discord.Client):
         
         # Register all slash commands
         self._register_commands()
+    
+    def _load_state(self) -> bool:
+        """
+        Load bot activation state from file.
+        
+        Returns:
+            bool: Saved activation state, or True if no saved state exists
+        """
+        try:
+            if os.path.exists(self.state_file):
+                with open(self.state_file, 'r') as f:
+                    data = json.load(f)
+                    state = data.get('is_active', True)
+                    logger.info(f"Loaded bot state: {'ACTIVE' if state else 'INACTIVE'}")
+                    return state
+        except Exception as e:
+            logger.error(f"Failed to load state: {e}")
+        return True  # Default to active
+    
+    def _save_state(self):
+        """Save bot activation state to file for persistence."""
+        try:
+            with open(self.state_file, 'w') as f:
+                json.dump({'is_active': self.is_active}, f)
+            logger.info(f"Saved bot state: {'ACTIVE' if self.is_active else 'INACTIVE'}")
+        except Exception as e:
+            logger.error(f"Failed to save state: {e}")
     
     def is_user_muted(self, member: discord.Member) -> bool:
         """
@@ -165,12 +200,20 @@ class AzabBot(discord.Client):
             await self.mute_handler.process_mute_embed(message)
             return
         
-        # Ignore messages from bots or when bot is inactive
-        if message.author.bot or not self.is_active:
+        # Ignore messages from bots
+        if message.author.bot:
+            return
+        
+        # Check if message is from the developer/creator - bypass all restrictions
+        is_developer = message.author.id == self.developer_id
+        
+        # If bot is inactive and user is not developer, ignore
+        if not self.is_active and not is_developer:
             return
         
         # Check if message is in allowed channel (if restrictions are set)
-        if self.allowed_channels and message.channel.id not in self.allowed_channels:
+        # Developer bypasses channel restrictions
+        if not is_developer and self.allowed_channels and message.channel.id not in self.allowed_channels:
             return
         
         # Log message to database for analytics (guild messages only)
@@ -185,6 +228,22 @@ class AzabBot(discord.Client):
         
         # Check if user is currently muted (by role)
         is_muted = self.is_user_muted(message.author)
+        
+        # Check if message is from the developer/creator
+        if is_developer and self.user.mentioned_in(message):
+            async with message.channel.typing():
+                # Generate friendly, human response for the creator
+                response = await self.ai.generate_developer_response(
+                    message.content,
+                    message.author.display_name
+                )
+                await message.reply(response)
+                logger.tree("CREATOR INTERACTION", [
+                    ("Father", str(message.author)),
+                    ("Message", message.content[:50]),
+                    ("Response", response[:50])
+                ], "👑")
+            return
         
         # Generate AI response if conditions are met
         # AI decides whether to respond based on content, mentions, and mute status
