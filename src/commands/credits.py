@@ -182,15 +182,6 @@ class CreditsCommand:
                 )
                 view.add_item(github_button)
                 
-                # Server button
-                server_button = Button(
-                    label="Syria Server",
-                    style=discord.ButtonStyle.link,
-                    url="https://discord.gg/syria",
-                    emoji="🔥"
-                )
-                view.add_item(server_button)
-                
                 # Latest Release button
                 release_button = Button(
                     label=f"v{Version.get_version_string()}",
