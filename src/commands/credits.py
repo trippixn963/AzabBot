@@ -81,9 +81,6 @@ class CreditsCommand:
                 
                 # Create main embed
                 embed: discord.Embed = discord.Embed(
-                    description=(
-                        "AI-powered prison bot for **discord.gg/syria**"
-                    ),
                     color=0xFF4500,  # Orange-red color
                     timestamp=datetime.now(timezone.utc)
                 )
@@ -114,6 +111,14 @@ class CreditsCommand:
                         f"**Uptime:** {uptime_str}"
                     ),
                     inline=True
+                )
+                
+                # Add spacing and description
+                embed.add_field(name="\u200b", value="\u200b", inline=False)
+                embed.add_field(
+                    name="\u200b",
+                    value="AI-powered prison bot for **discord.gg/syria**",
+                    inline=False
                 )
                 
                 # Add spacing
