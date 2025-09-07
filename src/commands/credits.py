@@ -81,8 +81,7 @@ class CreditsCommand:
                 
                 # Create main embed
                 embed: discord.Embed = discord.Embed(
-                    color=0xFF4500,  # Orange-red color
-                    timestamp=datetime.now(timezone.utc)
+                    color=0xFF4500  # Orange-red color
                 )
                 
                 # Developer section
