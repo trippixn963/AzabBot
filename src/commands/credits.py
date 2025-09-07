@@ -81,7 +81,6 @@ class CreditsCommand:
                 
                 # Create main embed
                 embed: discord.Embed = discord.Embed(
-                    title="🔥 AZAB BOT",
                     description=(
                         "AI-powered prison bot for **discord.gg/syria**"
                     ),
@@ -109,7 +108,7 @@ class CreditsCommand:
                 
                 # Statistics
                 embed.add_field(
-                    name="Stats",
+                    name="Live Stats",
                     value=(
                         f"**Prisoners:** {prisoner_count}\n"
                         f"**Uptime:** {uptime_str}"
@@ -120,13 +119,40 @@ class CreditsCommand:
                 # Add spacing
                 embed.add_field(name="\u200b", value="\u200b", inline=False)
                 
-                # Tech stack
+                # Framework & Libraries
                 embed.add_field(
-                    name="Built With",
+                    name="Core Technology",
                     value=(
-                        "Python 3.12 • Discord.py • GPT-3.5"
+                        "**Language:** Python 3.12\n"
+                        "**Framework:** Discord.py 2.3.2\n"
+                        "**AI Model:** GPT-3.5-turbo\n"
+                        "**AI Library:** OpenAI 0.28.1"
                     ),
-                    inline=False
+                    inline=True
+                )
+                
+                # Infrastructure
+                embed.add_field(
+                    name="Infrastructure",
+                    value=(
+                        "**Database:** SQLite3\n"
+                        "**Hosting:** Hetzner VPS\n"
+                        "**Process:** PM2 Daemon\n"
+                        "**OS:** Ubuntu Linux"
+                    ),
+                    inline=True
+                )
+                
+                # Architecture details
+                embed.add_field(
+                    name="Architecture",
+                    value=(
+                        "**Design:** Modular MVC\n"
+                        "**Commands:** Slash-based\n"
+                        "**State:** Persistent JSON\n"
+                        "**Logging:** Custom system"
+                    ),
+                    inline=True
                 )
                 
                 # Set thumbnail to developer avatar
