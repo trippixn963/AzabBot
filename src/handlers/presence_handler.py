@@ -83,7 +83,7 @@ class PresenceHandler:
                     status=discord.Status.idle,
                     activity=discord.Activity(
                         type=discord.ActivityType.playing,
-                        name="💤 Sleeping | /activate to wake"
+                        name="💤 Sleeping"
                     )
                 )
         except Exception as e:
