@@ -97,7 +97,7 @@ class CreditsCommand:
                 embed.add_field(
                     name="Version",
                     value=(
-                        f"**{Version.get_version_string()}**"
+                        f"`{Version.get_version_string()}`"
                     ),
                     inline=True
                 )
@@ -106,8 +106,8 @@ class CreditsCommand:
                 embed.add_field(
                     name="Live Stats",
                     value=(
-                        f"**Prisoners:** {prisoner_count}\n"
-                        f"**Uptime:** {uptime_str}"
+                        f"**Prisoners:** `{prisoner_count}`\n"
+                        f"**Uptime:** `{uptime_str}`"
                     ),
                     inline=True
                 )
@@ -136,9 +136,9 @@ class CreditsCommand:
                 embed.add_field(
                     name="📊 Project Statistics",
                     value=(
-                        "**Total Lines:** 3,057\n"
-                        "**Core Files:** 15 modules\n"
-                        "**Development Time:** 60 hours"
+                        "**Total Lines:** `3,057`\n"
+                        "**Core Files:** `15 modules`\n"
+                        "**Development Time:** `60 hours`"
                     ),
                     inline=True
                 )
@@ -147,9 +147,9 @@ class CreditsCommand:
                 embed.add_field(
                     name="📅 Activity",
                     value=(
-                        "**Active Since:** Sep 1, 2025\n"
-                        "**Last Update:** Today\n"
-                        "**Deployment:** 24/7"
+                        "**Active Since:** `Sep 1, 2025`\n"
+                        "**Last Update:** `Today`\n"
+                        "**Deployment:** `24/7`"
                     ),
                     inline=True
                 )
