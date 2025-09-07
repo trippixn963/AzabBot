@@ -19,6 +19,7 @@ Version: Modular
 """
 
 import uuid
+import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List, Tuple, Optional
@@ -43,11 +44,14 @@ class MiniTreeLogger:
         Initialize the logger with unique run ID and daily log file rotation.
         
         Creates logs directory if it doesn't exist and generates a unique
-        run ID for tracking this bot session.
+        run ID for tracking this bot session. Also cleans up old log files.
         """
         self.run_id: str = str(uuid.uuid4())[:8]  # Short unique ID for this run
         self.log_file: Path = Path('logs') / f'azab_{datetime.now().strftime("%Y-%m-%d")}.log'
         self.log_file.parent.mkdir(exist_ok=True)
+        
+        # Clean up old log files on startup
+        self._cleanup_old_logs()
         
         # Write session start header with run ID
         with open(self.log_file, 'a', encoding='utf-8') as f:
@@ -55,6 +59,39 @@ class MiniTreeLogger:
             f.write(f"NEW SESSION STARTED - RUN ID: {self.run_id}\n")
             f.write(f"{self._get_timestamp()}\n")
             f.write(f"{'='*60}\n\n")
+    
+    def _cleanup_old_logs(self) -> None:
+        """
+        Clean up log files older than 30 days.
+        
+        Automatically removes old log files to prevent disk space issues.
+        Runs on bot startup to keep logs directory clean.
+        """
+        try:
+            logs_dir = Path('logs')
+            if not logs_dir.exists():
+                return
+            
+            # Get current time
+            now = datetime.now()
+            
+            # Check each log file
+            deleted_count = 0
+            for log_file in logs_dir.glob('azab_*.log'):
+                # Get file modification time
+                file_time = datetime.fromtimestamp(os.path.getmtime(log_file))
+                
+                # If file is older than 30 days, delete it
+                if (now - file_time).days > 30:
+                    log_file.unlink()
+                    deleted_count += 1
+            
+            # Log cleanup results (but don't use self._write since it's not initialized yet)
+            if deleted_count > 0:
+                print(f"[LOG CLEANUP] Deleted {deleted_count} old log files (>30 days)")
+                
+        except Exception as e:
+            print(f"[LOG CLEANUP ERROR] Failed to clean old logs: {e}")
     
     def _get_timestamp(self) -> str:
         """
