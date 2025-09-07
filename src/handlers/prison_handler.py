@@ -187,8 +187,8 @@ class PrisonHandler:
                     inline=True
                 )
             
-            # Set thumbnail to bot's avatar
-            embed.set_thumbnail(url=self.bot.user.avatar.url if self.bot.user.avatar else None)
+            # Set thumbnail to prisoner's avatar
+            embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
             
             # Set footer with developer credit
             embed.set_footer(text="Developed By: حَـــــنَّـــــا")
@@ -311,8 +311,8 @@ class PrisonHandler:
                         inline=True
                     )
             
-            # Set thumbnail to bot's avatar
-            embed.set_thumbnail(url=self.bot.user.avatar.url if self.bot.user.avatar else None)
+            # Set thumbnail to prisoner's avatar
+            embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
             
             # Set footer with developer credit
             embed.set_footer(text="Developed By: حَـــــنَّـــــا")
