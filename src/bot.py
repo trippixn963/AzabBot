@@ -27,7 +27,7 @@ from typing import Set, Optional, Dict, Any, List
 from src.core.logger import logger
 from src.core.database import Database
 from src.services.ai_service import AIService
-from src.commands import ActivateCommand, DeactivateCommand
+from src.commands import ActivateCommand, DeactivateCommand, CreditsCommand
 from src.handlers import PrisonHandler, MuteHandler, PresenceHandler
 
 
@@ -69,6 +69,7 @@ class AzabBot(discord.Client):
         # Initialize core services
         self.db: Database = Database()                                    # Message logging database
         self.ai: AIService = AIService(os.getenv('OPENAI_API_KEY'))       # AI response generation
+        self.start_time: datetime = datetime.now()                        # Track bot start time for uptime
         
         # Load activation state from file (persistent across restarts)
         self.state_file: str = 'bot_state.json'
@@ -171,12 +172,14 @@ class AzabBot(discord.Client):
         # Create command instances from modular command files
         activate_cmd: ActivateCommand = ActivateCommand(self)      # Bot activation command
         deactivate_cmd: DeactivateCommand = DeactivateCommand(self)  # Bot deactivation command
+        credits_cmd: CreditsCommand = CreditsCommand(self)       # Credits and info command
         
         # Add commands to Discord's command tree
         self.tree.add_command(activate_cmd.create_command())
         self.tree.add_command(deactivate_cmd.create_command())
+        self.tree.add_command(credits_cmd.create_command())
         
-        logger.info("Commands registered: /activate, /deactivate")
+        logger.info("Commands registered: /activate, /deactivate, /credits")
     
     async def setup_hook(self) -> None:
         """
