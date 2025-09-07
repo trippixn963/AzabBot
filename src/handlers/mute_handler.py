@@ -17,7 +17,7 @@ Server: discord.gg/syria
 
 import discord
 import re
-from typing import Optional
+from typing import Optional, Any
 
 from src.core.logger import logger
 
@@ -32,16 +32,16 @@ class MuteHandler:
     - Stores information for later retrieval
     """
     
-    def __init__(self, prison_handler):
+    def __init__(self, prison_handler: Any) -> None:
         """
         Initialize the mute handler.
         
         Args:
             prison_handler: Reference to prison handler for storing mute reasons
         """
-        self.prison_handler = prison_handler
+        self.prison_handler: Any = prison_handler
     
-    async def process_mute_embed(self, message: discord.Message):
+    async def process_mute_embed(self, message: discord.Message) -> None:
         """
         Process mute embeds from logs channel to extract reasons.
         
@@ -66,7 +66,7 @@ class MuteHandler:
             
             # Look for mute embeds (check title, author name, or description)
             # Combine all text fields to search for mute-related keywords
-            embed_text = (str(embed.title or '') + str(embed.author.name if embed.author else '') + 
+            embed_text: str = (str(embed.title or '') + str(embed.author.name if embed.author else '') + 
                          str(embed.description or '')).lower()
             
             # Skip if this embed is not related to muting/timeout
@@ -75,9 +75,9 @@ class MuteHandler:
             
             logger.info(f"Found mute embed with {len(embed.fields)} fields")
             
-            user_id = None
-            user_name = None
-            reason = None
+            user_id: Optional[int] = None
+            user_name: Optional[str] = None
+            reason: Optional[str] = None
             
             # First try to extract from description if it exists
             # Some moderation bots put user mentions in the description
@@ -91,7 +91,7 @@ class MuteHandler:
             # Extract info from embed fields
             # Most moderation bots use structured fields for user and reason
             for field in embed.fields:
-                field_name_lower = field.name.lower()
+                field_name_lower: str = field.name.lower()
                 logger.info(f"Field: {field.name} = {field.value[:100]}")
                 
                 # Check for user field (might be called User, Member, Target, etc.)
@@ -100,14 +100,14 @@ class MuteHandler:
                     # Extract username and/or mention from user field
                     if '<@' in field.value:
                         # Try to extract user mention using regex
-                        match = re.search(r'<@!?(\d+)>', field.value)
+                        match: Optional[re.Match[str]] = re.search(r'<@!?(\d+)>', field.value)
                         if match:
                             user_id = int(match.group(1))
                             logger.info(f"Extracted user ID: {user_id}")
                     
                     # Also extract username (remove mention part if exists)
                     # This handles cases where both username and mention are present
-                    user_name_match = re.search(r'([^<>@]+?)(?:\s*<@|$)', field.value)
+                    user_name_match: Optional[re.Match[str]] = re.search(r'([^<>@]+?)(?:\s*<@|$)', field.value)
                     if user_name_match:
                         user_name = user_name_match.group(1).strip()
                         logger.info(f"Extracted username: {user_name}")

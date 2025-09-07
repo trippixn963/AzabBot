@@ -22,6 +22,7 @@ from datetime import datetime
 import asyncio
 import os
 import json
+from typing import Set, Optional, Dict, Any
 
 from src.core.logger import logger
 from src.core.database import Database
@@ -51,7 +52,7 @@ class AzabBot(discord.Client):
         presence_handler (PresenceHandler): Handler for rich presence updates
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize the Azab Discord bot.
         
@@ -66,34 +67,52 @@ class AzabBot(discord.Client):
         super().__init__(intents=intents)
         
         # Initialize core services
-        self.db = Database()                                    # Message logging database
-        self.ai = AIService(os.getenv('OPENAI_API_KEY'))       # AI response generation
+        self.db: Database = Database()                                    # Message logging database
+        self.ai: AIService = AIService(os.getenv('OPENAI_API_KEY'))       # AI response generation
         
         # Load activation state from file (persistent across restarts)
-        self.state_file = 'bot_state.json'
-        self.is_active = self._load_state()                     # Load saved state or default to True
+        self.state_file: str = 'bot_state.json'
+        self.is_active: bool = self._load_state()                     # Load saved state or default to True
         
-        self.tree = app_commands.CommandTree(self)             # Discord slash command tree
+        self.tree: app_commands.CommandTree = app_commands.CommandTree(self)             # Discord slash command tree
         
         # Load channel IDs from environment
-        prison_channels = os.getenv('PRISON_CHANNEL_IDS', '')
-        self.allowed_channels = {int(ch) for ch in prison_channels.split(',') if ch.strip()}
+        prison_channels: Optional[str] = os.getenv('PRISON_CHANNEL_IDS', '')
+        self.allowed_channels: Set[int] = {int(ch) for ch in prison_channels.split(',') if ch.strip()}
         if self.allowed_channels:
             logger.info(f"Bot restricted to channels: {self.allowed_channels}")
         
         # Load channel and role IDs for mute detection
-        self.logs_channel_id = int(os.getenv('LOGS_CHANNEL_ID', '1404020045876690985'))
-        self.prison_channel_id = int(os.getenv('PRISON_CHANNEL_IDS', '1402671536866984067'))
-        self.muted_role_id = int(os.getenv('MUTED_ROLE_ID', '1402287996648030249'))
-        self.general_channel_id = int(os.getenv('GENERAL_CHANNEL_ID', '1350540215797940245'))
+        # These must be set in .env file - no hardcoded defaults
+        logs_channel_id_str: Optional[str] = os.getenv('LOGS_CHANNEL_ID')
+        prison_channel_id_str: Optional[str] = os.getenv('PRISON_CHANNEL_IDS')
+        muted_role_id_str: Optional[str] = os.getenv('MUTED_ROLE_ID')
+        general_channel_id_str: Optional[str] = os.getenv('GENERAL_CHANNEL_ID')
+        developer_id_str: Optional[str] = os.getenv('DEVELOPER_ID')
         
-        # Developer/Creator ID
-        self.developer_id = int(os.getenv('DEVELOPER_ID', '259725211664908288'))
+        # Validate required environment variables
+        if not all([logs_channel_id_str, prison_channel_id_str, muted_role_id_str, general_channel_id_str, developer_id_str]):
+            missing_vars = []
+            if not logs_channel_id_str: missing_vars.append('LOGS_CHANNEL_ID')
+            if not prison_channel_id_str: missing_vars.append('PRISON_CHANNEL_IDS')
+            if not muted_role_id_str: missing_vars.append('MUTED_ROLE_ID')
+            if not general_channel_id_str: missing_vars.append('GENERAL_CHANNEL_ID')
+            if not developer_id_str: missing_vars.append('DEVELOPER_ID')
+            
+            logger.error(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
+            logger.error("   Please add these to your .env file")
+            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+        
+        self.logs_channel_id: int = int(logs_channel_id_str)
+        self.prison_channel_id: int = int(prison_channel_id_str)
+        self.muted_role_id: int = int(muted_role_id_str)
+        self.general_channel_id: int = int(general_channel_id_str)
+        self.developer_id: int = int(developer_id_str)
         
         # Initialize handlers
-        self.prison_handler = PrisonHandler(self, self.ai)
-        self.mute_handler = MuteHandler(self.prison_handler)
-        self.presence_handler = PresenceHandler(self)
+        self.prison_handler: PrisonHandler = PrisonHandler(self, self.ai)
+        self.mute_handler: MuteHandler = MuteHandler(self.prison_handler)
+        self.presence_handler: PresenceHandler = PresenceHandler(self)
         
         # Register all slash commands
         self._register_commands()
@@ -116,7 +135,7 @@ class AzabBot(discord.Client):
             logger.error(f"Failed to load state: {e}")
         return True  # Default to active
     
-    def _save_state(self):
+    def _save_state(self) -> None:
         """Save bot activation state to file for persistence."""
         try:
             with open(self.state_file, 'w') as f:
@@ -137,7 +156,7 @@ class AzabBot(discord.Client):
         """
         return self.mute_handler.is_user_muted(member, self.muted_role_id)
     
-    def _register_commands(self):
+    def _register_commands(self) -> None:
         """
         Register all slash commands with Discord.
         
@@ -145,8 +164,8 @@ class AzabBot(discord.Client):
         to the Discord command tree for slash command functionality.
         """
         # Create command instances from modular command files
-        activate_cmd = ActivateCommand(self)      # Bot activation command
-        deactivate_cmd = DeactivateCommand(self)  # Bot deactivation command
+        activate_cmd: ActivateCommand = ActivateCommand(self)      # Bot activation command
+        deactivate_cmd: DeactivateCommand = DeactivateCommand(self)  # Bot deactivation command
         
         # Add commands to Discord's command tree
         self.tree.add_command(activate_cmd.create_command())
@@ -154,7 +173,7 @@ class AzabBot(discord.Client):
         
         logger.info("Commands registered: /activate, /deactivate")
     
-    async def setup_hook(self):
+    async def setup_hook(self) -> None:
         """
         Discord.py setup hook - called before bot connects.
         
@@ -164,7 +183,7 @@ class AzabBot(discord.Client):
         await self.tree.sync()
         logger.success(f"Synced {len(self.tree.get_commands())} commands")
     
-    async def on_ready(self):
+    async def on_ready(self) -> None:
         """
         Discord bot ready event handler.
         
@@ -182,7 +201,7 @@ class AzabBot(discord.Client):
         # Start presence updates
         await self.presence_handler.start_presence_loop()
     
-    async def on_message(self, message: discord.Message):
+    async def on_message(self, message: discord.Message) -> None:
         """
         Discord message event handler.
         
@@ -205,7 +224,7 @@ class AzabBot(discord.Client):
             return
         
         # Check if message is from the developer/creator - bypass all restrictions
-        is_developer = message.author.id == self.developer_id
+        is_developer: bool = message.author.id == self.developer_id
         
         # If bot is inactive and user is not developer, ignore
         if not self.is_active and not is_developer:
@@ -227,13 +246,13 @@ class AzabBot(discord.Client):
             )
         
         # Check if user is currently muted (by role)
-        is_muted = self.is_user_muted(message.author)
+        is_muted: bool = self.is_user_muted(message.author)
         
         # Check if message is from the developer/creator
         if is_developer and self.user.mentioned_in(message):
             async with message.channel.typing():
                 # Generate friendly, human response for the creator
-                response = await self.ai.generate_developer_response(
+                response: str = await self.ai.generate_developer_response(
                     message.content,
                     message.author.display_name
                 )
@@ -250,11 +269,11 @@ class AzabBot(discord.Client):
         if self.ai.should_respond(message.content, self.user.mentioned_in(message), is_muted):
             async with message.channel.typing():
                 # Get mute reason if available
-                mute_reason = (self.prison_handler.mute_reasons.get(message.author.id) or 
+                mute_reason: Optional[str] = (self.prison_handler.mute_reasons.get(message.author.id) or 
                               self.prison_handler.mute_reasons.get(message.author.name.lower()))
                 
                 # Generate contextual AI response
-                response = await self.ai.generate_response(
+                response: str = await self.ai.generate_response(
                     message.content,
                     message.author.display_name,
                     is_muted,
@@ -270,7 +289,7 @@ class AzabBot(discord.Client):
                         ("Response", response[:50])
                     ], "😈")
     
-    async def on_member_update(self, before: discord.Member, after: discord.Member):
+    async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
         """
         Discord member update event handler.
         
@@ -286,8 +305,8 @@ class AzabBot(discord.Client):
             return
         
         # Check if user just got the muted role
-        had_muted_role = any(role.id == self.muted_role_id for role in before.roles)
-        has_muted_role = any(role.id == self.muted_role_id for role in after.roles)
+        had_muted_role: bool = any(role.id == self.muted_role_id for role in before.roles)
+        has_muted_role: bool = any(role.id == self.muted_role_id for role in after.roles)
         
         # User just got muted (new prisoner)
         if not had_muted_role and has_muted_role:

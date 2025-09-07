@@ -14,6 +14,7 @@ Version: Modular
 import discord
 from discord import app_commands
 from datetime import datetime, timezone, timedelta
+from typing import Any, Optional
 
 from src.core.logger import logger
 
@@ -31,16 +32,16 @@ class DeactivateCommand:
     Requires administrator permissions to execute.
     """
     
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         """
         Initialize the deactivate command.
         
         Args:
             bot: The main AzabBot instance
         """
-        self.bot = bot
+        self.bot: Any = bot
     
-    def create_command(self):
+    def create_command(self) -> app_commands.Command:
         """
         Create and return the Discord slash command.
         
@@ -49,7 +50,7 @@ class DeactivateCommand:
         """
         @app_commands.command(name="deactivate", description="Deactivate ragebaiting mode")
         @app_commands.default_permissions(administrator=True)
-        async def deactivate(interaction: discord.Interaction):
+        async def deactivate(interaction: discord.Interaction) -> None:
             """
             Handle the /deactivate slash command.
             
@@ -73,7 +74,7 @@ class DeactivateCommand:
             
             # Log deactivation event with details
             # Use EST timezone for consistency
-            est = timezone(timedelta(hours=-5))
+            est: timezone = timezone(timedelta(hours=-5))
             logger.tree("BOT DEACTIVATED", [
                 ("By", str(interaction.user)),
                 ("Time", datetime.now(est).strftime('%I:%M %p EST')),
@@ -81,7 +82,7 @@ class DeactivateCommand:
             ], "💤")
             
             # Create deactivation confirmation embed
-            embed = discord.Embed(
+            embed: discord.Embed = discord.Embed(
                 title="🔴 AZAB DEACTIVATED",
                 description="**Ragebaiting Mode Disabled**\n\nBot is now in standby mode. Use `/activate` to resume operations.",
                 color=0xFF0000
@@ -99,8 +100,8 @@ class DeactivateCommand:
             
             embed.set_thumbnail(url=self.bot.user.avatar.url if self.bot.user.avatar else None)
             # Get developer's avatar instead of server icon
-            developer = await self.bot.fetch_user(interaction.user.id)
-            developer_avatar = developer.avatar.url if developer and developer.avatar else None
+            developer: Optional[discord.User] = await self.bot.fetch_user(interaction.user.id)
+            developer_avatar: Optional[str] = developer.avatar.url if developer and developer.avatar else None
             embed.set_footer(text="Developed By: حَـــــنَّـــــا", icon_url=developer_avatar)
             
             await interaction.response.send_message(embed=embed, ephemeral=True)

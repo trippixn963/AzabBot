@@ -21,7 +21,7 @@ Version: Modular
 import openai
 import asyncio
 import random
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from src.core.logger import logger
 
@@ -38,14 +38,14 @@ class AIService:
     Uses OpenAI's GPT-3.5-turbo model for contextual and creative responses.
     """
     
-    def __init__(self, api_key: Optional[str]):
+    def __init__(self, api_key: Optional[str]) -> None:
         """
         Initialize the AI service with OpenAI API key.
         
         Args:
             api_key (Optional[str]): OpenAI API key for authentication
         """
-        self.enabled = bool(api_key)
+        self.enabled: bool = bool(api_key)
         if self.enabled:
             openai.api_key = api_key
             logger.success("AI Service Ready")
@@ -147,7 +147,7 @@ class AIService:
             # Use fallback responses instead of error messages
             return self._fallback(is_muted, mute_reason)
     
-    def _fallback(self, is_muted: bool, mute_reason: str = None) -> str:
+    def _fallback(self, is_muted: bool, mute_reason: Optional[str] = None) -> str:
         """Fallback responses when AI is unavailable"""
         import random
         if is_muted:

@@ -80,10 +80,10 @@ class AzabBot(discord.Client):
             logger.info(f"Bot restricted to channels: {self.allowed_channels}")
         
         # Load logs and prison channel IDs for mute detection
-        self.logs_channel_id = int(os.getenv('LOGS_CHANNEL_ID', '1404020045876690985'))
-        self.prison_channel_id = int(os.getenv('PRISON_CHANNEL_IDS', '1402671536866984067'))
-        self.muted_role_id = int(os.getenv('MUTED_ROLE_ID', '1402287996648030249'))
-        self.general_channel_id = int(os.getenv('GENERAL_CHANNEL_ID', '1350540215797940245'))
+        self.logs_channel_id = int(os.getenv('LOGS_CHANNEL_ID'))
+        self.prison_channel_id = int(os.getenv('PRISON_CHANNEL_IDS'))
+        self.muted_role_id = int(os.getenv('MUTED_ROLE_ID'))
+        self.general_channel_id = int(os.getenv('GENERAL_CHANNEL_ID'))
         
         # Register all slash commands
         self._register_commands()

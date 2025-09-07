@@ -14,6 +14,7 @@ Version: Modular
 import discord
 from discord import app_commands
 from datetime import datetime, timezone, timedelta
+from typing import Any
 
 from src.core.logger import logger
 
@@ -31,16 +32,16 @@ class ActivateCommand:
     Requires administrator permissions to execute.
     """
     
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         """
         Initialize the activate command.
         
         Args:
             bot: The main AzabBot instance
         """
-        self.bot = bot
+        self.bot: Any = bot
     
-    def create_command(self):
+    def create_command(self) -> app_commands.Command:
         """
         Create and return the Discord slash command.
         
@@ -49,7 +50,7 @@ class ActivateCommand:
         """
         @app_commands.command(name="activate", description="Activate ragebaiting mode")
         @app_commands.default_permissions(administrator=True)
-        async def activate(interaction: discord.Interaction):
+        async def activate(interaction: discord.Interaction) -> None:
             """
             Handle the /activate slash command.
             
@@ -72,7 +73,7 @@ class ActivateCommand:
             await self.bot.presence_handler.update_presence()
             
             # Check for currently muted users (both timeout and role)
-            muted_count = 0
+            muted_count: int = 0
             if interaction.guild:
                 for member in interaction.guild.members:
                     if self.bot.is_user_muted(member):
@@ -81,7 +82,7 @@ class ActivateCommand:
             
             # Log activation event with details
             # Use EST timezone for consistency
-            est = timezone(timedelta(hours=-5))
+            est: timezone = timezone(timedelta(hours=-5))
             logger.tree("BOT ACTIVATED", [
                 ("By", str(interaction.user)),
                 ("Time", datetime.now(est).strftime('%I:%M %p EST')),
@@ -90,7 +91,7 @@ class ActivateCommand:
             ], "🔴")
             
             # Create activation confirmation embed
-            embed = discord.Embed(
+            embed: discord.Embed = discord.Embed(
                 title="🟢 AZAB ACTIVATED",
                 description=f"**Ragebaiting Mode Active**\n\nNow monitoring all muted users and generating AI-powered responses.\n\n🔒 **{muted_count} prisoners currently in timeout**",
                 color=0x00FF00
@@ -108,8 +109,8 @@ class ActivateCommand:
             
             embed.set_thumbnail(url=self.bot.user.avatar.url if self.bot.user.avatar else None)
             # Get developer's avatar instead of server icon
-            developer = await self.bot.fetch_user(interaction.user.id)
-            developer_avatar = developer.avatar.url if developer and developer.avatar else None
+            developer: Optional[discord.User] = await self.bot.fetch_user(interaction.user.id)
+            developer_avatar: Optional[str] = developer.avatar.url if developer and developer.avatar else None
             embed.set_footer(text="Developed By: حَـــــنَّـــــا", icon_url=developer_avatar)
             
             await interaction.response.send_message(embed=embed, ephemeral=True)

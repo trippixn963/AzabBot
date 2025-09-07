@@ -24,9 +24,10 @@ import sys
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 
-def update_version(version_type: str, build: str = None):
+def update_version(version_type: str, build: Optional[str] = None) -> bool:
     """
     Update the version in version.py file.
     
@@ -34,7 +35,7 @@ def update_version(version_type: str, build: str = None):
         version_type: Type of version bump (major, minor, patch)
         build: Optional build identifier
     """
-    version_file = Path("src/utils/version.py")
+    version_file: Path = Path("src/utils/version.py")
     
     if not version_file.exists():
         print("❌ Error: version.py file not found!")
@@ -42,24 +43,27 @@ def update_version(version_type: str, build: str = None):
     
     # Read current file
     with open(version_file, 'r', encoding='utf-8') as f:
-        content = f.read()
+        content: str = f.read()
     
     # Extract current version numbers
-    major_match = re.search(r'MAJOR = (\d+)', content)
-    minor_match = re.search(r'MINOR = (\d+)', content)
-    patch_match = re.search(r'PATCH = (\d+)', content)
-    build_match = re.search(r'BUILD = "([^"]*)"', content)
+    major_match: Optional[re.Match[str]] = re.search(r'MAJOR = (\d+)', content)
+    minor_match: Optional[re.Match[str]] = re.search(r'MINOR = (\d+)', content)
+    patch_match: Optional[re.Match[str]] = re.search(r'PATCH = (\d+)', content)
+    build_match: Optional[re.Match[str]] = re.search(r'BUILD = "([^"]*)"', content)
     
     if not all([major_match, minor_match, patch_match]):
         print("❌ Error: Could not parse current version!")
         return False
     
-    current_major = int(major_match.group(1))
-    current_minor = int(minor_match.group(1))
-    current_patch = int(patch_match.group(1))
-    current_build = build_match.group(1) if build_match else None
+    current_major: int = int(major_match.group(1))
+    current_minor: int = int(minor_match.group(1))
+    current_patch: int = int(patch_match.group(1))
+    current_build: Optional[str] = build_match.group(1) if build_match else None
     
     # Calculate new version
+    new_major: int
+    new_minor: int
+    new_patch: int
     if version_type == "major":
         new_major = current_major + 1
         new_minor = 0
@@ -86,7 +90,7 @@ def update_version(version_type: str, build: str = None):
         content = re.sub(r'BUILD = "[^"]*"', f'BUILD = "{build}"', content)
     
     # Update release date
-    today = datetime.now().strftime("%Y-%m-%d")
+    today: str = datetime.now().strftime("%Y-%m-%d")
     content = re.sub(r'RELEASE_DATE = "[^"]*"', f'RELEASE_DATE = "{today}"', content)
     
     # Write updated content
@@ -94,7 +98,7 @@ def update_version(version_type: str, build: str = None):
         f.write(content)
     
     # Display results
-    new_version = f"{new_major}.{new_minor}.{new_patch}"
+    new_version: str = f"{new_major}.{new_minor}.{new_patch}"
     if build:
         new_version += f"-{build}"
     
@@ -106,7 +110,7 @@ def update_version(version_type: str, build: str = None):
     return True
 
 
-def main():
+def main() -> None:
     """Main function to handle command line arguments."""
     if len(sys.argv) < 2:
         print("Usage: python update_version.py [major|minor|patch] [build]")
@@ -118,14 +122,14 @@ def main():
         print("  python update_version.py minor beta     # 1.0.0 -> 1.1.0-beta")
         return
     
-    version_type = sys.argv[1].lower()
-    build = sys.argv[2] if len(sys.argv) > 2 else None
+    version_type: str = sys.argv[1].lower()
+    build: Optional[str] = sys.argv[2] if len(sys.argv) > 2 else None
     
     if version_type not in ["major", "minor", "patch"]:
         print(f"❌ Error: Invalid version type '{version_type}'. Use major, minor, or patch.")
         return
     
-    success = update_version(version_type, build)
+    success: bool = update_version(version_type, build)
     if not success:
         sys.exit(1)
 

@@ -16,7 +16,7 @@ Server: discord.gg/syria
 """
 
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 class Version:
@@ -28,19 +28,19 @@ class Version:
     """
     
     # Current version - Update this for each release
-    MAJOR = 1
-    MINOR = 0
-    PATCH = 0
-    BUILD = None  # Set to None for stable releases
+    MAJOR: int = 1
+    MINOR: int = 0
+    PATCH: int = 0
+    BUILD: Optional[str] = None  # Set to None for stable releases
     
     # Version metadata
-    CODENAME = "Syria"  # Release codename
-    RELEASE_DATE = "2025-01-04"  # Update with each release
+    CODENAME: str = "Syria"  # Release codename
+    RELEASE_DATE: str = "2025-01-04"  # Update with each release
     
     # Bot information
-    BOT_NAME = "Azab"
-    DEVELOPER = "حَـــــنَّـــــا"
-    SERVER = "discord.gg/syria"
+    BOT_NAME: str = "Azab"
+    DEVELOPER: str = "حَـــــنَّـــــا"
+    SERVER: str = "discord.gg/syria"
     
     @classmethod
     def get_version_string(cls) -> str:
@@ -50,7 +50,7 @@ class Version:
         Returns:
             str: Version in format "MAJOR.MINOR.PATCH[-BUILD]"
         """
-        version = f"{cls.MAJOR}.{cls.MINOR}.{cls.PATCH}"
+        version: str = f"{cls.MAJOR}.{cls.MINOR}.{cls.PATCH}"
         if cls.BUILD:
             version += f"-{cls.BUILD}"
         return version
@@ -85,7 +85,7 @@ class Version:
         Returns:
             str: Formatted version string with codename
         """
-        version = cls.get_version_string()
+        version: str = cls.get_version_string()
         return f"{cls.BOT_NAME} v{version} '{cls.CODENAME}'"
     
     @classmethod
