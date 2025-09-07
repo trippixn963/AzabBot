@@ -17,7 +17,7 @@ Server: discord.gg/syria
 
 import discord
 import asyncio
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 
 from src.core.logger import logger
 from src.services.ai_service import AIService
@@ -34,7 +34,7 @@ class PrisonHandler:
     - Tracking mute reasons for contextual responses
     """
     
-    def __init__(self, bot, ai_service: AIService):
+    def __init__(self, bot: Any, ai_service: AIService) -> None:
         """
         Initialize the prison handler.
         
@@ -42,11 +42,11 @@ class PrisonHandler:
             bot: The Discord bot instance
             ai_service: AI service for generating responses
         """
-        self.bot = bot
-        self.ai = ai_service
+        self.bot: Any = bot
+        self.ai: AIService = ai_service
         self.mute_reasons: Dict[int, str] = {}  # Store mute reasons {user_id: reason}
     
-    async def handle_new_prisoner(self, member: discord.Member):
+    async def handle_new_prisoner(self, member: discord.Member) -> None:
         """
         Welcome a newly muted user to prison with savage ragebait.
         
@@ -61,8 +61,8 @@ class PrisonHandler:
             logger.info(f"Handling new prisoner: {member.name} (ID: {member.id})")
             
             # Get required channels
-            logs_channel = self.bot.get_channel(self.bot.logs_channel_id)
-            prison_channel = self.bot.get_channel(self.bot.prison_channel_id)
+            logs_channel: Optional[discord.TextChannel] = self.bot.get_channel(self.bot.logs_channel_id)
+            prison_channel: Optional[discord.TextChannel] = self.bot.get_channel(self.bot.prison_channel_id)
             
             logger.info(f"Channels - Logs: {logs_channel}, Prison: {prison_channel}")
             
@@ -78,10 +78,10 @@ class PrisonHandler:
             
             # Check if we already have the mute reason stored
             # Try both user ID and username (case-insensitive) for maximum reliability
-            mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(member.name.lower())
+            mute_reason: Optional[str] = self.mute_reasons.get(member.id) or self.mute_reasons.get(member.name.lower())
             
             # Get prisoner's history for enhanced roasting
-            prisoner_stats = await self.bot.db.get_prisoner_stats(member.id)
+            prisoner_stats: Dict[str, Any] = await self.bot.db.get_prisoner_stats(member.id)
             
             if mute_reason:
                 logger.info(f"Found stored mute reason for {member.name}: {mute_reason}")
@@ -90,7 +90,7 @@ class PrisonHandler:
                 # Look through recent messages to find the mute embed
                 logger.info(f"Scanning logs channel for {member.name}'s mute reason...")
                 
-                messages_checked = 0
+                messages_checked: int = 0
                 async for message in logs_channel.history(limit=50):  # Check more messages
                     messages_checked += 1
                     if message.embeds:
@@ -112,6 +112,7 @@ class PrisonHandler:
             # Create different prompts based on whether we found the mute reason
             logger.info(f"Generating welcome message for {member.name} with reason: {mute_reason or 'None'}")
             
+            welcome_prompt: str
             if mute_reason:
                 # Contextual prompt with specific mute reason and history for savage mocking
                 welcome_prompt = (
@@ -143,7 +144,7 @@ class PrisonHandler:
             
             # Generate AI response for the welcome
             # Pass mute_reason to AI for contextual responses
-            response = await self.ai.generate_response(
+            response: str = await self.ai.generate_response(
                 welcome_prompt,
                 member.display_name,
                 True,  # They're muted
@@ -152,7 +153,7 @@ class PrisonHandler:
             
             # THIRD: Send welcome message to prison channel
             # Format: Header + mention + AI-generated savage response
-            welcome_msg = f"🔒 **NEW PRISONER ARRIVAL** 🔒\n\n{member.mention}\n\n{response}"
+            welcome_msg: str = f"🔒 **NEW PRISONER ARRIVAL** 🔒\n\n{member.mention}\n\n{response}"
             await prison_channel.send(welcome_msg)
             
             # Update presence to show prisoner arrival
@@ -177,7 +178,7 @@ class PrisonHandler:
         except Exception as e:
             logger.error(f"Failed to welcome prisoner: {e}")
     
-    async def handle_prisoner_release(self, member: discord.Member):
+    async def handle_prisoner_release(self, member: discord.Member) -> None:
         """
         Send a message when a user gets unmuted (freed from prison).
         
@@ -191,7 +192,7 @@ class PrisonHandler:
             logger.info(f"Handling prisoner release: {member.name} (ID: {member.id})")
             
             # Get the general channel
-            general_channel = self.bot.get_channel(self.bot.general_channel_id)
+            general_channel: Optional[discord.TextChannel] = self.bot.get_channel(self.bot.general_channel_id)
             
             if not general_channel:
                 logger.error(f"General channel not found: {self.bot.general_channel_id}")
@@ -199,13 +200,14 @@ class PrisonHandler:
             
             # Get their mute reason if we have it
             # Try both user ID and username for maximum reliability
-            mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(member.name.lower())
+            mute_reason: Optional[str] = self.mute_reasons.get(member.id) or self.mute_reasons.get(member.name.lower())
             
             # Get prisoner's history
-            prisoner_stats = await self.bot.db.get_prisoner_stats(member.id)
+            prisoner_stats: Dict[str, Any] = await self.bot.db.get_prisoner_stats(member.id)
             
             # Generate a release message
             # Create different prompts based on whether we have the original offense
+            release_prompt: str
             if mute_reason:
                 # Contextual release prompt with specific offense reference
                 release_prompt = (
@@ -226,7 +228,7 @@ class PrisonHandler:
             
             # Generate AI response
             # Pass mute_reason to AI for contextual release messages
-            response = await self.ai.generate_response(
+            response: str = await self.ai.generate_response(
                 release_prompt,
                 member.display_name,
                 False,  # They're NOT muted anymore
@@ -235,7 +237,7 @@ class PrisonHandler:
             
             # Send release message to general channel
             # Format: Header + mention + AI-generated sarcastic response
-            release_msg = f"🔓 **PRISONER RELEASED** 🔓\n\n{member.mention} {response}"
+            release_msg: str = f"🔓 **PRISONER RELEASED** 🔓\n\n{member.mention} {response}"
             await general_channel.send(release_msg)
             
             # Update presence to show prisoner release

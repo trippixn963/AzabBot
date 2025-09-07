@@ -20,6 +20,7 @@ Discord Bot Features:
 import asyncio
 import os
 import sys
+from typing import Optional
 from dotenv import load_dotenv
 
 from src.core.logger import logger
@@ -54,7 +55,7 @@ async def main() -> None:
     
     # Validate Discord bot token from environment
     # Bot token is required for Discord API authentication
-    token = os.getenv('DISCORD_TOKEN')
+    token: Optional[str] = os.getenv('DISCORD_TOKEN')
     if not token:
         logger.error("❌ No DISCORD_TOKEN found in .env file!")
         logger.error("   Please add your bot token to the .env file")
@@ -63,7 +64,7 @@ async def main() -> None:
     # Initialize bot instance and connect to Discord
     # AzabBot handles all Discord events and command interactions
     try:
-        bot = AzabBot()
+        bot: AzabBot = AzabBot()
         logger.info("🤖 Bot instance created successfully")
         
         # Start the bot and connect to Discord Gateway

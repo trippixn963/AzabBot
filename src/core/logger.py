@@ -21,6 +21,7 @@ Version: Modular
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from typing import List, Tuple, Optional
 
 
 class MiniTreeLogger:
@@ -37,15 +38,15 @@ class MiniTreeLogger:
     Log files are stored in logs/ directory with daily rotation.
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize the logger with unique run ID and daily log file rotation.
         
         Creates logs directory if it doesn't exist and generates a unique
         run ID for tracking this bot session.
         """
-        self.run_id = str(uuid.uuid4())[:8]  # Short unique ID for this run
-        self.log_file = Path('logs') / f'azab_{datetime.now().strftime("%Y-%m-%d")}.log'
+        self.run_id: str = str(uuid.uuid4())[:8]  # Short unique ID for this run
+        self.log_file: Path = Path('logs') / f'azab_{datetime.now().strftime("%Y-%m-%d")}.log'
         self.log_file.parent.mkdir(exist_ok=True)
         
         # Write session start header with run ID
@@ -62,10 +63,10 @@ class MiniTreeLogger:
         Returns:
             str: Formatted timestamp string in EST (UTC-5)
         """
-        est = timezone(timedelta(hours=-5))  # EST is UTC-5
+        est: timezone = timezone(timedelta(hours=-5))  # EST is UTC-5
         return datetime.now(est).strftime('[%I:%M:%S %p EST]')
     
-    def _write(self, message: str, emoji: str = "", include_timestamp: bool = True):
+    def _write(self, message: str, emoji: str = "", include_timestamp: bool = True) -> None:
         """
         Write log message to both console and file.
         
@@ -75,10 +76,10 @@ class MiniTreeLogger:
             include_timestamp (bool): Whether to include timestamp
         """
         if include_timestamp:
-            timestamp = self._get_timestamp()
-            full_message = f"{timestamp} {emoji} {message}" if emoji else f"{timestamp} {message}"
+            timestamp: str = self._get_timestamp()
+            full_message: str = f"{timestamp} {emoji} {message}" if emoji else f"{timestamp} {message}"
         else:
-            full_message = f"{emoji} {message}" if emoji else message
+            full_message: str = f"{emoji} {message}" if emoji else message
         
         # Output to console
         print(full_message)
@@ -87,7 +88,7 @@ class MiniTreeLogger:
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write(f"{full_message}\n")
     
-    def tree(self, title: str, items: list, emoji: str = "📦"):
+    def tree(self, title: str, items: List[Tuple[str, str]], emoji: str = "📦") -> None:
         """
         Log structured data in tree format.
         
@@ -96,7 +97,7 @@ class MiniTreeLogger:
         
         Args:
             title (str): Main title for the tree
-            items (list): List of (key, value) tuples to display
+            items (List[Tuple[str, str]]): List of (key, value) tuples to display
             emoji (str): Emoji to prefix the title
         """
         # Add line break before tree for better readability
@@ -105,26 +106,26 @@ class MiniTreeLogger:
         
         self._write(f"{title}", emoji=emoji)
         for i, (key, value) in enumerate(items):
-            prefix = "└─" if i == len(items) - 1 else "├─"
+            prefix: str = "└─" if i == len(items) - 1 else "├─"
             self._write(f"  {prefix} {key}: {value}", include_timestamp=False)
         
         # Add line break after tree
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write("\n")
     
-    def info(self, msg: str):
+    def info(self, msg: str) -> None:
         """Log an informational message."""
         self._write(msg, "ℹ️")
     
-    def success(self, msg: str):
+    def success(self, msg: str) -> None:
         """Log a success message."""
         self._write(msg, "✅")
     
-    def error(self, msg: str):
+    def error(self, msg: str) -> None:
         """Log an error message."""
         self._write(msg, "❌")
     
-    def warning(self, msg: str):
+    def warning(self, msg: str) -> None:
         """Log a warning message."""
         self._write(msg, "⚠️")
 

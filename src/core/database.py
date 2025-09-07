@@ -21,6 +21,7 @@ import sqlite3
 import asyncio
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+from typing import Dict, Any, List, Tuple, Optional
 
 
 class Database:
@@ -38,25 +39,25 @@ class Database:
     - messages: Individual message logs with metadata
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize the database connection and create tables.
         
         Creates the database file in data/ directory and initializes
         required tables for user and message storage.
         """
-        self.db_path = Path('data/azab.db')
+        self.db_path: Path = Path('data/azab.db')
         self.db_path.parent.mkdir(exist_ok=True)
         self._init_db()
     
-    def _init_db(self):
+    def _init_db(self) -> None:
         """
         Initialize database tables.
         
         Creates the users and messages tables if they don't exist.
         Sets up proper indexes and constraints for optimal performance.
         """
-        conn = sqlite3.connect(self.db_path)
+        conn: sqlite3.Connection = sqlite3.connect(self.db_path)
         
         # Users table: Store user information and statistics
         conn.execute('''CREATE TABLE IF NOT EXISTS users (
@@ -97,7 +98,7 @@ class Database:
         conn.commit()
         conn.close()
     
-    async def log_message(self, user_id: int, username: str, content: str, channel_id: int, guild_id: int):
+    async def log_message(self, user_id: int, username: str, content: str, channel_id: int, guild_id: int) -> None:
         """
         Log a Discord message to the database.
         
@@ -111,16 +112,16 @@ class Database:
             channel_id (int): Discord channel ID
             guild_id (int): Discord guild/server ID
         """
-        def _log():
-            conn = sqlite3.connect(self.db_path)
+        def _log() -> None:
+            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
             
             # Update or insert user information
             conn.execute('INSERT OR REPLACE INTO users (user_id, username) VALUES (?, ?)',
                         (user_id, username))
             
             # Insert message log with EST timestamp
-            est = timezone(timedelta(hours=-5))
-            est_timestamp = datetime.now(est).strftime('%Y-%m-%d %H:%M:%S')
+            est: timezone = timezone(timedelta(hours=-5))
+            est_timestamp: str = datetime.now(est).strftime('%Y-%m-%d %H:%M:%S')
             conn.execute('INSERT INTO messages (user_id, content, channel_id, guild_id, timestamp) VALUES (?, ?, ?, ?, ?)',
                         (user_id, content[:500], channel_id, guild_id, est_timestamp))
             
@@ -134,7 +135,7 @@ class Database:
         # Run database operations in thread pool to avoid blocking
         await asyncio.to_thread(_log)
     
-    async def record_mute(self, user_id: int, username: str, reason: str, muted_by: str = None):
+    async def record_mute(self, user_id: int, username: str, reason: str, muted_by: Optional[str] = None) -> None:
         """
         Record a new mute event in prisoner history.
         
@@ -144,8 +145,8 @@ class Database:
             reason: Reason for mute
             muted_by: Who issued the mute (moderator name)
         """
-        def _record():
-            conn = sqlite3.connect(self.db_path)
+        def _record() -> None:
+            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
             
             # First, mark any existing active mutes as inactive (in case of re-mute)
             conn.execute('UPDATE prisoner_history SET is_active = 0 WHERE user_id = ? AND is_active = 1',
@@ -165,7 +166,7 @@ class Database:
         
         await asyncio.to_thread(_record)
     
-    async def record_unmute(self, user_id: int, unmuted_by: str = None):
+    async def record_unmute(self, user_id: int, unmuted_by: Optional[str] = None) -> None:
         """
         Record unmute event and calculate imprisonment duration.
         
@@ -173,12 +174,12 @@ class Database:
             user_id: Discord user ID
             unmuted_by: Who removed the mute
         """
-        def _record():
-            conn = sqlite3.connect(self.db_path)
+        def _record() -> None:
+            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
             
             # Get EST timezone for timestamp
-            est = timezone(timedelta(hours=-5))
-            current_time = datetime.now(est).strftime('%Y-%m-%d %H:%M:%S')
+            est: timezone = timezone(timedelta(hours=-5))
+            current_time: str = datetime.now(est).strftime('%Y-%m-%d %H:%M:%S')
             
             # Update the active mute record
             conn.execute('''UPDATE prisoner_history 
@@ -197,7 +198,7 @@ class Database:
         
         await asyncio.to_thread(_record)
     
-    async def get_prisoner_stats(self, user_id: int) -> dict:
+    async def get_prisoner_stats(self, user_id: int) -> Dict[str, Any]:
         """
         Get comprehensive stats about a prisoner's history.
         
@@ -207,9 +208,9 @@ class Database:
         Returns:
             Dictionary with prisoner statistics
         """
-        def _get_stats():
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+        def _get_stats() -> Dict[str, Any]:
+            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
+            cursor: sqlite3.Cursor = conn.cursor()
             
             # Get all mute history
             cursor.execute('''SELECT COUNT(*) as total_mutes,
@@ -219,7 +220,7 @@ class Database:
                              FROM prisoner_history 
                              WHERE user_id = ?''', (user_id,))
             
-            row = cursor.fetchone()
+            row: Optional[Tuple] = cursor.fetchone()
             
             # Get all reasons
             cursor.execute('''SELECT mute_reason, COUNT(*) as count 
@@ -227,12 +228,12 @@ class Database:
                              WHERE user_id = ? 
                              GROUP BY mute_reason
                              ORDER BY count DESC''', (user_id,))
-            reasons = cursor.fetchall()
+            reasons: List[Tuple] = cursor.fetchall()
             
             # Check if currently muted
             cursor.execute('SELECT is_active, mute_reason FROM prisoner_history WHERE user_id = ? AND is_active = 1',
                           (user_id,))
-            current = cursor.fetchone()
+            current: Optional[Tuple] = cursor.fetchone()
             
             conn.close()
             
@@ -248,7 +249,7 @@ class Database:
         
         return await asyncio.to_thread(_get_stats)
     
-    async def get_top_prisoners(self, limit: int = 10) -> list:
+    async def get_top_prisoners(self, limit: int = 10) -> List[Tuple]:
         """
         Get the most frequently muted users (repeat offenders).
         
@@ -258,9 +259,9 @@ class Database:
         Returns:
             List of tuples (username, total_mutes, total_minutes)
         """
-        def _get_top():
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+        def _get_top() -> List[Tuple]:
+            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
+            cursor: sqlite3.Cursor = conn.cursor()
             
             cursor.execute('''SELECT username, 
                                     COUNT(*) as total_mutes,
@@ -270,7 +271,7 @@ class Database:
                              ORDER BY total_mutes DESC
                              LIMIT ?''', (limit,))
             
-            results = cursor.fetchall()
+            results: List[Tuple] = cursor.fetchall()
             conn.close()
             return results
         
