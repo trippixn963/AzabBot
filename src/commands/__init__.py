@@ -9,6 +9,7 @@ in separate modules for maintainability.
 Available Commands:
 - /activate: Activate bot's ragebaiting mode
 - /deactivate: Deactivate bot and return to standby
+- /credits: View bot credits and information
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -17,5 +18,6 @@ Version: Modular
 
 from .activate import ActivateCommand
 from .deactivate import DeactivateCommand
+from .credits import CreditsCommand
 
-__all__ = ['ActivateCommand', 'DeactivateCommand']
+__all__ = ['ActivateCommand', 'DeactivateCommand', 'CreditsCommand']
