@@ -119,41 +119,44 @@ class CreditsCommand:
                 # Add spacing
                 embed.add_field(name="\u200b", value="\u200b", inline=False)
                 
-                # Framework & Libraries
+                # Technology Stack
                 embed.add_field(
-                    name="Core Technology",
+                    name="🔧 Technology Stack",
                     value=(
-                        "**Language:** Python 3.12\n"
-                        "**Framework:** Discord.py 2.3.2\n"
-                        "**AI Model:** GPT-3.5-turbo\n"
-                        "**AI Library:** OpenAI 0.28.1"
+                        "**Python 3.12** • **Discord.py 2.3.2**\n"
+                        "**GPT-3.5-turbo** • **OpenAI 0.28.1**\n"
+                        "**SQLite3** • **PM2 Process Manager**"
+                    ),
+                    inline=False
+                )
+                
+                # Add spacing
+                embed.add_field(name="\u200b", value="\u200b", inline=False)
+                
+                # Project Statistics
+                embed.add_field(
+                    name="📊 Project Statistics",
+                    value=(
+                        "**Total Lines:** 3,057\n"
+                        "**Core Files:** 15 modules\n"
+                        "**Development Time:** 60 hours"
                     ),
                     inline=True
                 )
                 
-                # Code statistics
+                # Activity Info
                 embed.add_field(
-                    name="Code Statistics",
+                    name="📅 Activity",
                     value=(
-                        "**bot.py:** 384 lines\n"
-                        "**ai_service.py:** 242 lines\n"
-                        "**prison_handler.py:** 350 lines\n"
-                        "**Total Project:** 3,057 lines"
+                        "**Active Since:** Sep 1, 2025\n"
+                        "**Last Update:** Today\n"
+                        "**Deployment:** 24/7"
                     ),
                     inline=True
                 )
                 
-                # Development time
-                embed.add_field(
-                    name="Development",
-                    value=(
-                        "**Time Invested:** 40-60 hours\n"
-                        "**Solo Developer:** Yes\n"
-                        "**Custom Built:** Syria Server\n"
-                        "**Active Since:** Dec 2024"
-                    ),
-                    inline=True
-                )
+                # Empty field for layout balance
+                embed.add_field(name="\u200b", value="\u200b", inline=True)
                 
                 # Set thumbnail to developer avatar
                 if developer_avatar:
