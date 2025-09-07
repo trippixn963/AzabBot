@@ -18,11 +18,11 @@ Server: discord.gg/syria
 
 import discord
 from discord import app_commands
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 import os
 import json
-from typing import Set, Optional, Dict, Any
+from typing import Set, Optional, Dict, Any, List
 
 from src.core.logger import logger
 from src.core.database import Database
@@ -113,6 +113,11 @@ class AzabBot(discord.Client):
         self.prison_handler: PrisonHandler = PrisonHandler(self, self.ai)
         self.mute_handler: MuteHandler = MuteHandler(self.prison_handler)
         self.presence_handler: PresenceHandler = PresenceHandler(self)
+        
+        # Rate limiting for prisoners (10 seconds per user)
+        self.prisoner_cooldowns: Dict[int, datetime] = {}  # {user_id: last_response_time}
+        self.prisoner_message_buffer: Dict[int, List[str]] = {}  # {user_id: [messages]}
+        self.PRISONER_COOLDOWN_SECONDS: int = 10
         
         # Register all slash commands
         self._register_commands()
@@ -267,27 +272,78 @@ class AzabBot(discord.Client):
         # Generate AI response if conditions are met
         # AI decides whether to respond based on content, mentions, and mute status
         if self.ai.should_respond(message.content, self.user.mentioned_in(message), is_muted):
-            async with message.channel.typing():
-                # Get mute reason if available
-                mute_reason: Optional[str] = (self.prison_handler.mute_reasons.get(message.author.id) or 
-                              self.prison_handler.mute_reasons.get(message.author.name.lower()))
+            # Rate limiting for muted users only
+            if is_muted:
+                user_id = message.author.id
+                current_time = datetime.now()
                 
-                # Generate contextual AI response
-                response: str = await self.ai.generate_response(
-                    message.content,
-                    message.author.display_name,
-                    is_muted,
-                    mute_reason
-                )
-                await message.reply(response)
+                # Check if user is on cooldown
+                if user_id in self.prisoner_cooldowns:
+                    last_response_time = self.prisoner_cooldowns[user_id]
+                    time_since_last = (current_time - last_response_time).total_seconds()
+                    
+                    if time_since_last < self.PRISONER_COOLDOWN_SECONDS:
+                        # User is on cooldown - buffer their message
+                        if user_id not in self.prisoner_message_buffer:
+                            self.prisoner_message_buffer[user_id] = []
+                        self.prisoner_message_buffer[user_id].append(message.content)
+                        
+                        # Don't respond yet
+                        logger.info(f"Rate limited {message.author.name} - buffering message (total: {len(self.prisoner_message_buffer[user_id])})")
+                        return
                 
-                # Special logging for muted users (ragebait responses)
-                if is_muted:
+                # User is not on cooldown - prepare response
+                async with message.channel.typing():
+                    # Get mute reason if available
+                    mute_reason: Optional[str] = (self.prison_handler.mute_reasons.get(message.author.id) or 
+                                  self.prison_handler.mute_reasons.get(message.author.name.lower()))
+                    
+                    # Check if there are buffered messages
+                    combined_context = message.content
+                    if user_id in self.prisoner_message_buffer and self.prisoner_message_buffer[user_id]:
+                        # Combine all buffered messages with the current one
+                        all_messages = self.prisoner_message_buffer[user_id] + [message.content]
+                        combined_context = f"The user sent multiple messages: {' | '.join(all_messages)}"
+                        
+                        # Clear the buffer
+                        self.prisoner_message_buffer[user_id] = []
+                        
+                        logger.info(f"Processing {len(all_messages)} messages from {message.author.name}")
+                    
+                    # Generate contextual AI response with all messages considered
+                    response: str = await self.ai.generate_response(
+                        combined_context,
+                        message.author.display_name,
+                        is_muted,
+                        mute_reason
+                    )
+                    await message.reply(response)
+                    
+                    # Update cooldown
+                    self.prisoner_cooldowns[user_id] = current_time
+                    
+                    # Special logging for muted users (ragebait responses)
                     logger.tree("RAGEBAITED PRISONER", [
                         ("Target", str(message.author)),
                         ("Message", message.content[:50]),
-                        ("Response", response[:50])
+                        ("Response", response[:50]),
+                        ("Cooldown", f"{self.PRISONER_COOLDOWN_SECONDS}s")
                     ], "😈")
+            else:
+                # Non-muted users don't have rate limiting
+                async with message.channel.typing():
+                    # Get mute reason if available
+                    mute_reason: Optional[str] = (self.prison_handler.mute_reasons.get(message.author.id) or 
+                                  self.prison_handler.mute_reasons.get(message.author.name.lower()))
+                    
+                    # Generate contextual AI response
+                    response: str = await self.ai.generate_response(
+                        message.content,
+                        message.author.display_name,
+                        is_muted,
+                        mute_reason
+                    )
+                    await message.reply(response)
     
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
         """
@@ -317,3 +373,9 @@ class AzabBot(discord.Client):
         elif had_muted_role and not has_muted_role:
             logger.success(f"Prisoner released: {after.name}")
             await self.prison_handler.handle_prisoner_release(after)
+            
+            # Clear rate limiting for this user
+            if after.id in self.prisoner_cooldowns:
+                del self.prisoner_cooldowns[after.id]
+            if after.id in self.prisoner_message_buffer:
+                del self.prisoner_message_buffer[after.id]
