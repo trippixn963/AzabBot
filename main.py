@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 
 from src.core.logger import logger
 from src.bot import AzabBot
+from src.utils.version import Version
 
 
 async def main() -> None:
@@ -47,10 +48,10 @@ async def main() -> None:
     
     # Display startup information for debugging
     logger.tree("AZAB STARTING", [
-        ("Version", "Modular"),
+        ("Version", Version.get_version_string()),
         ("Server", "discord.gg/syria"),
         ("Structure", "Organized with src/"),
-        ("Commands", "/activate and /deactivate only")
+        ("Commands", "/activate, /deactivate, /credits")
     ], "🔥")
     
     # Validate Discord bot token from environment

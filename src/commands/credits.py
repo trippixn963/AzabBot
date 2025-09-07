@@ -12,10 +12,12 @@ Version: v2.2.0
 
 import discord
 from discord import app_commands
+from discord.ui import Button, View
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 
 from src.core.logger import logger
+from src.utils.version import Version
 
 
 class CreditsCommand:
@@ -79,11 +81,9 @@ class CreditsCommand:
                 
                 # Create main embed
                 embed: discord.Embed = discord.Embed(
-                    title="🔥 AZAB BOT - CREDITS & INFORMATION",
+                    title="🔥 AZAB BOT",
                     description=(
-                        "**Advanced Discord Prison Bot**\n"
-                        "Sophisticated AI-powered bot for ragebaiting muted users\n"
-                        "Built exclusively for **discord.gg/syria**\n"
+                        "AI-powered prison bot for **discord.gg/syria**"
                     ),
                     color=0xFF4500,  # Orange-red color
                     timestamp=datetime.now(timezone.utc)
@@ -91,37 +91,28 @@ class CreditsCommand:
                 
                 # Developer section
                 embed.add_field(
-                    name="👨‍💻 Developer",
+                    name="Developer",
                     value=(
-                        f"**{developer_name}** (حَـــــنَّـــــا)\n"
-                        f"Solo developed over 40-60 hours\n"
-                        f"Custom built for Syria Discord"
+                        f"**{developer_name}**"
                     ),
-                    inline=False
+                    inline=True
                 )
                 
-                # Technical specifications
+                # Version
                 embed.add_field(
-                    name="🔧 Tech Stack",
+                    name="Version",
                     value=(
-                        "**Language:** Python 3.12\n"
-                        "**Framework:** Discord.py 2.3.2\n"
-                        "**AI Model:** GPT-3.5-turbo\n"
-                        "**Database:** SQLite\n"
-                        "**Hosting:** VPS with PM2"
+                        f"**{Version.get_version_string()}**"
                     ),
                     inline=True
                 )
                 
                 # Statistics
                 embed.add_field(
-                    name="📊 Statistics",
+                    name="Stats",
                     value=(
-                        f"**Current Prisoners:** {prisoner_count}\n"
-                        f"**Uptime:** {uptime_str}\n"
-                        f"**Total Servers:** {len(self.bot.guilds)}\n"
-                        f"**Code Lines:** ~850\n"
-                        f"**Version:** v2.2.0"
+                        f"**Prisoners:** {prisoner_count}\n"
+                        f"**Uptime:** {uptime_str}"
                     ),
                     inline=True
                 )
@@ -129,40 +120,11 @@ class CreditsCommand:
                 # Add spacing
                 embed.add_field(name="\u200b", value="\u200b", inline=False)
                 
-                # Features list
+                # Tech stack
                 embed.add_field(
-                    name="✨ Key Features",
+                    name="Built With",
                     value=(
-                        "• **AI Ragebaiting** - GPT-3.5 powered responses\n"
-                        "• **Prisoner Database** - Tracks all mute history\n"
-                        "• **Smart Rate Limiting** - 10s cooldown with buffering\n"
-                        "• **Auto Log Cleanup** - 30-day retention\n"
-                        "• **Professional Embeds** - Welcome/release messages\n"
-                        "• **Developer Recognition** - Special creator responses"
-                    ),
-                    inline=False
-                )
-                
-                # Architecture
-                embed.add_field(
-                    name="🏗️ Architecture",
-                    value=(
-                        "• **Modular Design** - Organized handlers/services\n"
-                        "• **Persistent State** - Survives restarts\n"
-                        "• **Dynamic Presence** - Live prisoner count\n"
-                        "• **Mute Detection** - Role & embed monitoring\n"
-                        "• **24/7 Operation** - PM2 process management"
-                    ),
-                    inline=False
-                )
-                
-                # Links section
-                embed.add_field(
-                    name="🔗 Links",
-                    value=(
-                        "**GitHub:** [AzabBot Repository](https://github.com/trippixn963/AzabBot)\n"
-                        "**Server:** [discord.gg/syria](https://discord.gg/syria)\n"
-                        "**Latest Release:** [v2.2.0](https://github.com/trippixn963/AzabBot/releases/latest)"
+                        "Python 3.12 • Discord.py • GPT-3.5"
                     ),
                     inline=False
                 )
@@ -184,7 +146,37 @@ class CreditsCommand:
                     url="https://github.com/trippixn963/AzabBot"
                 )
                 
-                await interaction.response.send_message(embed=embed, ephemeral=False)
+                # Create view with buttons
+                view = View()
+                
+                # GitHub button
+                github_button = Button(
+                    label="GitHub",
+                    style=discord.ButtonStyle.link,
+                    url="https://github.com/trippixn963/AzabBot",
+                    emoji="📦"
+                )
+                view.add_item(github_button)
+                
+                # Server button
+                server_button = Button(
+                    label="Syria Server",
+                    style=discord.ButtonStyle.link,
+                    url="https://discord.gg/syria",
+                    emoji="🔥"
+                )
+                view.add_item(server_button)
+                
+                # Latest Release button
+                release_button = Button(
+                    label=f"v{Version.get_version_string()}",
+                    style=discord.ButtonStyle.link,
+                    url="https://github.com/trippixn963/AzabBot/releases/latest",
+                    emoji="🚀"
+                )
+                view.add_item(release_button)
+                
+                await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
                 
                 # Log command usage
                 logger.info(f"Credits viewed by {interaction.user.name}")

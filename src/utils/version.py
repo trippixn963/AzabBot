@@ -27,15 +27,15 @@ class Version:
     All version information is centralized here for consistency across the bot.
     """
     
-    # Current version - Update this for each release
-    MAJOR: int = 1
-    MINOR: int = 0
+    # Current version - UPDATE THIS FOR EACH RELEASE
+    MAJOR: int = 2
+    MINOR: int = 2
     PATCH: int = 0
     BUILD: Optional[str] = None  # Set to None for stable releases
     
     # Version metadata
     CODENAME: str = "Syria"  # Release codename
-    RELEASE_DATE: str = "2025-01-04"  # Update with each release
+    RELEASE_DATE: str = "2024-12-07"  # Update with each release
     
     # Bot information
     BOT_NAME: str = "Azab"
