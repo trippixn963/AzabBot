@@ -155,22 +155,22 @@ class PrisonHandler:
             # Create embed with black code box for response
             embed = discord.Embed(
                 title="🔒 NEW PRISONER ARRIVAL",
-                description=f"\n{member.mention}\n\u200b",  # \u200b is invisible space
+                description=f"{member.mention}\n",
                 color=0xFF0000  # Red color for prison
             )
             
-            # Add mute reason if available with spacing
+            # Add mute reason if available
             if mute_reason:
                 embed.add_field(
                     name="Reason",
-                    value=f"{mute_reason[:100]}\n\u200b",
+                    value=f"{mute_reason[:100]}",
                     inline=False
                 )
             
-            # Add the AI response in a code block with spacing above and below
+            # Add the AI response in a code block with spacing
             embed.add_field(
                 name="\u200b",  # Empty field for spacing
-                value=f"\n```\n{response}\n```\n\u200b",
+                value=f"```\n{response}\n```",
                 inline=False
             )
             
@@ -280,22 +280,22 @@ class PrisonHandler:
             # Create embed with black code box for response
             embed = discord.Embed(
                 title="🔓 PRISONER RELEASED",
-                description=f"\n{member.mention}\n\u200b",  # \u200b is invisible space
+                description=f"{member.mention}\n",
                 color=0x00FF00  # Green color for freedom
             )
             
-            # Add original crime if available with spacing
+            # Add original crime if available
             if mute_reason:
                 embed.add_field(
                     name="Released From",
-                    value=f"{mute_reason[:100]}\n\u200b",
+                    value=f"{mute_reason[:100]}",
                     inline=False
                 )
             
-            # Add the AI response in a code block with spacing above and below
+            # Add the AI response in a code block with spacing
             embed.add_field(
                 name="\u200b",  # Empty field for spacing
-                value=f"\n```\n{response}\n```\n\u200b",
+                value=f"```\n{response}\n```",
                 inline=False
             )
             
