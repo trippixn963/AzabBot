@@ -151,10 +151,49 @@ class PrisonHandler:
                 mute_reason
             )
             
-            # THIRD: Send welcome message to prison channel
-            # Format: Header + mention + AI-generated savage response
-            welcome_msg: str = f"🔒 **NEW PRISONER ARRIVAL** 🔒\n\n{member.mention}\n\n{response}"
-            await prison_channel.send(welcome_msg)
+            # THIRD: Send welcome message to prison channel as embed
+            # Create embed with black code box for response
+            embed = discord.Embed(
+                title="🔒 NEW PRISONER ARRIVAL 🔒",
+                description=f"{member.mention}",
+                color=0xFF0000  # Red color for prison
+            )
+            
+            # Add the AI response in a code block (black box)
+            embed.add_field(
+                name="Welcome Message",
+                value=f"```\n{response}\n```",
+                inline=False
+            )
+            
+            # Add prisoner stats if they're a repeat offender
+            if prisoner_stats['total_mutes'] > 0:
+                embed.add_field(
+                    name="Prison Record",
+                    value=f"Visit #{prisoner_stats['total_mutes'] + 1}",
+                    inline=True
+                )
+                embed.add_field(
+                    name="Total Time Served",
+                    value=f"{prisoner_stats['total_minutes'] or 0} minutes",
+                    inline=True
+                )
+            
+            # Add mute reason if available
+            if mute_reason:
+                embed.add_field(
+                    name="Crime",
+                    value=mute_reason[:100],
+                    inline=False
+                )
+            
+            # Set thumbnail to bot's avatar
+            embed.set_thumbnail(url=self.bot.user.avatar.url if self.bot.user.avatar else None)
+            
+            # Set footer with developer credit
+            embed.set_footer(text="Developed By: حَـــــنَّـــــا")
+            
+            await prison_channel.send(embed=embed)
             
             # Update presence to show prisoner arrival
             asyncio.create_task(self.bot.presence_handler.show_prisoner_arrived())
@@ -235,10 +274,50 @@ class PrisonHandler:
                 mute_reason
             )
             
-            # Send release message to general channel
-            # Format: Header + mention + AI-generated sarcastic response
-            release_msg: str = f"🔓 **PRISONER RELEASED** 🔓\n\n{member.mention} {response}"
-            await general_channel.send(release_msg)
+            # Send release message to general channel as embed
+            # Create embed with black code box for response
+            embed = discord.Embed(
+                title="🔓 PRISONER RELEASED 🔓",
+                description=f"{member.mention}",
+                color=0x00FF00  # Green color for freedom
+            )
+            
+            # Add the AI response in a code block (black box)
+            embed.add_field(
+                name="Release Message",
+                value=f"```\n{response}\n```",
+                inline=False
+            )
+            
+            # Add prison stats
+            if prisoner_stats['total_mutes'] > 0:
+                embed.add_field(
+                    name="Total Visits",
+                    value=str(prisoner_stats['total_mutes']),
+                    inline=True
+                )
+                if prisoner_stats['total_minutes']:
+                    embed.add_field(
+                        name="Time Served",
+                        value=f"{prisoner_stats['total_minutes']} minutes",
+                        inline=True
+                    )
+            
+            # Add original crime if available
+            if mute_reason:
+                embed.add_field(
+                    name="Released From",
+                    value=mute_reason[:100],
+                    inline=False
+                )
+            
+            # Set thumbnail to bot's avatar
+            embed.set_thumbnail(url=self.bot.user.avatar.url if self.bot.user.avatar else None)
+            
+            # Set footer with developer credit
+            embed.set_footer(text="Developed By: حَـــــنَّـــــا")
+            
+            await general_channel.send(embed=embed)
             
             # Update presence to show prisoner release
             asyncio.create_task(self.bot.presence_handler.show_prisoner_released())
