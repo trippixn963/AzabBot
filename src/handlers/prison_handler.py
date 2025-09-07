@@ -154,19 +154,27 @@ class PrisonHandler:
             # THIRD: Send welcome message to prison channel as embed
             # Create embed with black code box for response
             embed = discord.Embed(
-                title="🔒 NEW PRISONER ARRIVAL 🔒",
-                description=f"{member.mention}",
+                title="🔒 NEW PRISONER ARRIVAL",
+                description=f"\n{member.mention}\n\u200b",  # \u200b is invisible space
                 color=0xFF0000  # Red color for prison
             )
             
-            # Add the AI response in a code block (black box)
+            # Add mute reason if available with spacing
+            if mute_reason:
+                embed.add_field(
+                    name="Reason",
+                    value=f"{mute_reason[:100]}\n\u200b",
+                    inline=False
+                )
+            
+            # Add the AI response in a code block with spacing above and below
             embed.add_field(
-                name="Welcome Message",
-                value=f"```\n{response}\n```",
+                name="\u200b",  # Empty field for spacing
+                value=f"\n```\n{response}\n```\n\u200b",
                 inline=False
             )
             
-            # Add prisoner stats if they're a repeat offender
+            # Add prisoner stats if they're a repeat offender with spacing
             if prisoner_stats['total_mutes'] > 0:
                 embed.add_field(
                     name="Prison Record",
@@ -177,14 +185,6 @@ class PrisonHandler:
                     name="Total Time Served",
                     value=f"{prisoner_stats['total_minutes'] or 0} minutes",
                     inline=True
-                )
-            
-            # Add mute reason if available
-            if mute_reason:
-                embed.add_field(
-                    name="Crime",
-                    value=mute_reason[:100],
-                    inline=False
                 )
             
             # Set thumbnail to bot's avatar
@@ -277,19 +277,27 @@ class PrisonHandler:
             # Send release message to general channel as embed
             # Create embed with black code box for response
             embed = discord.Embed(
-                title="🔓 PRISONER RELEASED 🔓",
-                description=f"{member.mention}",
+                title="🔓 PRISONER RELEASED",
+                description=f"\n{member.mention}\n\u200b",  # \u200b is invisible space
                 color=0x00FF00  # Green color for freedom
             )
             
-            # Add the AI response in a code block (black box)
+            # Add original crime if available with spacing
+            if mute_reason:
+                embed.add_field(
+                    name="Released From",
+                    value=f"{mute_reason[:100]}\n\u200b",
+                    inline=False
+                )
+            
+            # Add the AI response in a code block with spacing above and below
             embed.add_field(
-                name="Release Message",
-                value=f"```\n{response}\n```",
+                name="\u200b",  # Empty field for spacing
+                value=f"\n```\n{response}\n```\n\u200b",
                 inline=False
             )
             
-            # Add prison stats
+            # Add prison stats with spacing
             if prisoner_stats['total_mutes'] > 0:
                 embed.add_field(
                     name="Total Visits",
@@ -302,14 +310,6 @@ class PrisonHandler:
                         value=f"{prisoner_stats['total_minutes']} minutes",
                         inline=True
                     )
-            
-            # Add original crime if available
-            if mute_reason:
-                embed.add_field(
-                    name="Released From",
-                    value=mute_reason[:100],
-                    inline=False
-                )
             
             # Set thumbnail to bot's avatar
             embed.set_thumbnail(url=self.bot.user.avatar.url if self.bot.user.avatar else None)
