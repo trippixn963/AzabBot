@@ -190,8 +190,10 @@ class PrisonHandler:
             # Set thumbnail to prisoner's avatar
             embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
             
-            # Set footer with developer credit
-            embed.set_footer(text="Developed By: حَـــــنَّـــــا")
+            # Set footer with developer credit and avatar
+            developer = await self.bot.fetch_user(self.bot.developer_id)
+            developer_avatar = developer.avatar.url if developer and developer.avatar else None
+            embed.set_footer(text="Developed By: حَـــــنَّـــــا", icon_url=developer_avatar)
             
             await prison_channel.send(embed=embed)
             
@@ -314,8 +316,10 @@ class PrisonHandler:
             # Set thumbnail to prisoner's avatar
             embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
             
-            # Set footer with developer credit
-            embed.set_footer(text="Developed By: حَـــــنَّـــــا")
+            # Set footer with developer credit and avatar
+            developer = await self.bot.fetch_user(self.bot.developer_id)
+            developer_avatar = developer.avatar.url if developer and developer.avatar else None
+            embed.set_footer(text="Developed By: حَـــــنَّـــــا", icon_url=developer_avatar)
             
             await general_channel.send(embed=embed)
             
