@@ -95,13 +95,17 @@ class MiniTreeLogger:
     
     def _get_timestamp(self) -> str:
         """
-        Get current timestamp in EST timezone.
+        Get current timestamp in Eastern timezone (auto EST/EDT).
         
         Returns:
-            str: Formatted timestamp string in EST (UTC-5)
+            str: Formatted timestamp string in ET (auto-adjusts for daylight saving)
         """
-        est: timezone = timezone(timedelta(hours=-5))  # EST is UTC-5
-        return datetime.now(est).strftime('[%I:%M:%S %p EST]')
+        # Use system local time which is set to America/New_York
+        # This automatically handles EST/EDT based on the date
+        current_time = datetime.now()
+        # Determine if we're in EDT (summer) or EST (winter)
+        tz_name = "EDT" if current_time.month >= 3 and current_time.month <= 11 else "EST"
+        return current_time.strftime(f'[%I:%M:%S %p {tz_name}]')
     
     def _write(self, message: str, emoji: str = "", include_timestamp: bool = True) -> None:
         """
