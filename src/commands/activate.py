@@ -8,7 +8,7 @@ with AI-generated ragebait responses.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: Modular
+Version: v2.2.0
 """
 
 import discord
