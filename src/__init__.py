@@ -15,5 +15,5 @@ Package Structure:
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: Modular
+Version: v2.2.0
 """
