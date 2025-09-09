@@ -207,7 +207,7 @@ class AIService:
                 "- Features: AI ragebaiting, prisoner history database, rate limiting (10s), auto log cleanup\n"
                 "- Smart message buffering for spammers, developer recognition system\n"
                 "- Professional embeds with prisoner avatars, dynamic Discord presence\n"
-                "- SQLite database tracking all mutes, 24/7 VPS deployment with PM2\n"
+                "- SQLite database tracking all mutes, 24/7 VPS deployment with systemd\n"
                 "- Persistent state across restarts, mute reason extraction from logs\n"
                 "- ~500 lines of core code, ~200 lines handlers, ~150 lines services\n"
                 "- Estimated development time: 40-60 hours for a skilled developer\n"
