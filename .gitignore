@@ -61,6 +61,10 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+data/
+
+# Bot State
+bot_state.json
 
 # Temporary files
 *.tmp

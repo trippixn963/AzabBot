@@ -81,14 +81,14 @@ class MiniTreeLogger:
                 # Get file modification time
                 file_time = datetime.fromtimestamp(os.path.getmtime(log_file))
                 
-                # If file is older than 30 days, delete it
-                if (now - file_time).days > 30:
+                # If file is older than configured days, delete it
+                if (now - file_time).days > int(os.getenv('LOG_RETENTION_DAYS', '30')):
                     log_file.unlink()
                     deleted_count += 1
             
             # Log cleanup results (but don't use self._write since it's not initialized yet)
             if deleted_count > 0:
-                print(f"[LOG CLEANUP] Deleted {deleted_count} old log files (>30 days)")
+                print(f"[LOG CLEANUP] Deleted {deleted_count} old log files (>{os.getenv('LOG_RETENTION_DAYS', '30')} days)")
                 
         except Exception as e:
             print(f"[LOG CLEANUP ERROR] Failed to clean old logs: {e}")

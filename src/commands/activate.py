@@ -14,7 +14,8 @@ Version: v2.2.0
 import discord
 from discord import app_commands
 from datetime import datetime, timezone, timedelta
-from typing import Any
+import os
+from typing import Any, Optional
 
 from src.core.logger import logger
 
@@ -82,7 +83,7 @@ class ActivateCommand:
             
             # Log activation event with details
             # Use EST timezone for consistency
-            est: timezone = timezone(timedelta(hours=-5))
+            est: timezone = timezone(timedelta(hours=int(os.getenv('TIMEZONE_OFFSET_HOURS', '-5'))))
             logger.tree("BOT ACTIVATED", [
                 ("By", str(interaction.user)),
                 ("Time", datetime.now(est).strftime('%I:%M %p EST')),
@@ -94,7 +95,7 @@ class ActivateCommand:
             embed: discord.Embed = discord.Embed(
                 title="🟢 AZAB ACTIVATED",
                 description=f"**Ragebaiting Mode Active**\n\nNow monitoring all muted users and generating AI-powered responses.\n\n🔒 **{muted_count} prisoners currently in timeout**",
-                color=0x00FF00
+                color=int(os.getenv('EMBED_COLOR_SUCCESS', '0x00FF00'), 16)
             )
             
             # Add detailed status fields
@@ -111,7 +112,7 @@ class ActivateCommand:
             # Get developer's avatar instead of server icon
             developer: Optional[discord.User] = await self.bot.fetch_user(interaction.user.id)
             developer_avatar: Optional[str] = developer.avatar.url if developer and developer.avatar else None
-            embed.set_footer(text="Developed By: حَـــــنَّـــــا", icon_url=developer_avatar)
+            embed.set_footer(text=f"Developed By: {os.getenv('DEVELOPER_NAME', 'حَـــــنَّـــــا')}", icon_url=developer_avatar)
             
             await interaction.response.send_message(embed=embed, ephemeral=True)
         

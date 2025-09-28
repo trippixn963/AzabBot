@@ -14,6 +14,7 @@ Version: v2.2.0
 import discord
 from discord import app_commands
 from datetime import datetime, timezone, timedelta
+import os
 from typing import Any, Optional
 
 from src.core.logger import logger
@@ -74,7 +75,7 @@ class DeactivateCommand:
             
             # Log deactivation event with details
             # Use EST timezone for consistency
-            est: timezone = timezone(timedelta(hours=-5))
+            est: timezone = timezone(timedelta(hours=int(os.getenv('TIMEZONE_OFFSET_HOURS', '-5'))))
             logger.tree("BOT DEACTIVATED", [
                 ("By", str(interaction.user)),
                 ("Time", datetime.now(est).strftime('%I:%M %p EST')),
@@ -85,7 +86,7 @@ class DeactivateCommand:
             embed: discord.Embed = discord.Embed(
                 title="🔴 AZAB DEACTIVATED",
                 description="**Ragebaiting Mode Disabled**\n\nBot is now in standby mode. Use `/activate` to resume operations.",
-                color=0xFF0000
+                color=int(os.getenv('EMBED_COLOR_ERROR', '0xFF0000'), 16)
             )
             
             # Add detailed status fields
@@ -102,7 +103,7 @@ class DeactivateCommand:
             # Get developer's avatar instead of server icon
             developer: Optional[discord.User] = await self.bot.fetch_user(interaction.user.id)
             developer_avatar: Optional[str] = developer.avatar.url if developer and developer.avatar else None
-            embed.set_footer(text="Developed By: حَـــــنَّـــــا", icon_url=developer_avatar)
+            embed.set_footer(text=f"Developed By: {os.getenv('DEVELOPER_NAME', 'حَـــــنَّـــــا')}", icon_url=developer_avatar)
             
             await interaction.response.send_message(embed=embed, ephemeral=True)
         
