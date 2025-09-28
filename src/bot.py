@@ -271,15 +271,11 @@ class AzabBot(discord.Client):
             is_muted: bool = self.is_user_muted(message.author)
             
             # Check if message is from the developer/creator, uncle, or brother
-            # Family members get responses always - no need to mention the bot
+            # Family members need to ping the bot to get responses
             if is_developer or is_uncle or is_brother:
-                # Only respond if bot is mentioned OR if it's in the prison channel
-                # This prevents responding to every message in general channels
-                should_respond = (
-                    self.user.mentioned_in(message) or
-                    message.channel.id == self.prison_channel_id or
-                    message.channel.id in self.allowed_channels
-                )
+                # Only respond if bot is mentioned - even in prison channels
+                # This prevents responding to every message from family members
+                should_respond = self.user.mentioned_in(message)
 
                 if should_respond:
                     async with message.channel.typing():
