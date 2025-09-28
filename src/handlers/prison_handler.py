@@ -17,10 +17,12 @@ Server: discord.gg/syria
 
 import discord
 import asyncio
+import os
 from typing import Optional, Dict, Any
 
 from src.core.logger import logger
 from src.services.ai_service import AIService
+from src.utils import format_duration
 
 
 class PrisonHandler:
@@ -74,7 +76,7 @@ class PrisonHandler:
             # FIRST: Extract mute reason from logs channel
             # Wait for the mute embed to appear in logs (moderation bots need time to post)
             logger.info(f"Waiting for mute embed to appear in logs for {member.name}")
-            await asyncio.sleep(5)  # Give enough time for the mute bot to post the embed
+            await asyncio.sleep(int(os.getenv('MUTE_EMBED_WAIT_TIME', '5')))  # Give enough time for the mute bot to post the embed
             
             # Check if we already have the mute reason stored
             # Try both user ID and username (case-insensitive) for maximum reliability
@@ -91,7 +93,7 @@ class PrisonHandler:
                 logger.info(f"Scanning logs channel for {member.name}'s mute reason...")
                 
                 messages_checked: int = 0
-                async for message in logs_channel.history(limit=50):  # Check more messages
+                async for message in logs_channel.history(limit=int(os.getenv('LOG_CHANNEL_SCAN_LIMIT', '50'))):  # Check more messages
                     messages_checked += 1
                     if message.embeds:
                         # Process all embeds in this message
@@ -122,9 +124,10 @@ class PrisonHandler:
                 
                 # Add history roasting if they're a repeat offender
                 if prisoner_stats['total_mutes'] > 0:
+                    total_time = format_duration(prisoner_stats['total_minutes'] or 0)
                     welcome_prompt += (
                         f"This is their {prisoner_stats['total_mutes'] + 1}th time in prison! "
-                        f"They've spent {prisoner_stats['total_minutes'] or 0} total minutes locked up before. "
+                        f"They've spent {total_time} locked up before. "
                         f"Mock them for being a repeat offender who never learns. "
                     )
                 
@@ -156,23 +159,18 @@ class PrisonHandler:
             embed = discord.Embed(
                 title="🔒 NEW PRISONER ARRIVAL",
                 description=f"{member.mention}\n",
-                color=0xFF0000  # Red color for prison
+                color=int(os.getenv('EMBED_COLOR_ERROR', '0xFF0000'), 16)  # Red color for prison
             )
             
             # Add mute reason if available
             if mute_reason:
                 embed.add_field(
                     name="Reason",
-                    value=f"{mute_reason[:100]}",
+                    value=f"{mute_reason[:int(os.getenv('MUTE_REASON_MAX_LENGTH', '100'))]}",
                     inline=False
                 )
             
-            # Add the AI response in a code block with spacing
-            embed.add_field(
-                name="\u200b",  # Empty field for spacing
-                value=f"```\n{response}\n```",
-                inline=False
-            )
+            # Remove the AI response from embed - it will be sent as a separate message
             
             # Add prisoner stats if they're a repeat offender with spacing
             if prisoner_stats['total_mutes'] > 0:
@@ -181,9 +179,10 @@ class PrisonHandler:
                     value=f"Visit #{prisoner_stats['total_mutes'] + 1}",
                     inline=True
                 )
+                total_time = format_duration(prisoner_stats['total_minutes'] or 0)
                 embed.add_field(
                     name="Total Time Served",
-                    value=f"{prisoner_stats['total_minutes'] or 0} minutes",
+                    value=total_time,
                     inline=True
                 )
             
@@ -193,9 +192,10 @@ class PrisonHandler:
             # Set footer with developer credit and avatar
             developer = await self.bot.fetch_user(self.bot.developer_id)
             developer_avatar = developer.avatar.url if developer and developer.avatar else None
-            embed.set_footer(text="Developed By: حَـــــنَّـــــا", icon_url=developer_avatar)
+            embed.set_footer(text=f"Developed By: {os.getenv('DEVELOPER_NAME', 'حَـــــنَّـــــا')}", icon_url=developer_avatar)
             
-            await prison_channel.send(embed=embed)
+            # Send both the AI response text and the embed
+            await prison_channel.send(f"{member.mention} {response}", embed=embed)
             
             # Update presence to show prisoner arrival
             asyncio.create_task(self.bot.presence_handler.show_prisoner_arrived())
@@ -211,9 +211,9 @@ class PrisonHandler:
             # Log the welcome event
             logger.tree("NEW PRISONER WELCOMED", [
                 ("Prisoner", str(member)),
-                ("Reason", mute_reason[:50] if mute_reason else "Unknown"),
+                ("Reason", mute_reason[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))] if mute_reason else "Unknown"),
                 ("Times Muted", str(prisoner_stats['total_mutes'] + 1)),
-                ("Welcome", response[:50])
+                ("Welcome", response[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))])
             ], "⛓️")
             
         except Exception as e:
@@ -255,7 +255,7 @@ class PrisonHandler:
                     f"Someone just got released from prison where they were locked up for: '{mute_reason}'. "
                     f"Mock them sarcastically about being freed. Make jokes about their time in jail. "
                     f"Act like they probably didn't learn their lesson. "
-                    f"Be sarcastic about them being 'reformed'. Keep it under 50 words. "
+                    f"Be sarcastic about them being 'reformed'. Keep it under {os.getenv('RELEASE_PROMPT_WORD_LIMIT', '50')} words. "
                     f"IMPORTANT: Do NOT mention their name, just refer to them as 'you' since they will be pinged."
                 )
             else:
@@ -263,7 +263,7 @@ class PrisonHandler:
                 release_prompt = (
                     f"Someone just got released from prison. "
                     f"Mock them about finally being free. Be sarcastic about their jail time. "
-                    f"Make jokes about them probably going back soon. Keep it under 50 words. "
+                    f"Make jokes about them probably going back soon. Keep it under {os.getenv('RELEASE_PROMPT_WORD_LIMIT', '50')} words. "
                     f"IMPORTANT: Do NOT mention their name, just refer to them as 'you' since they will be pinged."
                 )
             
@@ -281,23 +281,18 @@ class PrisonHandler:
             embed = discord.Embed(
                 title="🔓 PRISONER RELEASED",
                 description=f"{member.mention}\n",
-                color=0x00FF00  # Green color for freedom
+                color=int(os.getenv('EMBED_COLOR_RELEASE', '0x00FF00'), 16)  # Green color for freedom
             )
             
             # Add original crime if available
             if mute_reason:
                 embed.add_field(
                     name="Released From",
-                    value=f"{mute_reason[:100]}",
+                    value=f"{mute_reason[:int(os.getenv('MUTE_REASON_MAX_LENGTH', '100'))]}",
                     inline=False
                 )
             
-            # Add the AI response in a code block with spacing
-            embed.add_field(
-                name="\u200b",  # Empty field for spacing
-                value=f"```\n{response}\n```",
-                inline=False
-            )
+            # Remove the AI response from embed - it will be sent as a separate message
             
             # Add prison stats with spacing
             if prisoner_stats['total_mutes'] > 0:
@@ -307,9 +302,10 @@ class PrisonHandler:
                     inline=True
                 )
                 if prisoner_stats['total_minutes']:
+                    total_time = format_duration(prisoner_stats['total_minutes'])
                     embed.add_field(
                         name="Time Served",
-                        value=f"{prisoner_stats['total_minutes']} minutes",
+                        value=total_time,
                         inline=True
                     )
             
@@ -319,9 +315,10 @@ class PrisonHandler:
             # Set footer with developer credit and avatar
             developer = await self.bot.fetch_user(self.bot.developer_id)
             developer_avatar = developer.avatar.url if developer and developer.avatar else None
-            embed.set_footer(text="Developed By: حَـــــنَّـــــا", icon_url=developer_avatar)
+            embed.set_footer(text=f"Developed By: {os.getenv('DEVELOPER_NAME', 'حَـــــنَّـــــا')}", icon_url=developer_avatar)
             
-            await general_channel.send(embed=embed)
+            # Send both the AI response text and the embed
+            await general_channel.send(f"{member.mention} {response}", embed=embed)
             
             # Update presence to show prisoner release
             asyncio.create_task(self.bot.presence_handler.show_prisoner_released())
@@ -342,9 +339,9 @@ class PrisonHandler:
             # Log the release event
             logger.tree("PRISONER RELEASED", [
                 ("Ex-Prisoner", str(member)),
-                ("Previous Offense", mute_reason[:50] if mute_reason else "Unknown"),
+                ("Previous Offense", mute_reason[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))] if mute_reason else "Unknown"),
                 ("Total Times Muted", str(prisoner_stats['total_mutes'])),
-                ("Release Message", response[:50])
+                ("Release Message", response[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))])
             ], "🔓")
             
         except Exception as e:

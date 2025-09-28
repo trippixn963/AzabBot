@@ -11,5 +11,9 @@ Services:
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.2.0
+Version: v2.3.0
 """
+
+from .ai_service import AIService
+
+__all__ = ['AIService']

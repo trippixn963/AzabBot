@@ -51,7 +51,7 @@ async def main() -> None:
         ("Version", Version.get_version_string()),
         ("Server", "discord.gg/syria"),
         ("Structure", "Organized with src/"),
-        ("Commands", "/activate, /deactivate, /credits")
+        ("Commands", "/activate, /deactivate")
     ], "🔥")
     
     # Validate Discord bot token from environment

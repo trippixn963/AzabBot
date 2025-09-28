@@ -12,5 +12,10 @@ Components:
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.2.0
+Version: v2.3.0
 """
+
+from .database import Database
+from .logger import logger
+
+__all__ = ['Database', 'logger']
