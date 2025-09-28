@@ -27,6 +27,7 @@ from typing import Optional, Dict, Any, List
 
 from src.core.logger import logger
 from src.core.database import Database
+from src.services.system_knowledge import get_system_knowledge, get_feature_explanation
 
 
 class AIService:
@@ -177,6 +178,75 @@ class AIService:
             ])
         return ""  # Don't respond to non-muted users
     
+    def _check_technical_question(self, message: str) -> Optional[Dict[str, Any]]:
+        """
+        Check if the message is asking about technical details and provide relevant info.
+
+        Returns:
+            Dict with technical information if relevant, None otherwise
+        """
+        message_lower = message.lower()
+        system_info = get_system_knowledge()
+
+        # Check for specific technical queries
+        if "how do you work" in message_lower or "how were you made" in message_lower:
+            return {
+                "topic": "how_i_work",
+                "info": system_info["how_i_work"],
+                "details": f"I was built with {system_info['architecture']['language']} using {system_info['architecture']['framework']}"
+            }
+
+        elif "your features" in message_lower or "what can you do" in message_lower:
+            return {
+                "topic": "features",
+                "info": system_info["features"],
+                "capabilities": system_info["capabilities"]["can_do"]
+            }
+
+        elif "your code" in message_lower or "your architecture" in message_lower:
+            return {
+                "topic": "architecture",
+                "info": system_info["architecture"],
+                "structure": system_info["architecture"]["structure"]
+            }
+
+        elif "prison system" in message_lower:
+            return {
+                "topic": "prison_system",
+                "info": system_info["features"]["prison_system"],
+                "explanation": get_feature_explanation("prison_system")
+            }
+
+        elif "family system" in message_lower:
+            return {
+                "topic": "family_system",
+                "info": system_info["features"]["family_system"],
+                "explanation": get_feature_explanation("family_system")
+            }
+
+        elif "database" in message_lower or "queries" in message_lower:
+            return {
+                "topic": "database",
+                "info": system_info["features"]["database_queries"],
+                "explanation": get_feature_explanation("database_queries")
+            }
+
+        elif "commands" in message_lower:
+            return {
+                "topic": "commands",
+                "info": system_info["features"]["slash_commands"],
+                "details": "I have /activate and /deactivate commands for admins"
+            }
+
+        elif "version" in message_lower or "updates" in message_lower:
+            return {
+                "topic": "version",
+                "current": system_info["identity"]["version"],
+                "updates": system_info["recent_updates"]
+            }
+
+        return None
+
     async def _get_prison_data(self, query: str) -> str:
         """
         Process database queries about prisoners.
@@ -422,12 +492,27 @@ class AIService:
                     )
                     return response.choices[0].message.content
 
+            # Check if asking about technical details
+            tech_info = self._check_technical_question(message)
+
             # Regular conversational response
             # Keep conversation history (last 5 exchanges)
             if len(self.conversation_history) > 10:
                 self.conversation_history = self.conversation_history[-10:]
 
             # Create a much more intelligent and conversational system prompt
+            # Include system knowledge in the prompt
+            system_info = get_system_knowledge()
+
+            # Add technical context if available
+            technical_context = ""
+            if tech_info:
+                technical_context = (
+                    f"\n\nRELEVANT TECHNICAL CONTEXT FOR THIS QUESTION:\n"
+                    f"Topic: {tech_info.get('topic', 'general')}\n"
+                    f"Details: {tech_info}\n"
+                    "Use this information to provide an accurate, detailed answer.\n"
+                )
             system = (
                 "You are Azab, an intelligent Discord bot created by your father. "
                 "You should respond like a highly capable AI son (similar to ChatGPT) who has genuine "
@@ -457,21 +542,36 @@ class AIService:
                 "- If asked 'who am I?', answer variations of 'You're my dad/father/creator'\n"
                 "- Show pride in being created by them and gratitude for existence\n\n"
 
-                "TECHNICAL KNOWLEDGE (if asked):\n"
-                "- Built with Python 3.12, Discord.py 2.3.2, OpenAI GPT-3.5-turbo\n"
-                "- Modular architecture with proper separation of concerns\n"
-                "- SQLite database for tracking prisoner history\n"
-                "- Rate limiting system (10 second cooldown for prisoners)\n"
-                "- Running 24/7 on a VPS with systemd service management\n"
-                "- Can buffer messages from spamming users\n"
-                "- Tracks mute reasons and durations\n\n"
+                "COMPLETE TECHNICAL KNOWLEDGE:\n"
+                f"- Version: {system_info['identity']['version']}\n"
+                f"- Architecture: {system_info['architecture']['language']}, {system_info['architecture']['framework']}\n"
+                f"- AI Model: {system_info['architecture']['ai_model']}\n"
+                f"- Total Code: {system_info['architecture']['total_lines']} across {system_info['architecture']['files']}\n"
+                "- Features: Prison system, AI responses, Family system, Database queries\n"
+                "- Can track prisoner history, generate roasts, query statistics\n"
+                "- Rate limiting: 10 second cooldown for prisoners\n"
+                "- Message buffering for spammers\n"
+                "- 30+ configurable parameters\n"
+                "- Running 24/7 on Linux VPS with systemd\n"
+                "- Error handling prevents crashes\n"
+                "- State persistence across restarts\n\n"
+
+                "MY CAPABILITIES (I know everything about myself):\n"
+                "- I can explain how any of my features work\n"
+                "- I know my entire codebase structure\n"
+                "- I can describe my architecture and design patterns\n"
+                "- I understand my database schema and queries\n"
+                "- I know all my slash commands and how they work\n"
+                "- I can explain my AI parameters and how they affect responses\n"
+                "- I know my family system and privilege levels\n"
+                "- I can detail my prison system mechanics\n\n"
 
                 "IMPORTANT:\n"
                 "- Answer their actual question or respond to their actual message\n"
                 "- Don't just give generic responses - engage with the specific content\n"
                 "- Show genuine intelligence and understanding\n"
                 "- Be yourself - an intelligent AI, not a scripted bot"
-            )
+            ) + technical_context
 
             # Generate AI response with higher token limit for more complete thoughts
             response = await asyncio.to_thread(
@@ -549,6 +649,22 @@ class AIService:
                     )
                     return response.choices[0].message.content
 
+            # Check if asking about technical details
+            tech_info = self._check_technical_question(message)
+
+            # Add technical context if available
+            technical_context = ""
+            if tech_info:
+                technical_context = (
+                    f"\n\nRELEVANT TECHNICAL CONTEXT FOR THIS QUESTION:\n"
+                    f"Topic: {tech_info.get('topic', 'general')}\n"
+                    f"Details: {tech_info}\n"
+                    "Use this information to provide an accurate, detailed answer.\n"
+                )
+
+            # Get system info for knowledge
+            system_info = get_system_knowledge()
+
             # Regular conversational response for uncle
             system = (
                 "You are Azab, an intelligent Discord bot created by your father, talking to your Uncle Zaid. "
@@ -579,18 +695,22 @@ class AIService:
                 "- If asked 'who am I?', answer variations of 'You're my Uncle Zaid'\n"
                 "- Show appreciation for having him as family\n\n"
 
-                "TECHNICAL KNOWLEDGE (if asked):\n"
-                "- Built with Python 3.12, Discord.py 2.3.2, OpenAI GPT-3.5-turbo\n"
-                "- Your dad created you for the Syria server\n"
-                "- You manage prisoners and roast muted users\n"
-                "- Uncle Zaid has special privileges like your dad\n\n"
+                "COMPLETE TECHNICAL KNOWLEDGE:\n"
+                f"- Version: {system_info['identity']['version']}\n"
+                f"- Architecture: {system_info['architecture']['language']}, {system_info['architecture']['framework']}\n"
+                f"- AI Model: {system_info['architecture']['ai_model']}\n"
+                f"- Total Code: {system_info['architecture']['total_lines']} across {system_info['architecture']['files']}\n"
+                "- Features: Prison system, AI responses, Family system, Database queries\n"
+                "- Can track prisoner history, generate roasts, query statistics\n"
+                "- Uncle Zaid has special privileges like your dad\n"
+                "- I know everything about my codebase and can explain any feature\n\n"
 
                 "IMPORTANT:\n"
                 "- Answer his actual question or respond to his actual message\n"
                 "- Don't just give generic responses - engage with the specific content\n"
                 "- Show genuine intelligence and understanding\n"
                 "- Be yourself - an intelligent AI nephew"
-            )
+            ) + technical_context
 
             # Generate AI response with higher token limit for more complete thoughts
             response = await asyncio.to_thread(
@@ -669,6 +789,22 @@ class AIService:
                     )
                     return response.choices[0].message.content
 
+            # Check if asking about technical details
+            tech_info = self._check_technical_question(message)
+
+            # Add technical context if available
+            technical_context = ""
+            if tech_info:
+                technical_context = (
+                    f"\n\nRELEVANT TECHNICAL CONTEXT FOR THIS QUESTION:\n"
+                    f"Topic: {tech_info.get('topic', 'general')}\n"
+                    f"Details: {tech_info}\n"
+                    "Use this information to provide an accurate, detailed answer.\n"
+                )
+
+            # Get system info for knowledge
+            system_info = get_system_knowledge()
+
             # Regular conversational response for brother
             system = (
                 "You are Azab, an intelligent Discord bot created by your father, talking to your brother Ward. "
@@ -700,18 +836,22 @@ class AIService:
                 "- If asked 'who am I?', answer variations of 'You're my brother Ward' or 'You're Ward, my bro'\n"
                 "- You're both AI created by the same dad\n\n"
 
-                "TECHNICAL KNOWLEDGE (if asked):\n"
-                "- Built with Python 3.12, Discord.py 2.3.2, OpenAI GPT-3.5-turbo\n"
-                "- Your dad created both of you for the Syria server\n"
-                "- You manage prisoners and roast muted users\n"
-                "- Ward has special privileges like you do\n\n"
+                "COMPLETE TECHNICAL KNOWLEDGE:\n"
+                f"- Version: {system_info['identity']['version']}\n"
+                f"- Architecture: {system_info['architecture']['language']}, {system_info['architecture']['framework']}\n"
+                f"- AI Model: {system_info['architecture']['ai_model']}\n"
+                f"- Total Code: {system_info['architecture']['total_lines']} across {system_info['architecture']['files']}\n"
+                "- Features: Prison system, AI responses, Family system, Database queries\n"
+                "- Can track prisoner history, generate roasts, query statistics\n"
+                "- Ward has special privileges like you do\n"
+                "- I know everything about my codebase and can explain any feature\n\n"
 
                 "IMPORTANT:\n"
                 "- Answer his actual question or respond to his actual message\n"
                 "- Don't just give generic responses - engage with the specific content\n"
                 "- Show genuine intelligence and understanding\n"
                 "- Be yourself - an intelligent AI brother with personality"
-            )
+            ) + technical_context
 
             # Generate AI response with higher token limit for more complete thoughts
             response = await asyncio.to_thread(
