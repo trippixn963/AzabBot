@@ -2,6 +2,32 @@
 
 All notable changes to the Azab Discord Bot will be documented in this file.
 
+## [2.4.0] - 2025-09-28
+
+### 🧠 AI Self-Awareness System
+
+#### Complete Technical Knowledge Integration
+- **System Knowledge Module**: Added comprehensive knowledge base about bot's architecture and features
+- **Self-Aware AI**: Azab can now explain how he works, his features, architecture, and capabilities
+- **Technical Question Detection**: Automatically detects and responds to technical queries with accurate information
+- **Enhanced Family Responses**: All family members (dad, uncle, brother) get intelligent technical responses
+
+#### Knowledge Base Features
+- **Architecture Details**: Full knowledge of Python 3.12, Discord.py 2.3.2, OpenAI integration
+- **Feature Explanations**: Can explain prison system, family system, database queries in detail
+- **Codebase Statistics**: Knows file structure, line counts, and organization
+- **Configuration Awareness**: Understands all 30+ environment variables and settings
+- **Capability Understanding**: Knows what he can and cannot do
+
+### 🔧 Technical Improvements
+- Created `system_knowledge.py` module with complete bot documentation
+- Integrated `_check_technical_question()` method in AI service
+- Enhanced system prompts with full technical knowledge
+- Added technical context injection for accurate responses
+- Improved conversation memory with technical awareness
+
+---
+
 ## [2.3.0] - 2025-09-28
 
 ### 🎉 Major Features
