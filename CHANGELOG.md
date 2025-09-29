@@ -2,6 +2,38 @@
 
 All notable changes to the Azab Discord Bot will be documented in this file.
 
+## [2.4.1] - 2025-09-29
+
+### 🎯 New Features
+
+#### Response Time Tracking
+- **AI Response Timing**: Every AI response now shows generation time in Discord small text format
+- **Minimal Display**: Shows as `⏱ X.XXs` below each response
+- **Performance Monitoring**: Helps track OpenAI API latency and performance
+
+#### Enhanced Prison Tracking
+- **Trigger Message Storage**: Bot now saves the message that caused each mute
+- **Database Enhancement**: Added `trigger_message` column to prisoner_history table
+- **Mute Reason in Presence**: Bot status shows "🔒 Username: reason" when someone gets muted
+- **Accurate Time Display**: Fixed "0m" bug - now shows actual session duration on release
+
+#### Family System Improvements
+- **Ping Requirement**: Family members (dad, uncle, brother) must now @mention bot for responses
+- **No More Spam**: Bot no longer responds to every family message in prison channels
+
+### 🔧 Technical Changes
+- Added automatic database migration for trigger_message column
+- Improved time calculation using `get_current_mute_duration()` method
+- Enhanced presence handler with username and reason display
+- Updated all AI response methods with timing tracking
+
+### 📚 Documentation
+- Updated README.md to v2.4.0 with all new features
+- Updated environment variable documentation
+- Added new database schema documentation
+
+---
+
 ## [2.4.0] - 2025-09-28
 
 ### 🧠 AI Self-Awareness System

@@ -7,7 +7,7 @@ features, and capabilities for AI self-awareness.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.4.0
+Version: v2.4.1
 """
 
 def get_system_knowledge():
@@ -18,7 +18,7 @@ def get_system_knowledge():
     return {
         "identity": {
             "name": "Azab",
-            "version": "v2.4.0",
+            "version": "v2.4.1",
             "purpose": "Discord bot for managing muted users (prisoners) with AI-powered roasting",
             "server": "discord.gg/syria",
             "creator": "حَـــــنَّـــــا (your dad/father)",
