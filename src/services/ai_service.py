@@ -156,7 +156,7 @@ class AIService:
 
             # Add response time in Discord small text format
             content = response.choices[0].message.content
-            return f"{content}\n-# Responded in {response_time}s"
+            return f"{content}\n-# ⏱ {response_time}s"
             
         except Exception as e:
             logger.error(f"OpenAI API error: {e}")
@@ -501,7 +501,7 @@ class AIService:
                     end_time = time.time()
                     response_time = round(end_time - start_time, 2)
                     content = response.choices[0].message.content
-                    return f"{content}\n-# Responded in {response_time}s"
+                    return f"{content}\n-# ⏱ {response_time}s"
 
             # Check if asking about technical details
             tech_info = self._check_technical_question(message)
@@ -603,7 +603,7 @@ class AIService:
 
             # Add response time in Discord small text format
             content = response.choices[0].message.content
-            return f"{content}\n-# Responded in {response_time}s"
+            return f"{content}\n-# ⏱ {response_time}s"
 
         except Exception as e:
             logger.error(f"OpenAI API error in developer response: {e}")
@@ -668,7 +668,7 @@ class AIService:
                     end_time = time.time()
                     response_time = round(end_time - start_time, 2)
                     content = response.choices[0].message.content
-                    return f"{content}\n-# Responded in {response_time}s"
+                    return f"{content}\n-# ⏱ {response_time}s"
 
             # Check if asking about technical details
             tech_info = self._check_technical_question(message)
@@ -750,7 +750,7 @@ class AIService:
             end_time = time.time()
             response_time = round(end_time - start_time, 2)
             content = response.choices[0].message.content
-            return f"{content}\n-# Responded in {response_time}s"
+            return f"{content}\n-# ⏱ {response_time}s"
 
         except Exception as e:
             logger.error(f"OpenAI API error in uncle response: {e}")
@@ -816,7 +816,7 @@ class AIService:
                     end_time = time.time()
                     response_time = round(end_time - start_time, 2)
                     content = response.choices[0].message.content
-                    return f"{content}\n-# Responded in {response_time}s"
+                    return f"{content}\n-# ⏱ {response_time}s"
 
             # Check if asking about technical details
             tech_info = self._check_technical_question(message)
@@ -899,7 +899,7 @@ class AIService:
             end_time = time.time()
             response_time = round(end_time - start_time, 2)
             content = response.choices[0].message.content
-            return f"{content}\n-# Responded in {response_time}s"
+            return f"{content}\n-# ⏱ {response_time}s"
 
         except Exception as e:
             logger.error(f"OpenAI API error in brother response: {e}")
