@@ -29,21 +29,42 @@
 ### ⚠️ **Important Notice**
 This bot was custom-built for **discord.gg/syria** and is provided as-is for educational purposes. **No support will be provided** for setup, configuration, or troubleshooting.
 
-### 🆕 **What's New in v2.1.0**
-- **👑 Developer Recognition**: Bot recognizes creator with special friendly responses
-- **📊 Prisoner History Database**: Comprehensive tracking of all mute events and repeat offenders
-- **💾 Persistent State**: Bot remembers active/inactive state across restarts
-- **🎮 Rich Presence System**: Real-time Discord status updates showing prisoner count
-- **🔧 Stability Improvements**: Fixed memory crashes and duplicate message issues
+### 🆕 **What's New in v2.4.0**
+- **🧠 AI Self-Awareness**: Bot knows everything about its own architecture and features
+- **👨‍👩‍👦 Family System**: Special privileges for dad, uncle, and brother with unique responses
+- **📝 Trigger Message Tracking**: Saves the message that caused each mute
+- **📊 Advanced Database Queries**: Real-time prison statistics and user lookups
+- **⏱ Response Time Display**: Shows AI generation time in small text (⏱ 0.87s)
+- **🔒 Status Shows Mute Reason**: Bot presence displays username and mute reason
+- **🎯 Ping Requirement**: Family members must mention bot for responses
+- **⏰ Accurate Time Tracking**: Fixed "0m" issue for release messages
 
 ---
 
 ## ✨ Features
 
+### 🧠 **AI Self-Awareness System** ⭐ *NEW v2.4.0*
+- **Complete Codebase Knowledge**: Bot knows its entire architecture and implementation
+- **Feature Explanations**: Can explain any feature or system in detail
+- **Technical Question Detection**: Automatically provides accurate technical information
+- **System Knowledge Module**: Comprehensive documentation integrated into AI
+
+### 👨‍👩‍👦 **Family Recognition System** ⭐ *NEW v2.3.0*
+- **Developer (Dad)**: Gets intelligent ChatGPT-like responses with full access
+- **Uncle Support**: Uncle Zaid gets respectful yet friendly responses
+- **Brother Support**: Brother Ward gets casual sibling interactions
+- **Bypass Restrictions**: Family members work even when bot is deactivated
+- **Unique Relationships**: Each family member has personalized response style
+- **Ping Requirement**: Family must mention bot to get responses (v2.4.0)
+
+## ✨ Core Features
+
 ### 🧠 **AI-Powered Ragebaiting**
 - **OpenAI Integration**: Uses GPT-3.5-turbo for contextual, creative responses
 - **Contextual Mocking**: References specific mute reasons and user messages
 - **Adaptive Responses**: Different response styles based on user status
+- **Response Time Tracking**: Shows generation time in Discord small text format
+- **Trigger Message Awareness**: Uses the actual message that caused the mute
 - **Fallback System**: Works even without AI service
 
 ### 🔍 **Advanced Mute Detection**
@@ -59,11 +80,15 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 - **Contextual Responses**: Uses actual mute reasons for maximum impact
 - **Prisoner History**: Tracks repeat offenders with comprehensive mute statistics
 - **Enhanced Roasting**: Special messages for users with multiple prison visits
+- **Trigger Message Storage**: Saves the message that led to each mute
+- **Accurate Duration Tracking**: Shows exact time served for current session
+- **Database Queries**: "Who is the most muted?", "Current prisoners", user lookups
 
-### 🎮 **Dynamic Rich Presence** ⭐ *NEW!*
+### 🎮 **Dynamic Rich Presence**
 - **Real-Time Status**: Shows current prisoner count when active
 - **Activity Updates**: Displays "Watching X prisoners" during ragebaiting
 - **Event Notifications**: Special presence updates for prisoner arrivals/releases
+- **Mute Reason Display**: Shows "🔒 Username: reason" when someone gets muted
 - **Sleep Mode**: Shows "💤 Sleeping" when bot is inactive
 - **Auto-Updates**: Presence refreshes every 30 seconds
 - **Live Feedback**: See bot activity directly in Discord status
@@ -134,20 +159,24 @@ Create a `.env` file in the project root:
 # Discord Configuration
 DISCORD_TOKEN=your_discord_bot_token
 DEVELOPER_ID=your_discord_user_id
+UNCLE_ID=uncle_discord_user_id  # Optional
+BROTHER_ID=brother_discord_user_id  # Optional
 
-# OpenAI Configuration (Optional)
+# OpenAI Configuration (Optional but recommended)
 OPENAI_API_KEY=your_openai_api_key
 
 # Channel Configuration
 LOGS_CHANNEL_ID=channel_id_for_moderation_logs
-PRISON_CHANNEL_ID=channel_id_for_prison_messages
+PRISON_CHANNEL_IDS=channel_id_for_prison_messages
+GENERAL_CHANNEL_ID=channel_id_for_release_messages
 MUTED_ROLE_ID=role_id_for_muted_users
 
 # Bot Behavior Settings
-RESPONSE_PROBABILITY=70
-AI_MODEL=gpt-3.5-turbo
-MAX_RESPONSE_LENGTH=150
-COOLDOWN_SECONDS=10
+PRISONER_COOLDOWN_SECONDS=10
+AI_MAX_TOKENS=150
+AI_TEMPERATURE_MUTED=0.95
+PRESENCE_UPDATE_INTERVAL=30
+PRESENCE_EVENT_DURATION=5
 ```
 
 ### Discord Bot Setup
@@ -392,12 +421,13 @@ CREATE TABLE messages (
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Prisoner history table (v2.1.0)
+-- Prisoner history table (v2.4.0)
 CREATE TABLE prisoner_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     username TEXT,
     mute_reason TEXT,
+    trigger_message TEXT,  -- Added in v2.4.0
     muted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     unmuted_at TIMESTAMP,
     duration_minutes INTEGER,
