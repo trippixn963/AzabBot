@@ -90,18 +90,34 @@ class PresenceHandler:
         except Exception as e:
             logger.error("Presence Update", str(e)[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))])
 
-    async def show_prisoner_arrived(self) -> None:
+    async def show_prisoner_arrived(self, username: str = None, reason: str = None) -> None:
         """
-        Temporarily show when a new prisoner arrives.
+        Temporarily show when a new prisoner arrives with their mute reason.
         Shows for configured duration then returns to normal presence.
+
+        Args:
+            username: The prisoner's username
+            reason: The reason they were muted
         """
         try:
-            # Show arrival message
+            # Create status message with reason if available
+            if reason and username:
+                # Truncate reason if too long for Discord status
+                max_len = 50
+                if len(reason) > max_len:
+                    reason = reason[:max_len-3] + "..."
+                status_text = f"🔒 {username}: {reason}"
+            elif username:
+                status_text = f"🔒 {username} imprisoned!"
+            else:
+                status_text = "🔒 New prisoner arrived!"
+
+            # Show arrival message with reason
             await self.bot.change_presence(
                 status=discord.Status.dnd,
                 activity=discord.Activity(
                     type=discord.ActivityType.playing,
-                    name="🔒 New prisoner arrived!"
+                    name=status_text
                 )
             )
 

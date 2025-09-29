@@ -266,7 +266,10 @@ class AzabBot(discord.Client):
                     message.channel.id,
                     message.guild.id
                 )
-            
+
+                # Track last message from each user (for mute trigger tracking)
+                self.prison_handler.last_messages[message.author.id] = message.content
+
             # Check if user is currently muted (by role)
             is_muted: bool = self.is_user_muted(message.author)
             

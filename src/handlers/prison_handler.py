@@ -47,6 +47,7 @@ class PrisonHandler:
         self.bot: Any = bot
         self.ai: AIService = ai_service
         self.mute_reasons: Dict[int, str] = {}  # Store mute reasons {user_id: reason}
+        self.last_messages: Dict[int, str] = {}  # Store last message from each user {user_id: message}
     
     async def handle_new_prisoner(self, member: discord.Member) -> None:
         """
@@ -197,15 +198,22 @@ class PrisonHandler:
             # Send both the AI response text and the embed
             await prison_channel.send(f"{member.mention} {response}", embed=embed)
             
-            # Update presence to show prisoner arrival
-            asyncio.create_task(self.bot.presence_handler.show_prisoner_arrived())
+            # Update presence to show prisoner arrival with reason
+            asyncio.create_task(self.bot.presence_handler.show_prisoner_arrived(
+                username=member.name,
+                reason=mute_reason
+            ))
             
-            # Record mute in database
+            # Get the last message that triggered the mute
+            trigger_message = self.last_messages.get(member.id, None)
+
+            # Record mute in database with trigger message
             await self.bot.db.record_mute(
                 user_id=member.id,
                 username=member.name,
                 reason=mute_reason or "Unknown",
-                muted_by=None  # We could extract this from embeds later
+                muted_by=None,  # We could extract this from embeds later
+                trigger_message=trigger_message
             )
             
             # Log the welcome event
