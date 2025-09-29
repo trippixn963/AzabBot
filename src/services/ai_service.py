@@ -77,7 +77,7 @@ class AIService:
         """
         return is_muted  # Only respond to muted users
     
-    async def generate_response(self, message: str, username: str, is_muted: bool, mute_reason: str = None, trigger_message: str = None) -> str:
+    async def generate_response(self, message: str, username: str, is_muted: bool, mute_reason: str = None, trigger_message: str = None, user_id: int = None, mute_duration_minutes: int = 0) -> str:
         """
         Generate contextual AI response based on user status and message.
         
@@ -100,21 +100,56 @@ class AIService:
             return self._fallback(is_muted, mute_reason)
         
         try:
+            # Get user profile and recent roasts for memory
+            user_profile = None
+            recent_roasts = []
+            session_id = None
+
+            if user_id:
+                user_profile = await self.db.get_user_profile(user_id)
+                recent_roasts = await self.db.get_recent_roasts(user_id, limit=3)
+                session_id = await self.db.get_current_mute_session_id(user_id)
+                # Update profile with their latest message
+                await self.db.update_user_profile(user_id, message)
+
             # Create different system prompts based on user status
             if is_muted:
                 # Build comprehensive context for chain of thought
                 trigger_msg = trigger_message if trigger_message else message
 
+                # Build memory context
+                memory_context = ""
+                if user_profile:
+                    memory_context = (
+                        f"\nUSER PROFILE (use this to personalize roasts):\n"
+                        f"- Personality type: {user_profile.get('personality_type', 'unknown')}\n"
+                        f"- Total roasts received: {user_profile.get('total_roasts_received', 0)}\n"
+                        f"- Most used words: {user_profile.get('most_used_words', 'none')}\n"
+                    )
+                    if user_profile.get('callback_references'):
+                        old_quotes = user_profile['callback_references'].split('|||')[-2:]
+                        if old_quotes:
+                            memory_context += f"- Things they've said before: {', '.join([f'"{q}"' for q in old_quotes])}\n"
+
+                if recent_roasts:
+                    memory_context += f"\nRECENT ROASTS (avoid repeating these):\n"
+                    for roast in recent_roasts:
+                        memory_context += f"- {roast[:100]}...\n"
+
+                # Time-based roasting context
+                time_context = self._get_time_based_context(mute_duration_minutes)
+
                 base_prompt = (
                     "You are Azab, a savage Discord bot that psychologically destroys muted users. "
-                    f"Target: '{username}' (use ONLY this name when addressing them)\n\n"
-
+                    f"Target: '{username}' (use ONLY this name when addressing them)\n"
+                    f"{memory_context}\n"
+                    f"{time_context}\n"
                     "CHAIN OF THOUGHT - Analyze before roasting:\n"
                     f"1. What did they do wrong? MUTE REASON: {mute_reason or 'unknown offense'}\n"
                     f"2. What triggered their mute? LAST MESSAGE: '{trigger_msg}'\n"
                     "3. What's their biggest insecurity based on their message?\n"
                     "4. What would hurt their ego the most?\n"
-                    "5. How can I twist their own words against them?\n\n"
+                    "5. How can I twist their own words against them?\n"
 
                     "EXAMPLES OF SAVAGE ROASTS:\n"
                     "User: 'this is unfair' → 'Life's unfair, just like your chances of getting unmuted 💀'\n"
@@ -178,13 +213,71 @@ class AIService:
 
             # Add response time in Discord small text format
             content = response.choices[0].message.content
-            return f"{content}\n-# ⏱ {response_time}s"
-            
+            full_response = f"{content}\n-# ⏱ {response_time}s"
+
+            # Save roast to history if muted
+            if is_muted and user_id:
+                category = self._get_roast_category(mute_duration_minutes)
+                await self.db.save_roast(user_id, content, category, session_id)
+
+            return full_response
+
         except Exception as e:
             logger.error(f"OpenAI API error: {e}")
             # Use fallback responses instead of error messages
             return self._fallback(is_muted, mute_reason)
     
+    def _get_time_based_context(self, duration_minutes: int) -> str:
+        """
+        Generate time-based roasting context.
+
+        Args:
+            duration_minutes: How long they've been muted
+
+        Returns:
+            Time-based context string for the prompt
+        """
+        if duration_minutes <= 0:
+            return "TIME CONTEXT: Just arrived in prison - fresh meat for roasting"
+        elif duration_minutes < 5:
+            return f"TIME CONTEXT: Been muted for {duration_minutes} minutes - still in denial phase"
+        elif duration_minutes < 30:
+            return f"TIME CONTEXT: {duration_minutes} minutes in - reality is setting in"
+        elif duration_minutes < 60:
+            return f"TIME CONTEXT: {duration_minutes} minutes - approaching the 1-hour mark of shame"
+        elif duration_minutes < 120:
+            hours = duration_minutes // 60
+            mins = duration_minutes % 60
+            return f"TIME CONTEXT: {hours}h {mins}m in prison - they're getting desperate now"
+        elif duration_minutes < 1440:  # Less than a day
+            hours = duration_minutes // 60
+            return f"TIME CONTEXT: {hours} HOURS in prison - this is their life now"
+        else:
+            days = duration_minutes // 1440
+            hours = (duration_minutes % 1440) // 60
+            return f"TIME CONTEXT: {days} DAYS {hours} HOURS - a veteran prisoner, mock their dedication to being muted"
+
+    def _get_roast_category(self, duration_minutes: int) -> str:
+        """
+        Determine roast category based on mute duration.
+
+        Args:
+            duration_minutes: How long they've been muted
+
+        Returns:
+            Category string for tracking
+        """
+        if duration_minutes <= 0:
+            return "welcome"
+        elif duration_minutes < 30:
+            return "early_stage"
+        elif duration_minutes < 120:
+            return "mid_stage"
+        elif duration_minutes < 1440:
+            return "late_stage"
+        else:
+            return "veteran"
+
     def _fallback(self, is_muted: bool, mute_reason: Optional[str] = None) -> str:
         """Fallback responses when AI is unavailable"""
         import random

@@ -131,6 +131,32 @@ class Database:
             conn.execute('ALTER TABLE prisoner_history ADD COLUMN trigger_message TEXT')
             logger.info("Added trigger_message column to prisoner_history table")
 
+        # Create roast_history table for tracking AI responses to avoid repetition
+        conn.execute('''CREATE TABLE IF NOT EXISTS roast_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            roast_text TEXT,
+            roast_category TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            mute_session_id INTEGER,
+            FOREIGN KEY (mute_session_id) REFERENCES prisoner_history(id)
+        )''')
+
+        # Create user_profiles table for building behavioral patterns
+        conn.execute('''CREATE TABLE IF NOT EXISTS user_profiles (
+            user_id INTEGER PRIMARY KEY,
+            favorite_excuse TEXT,
+            most_used_words TEXT,
+            personality_type TEXT,
+            total_roasts_received INTEGER DEFAULT 0,
+            last_roast_time TIMESTAMP,
+            callback_references TEXT
+        )''')
+
+        # Indexes for roast history
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_roast_user ON roast_history(user_id)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_roast_session ON roast_history(mute_session_id)')
+
         # Commit schema changes and close connection
         conn.commit()
         conn.close()
@@ -559,3 +585,197 @@ class Database:
             return None
 
         return await asyncio.to_thread(_search)
+
+    async def save_roast(self, user_id: int, roast_text: str, category: str = "general", session_id: int = None) -> None:
+        """
+        Save a roast to history to avoid repetition.
+
+        Args:
+            user_id: Discord user ID
+            roast_text: The roast that was delivered
+            category: Type of roast (welcome, time_based, response, etc.)
+            session_id: Current mute session ID from prisoner_history
+        """
+        def _save():
+            conn = sqlite3.connect(self.db_path)
+            conn.execute(
+                "INSERT INTO roast_history (user_id, roast_text, roast_category, mute_session_id) VALUES (?, ?, ?, ?)",
+                (user_id, roast_text[:500], category, session_id)
+            )
+
+            # Update user profile
+            conn.execute(
+                """INSERT INTO user_profiles (user_id, total_roasts_received, last_roast_time)
+                   VALUES (?, 1, CURRENT_TIMESTAMP)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                   total_roasts_received = total_roasts_received + 1,
+                   last_roast_time = CURRENT_TIMESTAMP"""
+                , (user_id,)
+            )
+            conn.commit()
+            conn.close()
+
+        await asyncio.to_thread(_save)
+
+    async def get_recent_roasts(self, user_id: int, limit: int = 5) -> List[str]:
+        """
+        Get recent roasts for a user to avoid repetition.
+
+        Args:
+            user_id: Discord user ID
+            limit: Number of recent roasts to retrieve
+
+        Returns:
+            List of recent roast texts
+        """
+        def _get():
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT roast_text FROM roast_history
+                   WHERE user_id = ?
+                   ORDER BY timestamp DESC
+                   LIMIT ?""",
+                (user_id, limit)
+            )
+            roasts = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            return roasts
+
+        return await asyncio.to_thread(_get)
+
+    async def get_user_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get user profile with behavioral patterns.
+
+        Args:
+            user_id: Discord user ID
+
+        Returns:
+            User profile dict or None if not found
+        """
+        def _get():
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT favorite_excuse, most_used_words, personality_type,
+                          total_roasts_received, last_roast_time, callback_references
+                   FROM user_profiles WHERE user_id = ?""",
+                (user_id,)
+            )
+            row = cursor.fetchone()
+            conn.close()
+
+            if row:
+                return {
+                    'favorite_excuse': row[0],
+                    'most_used_words': row[1],
+                    'personality_type': row[2],
+                    'total_roasts_received': row[3],
+                    'last_roast_time': row[4],
+                    'callback_references': row[5]
+                }
+            return None
+
+        return await asyncio.to_thread(_get)
+
+    async def update_user_profile(self, user_id: int, message_content: str) -> None:
+        """
+        Update user profile based on their messages.
+
+        Args:
+            user_id: Discord user ID
+            message_content: Their latest message to analyze
+        """
+        import re
+        from collections import Counter
+
+        def _update():
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+
+            # Get existing profile
+            cursor.execute("SELECT most_used_words, callback_references FROM user_profiles WHERE user_id = ?", (user_id,))
+            existing = cursor.fetchone()
+
+            # Extract words (excluding common ones)
+            words = re.findall(r'\b\w+\b', message_content.lower())
+            common_words = {'the', 'is', 'at', 'which', 'on', 'a', 'an', 'as', 'are', 'was', 'were', 'to', 'for', 'of', 'with', 'in'}
+            meaningful_words = [w for w in words if w not in common_words and len(w) > 2]
+
+            # Update most used words
+            if existing and existing[0]:
+                old_words = existing[0].split(',') if existing[0] else []
+                all_words = old_words + meaningful_words
+                word_counts = Counter(all_words)
+                most_common = ','.join([w for w, _ in word_counts.most_common(10)])
+            else:
+                most_common = ','.join(meaningful_words[:10])
+
+            # Detect personality type based on message patterns
+            personality = "standard"
+            if any(word in message_content.lower() for word in ['sorry', 'please', 'apologize', 'didnt mean']):
+                personality = "apologetic"
+            elif any(word in message_content.lower() for word in ['unfair', 'why me', 'not fair', 'bullshit']):
+                personality = "victim_complex"
+            elif any(word in message_content.lower() for word in ['fuck', 'shit', 'damn', 'hell']):
+                personality = "aggressive"
+            elif '?' in message_content:
+                personality = "questioning"
+
+            # Store memorable quotes for callbacks
+            if len(message_content) > 20 and len(message_content) < 100:
+                callbacks = existing[1] if existing and existing[1] else ""
+                if callbacks:
+                    callbacks = callbacks.split('|||')[-4:] # Keep last 4
+                    callbacks.append(message_content)
+                    callbacks = '|||'.join(callbacks)
+                else:
+                    callbacks = message_content
+
+                conn.execute(
+                    """INSERT INTO user_profiles (user_id, most_used_words, personality_type, callback_references)
+                       VALUES (?, ?, ?, ?)
+                       ON CONFLICT(user_id) DO UPDATE SET
+                       most_used_words = ?,
+                       personality_type = ?,
+                       callback_references = ?""",
+                    (user_id, most_common, personality, callbacks, most_common, personality, callbacks)
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO user_profiles (user_id, most_used_words, personality_type)
+                       VALUES (?, ?, ?)
+                       ON CONFLICT(user_id) DO UPDATE SET
+                       most_used_words = ?,
+                       personality_type = ?""",
+                    (user_id, most_common, personality, most_common, personality)
+                )
+
+            conn.commit()
+            conn.close()
+
+        await asyncio.to_thread(_update)
+
+    async def get_current_mute_session_id(self, user_id: int) -> Optional[int]:
+        """
+        Get the current active mute session ID for a user.
+
+        Args:
+            user_id: Discord user ID
+
+        Returns:
+            Session ID or None if not muted
+        """
+        def _get():
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id FROM prisoner_history WHERE user_id = ? AND is_active = 1",
+                (user_id,)
+            )
+            result = cursor.fetchone()
+            conn.close()
+            return result[0] if result else None
+
+        return await asyncio.to_thread(_get)
