@@ -12,7 +12,7 @@
 
 ## 📋 Prerequisites
 
-- **Python 3.11+** - Required for running the bot
+- **Python 3.12** - Required for running the bot (3.13 not supported due to audioop removal)
 - **Discord Bot Token** - From Discord Developer Portal
 - **OpenAI API Key** - Optional but recommended for AI responses
 - **VPS/Server** - For 24/7 operation
@@ -28,7 +28,7 @@
 sudo apt update && sudo apt upgrade -y
 
 # Install Python and dependencies
-sudo apt install python3.11 python3.11-venv python3-pip git -y
+sudo apt install python3.12 python3.12-venv python3-pip git -y
 
 # Create user for bot
 sudo useradd -m -s /bin/bash azab
@@ -43,7 +43,7 @@ git clone https://github.com/trippixn963/AzabBot.git
 cd AzabBot
 
 # Create virtual environment
-python3.11 -m venv venv
+python3.12 -m venv venv
 source venv/bin/activate
 
 # Install dependencies
