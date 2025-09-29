@@ -23,6 +23,7 @@ import asyncio
 import random
 import os
 import json
+import time
 from typing import Optional, Dict, Any, List
 
 from src.core.logger import logger
@@ -136,7 +137,8 @@ class AIService:
                     f"Keep it PG-13 and under {os.getenv('RELEASE_PROMPT_WORD_LIMIT', '50')} words."
                 )
             
-            # Generate AI response using OpenAI API
+            # Generate AI response using OpenAI API with timing
+            start_time = time.time()
             response = await asyncio.to_thread(
                 openai.ChatCompletion.create,
                 model="gpt-3.5-turbo",
@@ -149,7 +151,12 @@ class AIService:
                 presence_penalty=float(os.getenv('AI_PRESENCE_PENALTY_MUTED', '0.6')),    # Encourage new topics
                 frequency_penalty=float(os.getenv('AI_FREQUENCY_PENALTY_MUTED', '0.3'))    # Reduce repetition
             )
-            return response.choices[0].message.content
+            end_time = time.time()
+            response_time = round(end_time - start_time, 2)
+
+            # Add response time in Discord small text format
+            content = response.choices[0].message.content
+            return f"{content}\n-# Generated in {response_time}s"
             
         except Exception as e:
             logger.error(f"OpenAI API error: {e}")
@@ -480,6 +487,7 @@ class AIService:
                         "- Be conversational but accurate with the data"
                     )
 
+                    start_time = time.time()
                     response = await asyncio.to_thread(
                         openai.ChatCompletion.create,
                         model="gpt-3.5-turbo",
@@ -490,7 +498,10 @@ class AIService:
                         max_tokens=int(os.getenv('AI_MAX_TOKENS_DEVELOPER', '300')),
                         temperature=0.8,  # Less creative for data presentation
                     )
-                    return response.choices[0].message.content
+                    end_time = time.time()
+                    response_time = round(end_time - start_time, 2)
+                    content = response.choices[0].message.content
+                    return f"{content}\n-# Generated in {response_time}s"
 
             # Check if asking about technical details
             tech_info = self._check_technical_question(message)
@@ -574,6 +585,7 @@ class AIService:
             ) + technical_context
 
             # Generate AI response with higher token limit for more complete thoughts
+            start_time = time.time()
             response = await asyncio.to_thread(
                 openai.ChatCompletion.create,
                 model="gpt-3.5-turbo",
@@ -586,7 +598,12 @@ class AIService:
                 presence_penalty=float(os.getenv('AI_PRESENCE_PENALTY_DEV', '0.6')),  # Encourage diverse topics
                 frequency_penalty=float(os.getenv('AI_FREQUENCY_PENALTY_DEV', '0.3'))  # Natural variation
             )
-            return response.choices[0].message.content
+            end_time = time.time()
+            response_time = round(end_time - start_time, 2)
+
+            # Add response time in Discord small text format
+            content = response.choices[0].message.content
+            return f"{content}\n-# Generated in {response_time}s"
 
         except Exception as e:
             logger.error(f"OpenAI API error in developer response: {e}")
@@ -637,6 +654,7 @@ class AIService:
                         "- Be conversational but accurate with the data"
                     )
 
+                    start_time = time.time()
                     response = await asyncio.to_thread(
                         openai.ChatCompletion.create,
                         model="gpt-3.5-turbo",
@@ -647,7 +665,10 @@ class AIService:
                         max_tokens=int(os.getenv('AI_MAX_TOKENS_DEVELOPER', '300')),
                         temperature=0.8,  # Less creative for data presentation
                     )
-                    return response.choices[0].message.content
+                    end_time = time.time()
+                    response_time = round(end_time - start_time, 2)
+                    content = response.choices[0].message.content
+                    return f"{content}\n-# Generated in {response_time}s"
 
             # Check if asking about technical details
             tech_info = self._check_technical_question(message)
@@ -713,6 +734,7 @@ class AIService:
             ) + technical_context
 
             # Generate AI response with higher token limit for more complete thoughts
+            start_time = time.time()
             response = await asyncio.to_thread(
                 openai.ChatCompletion.create,
                 model="gpt-3.5-turbo",
@@ -725,7 +747,10 @@ class AIService:
                 presence_penalty=float(os.getenv('AI_PRESENCE_PENALTY_DEV', '0.6')),
                 frequency_penalty=float(os.getenv('AI_FREQUENCY_PENALTY_DEV', '0.3'))
             )
-            return response.choices[0].message.content
+            end_time = time.time()
+            response_time = round(end_time - start_time, 2)
+            content = response.choices[0].message.content
+            return f"{content}\n-# Generated in {response_time}s"
 
         except Exception as e:
             logger.error(f"OpenAI API error in uncle response: {e}")
@@ -777,6 +802,7 @@ class AIService:
                         "- Be conversational but accurate with the data"
                     )
 
+                    start_time = time.time()
                     response = await asyncio.to_thread(
                         openai.ChatCompletion.create,
                         model="gpt-3.5-turbo",
@@ -787,7 +813,10 @@ class AIService:
                         max_tokens=int(os.getenv('AI_MAX_TOKENS_DEVELOPER', '300')),
                         temperature=0.8,  # Less creative for data presentation
                     )
-                    return response.choices[0].message.content
+                    end_time = time.time()
+                    response_time = round(end_time - start_time, 2)
+                    content = response.choices[0].message.content
+                    return f"{content}\n-# Generated in {response_time}s"
 
             # Check if asking about technical details
             tech_info = self._check_technical_question(message)
@@ -854,6 +883,7 @@ class AIService:
             ) + technical_context
 
             # Generate AI response with higher token limit for more complete thoughts
+            start_time = time.time()
             response = await asyncio.to_thread(
                 openai.ChatCompletion.create,
                 model="gpt-3.5-turbo",
@@ -866,7 +896,10 @@ class AIService:
                 presence_penalty=float(os.getenv('AI_PRESENCE_PENALTY_DEV', '0.6')),
                 frequency_penalty=float(os.getenv('AI_FREQUENCY_PENALTY_DEV', '0.3'))
             )
-            return response.choices[0].message.content
+            end_time = time.time()
+            response_time = round(end_time - start_time, 2)
+            content = response.choices[0].message.content
+            return f"{content}\n-# Generated in {response_time}s"
 
         except Exception as e:
             logger.error(f"OpenAI API error in brother response: {e}")
