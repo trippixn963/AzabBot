@@ -101,11 +101,13 @@ class Database:
         # duration_minutes: Calculated duration in minutes (NULL if still active)
         # muted_by/unmuted_by: Moderator who applied/removed mute
         # is_active: Boolean flag for quick active mute lookups (indexed)
+        # trigger_message: The message content that led to the mute
         conn.execute('''CREATE TABLE IF NOT EXISTS prisoner_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
             username TEXT,
             mute_reason TEXT,
+            trigger_message TEXT,
             muted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             unmuted_at TIMESTAMP,
             duration_minutes INTEGER,
@@ -119,7 +121,15 @@ class Database:
         conn.execute('CREATE INDEX IF NOT EXISTS idx_prisoner_user ON prisoner_history(user_id)')
         # Index on is_active for fast active mute queries
         conn.execute('CREATE INDEX IF NOT EXISTS idx_prisoner_active ON prisoner_history(is_active)')
-        
+
+        # Add trigger_message column if it doesn't exist (migration)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(prisoner_history)")
+        columns = [column[1] for column in cursor.fetchall()]
+        if 'trigger_message' not in columns:
+            conn.execute('ALTER TABLE prisoner_history ADD COLUMN trigger_message TEXT')
+            logger.info("Added trigger_message column to prisoner_history table")
+
         # Commit schema changes and close connection
         conn.commit()
         conn.close()
@@ -177,15 +187,16 @@ class Database:
         # Run database operations in thread pool to avoid blocking
         await asyncio.to_thread(_log)
     
-    async def record_mute(self, user_id: int, username: str, reason: str, muted_by: Optional[str] = None) -> None:
+    async def record_mute(self, user_id: int, username: str, reason: str, muted_by: Optional[str] = None, trigger_message: Optional[str] = None) -> None:
         """
         Record a new mute event in prisoner history.
-        
+
         Args:
             user_id: Discord user ID
             username: Discord username
             reason: Reason for mute
             muted_by: Who issued the mute (moderator name)
+            trigger_message: The message content that triggered the mute
         """
         def _record() -> None:
             """
@@ -206,10 +217,10 @@ class Database:
             
             # Insert new mute record with current timestamp and active status
             # is_active = 1 indicates this is the current active mute for the user
-            conn.execute('''INSERT INTO prisoner_history 
-                           (user_id, username, mute_reason, muted_by, is_active) 
-                           VALUES (?, ?, ?, ?, 1)''',
-                        (user_id, username, reason, muted_by))
+            conn.execute('''INSERT INTO prisoner_history
+                           (user_id, username, mute_reason, muted_by, trigger_message, is_active)
+                           VALUES (?, ?, ?, ?, ?, 1)''',
+                        (user_id, username, reason, muted_by, trigger_message))
             
             # Update user's imprisoned status for quick lookups without querying history
             # This denormalized field improves performance for frequent status checks
