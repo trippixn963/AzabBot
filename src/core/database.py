@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Tuple, Optional
+from .logger import logger
 
 
 class Database:
