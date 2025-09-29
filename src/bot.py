@@ -359,13 +359,18 @@ class AzabBot(discord.Client):
                         # Get trigger message from prison handler
                         trigger_msg = self.prison_handler.last_messages.get(message.author.id)
 
+                        # Get mute duration for time-based roasting
+                        mute_duration = await self.database.get_current_mute_duration(message.author.id)
+
                         # Generate contextual AI response with all messages considered
                         response: str = await self.ai.generate_response(
                             combined_context,
                             message.author.display_name,
                             is_muted,
                             mute_reason,
-                            trigger_msg
+                            trigger_msg,
+                            user_id=message.author.id,
+                            mute_duration_minutes=mute_duration
                         )
                         await message.reply(response)
                         
@@ -395,7 +400,9 @@ class AzabBot(discord.Client):
                             message.author.display_name,
                             is_muted,
                             mute_reason,
-                            trigger_msg
+                            trigger_msg,
+                            user_id=message.author.id,
+                            mute_duration_minutes=0
                         )
                     await message.reply(response)
         except discord.errors.Forbidden:
