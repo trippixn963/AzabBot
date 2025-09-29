@@ -245,6 +245,9 @@ class PrisonHandler:
             
             # Get prisoner's history
             prisoner_stats: Dict[str, Any] = await self.bot.db.get_prisoner_stats(member.id)
+
+            # Get the duration of this specific mute session
+            current_session_duration: int = await self.bot.db.get_current_mute_duration(member.id)
             
             # Generate a release message
             # Create different prompts based on whether we have the original offense
@@ -301,11 +304,20 @@ class PrisonHandler:
                     value=str(prisoner_stats['total_mutes']),
                     inline=True
                 )
-                if prisoner_stats['total_minutes']:
-                    total_time = format_duration(prisoner_stats['total_minutes'])
+                # Show the duration of THIS mute session
+                if current_session_duration > 0:
+                    session_time = format_duration(current_session_duration)
                     embed.add_field(
                         name="Time Served",
-                        value=total_time,
+                        value=session_time,
+                        inline=True
+                    )
+                else:
+                    # Fallback to total time if current session is 0
+                    # (shouldn't happen but just in case)
+                    embed.add_field(
+                        name="Time Served",
+                        value="< 1 minute",
                         inline=True
                     )
             
