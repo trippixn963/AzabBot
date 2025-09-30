@@ -30,6 +30,7 @@ from src.services.ai_service import AIService
 from src.commands import ActivateCommand, DeactivateCommand
 from src.handlers import PrisonHandler, MuteHandler, PresenceHandler
 from src.utils.error_handler import ErrorHandler
+from src.utils.validators import Validators, ValidationError, InputSanitizer
 
 
 class AzabBot(discord.Client):
@@ -249,14 +250,28 @@ class AzabBot(discord.Client):
             message (discord.Message): The Discord message object
         """
         try:
+            # Validate message object
+            if not message or not hasattr(message, 'author'):
+                return
+
             # Check if this is a mute embed in logs channel
             if message.channel.id == self.logs_channel_id and message.embeds:
                 await self.mute_handler.process_mute_embed(message)
                 return
-            
+
             # Ignore messages from bots
             if message.author.bot:
                 return
+
+            # Validate and sanitize message content
+            if message.content:
+                try:
+                    validated_content = Validators.validate_message_content(message.content)
+                except ValidationError as e:
+                    logger.warning(f"Invalid message content from {message.author}: {e}")
+                    return
+            else:
+                return  # Skip empty messages
             
             # Check if message is from the developer/creator, uncle, or brother - bypass all restrictions
             is_developer: bool = message.author.id == self.developer_id
@@ -275,13 +290,22 @@ class AzabBot(discord.Client):
             
             # Log message to database for analytics (guild messages only)
             if message.guild:
-                await self.db.log_message(
-                    message.author.id,
-                    str(message.author),
-                    message.content,
-                    message.channel.id,
-                    message.guild.id
+                # Sanitize all inputs before logging
+                sanitized = InputSanitizer.sanitize_user_input(
+                    user_id=message.author.id,
+                    username=str(message.author),
+                    message=message.content,
+                    channel_id=message.channel.id
                 )
+
+                if sanitized.get('user_id') and sanitized.get('channel_id'):
+                    await self.db.log_message(
+                        sanitized['user_id'],
+                        sanitized.get('username', 'Unknown User'),
+                        sanitized.get('message', '[Empty]'),
+                        sanitized['channel_id'],
+                        message.guild.id
+                    )
 
                 # Track last message from each user (for mute trigger tracking)
                 self.prison_handler.last_messages[message.author.id] = message.content

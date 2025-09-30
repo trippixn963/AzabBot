@@ -29,6 +29,7 @@ from typing import Optional, Dict, Any, List
 from src.core.logger import logger
 from src.core.database import Database
 from src.utils.error_handler import ErrorHandler
+from src.utils.validators import Validators, ValidationError
 from src.services.system_knowledge import get_system_knowledge, get_feature_explanation
 
 
@@ -62,6 +63,11 @@ class AIService:
             logger.error("No OpenAI API key - using fallback responses")
     
     def should_respond(self, message: str, mentioned: bool, is_muted: bool) -> bool:
+        # Validate message content
+        try:
+            message = Validators.validate_message_content(message)
+        except ValidationError:
+            return False
         """
         Determine if the bot should respond to a message.
         
@@ -81,21 +87,35 @@ class AIService:
     async def generate_response(self, message: str, username: str, is_muted: bool, mute_reason: str = None, trigger_message: str = None, user_id: int = None, mute_duration_minutes: int = 0) -> str:
         """
         Generate contextual AI response based on user status and message.
-        
+
         Creates different response styles:
         - Ragebaiting responses for muted users (savage, mocking)
         - Sarcastic responses for regular users (witty, dismissive)
         - Fallback responses when AI is unavailable
-        
+
         Args:
             message (str): The original Discord message
             username (str): The Discord username
             is_muted (bool): Whether the user is muted/timed out
             mute_reason (str, optional): The reason the user was muted
-            
+
         Returns:
             str: Generated AI response or fallback message
         """
+        # Validate and sanitize inputs
+        try:
+            message = Validators.validate_message_content(message, 2000)
+            username = Validators.validate_username(username) or "Unknown User"
+            if mute_reason:
+                mute_reason = Validators.validate_mute_reason(mute_reason)
+            if trigger_message:
+                trigger_message = Validators.validate_message_content(trigger_message, 500)
+            if user_id:
+                user_id = Validators.validate_discord_id(user_id)
+            mute_duration_minutes = max(0, int(mute_duration_minutes) if mute_duration_minutes else 0)
+        except ValidationError as e:
+            logger.warning(f"Validation error in generate_response: {e}")
+            return "I can't process that right now."
         if not self.enabled:
             # Use fallback responses when AI is not configured
             return self._fallback(is_muted, mute_reason)

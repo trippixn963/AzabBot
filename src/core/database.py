@@ -164,10 +164,10 @@ class Database:
     async def log_message(self, user_id: int, username: str, content: str, channel_id: int, guild_id: int) -> None:
         """
         Log a Discord message to the database.
-        
+
         Stores the message content, user information, and metadata.
         Updates user statistics including message count.
-        
+
         Args:
             user_id (int): Discord user ID
             username (str): Discord username
@@ -175,6 +175,19 @@ class Database:
             channel_id (int): Discord channel ID
             guild_id (int): Discord guild/server ID
         """
+        # Import validators here to avoid circular import
+        from src.utils.validators import Validators, ValidationError
+
+        # Validate and sanitize inputs
+        try:
+            user_id = Validators.validate_discord_id(user_id)
+            username = Validators.validate_username(username) or "Unknown User"
+            content = Validators.validate_message_content(content, 500)
+            channel_id = Validators.validate_channel_id(channel_id)
+            guild_id = Validators.validate_discord_id(guild_id, "guild_id")
+        except ValidationError as e:
+            logger.warning(f"Validation error in log_message: {e}")
+            return
         def _log() -> None:
             """
             Internal function to log message to database.
@@ -225,6 +238,21 @@ class Database:
             muted_by: Who issued the mute (moderator name)
             trigger_message: The message content that triggered the mute
         """
+        # Import validators here to avoid circular import
+        from src.utils.validators import Validators, ValidationError
+
+        # Validate and sanitize inputs
+        try:
+            user_id = Validators.validate_discord_id(user_id)
+            username = Validators.validate_username(username) or "Unknown User"
+            reason = Validators.validate_mute_reason(reason)
+            if muted_by:
+                muted_by = Validators.validate_username(muted_by, allow_none=True)
+            if trigger_message:
+                trigger_message = Validators.validate_message_content(trigger_message, 500)
+        except ValidationError as e:
+            logger.error(f"Validation error in record_mute: {e}")
+            return
         def _record() -> None:
             """
             Internal function to record a new mute event in the database.
