@@ -209,8 +209,9 @@ class PrisonHandler:
             trigger_message = self.last_messages.get(member.id, None)
 
             # Record mute in database with trigger message
+            # Member ID is already validated above
             await self.bot.db.record_mute(
-                user_id=member.id,
+                user_id=member_id,
                 username=member.name,
                 reason=mute_reason or "Unknown",
                 muted_by=None,  # We could extract this from embeds later
