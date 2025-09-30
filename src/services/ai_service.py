@@ -28,6 +28,7 @@ from typing import Optional, Dict, Any, List
 
 from src.core.logger import logger
 from src.core.database import Database
+from src.utils.error_handler import ErrorHandler
 from src.services.system_knowledge import get_system_knowledge, get_feature_explanation
 
 
@@ -223,7 +224,14 @@ class AIService:
             return full_response
 
         except Exception as e:
-            logger.error(f"OpenAI API error: {e}")
+            ErrorHandler.handle(
+                e,
+                location="AIService.generate_response",
+                critical=False,
+                username=username,
+                is_muted=is_muted,
+                mute_reason=mute_reason
+            )
             # Use fallback responses instead of error messages
             return self._fallback(is_muted, mute_reason)
     
@@ -554,7 +562,12 @@ class AIService:
                 return None  # Let AI handle it normally
 
         except Exception as e:
-            logger.error(f"Database query error: {e}")
+            ErrorHandler.handle(
+                e,
+                location="AIService._check_database_query",
+                critical=False,
+                query=query_lower[:100]
+            )
             return "I had trouble accessing the prison database. Try asking again later."
 
     async def generate_developer_response(self, message: str, username: str) -> str:
@@ -721,7 +734,13 @@ class AIService:
             return f"{content}\n-# ⏱ {response_time}s"
 
         except Exception as e:
-            logger.error(f"OpenAI API error in developer response: {e}")
+            ErrorHandler.handle(
+                e,
+                location="AIService.generate_developer_response",
+                critical=False,
+                username=username,
+                message_preview=message[:100]
+            )
             # More natural fallback
             return "Hey dad, I'm having trouble with my AI service right now, but I'm still here. What did you want to talk about?"
 
@@ -868,7 +887,12 @@ class AIService:
             return f"{content}\n-# ⏱ {response_time}s"
 
         except Exception as e:
-            logger.error(f"OpenAI API error in uncle response: {e}")
+            ErrorHandler.handle(
+                e,
+                location="AIService.generate_uncle_response",
+                critical=False,
+                username=username
+            )
             # More natural fallback
             return "Hey Uncle, I'm having trouble with my AI service right now, but I'm still here. What's going on?"
 
@@ -1017,6 +1041,11 @@ class AIService:
             return f"{content}\n-# ⏱ {response_time}s"
 
         except Exception as e:
-            logger.error(f"OpenAI API error in brother response: {e}")
+            ErrorHandler.handle(
+                e,
+                location="AIService.generate_brother_response",
+                critical=False,
+                username=username
+            )
             # More natural fallback
             return "Yo Ward, my AI service is being weird right now. What did you need bro?"

@@ -23,6 +23,7 @@ from typing import Optional, Dict, Any
 from src.core.logger import logger
 from src.services.ai_service import AIService
 from src.utils import format_duration
+from src.utils.error_handler import ErrorHandler
 
 
 class PrisonHandler:
@@ -225,7 +226,13 @@ class PrisonHandler:
             ], "⛓️")
             
         except Exception as e:
-            logger.error(f"Failed to welcome prisoner: {e}")
+            ErrorHandler.handle(
+                e,
+                location="PrisonHandler.handle_new_prisoner",
+                critical=False,
+                member=member.name,
+                member_id=member.id
+            )
     
     async def handle_prisoner_release(self, member: discord.Member) -> None:
         """
@@ -365,4 +372,10 @@ class PrisonHandler:
             ], "🔓")
             
         except Exception as e:
-            logger.error(f"Failed to handle prisoner release: {e}")
+            ErrorHandler.handle(
+                e,
+                location="PrisonHandler.handle_prisoner_release",
+                critical=False,
+                member=member.name,
+                member_id=member.id
+            )

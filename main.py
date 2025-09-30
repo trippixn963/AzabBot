@@ -26,6 +26,7 @@ from dotenv import load_dotenv
 from src.core.logger import logger
 from src.bot import AzabBot
 from src.utils.version import Version
+from src.utils.error_handler import ErrorHandler
 
 
 async def main() -> None:
@@ -73,7 +74,12 @@ async def main() -> None:
         await bot.start(token)
         
     except Exception as e:
-        logger.error(f"❌ Failed to start bot: {e}")
+        ErrorHandler.handle(
+            e,
+            location="main.main",
+            critical=True,
+            token_present=bool(token)
+        )
         sys.exit(1)
 
 
@@ -83,5 +89,9 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("🛑 Bot stopped by user (Ctrl+C)")
     except Exception as e:
-        logger.error(f"💥 Unexpected error: {e}")
+        ErrorHandler.handle(
+            e,
+            location="main.__main__",
+            critical=True
+        )
         sys.exit(1)

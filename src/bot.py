@@ -29,6 +29,7 @@ from src.core.database import Database
 from src.services.ai_service import AIService
 from src.commands import ActivateCommand, DeactivateCommand
 from src.handlers import PrisonHandler, MuteHandler, PresenceHandler
+from src.utils.error_handler import ErrorHandler
 
 
 class AzabBot(discord.Client):
@@ -146,7 +147,12 @@ class AzabBot(discord.Client):
                     logger.info(f"Loaded bot state: {'ACTIVE' if state else 'INACTIVE'}")
                     return state
         except Exception as e:
-            logger.error(f"Failed to load state: {e}")
+            ErrorHandler.handle(
+                e,
+                location="Bot._load_state",
+                critical=False,
+                state_file=self.state_file
+            )
         return True  # Default to active
     
     def _save_state(self) -> None:
@@ -156,7 +162,12 @@ class AzabBot(discord.Client):
                 json.dump({'is_active': self.is_active}, f)
             logger.info(f"Saved bot state: {'ACTIVE' if self.is_active else 'INACTIVE'}")
         except Exception as e:
-            logger.error(f"Failed to save state: {e}")
+            ErrorHandler.handle(
+                e,
+                location="Bot._save_state",
+                critical=False,
+                state=self.is_active
+            )
     
     def is_user_muted(self, member: discord.Member) -> bool:
         """
@@ -216,7 +227,12 @@ class AzabBot(discord.Client):
             # Start presence updates
             await self.presence_handler.start_presence_loop()
         except Exception as e:
-            logger.error(f"Error in on_ready: {e}")
+            ErrorHandler.handle(
+                e,
+                location="Bot.on_ready",
+                critical=False,
+                bot_name=self.user.name if self.user else "Unknown"
+            )
             # Bot can still function without presence updates
     
     async def on_message(self, message: discord.Message) -> None:
@@ -410,7 +426,12 @@ class AzabBot(discord.Client):
         except discord.errors.HTTPException as e:
             logger.error(f"Discord API error in on_message: {e}")
         except Exception as e:
-            logger.error(f"Error in on_message: {e}")
+            ErrorHandler.handle(
+                e,
+                location="Bot.on_message",
+                critical=False,
+                message=message
+            )
             # Continue processing other messages
 
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
@@ -453,5 +474,12 @@ class AzabBot(discord.Client):
         except discord.errors.HTTPException as e:
             logger.error(f"Discord API error in on_member_update: {e}")
         except Exception as e:
-            logger.error(f"Error in on_member_update: {e}")
+            ErrorHandler.handle(
+                e,
+                location="Bot.on_member_update",
+                critical=False,
+                member=after,
+                before_roles=[r.name for r in before.roles],
+                after_roles=[r.name for r in after.roles]
+            )
             # Continue processing other events
