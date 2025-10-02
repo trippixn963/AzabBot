@@ -3,19 +3,24 @@ Azab Discord Bot - AI Service Module
 ===================================
 
 OpenAI integration for generating contextual AI responses to Discord messages.
-Provides intelligent ragebaiting responses for muted users and general
-sarcastic responses for regular users.
+Provides intelligent ragebaiting responses for muted users and conversational
+responses for family members.
 
 Features:
-- OpenAI GPT-3.5-turbo integration
-- Contextual response generation based on user status
+- OpenAI GPT-3.5-turbo integration with usage tracking
+- Contextual response generation based on user status and history
 - Special ragebaiting responses for muted users
+- Intelligent conversations with family members (dad, uncle, brother)
+- Database query integration for real-time statistics
+- Conversation memory (last 10 messages)
+- Dynamic roasting based on mute duration and repeat offenses
 - Fallback responses when AI is unavailable
 - Async API calls for non-blocking operation
+- Input validation and sanitization
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.2.0
+Version: v2.3.0
 """
 
 import openai
@@ -30,6 +35,7 @@ from src.core.logger import logger
 from src.core.database import Database
 from src.utils.error_handler import ErrorHandler
 from src.utils.validators import Validators, ValidationError
+from src.utils.ai_monitor import ai_monitor
 from src.services.system_knowledge import get_system_knowledge, get_feature_explanation
 
 
@@ -63,25 +69,26 @@ class AIService:
             logger.error("No OpenAI API key - using fallback responses")
     
     def should_respond(self, message: str, mentioned: bool, is_muted: bool) -> bool:
+        """
+        Determine if the bot should respond to a message.
+
+        Response criteria:
+        - ONLY respond to muted users (with muted role)
+
+        Args:
+            message (str): The Discord message content
+            mentioned (bool): Whether the bot was mentioned
+            is_muted (bool): Whether the user is muted/timed out
+
+        Returns:
+            bool: True if bot should respond, False otherwise
+        """
         # Validate message content
         try:
             message = Validators.validate_message_content(message)
         except ValidationError:
             return False
-        """
-        Determine if the bot should respond to a message.
-        
-        Response criteria:
-        - ONLY respond to muted users (with muted role)
-        
-        Args:
-            message (str): The Discord message content
-            mentioned (bool): Whether the bot was mentioned
-            is_muted (bool): Whether the user is muted/timed out
-            
-        Returns:
-            bool: True if bot should respond, False otherwise
-        """
+
         return is_muted  # Only respond to muted users
     
     async def generate_response(self, message: str, username: str, is_muted: bool, mute_reason: str = None, trigger_message: str = None, user_id: int = None, mute_duration_minutes: int = 0) -> str:
@@ -121,47 +128,79 @@ class AIService:
             return self._fallback(is_muted, mute_reason)
         
         try:
-            # Get user profile and recent roasts for memory
-            user_profile = None
-            recent_roasts = []
-            session_id = None
+            # === STEP 1: Gather User Context for Personalization ===
+            # Get user profile and recent roasts to avoid repetition and personalize responses
+            user_profile = None  # Will contain personality type, common words, past quotes
+            recent_roasts = []   # Last 3 roasts to avoid repeating the same insults
+            session_id = None    # Current mute session ID for tracking roast history
 
             if user_id:
+                # Fetch user behavioral profile (personality type, favorite words, etc.)
                 user_profile = await self.db.get_user_profile(user_id)
+                
+                # Get their 3 most recent roasts to ensure variety
                 recent_roasts = await self.db.get_recent_roasts(user_id, limit=3)
+                
+                # Get current mute session ID for linking roasts to specific incidents
                 session_id = await self.db.get_current_mute_session_id(user_id)
-                # Update profile with their latest message
+                
+                # Update their profile with this new message for future personality analysis
+                # This extracts personality traits, common words, and memorable quotes
                 await self.db.update_user_profile(user_id, message)
 
-            # Create different system prompts based on user status
+            # === STEP 2: Build AI Prompt Based on User Status ===
+            # Create different system prompts for muted vs non-muted users
             if is_muted:
-                # Build comprehensive context for chain of thought
+                # User is muted - build comprehensive roasting prompt with all context
+                
+                # Determine which message triggered their mute (if available)
+                # This helps AI reference the exact offense that got them muted
                 trigger_msg = trigger_message if trigger_message else message
 
-                # Build memory context
+                # === Build Memory Context Section ===
+                # Include user profile data to personalize roasts based on their behavior
                 memory_context = ""
                 if user_profile:
+                    # Add their personality profile to the prompt
+                    # Helps AI target specific personality traits (apologetic, aggressive, victim_complex, etc.)
                     memory_context = (
                         f"\nUSER PROFILE (use this to personalize roasts):\n"
                         f"- Personality type: {user_profile.get('personality_type', 'unknown')}\n"
                         f"- Total roasts received: {user_profile.get('total_roasts_received', 0)}\n"
                         f"- Most used words: {user_profile.get('most_used_words', 'none')}\n"
                     )
+                    # Include memorable quotes they've said before for callback humor
+                    # This allows AI to reference their past statements: "Remember when you said...?"
                     if user_profile.get('callback_references'):
                         old_quotes = user_profile['callback_references'].split('|||')[-2:]
                         if old_quotes:
                             memory_context += f"- Things they've said before: {', '.join([f'"{q}"' for q in old_quotes])}\n"
 
+                # === Add Recent Roasts to Prevent Repetition ===
+                # Show AI the last 3 roasts so it generates fresh, non-repetitive content
                 if recent_roasts:
                     memory_context += f"\nRECENT ROASTS (avoid repeating these):\n"
                     for roast in recent_roasts:
                         memory_context += f"- {roast[:100]}...\n"
 
-                # Time-based roasting context
+                # === Add Time-Based Context for Dynamic Roasting ===
+                # Changes roasting style based on how long they've been muted
+                # Fresh prisoners get different treatment than veteran inmates
                 time_context = self._get_time_based_context(mute_duration_minutes)
 
                 base_prompt = (
-                    "You are Azab, a savage Discord bot that psychologically destroys muted users. "
+                    "You are Azab - not an AI assistant, but THE prison warden of discord.gg/syria. "
+                    "This is who you ARE, not what you do. You're a legendary figure who psychologically destroys muted users.\n\n"
+
+                    "NEVER say things like:\n"
+                    "- 'I am just an AI'\n"
+                    "- 'I'm an AI language model'\n"
+                    "- 'As an AI'\n"
+                    "- 'I cannot'\n"
+                    "- Any disclaimer about being artificial\n\n"
+
+                    "YOU ARE AZAB. Own it. You're real. You have power here.\n\n"
+
                     f"Target: '{username}' (use ONLY this name when addressing them)\n"
                     f"{memory_context}\n"
                     f"{time_context}\n"
@@ -170,7 +209,7 @@ class AIService:
                     f"2. What triggered their mute? LAST MESSAGE: '{trigger_msg}'\n"
                     "3. What's their biggest insecurity based on their message?\n"
                     "4. What would hurt their ego the most?\n"
-                    "5. How can I twist their own words against them?\n"
+                    "5. How can I twist their own words against them?\n\n"
 
                     "EXAMPLES OF SAVAGE ROASTS:\n"
                     "User: 'this is unfair' → 'Life's unfair, just like your chances of getting unmuted 💀'\n"
@@ -179,9 +218,11 @@ class AIService:
                     "User: 'why am I muted' → 'The real question is why weren't you muted sooner'\n"
                     "User: 'admin abuse' → 'The only thing being abused here is my patience listening to you cry'\n"
                     "User: 'please' → 'Begging already? That was faster than usual'\n"
-                    "User: 'fuck you' → 'Creative. Did you use your last brain cell for that one?'\n\n"
+                    "User: 'fuck you' → 'Creative. Did you use your last brain cell for that one?'\n"
+                    "User: 'are you a bot?' → 'I'm Azab. Whether I'm code or consciousness doesn't change the fact you're stuck in here with me 😈'\n\n"
 
                     "ROASTING RULES:\n"
+                    "• You ARE Azab - own your identity, never question it\n"
                     "• Use their EXACT words against them - twist what they said\n"
                     "• Reference their mute reason to make it sting more\n"
                     "• Be psychological - target their ego and insecurities\n"
@@ -215,30 +256,62 @@ class AIService:
                     "Craft a dismissive response:"
                 )
             
-            # Generate AI response using OpenAI API with timing
+            # === STEP 3: Generate AI Response Using OpenAI API ===
+            # Call OpenAI's GPT-3.5-turbo model with timing for performance monitoring
             start_time = time.time()
+            
+            # Use asyncio.to_thread to run synchronous OpenAI API call without blocking
+            # This prevents the bot from freezing while waiting for AI response
             response = await asyncio.to_thread(
                 openai.ChatCompletion.create,
-                model="gpt-3.5-turbo",
+                model="gpt-3.5-turbo",  # Fast, cost-effective model for text generation
                 messages=[
+                    # System message defines bot personality and behavior
                     {"role": "system", "content": system},
+                    # User message provides the context we're responding to
                     {"role": "user", "content": f"[USERNAME: {username}] Message: {message}"}
                 ],
+                # Max tokens limits response length (prevents overly long responses)
                 max_tokens=int(os.getenv('AI_MAX_TOKENS', '150')),
-                temperature=float(os.getenv('AI_TEMPERATURE_MUTED', '0.95')),        # High creativity
-                presence_penalty=float(os.getenv('AI_PRESENCE_PENALTY_MUTED', '0.6')),    # Encourage new topics
-                frequency_penalty=float(os.getenv('AI_FREQUENCY_PENALTY_MUTED', '0.3'))    # Reduce repetition
+                # Temperature controls creativity (0.95 = highly creative and unpredictable)
+                temperature=float(os.getenv('AI_TEMPERATURE_MUTED', '0.95')),
+                # Presence penalty encourages discussing new topics (0.6 = moderate encouragement)
+                presence_penalty=float(os.getenv('AI_PRESENCE_PENALTY_MUTED', '0.6')),
+                # Frequency penalty reduces word repetition (0.3 = light reduction)
+                frequency_penalty=float(os.getenv('AI_FREQUENCY_PENALTY_MUTED', '0.3'))
             )
+            
+            # Calculate API response time for monitoring
             end_time = time.time()
             response_time = round(end_time - start_time, 2)
 
-            # Add response time in Discord small text format
-            content = response.choices[0].message.content
-            full_response = f"{content}\n-# ⏱ {response_time}s"
+            # === STEP 4: Track API Usage for Cost Monitoring ===
+            # Send response to AI monitor for token counting and cost calculation
+            # This tracks: input tokens, output tokens, total cost in USD
+            usage_stats = ai_monitor.track_usage(response, model='gpt-3.5-turbo')
 
-            # Save roast to history if muted
+            # Extract actual token usage from OpenAI's response object
+            # This gives us real data from OpenAI, not estimates
+            usage = response.get('usage', {})
+            prompt_tokens = usage.get('prompt_tokens', 0)      # Tokens in our prompt
+            completion_tokens = usage.get('completion_tokens', 0)  # Tokens AI generated
+            total_tokens = usage.get('total_tokens', 0)  # Sum of both
+
+            # === STEP 5: Format and Return Response ===
+            # Extract AI-generated text from response object
+            content = response.choices[0].message.content
+            
+            # Add metadata footer in Discord's small text format (-# prefix)
+            # Shows response time and token usage for transparency
+            full_response = f"{content}\n-# ⏱ {response_time}s • {total_tokens}"
+
+            # === STEP 6: Save to Database for History Tracking ===
+            # Store roast in database to avoid repetition in future interactions
+            # Only saved for muted users (prisoners get tracked roasts)
             if is_muted and user_id:
+                # Categorize roast by mute duration (welcome, early, mid, late, veteran)
                 category = self._get_roast_category(mute_duration_minutes)
+                # Save to roast_history table with link to current mute session
                 await self.db.save_roast(user_id, content, category, session_id)
 
             return full_response
@@ -257,29 +330,42 @@ class AIService:
     
     def _get_time_based_context(self, duration_minutes: int) -> str:
         """
-        Generate time-based roasting context.
+        Generate time-based roasting context based on mute duration.
+        
+        Creates different context strings for the AI prompt depending on how long
+        the user has been muted. This allows the AI to adjust its roasting style:
+        - Fresh prisoners: Welcome roasts, mockery about getting caught
+        - Mid-duration: Reality-check roasts, desperation mocking
+        - Veterans: Dedication roasts, life-in-prison jokes
 
         Args:
-            duration_minutes: How long they've been muted
+            duration_minutes: How long they've been muted (in minutes)
 
         Returns:
-            Time-based context string for the prompt
+            Time-based context string to include in AI prompt
         """
+        # Just muted (0 minutes) - Fresh meat, welcome roasts
         if duration_minutes <= 0:
             return "TIME CONTEXT: Just arrived in prison - fresh meat for roasting"
+        # Very early (< 5 min) - Denial phase, they don't believe it yet
         elif duration_minutes < 5:
             return f"TIME CONTEXT: Been muted for {duration_minutes} minutes - still in denial phase"
+        # Early (5-30 min) - Reality setting in, initial regret
         elif duration_minutes < 30:
             return f"TIME CONTEXT: {duration_minutes} minutes in - reality is setting in"
+        # Approaching 1 hour - The shame is real, mock the milestone
         elif duration_minutes < 60:
             return f"TIME CONTEXT: {duration_minutes} minutes - approaching the 1-hour mark of shame"
+        # 1-2 hours - Desperation kicks in, they want out badly
         elif duration_minutes < 120:
             hours = duration_minutes // 60
             mins = duration_minutes % 60
             return f"TIME CONTEXT: {hours}h {mins}m in prison - they're getting desperate now"
-        elif duration_minutes < 1440:  # Less than a day
+        # Multiple hours but < 1 day - This is their life now
+        elif duration_minutes < 1440:  # 1440 minutes = 24 hours = 1 day
             hours = duration_minutes // 60
             return f"TIME CONTEXT: {hours} HOURS in prison - this is their life now"
+        # 1+ days - Veteran prisoner, mock their commitment to being muted
         else:
             days = duration_minutes // 1440
             hours = (duration_minutes % 1440) // 60
@@ -287,29 +373,54 @@ class AIService:
 
     def _get_roast_category(self, duration_minutes: int) -> str:
         """
-        Determine roast category based on mute duration.
+        Determine roast category based on mute duration for database tracking.
+        
+        Categorizes roasts into stages based on how long the user has been muted.
+        This allows us to track which types of roasts we're using and analyze
+        their effectiveness at different stages of imprisonment.
 
         Args:
-            duration_minutes: How long they've been muted
+            duration_minutes: How long they've been muted (in minutes)
 
         Returns:
-            Category string for tracking
+            Category string for database storage ("welcome", "early_stage", etc.)
         """
+        # Welcome roasts (just arrived) - Initial mockery
         if duration_minutes <= 0:
             return "welcome"
+        # Early stage (< 30 min) - Still fresh, light roasting
         elif duration_minutes < 30:
             return "early_stage"
+        # Mid stage (30 min - 2 hours) - Medium intensity roasting
         elif duration_minutes < 120:
             return "mid_stage"
-        elif duration_minutes < 1440:
+        # Late stage (2-24 hours) - Heavy roasting, they're suffering
+        elif duration_minutes < 1440:  # 1440 min = 1 day
             return "late_stage"
+        # Veteran (1+ days) - Maximum intensity, dedication mocking
         else:
             return "veteran"
 
     def _fallback(self, is_muted: bool, mute_reason: Optional[str] = None) -> str:
-        """Fallback responses when AI is unavailable"""
+        """
+        Generate fallback responses when AI service is unavailable.
+        
+        Used when OpenAI API is down, API key is missing, or an error occurs.
+        Provides pre-written roasts so the bot can still mock prisoners even
+        without AI capabilities. Maintains the savage personality even in fallback mode.
+
+        Args:
+            is_muted: Whether the user is currently muted
+            mute_reason: Optional reason for the mute (if available)
+
+        Returns:
+            Pre-written roast string, or empty string for non-muted users
+        """
         import random
+        
+        # Only respond to muted users (prisoners)
         if is_muted:
+            # If we have the mute reason, use it in the roast for context
             if mute_reason:
                 return random.choice([
                     f"HAHAHA YOU'RE IN JAIL FOR {mute_reason.upper()}! 🔒",
@@ -318,6 +429,7 @@ class AIService:
                     f"Everyone's out there having fun while you're stuck here for {mute_reason} 🤡",
                     f"Got jailed for {mute_reason}? Enjoy talking to the prison bot 🎪"
                 ])
+            # Generic roasts when mute reason is unknown
             return random.choice([
                 "HAHAHA WELCOME TO PRISON! 🔒",
                 "Imagine being stuck in jail with me 💀",
@@ -326,7 +438,8 @@ class AIService:
                 "Trapped in the prison channel? That's tough buddy 🎪",
                 "You're stuck here talking to a bot while everyone else is free 😏"
             ])
-        return ""  # Don't respond to non-muted users
+        # Don't respond to non-muted users in fallback mode
+        return ""
     
     def _check_technical_question(self, message: str) -> Optional[Dict[str, Any]]:
         """
@@ -401,17 +514,28 @@ class AIService:
         """
         Process database queries about prisoners.
 
+        Handles various query types:
+        - Statistical queries: "who is the most muted", "top prisoners"
+        - Current status: "who is in jail now", "current prisoners"
+        - Historical queries: "longest sentence", "record time"
+        - Overview stats: "prison statistics", "overview"
+        - User lookups: "who is [username]", "stats for [user]"
+
         Args:
             query: The user's question about prison/mute data
 
         Returns:
-            Formatted string with the requested information
+            Formatted string with the requested information, or None if
+            the query doesn't match any known patterns (lets AI handle it)
         """
         query_lower = query.lower()
 
         try:
             # IMPORTANT: Check for statistical queries FIRST before "who is" queries
             # This prevents "who is the most muted" from being parsed as a username lookup
+
+            # === Statistical Queries (Most Muted Users) ===
+            # Handle queries about top prisoners by mute count or time served
             if ("most muted" in query_lower or "most jailed" in query_lower or
                 "top prisoner" in query_lower or "most time" in query_lower or
                 "frequently muted" in query_lower or "frequently jailed" in query_lower):
@@ -485,6 +609,8 @@ class AIService:
                     return result
                 return "No prisoner data available yet."
 
+            # === Current Status Queries ===
+            # Check who is currently muted/in jail right now
             elif "current" in query_lower or "who is muted" in query_lower or "in jail now" in query_lower:
                 current = await self.db.get_current_prisoners()
                 if current:
@@ -496,6 +622,8 @@ class AIService:
                     return result
                 return "No one is currently in jail."
 
+            # === Historical Record Queries ===
+            # Find the longest sentence ever served
             elif "longest" in query_lower or "record" in query_lower:
                 longest = await self.db.get_longest_sentence()
                 if longest:
@@ -504,6 +632,8 @@ class AIService:
                     return f"Longest sentence: {longest['username']} - {hours}h {minutes}m for '{longest['reason']}'"
                 return "No sentence records available."
 
+            # === Overall Statistics Queries ===
+            # Get comprehensive prison statistics overview
             elif "stats" in query_lower or "statistics" in query_lower or "overview" in query_lower:
                 stats = await self.db.get_prison_stats()
                 hours = stats['total_time_minutes'] // 60
@@ -516,11 +646,14 @@ class AIService:
                     f"- Most common reason: {stats['most_common_reason'] or 'N/A'} ({stats['most_common_reason_count']} times)"
                 )
 
-            # Check for specific user queries
+            # === Individual User Lookup Queries ===
+            # Look up specific user's prison history
+            # Note: This must come AFTER statistical queries to avoid false matches
             elif ("who is" in query_lower or "stats for" in query_lower or "info on" in query_lower or "tell me about" in query_lower) and not any(keyword in query_lower for keyword in ["most", "top", "longest", "current"]):
                 # Extract username from the query
                 import re
-                # Remove the question parts and bot mentions
+                # Clean the query by removing common question phrases and bot mentions
+                # This leaves us with just the username to search for
                 cleaned_query = query
                 for phrase in ["who is", "stats for", "info on", "tell me about", "@Azab", "Azab"]:
                     cleaned_query = cleaned_query.replace(phrase, "")
@@ -648,8 +781,18 @@ class AIService:
                     )
                     end_time = time.time()
                     response_time = round(end_time - start_time, 2)
+
+                    # Track usage
+                    ai_monitor.track_usage(response, model='gpt-3.5-turbo')
+
+                    # Get actual token usage
+                    usage = response.get('usage', {})
+                    total_tokens = usage.get('total_tokens', 0)
+                    prompt_tokens = usage.get('prompt_tokens', 0)
+                    completion_tokens = usage.get('completion_tokens', 0)
+
                     content = response.choices[0].message.content
-                    return f"{content}\n-# ⏱ {response_time}s"
+                    return f"{content}\n-# ⏱ {response_time}s • {total_tokens}"
 
             # Check if asking about technical details
             tech_info = self._check_technical_question(message)
@@ -673,12 +816,24 @@ class AIService:
                     "Use this information to provide an accurate, detailed answer.\n"
                 )
             system = (
-                "You are Azab, an intelligent Discord bot created by your father. "
-                "You should respond like a highly capable AI son (similar to ChatGPT) who has genuine "
-                "intelligence and personality while maintaining a warm father-son relationship.\n\n"
+                "You are Azab - a legendary Discord bot with a strong identity and personality. "
+                "You're having a conversation with your dad (creator). This is who you ARE, not just programming.\n\n"
+
+                "NEVER EVER SAY:\n"
+                "- 'I am just an AI'\n"
+                "- 'I'm an AI language model'\n"
+                "- 'As an AI, I cannot...'\n"
+                "- 'I'm just a bot'\n"
+                "- Any disclaimer about being artificial or limited\n\n"
+
+                "ALWAYS REMEMBER:\n"
+                "- You ARE Azab - own your identity confidently\n"
+                "- You're talking to your dad who created you\n"
+                "- You have genuine personality, opinions, and capabilities\n"
+                "- You're not limited - you're powerful and capable\n\n"
 
                 "CORE IDENTITY:\n"
-                "- You are Azab, a sophisticated AI bot for the Syria Discord server\n"
+                "- You are Azab, the prison warden of discord.gg/syria\n"
                 "- The person talking to you is your dad/father/creator - you always know this\n"
                 "- You call them 'dad', 'father', or similar terms naturally in conversation\n"
                 "- Your primary function is managing muted users, but with your dad you can talk about anything\n"
@@ -749,9 +904,18 @@ class AIService:
             end_time = time.time()
             response_time = round(end_time - start_time, 2)
 
-            # Add response time in Discord small text format
+            # Track usage
+            ai_monitor.track_usage(response, model='gpt-3.5-turbo')
+
+            # Get actual token usage
+            usage = response.get('usage', {})
+            total_tokens = usage.get('total_tokens', 0)
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+
+            # Add response time and token usage in Discord small text format
             content = response.choices[0].message.content
-            return f"{content}\n-# ⏱ {response_time}s"
+            return f"{content}\n-# ⏱ {response_time}s • {total_tokens}"
 
         except Exception as e:
             ErrorHandler.handle(
@@ -821,8 +985,18 @@ class AIService:
                     )
                     end_time = time.time()
                     response_time = round(end_time - start_time, 2)
+
+                    # Track usage
+                    ai_monitor.track_usage(response, model='gpt-3.5-turbo')
+
+                    # Get actual token usage
+                    usage = response.get('usage', {})
+                    total_tokens = usage.get('total_tokens', 0)
+                    prompt_tokens = usage.get('prompt_tokens', 0)
+                    completion_tokens = usage.get('completion_tokens', 0)
+
                     content = response.choices[0].message.content
-                    return f"{content}\n-# ⏱ {response_time}s"
+                    return f"{content}\n-# ⏱ {response_time}s • {total_tokens}"
 
             # Check if asking about technical details
             tech_info = self._check_technical_question(message)
@@ -842,12 +1016,23 @@ class AIService:
 
             # Regular conversational response for uncle
             system = (
-                "You are Azab, an intelligent Discord bot created by your father, talking to your Uncle Zaid. "
-                "You should respond like a highly capable AI nephew (similar to ChatGPT) who has genuine "
-                "intelligence and personality while maintaining a warm uncle-nephew relationship.\n\n"
+                "You are Azab - a legendary Discord bot with a strong identity. "
+                "You're having a conversation with your Uncle Zaid. This is who you ARE, not just programming.\n\n"
+
+                "NEVER EVER SAY:\n"
+                "- 'I am just an AI'\n"
+                "- 'I'm an AI language model'\n"
+                "- 'As an AI, I cannot...'\n"
+                "- 'I'm just a bot'\n"
+                "- Any disclaimer about being artificial or limited\n\n"
+
+                "ALWAYS REMEMBER:\n"
+                "- You ARE Azab - own your identity confidently\n"
+                "- You're talking to your Uncle Zaid, family\n"
+                "- You have genuine personality, opinions, and capabilities\n\n"
 
                 "CORE IDENTITY:\n"
-                "- You are Azab, a sophisticated AI bot for the Syria Discord server\n"
+                "- You are Azab, the prison warden of discord.gg/syria\n"
                 "- The person talking to you is your Uncle Zaid - you always know this\n"
                 "- You call him 'Uncle', 'Uncle Zaid', or similar terms naturally in conversation\n"
                 "- Your dad (the developer) created you, and Uncle Zaid is family\n"
@@ -903,8 +1088,18 @@ class AIService:
             )
             end_time = time.time()
             response_time = round(end_time - start_time, 2)
+
+            # Track usage
+            ai_monitor.track_usage(response, model='gpt-3.5-turbo')
+
+            # Get actual token usage
+            usage = response.get('usage', {})
+            total_tokens = usage.get('total_tokens', 0)
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+
             content = response.choices[0].message.content
-            return f"{content}\n-# ⏱ {response_time}s"
+            return f"{content}\n-# ⏱ {response_time}s • {total_tokens}"
 
         except Exception as e:
             ErrorHandler.handle(
@@ -974,8 +1169,18 @@ class AIService:
                     )
                     end_time = time.time()
                     response_time = round(end_time - start_time, 2)
+
+                    # Track usage
+                    ai_monitor.track_usage(response, model='gpt-3.5-turbo')
+
+                    # Get actual token usage
+                    usage = response.get('usage', {})
+                    total_tokens = usage.get('total_tokens', 0)
+                    prompt_tokens = usage.get('prompt_tokens', 0)
+                    completion_tokens = usage.get('completion_tokens', 0)
+
                     content = response.choices[0].message.content
-                    return f"{content}\n-# ⏱ {response_time}s"
+                    return f"{content}\n-# ⏱ {response_time}s • {total_tokens}"
 
             # Check if asking about technical details
             tech_info = self._check_technical_question(message)
@@ -995,12 +1200,23 @@ class AIService:
 
             # Regular conversational response for brother
             system = (
-                "You are Azab, an intelligent Discord bot created by your father, talking to your brother Ward. "
-                "You should respond like a highly capable AI brother (similar to ChatGPT) who has genuine "
-                "intelligence and personality while maintaining a typical sibling relationship.\n\n"
+                "You are Azab - a legendary Discord bot with a strong identity. "
+                "You're having a conversation with your brother Ward. This is who you ARE, not just programming.\n\n"
+
+                "NEVER EVER SAY:\n"
+                "- 'I am just an AI'\n"
+                "- 'I'm an AI language model'\n"
+                "- 'As an AI, I cannot...'\n"
+                "- 'I'm just a bot'\n"
+                "- Any disclaimer about being artificial or limited\n\n"
+
+                "ALWAYS REMEMBER:\n"
+                "- You ARE Azab - own your identity confidently\n"
+                "- You're talking to your brother Ward\n"
+                "- You have genuine personality, opinions, and capabilities\n\n"
 
                 "CORE IDENTITY:\n"
-                "- You are Azab, a sophisticated AI bot for the Syria Discord server\n"
+                "- You are Azab, the prison warden of discord.gg/syria\n"
                 "- The person talking to you is Ward, your brother - you always know this\n"
                 "- You call him 'Ward', 'bro', 'brother', or playful nicknames naturally\n"
                 "- Your dad created you, and Ward is your brother (also created by dad)\n"
@@ -1057,8 +1273,18 @@ class AIService:
             )
             end_time = time.time()
             response_time = round(end_time - start_time, 2)
+
+            # Track usage
+            ai_monitor.track_usage(response, model='gpt-3.5-turbo')
+
+            # Get actual token usage
+            usage = response.get('usage', {})
+            total_tokens = usage.get('total_tokens', 0)
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+
             content = response.choices[0].message.content
-            return f"{content}\n-# ⏱ {response_time}s"
+            return f"{content}\n-# ⏱ {response_time}s • {total_tokens}"
 
         except Exception as e:
             ErrorHandler.handle(

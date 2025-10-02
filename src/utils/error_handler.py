@@ -7,12 +7,15 @@ Provides detailed error context and improved logging for better debugging.
 Features:
 - Detailed error context with stack traces
 - User-friendly error messages
-- Error categorization
+- Error categorization (Discord, API, Database, AI)
 - Automatic error recovery suggestions
+- Discord-specific context capture
+- Critical error file logging
+- Safe execution decorator
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.5.0
+Version: v2.3.0
 """
 
 import traceback

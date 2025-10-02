@@ -8,14 +8,16 @@ and file output for debugging and monitoring.
 
 Features:
 - Unique run ID generation for tracking bot sessions
-- EST timezone timestamp formatting
+- EST/EDT timezone timestamp formatting (auto-adjusts)
 - Tree-style log formatting for structured data
 - Console and file output simultaneously
 - Emoji-enhanced log levels for visual clarity
+- Daily log file rotation
+- Automatic cleanup of old logs (30+ days)
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.2.0
+Version: v2.3.0
 """
 
 import uuid

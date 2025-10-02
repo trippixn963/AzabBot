@@ -10,11 +10,15 @@ Features:
 - User message logging and counting
 - Message content storage with timestamps
 - User imprisonment status tracking
-- Async database operations
+- Prisoner history with mute reasons
+- Roast history to avoid repetition
+- User behavioral profiling
+- Async database operations for performance
+- Comprehensive prison statistics
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.2.0
+Version: v2.3.0
 """
 
 import sqlite3
@@ -193,34 +197,52 @@ class Database:
             Internal function to log message to database.
             Runs in thread pool to avoid blocking the main event loop.
             
+            This function executes synchronous database operations in a separate thread
+            to prevent blocking Discord's async event loop. All three SQL operations
+            are executed in a single transaction for atomicity.
+            
             Database Operations:
             1. UPSERT user information (insert new or update existing)
             2. Insert message with EST timestamp for consistent logging
             3. Increment user's message count for analytics
             """
+            # Open database connection (SQLite is thread-safe for this use case)
             conn: sqlite3.Connection = sqlite3.connect(self.db_path)
             
-            # UPSERT user information (insert new user or update existing username)
-            # This ensures we always have current username even if user changes it
+            # === SQL OPERATION 1: UPSERT User Information ===
+            # INSERT OR REPLACE acts as an UPSERT (update if exists, insert if not)
+            # This keeps user information current even if they change their Discord username
+            # Primary key: user_id ensures we never have duplicate user records
+            # Preserves messages_count and is_imprisoned from existing record
             conn.execute('INSERT OR REPLACE INTO users (user_id, username) VALUES (?, ?)',
                         (user_id, username))
             
-            # Insert message log with EST timestamp for consistent timezone logging
-            # Convert to EST timezone to maintain consistency across different server locations
+            # === Prepare Timestamp for Message Logging ===
+            # Convert current time to EST timezone for consistent logging
+            # Server location doesn't matter - all timestamps are in EST for uniformity
             est: timezone = timezone(timedelta(hours=int(os.getenv('TIMEZONE_OFFSET_HOURS', '-5'))))
             est_timestamp: str = datetime.now(est).strftime('%Y-%m-%d %H:%M:%S')
             
-            # Truncate message content to prevent database bloat and respect limits
+            # Truncate message content to prevent database bloat
+            # Configurable via MESSAGE_CONTENT_MAX_LENGTH env var (default 500 chars)
             truncated_content = content[:int(os.getenv('MESSAGE_CONTENT_MAX_LENGTH', '500'))]
+            
+            # === SQL OPERATION 2: Insert Message Log ===
+            # Stores individual message for analytics and debugging
+            # Fields: user_id (FK), content, channel_id, guild_id, timestamp
+            # Auto-incrementing id field provides message ordering
             conn.execute('INSERT INTO messages (user_id, content, channel_id, guild_id, timestamp) VALUES (?, ?, ?, ?, ?)',
                         (user_id, truncated_content, channel_id, guild_id, est_timestamp))
             
-            # Increment user's message count for analytics and statistics
-            # This provides data for user activity tracking and bot usage metrics
+            # === SQL OPERATION 3: Increment Message Counter ===
+            # Denormalized counter for fast analytics queries
+            # Avoids expensive COUNT(*) queries on messages table
+            # WHERE clause ensures we only update the correct user
             conn.execute('UPDATE users SET messages_count = messages_count + 1 WHERE user_id = ?',
                         (user_id,))
             
-            # Commit transaction to ensure data persistence
+            # Commit all three operations atomically
+            # If any operation fails, all are rolled back (transaction safety)
             conn.commit()
             conn.close()
         
@@ -258,30 +280,59 @@ class Database:
             Internal function to record a new mute event in the database.
             Handles re-mute scenarios by deactivating previous mutes first.
             
+            This function ensures data integrity by:
+            - Deactivating old mutes before creating new ones (prevents duplicates)
+            - Maintaining denormalized imprisoned status for performance
+            - Recording complete mute context (reason, moderator, trigger message)
+            
             Database Operations:
             1. Deactivate any existing active mutes for this user (re-mute scenario)
             2. Insert new mute record with current timestamp
             3. Update user's imprisoned status for quick lookups
             """
+            # Open database connection
             conn: sqlite3.Connection = sqlite3.connect(self.db_path)
             
-            # Handle re-mute scenario: deactivate any existing active mutes first
-            # This prevents multiple active mutes for the same user and maintains data integrity
+            # === SQL OPERATION 1: Deactivate Previous Active Mutes ===
+            # UPDATE prisoner_history SET is_active = 0
+            # WHERE user_id = ? AND is_active = 1
+            # 
+            # This handles re-mute scenarios where user gets muted again before unmute
+            # Sets is_active to 0 for any currently active mutes (should be max 1)
+            # Maintains historical record but marks it as no longer active
+            # Prevents duplicate active mutes which would break analytics
             conn.execute('UPDATE prisoner_history SET is_active = 0 WHERE user_id = ? AND is_active = 1',
                         (user_id,))
             
-            # Insert new mute record with current timestamp and active status
-            # is_active = 1 indicates this is the current active mute for the user
+            # === SQL OPERATION 2: Insert New Mute Record ===
+            # INSERT INTO prisoner_history (user_id, username, mute_reason, muted_by, trigger_message, is_active)
+            # VALUES (?, ?, ?, ?, ?, 1)
+            #
+            # Creates new prisoner_history record with:
+            # - user_id: Discord user ID (indexed for fast lookups)
+            # - username: Username at time of mute (preserved for history)
+            # - mute_reason: Why they were muted (extracted from logs)
+            # - muted_by: Moderator who issued mute (optional)
+            # - trigger_message: Message that got them muted (for AI context)
+            # - is_active: Set to 1 (this is now the current active mute)
+            # - muted_at: Auto-populated with CURRENT_TIMESTAMP
+            # - id: Auto-incrementing primary key for this mute session
             conn.execute('''INSERT INTO prisoner_history
                            (user_id, username, mute_reason, muted_by, trigger_message, is_active)
                            VALUES (?, ?, ?, ?, ?, 1)''',
                         (user_id, username, reason, muted_by, trigger_message))
             
-            # Update user's imprisoned status for quick lookups without querying history
-            # This denormalized field improves performance for frequent status checks
+            # === SQL OPERATION 3: Update Denormalized Imprisoned Status ===
+            # UPDATE users SET is_imprisoned = 1 WHERE user_id = ?
+            #
+            # Sets denormalized field for O(1) lookup performance
+            # Avoids expensive JOIN with prisoner_history table
+            # Used for quick "is user muted?" checks in message handler
+            # Trade-off: Slight data duplication for massive performance gain
             conn.execute('UPDATE users SET is_imprisoned = 1 WHERE user_id = ?', (user_id,))
             
-            # Commit transaction to ensure all changes are persisted atomically
+            # Commit all three operations as single atomic transaction
+            # Either all succeed or all fail (maintains data integrity)
             conn.commit()
             conn.close()
         
@@ -300,22 +351,45 @@ class Database:
             Internal function to record an unmute event and calculate imprisonment duration.
             Updates the active mute record with release information and duration.
             
+            This function completes the mute cycle by:
+            - Recording when and by whom the user was unmuted
+            - Calculating exact duration of the mute in minutes
+            - Deactivating the mute record (is_active = 0)
+            - Updating denormalized imprisoned status
+            
             Database Operations:
             1. Calculate mute duration using SQLite's JULIANDAY function
             2. Update active mute record with unmute timestamp and duration
             3. Update user's imprisoned status for quick lookups
             """
+            # Open database connection
             conn: sqlite3.Connection = sqlite3.connect(self.db_path)
             
-            # Get EST timezone for consistent timestamp logging
-            # Convert to EST to maintain consistency with mute timestamps
+            # === Prepare EST Timestamp ===
+            # Get current time in EST timezone for consistent logging
+            # Must match timezone used in record_mute for accurate duration calculation
             est: timezone = timezone(timedelta(hours=int(os.getenv('TIMEZONE_OFFSET_HOURS', '-5'))))
             current_time: str = datetime.now(est).strftime('%Y-%m-%d %H:%M:%S')
             
-            # Update the active mute record with release information and duration calculation
-            # JULIANDAY function calculates precise duration in minutes between mute and unmute
-            # ABS() ensures positive duration even if timestamps are somehow reversed
-            # ROUND() converts fractional minutes to whole minutes for cleaner data
+            # === SQL OPERATION: Update Mute Record with Release Info ===
+            # UPDATE prisoner_history SET ...
+            # WHERE user_id = ? AND is_active = 1
+            #
+            # Complex query that updates multiple fields:
+            # 1. unmuted_at = ? - Records when user was freed (EST timestamp)
+            # 2. unmuted_by = ? - Records who unmuted them (moderator name, optional)
+            # 3. is_active = 0 - Marks mute as complete/inactive
+            # 4. duration_minutes = ABS(ROUND((JULIANDAY(?) - JULIANDAY(muted_at)) * 24 * 60))
+            #    This is a complex calculation:
+            #    - JULIANDAY(?) converts unmuted_at timestamp to Julian day number
+            #    - JULIANDAY(muted_at) converts mute start to Julian day number
+            #    - Subtraction gives difference in days (decimal)
+            #    - * 24 * 60 converts days to minutes
+            #    - ROUND() converts decimal to integer minutes
+            #    - ABS() ensures positive value (safety check)
+            #    Result: Total minutes user was muted (precise calculation)
+            #
+            # WHERE clause targets only the currently active mute (should be exactly 1 record)
             conn.execute('''UPDATE prisoner_history
                            SET unmuted_at = ?,
                                unmuted_by = ?,
@@ -324,11 +398,16 @@ class Database:
                            WHERE user_id = ? AND is_active = 1''',
                         (current_time, unmuted_by, current_time, user_id))
             
-            # Update user's imprisoned status for quick lookups without querying history
-            # This denormalized field improves performance for frequent status checks
+            # === SQL OPERATION: Update Denormalized Status ===
+            # UPDATE users SET is_imprisoned = 0 WHERE user_id = ?
+            #
+            # Clears the imprisoned flag in users table for fast lookups
+            # Allows O(1) "is user muted?" checks without JOIN to prisoner_history
+            # Maintains denormalized data consistency
             conn.execute('UPDATE users SET is_imprisoned = 0 WHERE user_id = ?', (user_id,))
             
-            # Commit transaction to ensure all changes are persisted atomically
+            # Commit both operations as atomic transaction
+            # Either both succeed or both fail (data integrity)
             conn.commit()
             conn.close()
         
@@ -345,10 +424,31 @@ class Database:
             Duration in minutes of the current mute, 0 if not found
         """
         def _get_duration() -> int:
+            """
+            Internal function to calculate current mute duration in real-time.
+            
+            Uses JULIANDAY to calculate precise duration from mute start to now.
+            """
+            # Open database connection
             conn: sqlite3.Connection = sqlite3.connect(self.db_path)
             cursor: sqlite3.Cursor = conn.cursor()
 
-            # Get the current active mute and calculate duration from muted_at to now
+            # === SQL QUERY: Calculate Real-Time Mute Duration ===
+            # SELECT ABS(ROUND((JULIANDAY('now') - JULIANDAY(muted_at)) * 24 * 60)) as duration
+            # FROM prisoner_history
+            # WHERE user_id = ? AND is_active = 1
+            #
+            # Query breakdown:
+            # - JULIANDAY('now') gets current timestamp as Julian day
+            # - JULIANDAY(muted_at) converts mute start to Julian day
+            # - Subtraction gives duration in days (decimal)
+            # - * 24 * 60 converts days to minutes
+            # - ROUND() converts to integer minutes
+            # - ABS() ensures positive value
+            # - WHERE is_active = 1 ensures we only get current mute (not historical)
+            #
+            # Result: How many minutes user has been muted so far
+            # Used for time-based roasting (fresh vs veteran prisoners)
             cursor.execute('''SELECT
                                 ABS(ROUND((JULIANDAY('now') - JULIANDAY(muted_at)) * 24 * 60)) as duration
                              FROM prisoner_history
@@ -357,6 +457,7 @@ class Database:
             row = cursor.fetchone()
             conn.close()
 
+            # Return duration if found, otherwise 0 (user not currently muted)
             return row[0] if row and row[0] else 0
 
         return await asyncio.to_thread(_get_duration)

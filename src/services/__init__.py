@@ -7,11 +7,12 @@ This package contains integrations with third-party services
 like AI providers and other external APIs.
 
 Services:
-- ai_service.py: OpenAI integration for AI-powered responses
+- AIService: OpenAI GPT-3.5-turbo integration for AI-powered responses
+- system_knowledge: Bot capability information for AI self-awareness
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.4.0
+Version: v2.3.0
 """
 
 from .ai_service import AIService

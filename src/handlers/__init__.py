@@ -3,11 +3,16 @@ Azab Discord Bot - Handlers Package
 ===================================
 
 Event and message handlers for the Discord bot.
+Specialized handlers manage different aspects of bot functionality.
 
-Available handlers:
-- PrisonHandler: Manages prisoner welcome and release
-- MuteHandler: Processes mute embeds and extracts reasons
-- PresenceHandler: Manages dynamic Discord rich presence
+Available Handlers:
+- PrisonHandler: Manages prisoner welcome and release messages
+- MuteHandler: Processes mute embeds and extracts reasons from logs
+- PresenceHandler: Manages dynamic Discord rich presence updates
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
+Version: v2.3.0
 """
 
 from .prison_handler import PrisonHandler

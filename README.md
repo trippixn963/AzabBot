@@ -29,15 +29,16 @@
 ### ⚠️ **Important Notice**
 This bot was custom-built for **discord.gg/syria** and is provided as-is for educational purposes. **No support will be provided** for setup, configuration, or troubleshooting.
 
-### 🆕 **What's New in v2.4.0**
-- **🧠 AI Self-Awareness**: Bot knows everything about its own architecture and features
-- **👨‍👩‍👦 Family System**: Special privileges for dad, uncle, and brother with unique responses
-- **📝 Trigger Message Tracking**: Saves the message that caused each mute
-- **📊 Advanced Database Queries**: Real-time prison statistics and user lookups
-- **⏱ Response Time Display**: Shows AI generation time in small text (⏱ 0.87s)
-- **🔒 Status Shows Mute Reason**: Bot presence displays username and mute reason
-- **🎯 Ping Requirement**: Family members must mention bot for responses
-- **⏰ Accurate Time Tracking**: Fixed "0m" issue for release messages
+### 🆕 **What's New in v2.3.0**
+- **🛡️ Comprehensive Error Handling**: Advanced error context capture and recovery suggestions
+- **✅ Input Validation**: Complete validation for all user inputs with Discord-specific limits
+- **🔒 SQL Injection Prevention**: Secure database operations with sanitized inputs
+- **📊 Real-Time AI Usage Monitoring**: Track actual OpenAI API token usage and costs
+- **💰 Cost Tracking**: Automatic cost calculation based on GPT-3.5-turbo pricing
+- **📈 Usage Statistics**: Daily, monthly, and all-time usage tracking
+- **⏱ Response Metrics**: Shows response time and token usage (⏱ 1.5s • 250)
+- **📝 Enhanced Documentation**: Comprehensive docstrings and inline comments
+- **🐛 Bug Fixes**: Fixed undefined variables and improved code quality
 
 ---
 
@@ -100,6 +101,23 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 - **Structured Logging**: Professional logging with EST timezone
 - **Performance Monitoring**: Tracks bot performance and errors
 - **Persistent State**: Saves activation state to survive restarts
+
+### 🛡️ **Security & Validation** ⭐ *NEW v2.3.0*
+- **Input Validation**: All user inputs validated against Discord limits
+- **SQL Injection Prevention**: Parameterized queries and input sanitization
+- **Error Context Capture**: Comprehensive error tracking with recovery suggestions
+- **Discord ID Validation**: Ensures valid Discord IDs (17-19 digits)
+- **Message Content Limits**: Enforces 2000 character Discord message limit
+- **Username Validation**: Checks 32 character username limit
+
+### 📈 **AI Usage Monitoring** ⭐ *NEW v2.3.0*
+- **Real-Time Token Tracking**: Actual OpenAI API usage from response data
+- **Cost Calculation**: Automatic pricing based on GPT-3.5-turbo rates
+- **Usage Statistics**: Daily, monthly, and all-time tracking
+- **Response Metrics**: Shows generation time and tokens used
+- **Data Persistence**: Usage data saved to JSON for analysis
+- **Session Tracking**: Monitor current session usage
+- **Automatic Cleanup**: Old data cleanup after 30 days
 
 ### 🎮 **Command System**
 - **Slash Commands**: Modern Discord slash command interface
