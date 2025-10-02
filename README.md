@@ -29,26 +29,29 @@
 ### ⚠️ **Important Notice**
 This bot was custom-built for **discord.gg/syria** and is provided as-is for educational purposes. **No support will be provided** for setup, configuration, or troubleshooting.
 
-### 🆕 **What's New in v2.3.0**
-- **🛡️ Comprehensive Error Handling**: Advanced error context capture and recovery suggestions
-- **✅ Input Validation**: Complete validation for all user inputs with Discord-specific limits
-- **🔒 SQL Injection Prevention**: Secure database operations with sanitized inputs
-- **📊 Real-Time AI Usage Monitoring**: Track actual OpenAI API token usage and costs
-- **💰 Cost Tracking**: Automatic cost calculation based on GPT-3.5-turbo pricing
-- **📈 Usage Statistics**: Daily, monthly, and all-time usage tracking
-- **⏱ Response Metrics**: Shows response time and token usage (⏱ 1.5s • 250)
-- **📝 Enhanced Documentation**: Comprehensive docstrings and inline comments
-- **🐛 Bug Fixes**: Fixed undefined variables and improved code quality
+### 🆕 **What's New in v2.4.0**
+- **🎭 Enhanced AI Identity**: Bot never says "I am just an AI" - owns its identity as Azab
+- **🌟 Rich Presence System**: 14 rotating status messages with emoji-first design
+- **👁️ Active Variations**: 7 creative messages (Watching, Torturing, Roasting, Destroying, etc.)
+- **💤 Idle Variations**: 7 sleep messages (Napping, Off duty, Resting, Dreaming, etc.)
+- **📊 Stats Display**: 10% chance to show prison statistics in presence
+- **🚨 Emergency Mode**: "Mass arrest" status when 5+ prisoners appear
+- **🔥 Repeat Offender Detection**: Special messages for users muted 5+ times
+- **🔓 Release Messages**: Shows username and time served when freed
+- **🔒 Instance Lock**: Prevents duplicate bot processes from running
+- **📝 Comprehensive Documentation**: Step-by-step inline comments with ASCII dividers
 
 ---
 
 ## ✨ Features
 
-### 🧠 **AI Self-Awareness System** ⭐ *NEW v2.4.0*
+### 🧠 **AI Self-Awareness System** ⭐ *ENHANCED v2.4.0*
+- **Strong Identity**: Bot never says "I am just an AI" - owns its identity as Azab
 - **Complete Codebase Knowledge**: Bot knows its entire architecture and implementation
 - **Feature Explanations**: Can explain any feature or system in detail
 - **Technical Question Detection**: Automatically provides accurate technical information
 - **System Knowledge Module**: Comprehensive documentation integrated into AI
+- **Confident Personality**: Responds as a real entity, not a scripted bot
 
 ### 👨‍👩‍👦 **Family Recognition System** ⭐ *NEW v2.3.0*
 - **Developer (Dad)**: Gets intelligent ChatGPT-like responses with full access
@@ -85,12 +88,15 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 - **Accurate Duration Tracking**: Shows exact time served for current session
 - **Database Queries**: "Who is the most muted?", "Current prisoners", user lookups
 
-### 🎮 **Dynamic Rich Presence**
-- **Real-Time Status**: Shows current prisoner count when active
-- **Activity Updates**: Displays "Watching X prisoners" during ragebaiting
-- **Event Notifications**: Special presence updates for prisoner arrivals/releases
-- **Mute Reason Display**: Shows "🔒 Username: reason" when someone gets muted
-- **Sleep Mode**: Shows "💤 Sleeping" when bot is inactive
+### 🎮 **Dynamic Rich Presence** ⭐ *ENHANCED v2.4.0*
+- **14 Rotating Messages**: Creative emoji-first status variations (1-3 words)
+- **Active Mode (7 variations)**: 👁️ Watching, 😈 Torturing, 🔥 Roasting, 💀 Destroying, etc.
+- **Idle Mode (7 variations)**: 💤 Napping, 😴 Off duty, 🌙 Resting, 💭 Dreaming, etc.
+- **Stats Display**: 10% chance to show prison statistics (📊 X mutes, ⏰ X days served, 👑 Record)
+- **Emergency Mode**: 🚨 Mass arrest status when 5+ prisoners appear suddenly
+- **Repeat Offender Alerts**: 🔥 Username again, 🤡 Username back (for 5+ mutes)
+- **Release Notifications**: 🔓 Username (5d) showing time served
+- **Event Notifications**: Special presence for prisoner arrivals with mute reasons
 - **Auto-Updates**: Presence refreshes every 30 seconds
 - **Live Feedback**: See bot activity directly in Discord status
 
@@ -102,13 +108,14 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 - **Performance Monitoring**: Tracks bot performance and errors
 - **Persistent State**: Saves activation state to survive restarts
 
-### 🛡️ **Security & Validation** ⭐ *NEW v2.3.0*
+### 🛡️ **Security & Validation** ⭐ *ENHANCED v2.4.0*
 - **Input Validation**: All user inputs validated against Discord limits
 - **SQL Injection Prevention**: Parameterized queries and input sanitization
 - **Error Context Capture**: Comprehensive error tracking with recovery suggestions
 - **Discord ID Validation**: Ensures valid Discord IDs (17-19 digits)
 - **Message Content Limits**: Enforces 2000 character Discord message limit
 - **Username Validation**: Checks 32 character username limit
+- **Instance Lock Mechanism**: Prevents duplicate bot processes system-wide
 
 ### 📈 **AI Usage Monitoring** ⭐ *NEW v2.3.0*
 - **Real-Time Token Tracking**: Actual OpenAI API usage from response data
