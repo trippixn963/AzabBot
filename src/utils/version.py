@@ -11,8 +11,16 @@ Version Format: MAJOR.MINOR.PATCH[-BUILD]
 - PATCH: Bug fixes, backwards compatible
 - BUILD: Optional build identifier (e.g., 'dev', 'beta', 'rc1')
 
+Features:
+- Semantic versioning with build metadata
+- Version history tracking
+- Development vs stable build detection
+- Release type classification
+- Complete bot metadata
+
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
+Version: v2.3.0
 """
 
 from datetime import datetime
@@ -29,13 +37,13 @@ class Version:
     
     # Current version - UPDATE THIS FOR EACH RELEASE
     MAJOR: int = 2
-    MINOR: int = 2
+    MINOR: int = 4
     PATCH: int = 0
     BUILD: Optional[str] = None  # Set to None for stable releases
-    
+
     # Version metadata
     CODENAME: str = "Syria"  # Release codename
-    RELEASE_DATE: str = "2024-12-07"  # Update with each release
+    RELEASE_DATE: str = "2025-10-02"  # Update with each release
     
     # Bot information
     BOT_NAME: str = "Azab"
@@ -154,6 +162,41 @@ VERSION_HISTORY = {
             "Slash commands (/activate, /deactivate)",
             "Message logging and analytics",
             "Centralized version management system"
+        ]
+    },
+    "2.3.0": {
+        "date": "2025-01-29",
+        "codename": "Syria",
+        "changes": [
+            "Added comprehensive error handling with context capture",
+            "Implemented input validation for all user inputs",
+            "Added SQL injection prevention",
+            "Added real-time AI usage monitoring with OpenAI API",
+            "Token usage tracking with actual API response data",
+            "Cost calculation based on GPT-3.5-turbo pricing",
+            "Daily and monthly usage statistics",
+            "Enhanced documentation across all modules",
+            "Fixed undefined variable issues",
+            "Improved code quality and inline comments"
+        ]
+    },
+    "2.4.0": {
+        "date": "2025-10-02",
+        "codename": "Syria",
+        "changes": [
+            "Enhanced AI identity - Bot never says 'I am just an AI'",
+            "Comprehensive rich presence system with rotating messages",
+            "7 active presence variations (Watching, Torturing, Roasting, etc.)",
+            "7 idle presence variations (Napping, Off duty, Resting, etc.)",
+            "Stats-based presence updates (10% chance)",
+            "Emergency mode for mass arrests (5+ prisoners)",
+            "Repeat offender detection and highlighting (5+ mutes)",
+            "Time-served display on prisoner release",
+            "Short, emoji-first presence messages (1-3 words)",
+            "Instance lock mechanism to prevent duplicate bot processes",
+            "Comprehensive inline documentation with step-by-step flow",
+            "Detailed docstrings explaining implementation decisions",
+            "ASCII art section dividers for code readability"
         ]
     }
 }

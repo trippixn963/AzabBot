@@ -3,11 +3,20 @@ Azab Discord Bot - System Knowledge Module
 ==========================================
 
 Contains comprehensive information about the bot's architecture,
-features, and capabilities for AI self-awareness.
+features, and capabilities for AI self-awareness. Used by the AI service
+to understand its own functionality and respond to queries about capabilities.
+
+Features:
+- Complete bot architecture documentation
+- Feature explanations and capabilities
+- Database query reference
+- Command help system
+- Version history and changelog
+- Technical specifications
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.4.1
+Version: v2.3.0
 """
 
 def get_system_knowledge():

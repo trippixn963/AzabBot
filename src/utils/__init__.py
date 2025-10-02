@@ -3,9 +3,18 @@ Azab Discord Bot - Utils Package
 ================================
 
 Utility modules for the Azab Discord bot.
+Contains helper functions, validators, and utility classes.
+
+Available Utilities:
+- Version: Semantic versioning management
+- format_duration: Time formatting utilities
+- ErrorHandler: Enhanced error handling
+- Validators: Input validation and sanitization
+- AIUsageMonitor: OpenAI API usage tracking
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
+Version: v2.3.0
 """
 
 from .version import Version, get_version_string, get_version_info

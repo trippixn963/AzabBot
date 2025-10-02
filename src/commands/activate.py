@@ -6,9 +6,16 @@ Slash command implementation for activating the bot's ragebaiting mode.
 When activated, the bot will monitor messages and respond to muted users
 with AI-generated ragebait responses.
 
+Features:
+- Enable bot monitoring and responses
+- Detect currently muted users
+- Update rich presence status
+- Persist activation state
+- Administrator-only access
+
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.2.0
+Version: v2.3.0
 """
 
 import discord

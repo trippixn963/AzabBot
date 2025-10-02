@@ -7,12 +7,12 @@ This package contains essential services like database management,
 logging systems, and other core functionality.
 
 Components:
-- database.py: SQLite database wrapper for message logging
-- logger.py: Custom logging system with EST timezone support
+- Database: SQLite database wrapper for message logging and analytics
+- logger: Custom logging system with EST/EDT timezone support
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.4.0
+Version: v2.3.0
 """
 
 from .database import Database

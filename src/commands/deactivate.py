@@ -6,9 +6,16 @@ Slash command implementation for deactivating the bot's ragebaiting mode.
 When deactivated, the bot returns to standby state and stops monitoring
 messages for AI responses.
 
+Features:
+- Disable bot monitoring and responses
+- Update rich presence to sleeping status
+- Persist deactivation state
+- Family members can still interact
+- Administrator-only access
+
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.2.0
+Version: v2.3.0
 """
 
 import discord

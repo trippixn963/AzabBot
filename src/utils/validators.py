@@ -5,16 +5,20 @@ Azab Discord Bot - Input Validators
 Comprehensive input validation utilities for safe data handling.
 
 Features:
-- Discord ID validation
+- Discord ID validation with range checking
 - Message content sanitization
-- Username validation
+- Username validation and truncation
 - Channel and role validation
 - SQL injection prevention
 - Rate limit validation
+- Timestamp validation
+- List of IDs validation
+- Discord embed validation
+- High-level input sanitization wrapper
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.5.0
+Version: v2.3.0
 """
 
 import re
