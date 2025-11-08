@@ -9,16 +9,18 @@ in separate modules for maintainability.
 Available Commands:
 - /activate: Activate bot's ragebaiting mode (admin only)
 - /deactivate: Deactivate bot and return to standby (admin only)
+- /ignore: Ignore or unignore specific users (admin only)
 
 Each command is implemented as a separate class with proper
 Discord.py slash command integration.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.3.0
+Version: v2.4.0
 """
 
 from .activate import ActivateCommand
 from .deactivate import DeactivateCommand
+from .ignore import IgnoreCommand
 
-__all__ = ['ActivateCommand', 'DeactivateCommand']
+__all__ = ['ActivateCommand', 'DeactivateCommand', 'IgnoreCommand']

@@ -23,7 +23,9 @@ Version: v2.3.0
 import discord
 import asyncio
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from datetime import datetime, timezone, timedelta
+from collections import deque
 
 from src.core.logger import logger
 from src.services.ai_service import AIService
@@ -34,31 +36,35 @@ from src.utils.error_handler import ErrorHandler
 class PrisonHandler:
     """
     Manages prisoner (muted user) welcome and release operations.
-    
+
     Handles:
     - Detecting when users get muted/unmuted
     - Sending welcome messages to prison channel
     - Sending release messages to general channel
     - Tracking mute reasons for contextual responses
     """
-    
+
     def __init__(self, bot: Any, ai_service: AIService) -> None:
         """
         Initialize the prison handler.
-        
+
         Args:
             bot: The Discord bot instance
             ai_service: AI service for generating responses
         """
         self.bot: Any = bot
         self.ai: AIService = ai_service
-        self.mute_reasons: Dict[int, str] = {}  # Store mute reasons {user_id: reason}
-        self.last_messages: Dict[int, str] = {}  # Store last message from each user {user_id: message}
-    
+        self.mute_reasons: Dict[int, str] = {}
+        # Store last 10 messages per user: {user_id: {"messages": deque([msg1, msg2, ...]), "channel_id": int}}
+        self.last_messages: Dict[int, Dict[str, Any]] = {}
+
+        # Start daily cleanup loop
+        asyncio.create_task(self._daily_cleanup_loop())
+
     async def handle_new_prisoner(self, member: discord.Member) -> None:
         """
         Welcome a newly muted user to prison with savage ragebait.
-        
+
         This is the main prisoner onboarding function. It executes a multi-step process:
         1. Extract mute reason from logs channel embeds
         2. Gather prisoner statistics (repeat offender data)
@@ -67,238 +73,204 @@ class PrisonHandler:
         5. Send welcome message to prison channel
         6. Update presence to show new prisoner
         7. Log mute to database
-        
+
         FIRST scans the logs channel for mute embeds to extract the mute reason,
         THEN generates a contextual AI response to mock the user about
         their specific offense.
-        
+
         Args:
             member (discord.Member): The newly muted Discord member
         """
         try:
             logger.info(f"Handling new prisoner: {member.name} (ID: {member.id})")
-            
-            # === STEP 0: Get Required Discord Channels ===
-            # Retrieve logs channel (where mod bot posts mute embeds)
-            # Retrieve prison channel (where we send welcome messages)
+
             logs_channel: Optional[discord.TextChannel] = self.bot.get_channel(self.bot.logs_channel_id)
             prison_channel: Optional[discord.TextChannel] = self.bot.get_channel(self.bot.prison_channel_id)
-            
+
             logger.info(f"Channels - Logs: {logs_channel}, Prison: {prison_channel}")
-            
-            # Validate both channels exist before proceeding
-            # If either is None, bot doesn't have access or IDs are wrong
+
             if not logs_channel or not prison_channel:
                 logger.error(f"Channels not found - logs: {self.bot.logs_channel_id}, prison: {self.bot.prison_channel_id}")
-                return  # Can't proceed without channels
-            
-            # === STEP 1: Extract Mute Reason from Logs Channel ===
-            # Wait briefly for moderation bot to post the mute embed
-            # Mod bots typically post embeds 1-3 seconds after role assignment
-            # Configurable delay via MUTE_EMBED_WAIT_TIME (default 5 seconds)
+                return
+
+            # Send mute notification to the channel where they got muted (or general chat as fallback)
+            mute_channel_id: Optional[int] = None
+            if member.id in self.last_messages:
+                mute_channel_id = self.last_messages[member.id].get("channel_id")
+                logger.info(f"Found last message channel for {member.name}: {mute_channel_id}")
+            else:
+                logger.warning(f"No last message found for {member.name} - defaulting to general chat")
+                mute_channel_id = self.bot.general_channel_id
+
+            if mute_channel_id:
+                mute_channel: Optional[discord.TextChannel] = self.bot.get_channel(mute_channel_id)
+                if not mute_channel:
+                    logger.error(f"Could not find channel {mute_channel_id} to send mute notification")
+                else:
+                    logger.info(f"Sending mute notification to #{mute_channel.name} (ID: {mute_channel_id})")
+                if mute_channel:
+                    # Generate savage message about getting muted
+                    mute_announcement: str = await self.ai.generate_response(
+                        f"Someone just got muted and thrown in prison. Mock them briefly about getting muted. "
+                        f"Be savage but concise - max {os.getenv('MAX_RESPONSE_LENGTH', '150')} characters. "
+                        f"IMPORTANT: Do NOT mention their name, just refer to them as 'you' since they will be pinged.",
+                        member.display_name,
+                        False,
+                        None
+                    )
+
+                    embed = discord.Embed(
+                        title="⚠️ USER MUTED",
+                        description=f"{member.mention} has been sent to prison.",
+                        color=int(os.getenv('EMBED_COLOR_ERROR', '0xFF0000'), 16)
+                    )
+
+                    embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+
+                    developer = await self.bot.fetch_user(self.bot.developer_id)
+                    developer_avatar = developer.avatar.url if developer and developer.avatar else None
+                    embed.set_footer(
+                        text=f"Developed By: {os.getenv('DEVELOPER_NAME', 'حَـــــنَّـــــا')}",
+                        icon_url=developer_avatar
+                    )
+
+                    try:
+                        await mute_channel.send(f"{member.mention} {mute_announcement}", embed=embed)
+                        logger.info(f"Sent mute notification to #{mute_channel.name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to send mute notification: {str(e)[:100]}")
+
             logger.info(f"Waiting for mute embed to appear in logs for {member.name}")
             await asyncio.sleep(int(os.getenv('MUTE_EMBED_WAIT_TIME', '5')))
-            
-            # === Check In-Memory Cache First ===
-            # Mute reasons are cached in memory when we process embeds
-            # Try both user_id and username.lower() for maximum reliability
-            # (Some mod bots use mentions, others use raw usernames)
+
             mute_reason: Optional[str] = self.mute_reasons.get(member.id) or self.mute_reasons.get(member.name.lower())
-            
-            # === Fetch Prisoner History from Database ===
-            # Get complete stats: total mutes, time served, reasons, etc.
-            # Used for repeat offender detection and enhanced roasting
+
             prisoner_stats: Dict[str, Any] = await self.bot.db.get_prisoner_stats(member.id)
-            
-            # === Check if Reason Was Found in Cache ===
+
             if mute_reason:
                 logger.info(f"Found stored mute reason for {member.name}: {mute_reason}")
             else:
-                # === Reason Not Cached: Scan Logs Channel ===
-                # If not in cache, scan recent messages in logs channel
-                # This happens if:
-                # 1. Mute embed posted after our cache was processed
-                # 2. Bot restarted recently and cache was cleared
-                # 3. Mod bot posted embed before Discord.py saw the role change
                 logger.info(f"Scanning logs channel for {member.name}'s mute reason...")
-                
+
                 messages_checked: int = 0
-                # Iterate through recent logs channel messages
-                # Configurable limit via LOG_CHANNEL_SCAN_LIMIT (default 50)
                 async for message in logs_channel.history(limit=int(os.getenv('LOG_CHANNEL_SCAN_LIMIT', '50'))):
                     messages_checked += 1
-                    # Check if message contains embeds (mod bots use embeds for mute logs)
                     if message.embeds:
-                        # Process embed and extract any mute reasons
-                        # This updates self.mute_reasons cache for all users found
                         await self.bot.mute_handler.process_mute_embed(message)
-                        
-                        # Check if we now have reason for THIS specific user
-                        # Re-check both ID and username after processing
+
                         mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(member.name.lower())
                         if mute_reason:
                             logger.success(f"Found mute reason for {member.name}: {mute_reason}")
-                            break  # Found it! Stop scanning
-                
+                            break
+
                 logger.info(f"Scanned {messages_checked} messages in logs channel")
-            
-            # Log warning if reason still not found (will use generic welcome)
+
             if not mute_reason:
                 logger.warning(f"Could not find mute reason for {member.name} - will use generic welcome")
-            
-            # === STEP 2: Generate Contextual Welcome Message ===
-            # Build AI prompt based on available context and generate savage welcome roast
+
             logger.info(f"Generating welcome message for {member.name} with reason: {mute_reason or 'None'}")
-            
-            # === Build AI Prompt with Available Context ===
+
             welcome_prompt: str
             if mute_reason:
-                # === CONTEXTUAL PROMPT: We Have Mute Reason ===
-                # Build detailed prompt referencing their specific offense
-                # This creates much more savage and relevant roasts
                 welcome_prompt = (
                     f"Welcome a prisoner who just got thrown in jail for: '{mute_reason}'. "
                     f"Mock them brutally and specifically about why they got jailed. "
                 )
-                
-                # === Add Repeat Offender Roasting ===
-                # If they've been muted before, add extra context for AI
-                # Allows AI to mock them for being a repeat offender
+
                 if prisoner_stats['total_mutes'] > 0:
-                    # Format their total prison time in human-readable format
                     total_time = format_duration(prisoner_stats['total_minutes'] or 0)
-                    # Add repeat offender context to prompt
                     welcome_prompt += (
                         f"This is their {prisoner_stats['total_mutes'] + 1}th time in prison! "
                         f"They've spent {total_time} locked up before. "
                         f"Mock them for being a repeat offender who never learns. "
                     )
-                
-                # === Add Prompt Instructions ===
+
                 welcome_prompt += (
                     f"Be savage and reference their specific offense. "
                     f"Tell them they're stuck in prison now with you, the prison bot. "
                     f"IMPORTANT: Do NOT mention their name, just refer to them as 'you' since they will be pinged."
                 )
             else:
-                # === GENERIC PROMPT: No Mute Reason Available ===
-                # Fall back to generic welcome roast when reason is unknown
-                # Still savage but less specific
                 welcome_prompt = (
                     f"Welcome a prisoner to jail. "
                     f"Mock them for getting locked up. Be savage about being stuck in prison. "
                     f"Make jokes about them being trapped here with you. "
                     f"IMPORTANT: Do NOT mention their name, just refer to them as 'you' since they will be pinged."
                 )
-            
-            # === Generate AI Welcome Response ===
-            # Call AI service with built prompt to generate savage welcome message
-            # AI will use mute_reason, prisoner history, and context to create personalized roast
+
             response: str = await self.ai.generate_response(
                 welcome_prompt,
                 member.display_name,
-                True,  # is_muted = True (they just got muted)
-                mute_reason  # Pass reason for additional context
+                True,
+                mute_reason
             )
-            
-            # === STEP 3: Create Rich Embed for Welcome Message ===
-            # Build visually appealing Discord embed to display prisoner information
-            # Embed structure: Title, Description (mention), Fields (reason/stats), Thumbnail, Footer
+
             embed = discord.Embed(
-                title="🔒 NEW PRISONER ARRIVAL",  # Clear title with emoji
-                description=f"{member.mention}\n",  # Ping user so they know they're being roasted
-                color=int(os.getenv('EMBED_COLOR_ERROR', '0xFF0000'), 16)  # Red color (hex FF0000 = danger/prison)
+                title="🔒 NEW PRISONER ARRIVAL",
+                description=f"{member.mention}\n",
+                color=int(os.getenv('EMBED_COLOR_ERROR', '0xFF0000'), 16)
             )
-            
-            # === Add Mute Reason Field (If Available) ===
-            # Display why they were imprisoned (extracted from logs channel)
-            # Truncate to avoid breaking Discord's embed field limits
+
             if mute_reason:
                 embed.add_field(
-                    name="Reason",  # Field title
-                    value=f"{mute_reason[:int(os.getenv('MUTE_REASON_MAX_LENGTH', '100'))]}",  # Truncate if too long
-                    inline=False  # Full width field (reason is important, give it space)
+                    name="Reason",
+                    value=f"{mute_reason[:int(os.getenv('MUTE_REASON_MAX_LENGTH', '100'))]}",
+                    inline=False
                 )
-            
-            # Note: AI response is sent as separate message text, not in embed
-            # This allows Discord to render it properly with markdown
-            
-            # === Add Prison Record for Repeat Offenders ===
-            # Only show stats if they've been muted before (total_mutes > 0)
-            # Displays visit number and total time served across all mutes
+
             if prisoner_stats['total_mutes'] > 0:
-                # Field 1: Visit number (inline for compact display)
                 embed.add_field(
                     name="Prison Record",
-                    value=f"Visit #{prisoner_stats['total_mutes'] + 1}",  # +1 because this is their NEW visit
-                    inline=True  # Allow side-by-side with next field
+                    value=f"Visit #{prisoner_stats['total_mutes'] + 1}",
+                    inline=True
                 )
-                # Field 2: Total time served (formatted as "Xd Yh Zm")
                 total_time = format_duration(prisoner_stats['total_minutes'] or 0)
                 embed.add_field(
                     name="Total Time Served",
-                    value=total_time,  # Human-readable duration
-                    inline=True  # Displays next to Prison Record field
+                    value=total_time,
+                    inline=True
                 )
-            
-            # === Set Embed Visual Elements ===
-            # Thumbnail: Show prisoner's Discord avatar (or default if none)
+
             embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
-            
-            # Footer: Developer credit with their profile picture
-            # Consistent branding across all bot embeds
+
             developer = await self.bot.fetch_user(self.bot.developer_id)
             developer_avatar = developer.avatar.url if developer and developer.avatar else None
             embed.set_footer(
-                text=f"Developed By: {os.getenv('DEVELOPER_NAME', 'حَـــــنَّـــــا')}",  # Arabic name for authenticity
-                icon_url=developer_avatar  # Small avatar icon in footer
+                text=f"Developed By: {os.getenv('DEVELOPER_NAME', 'حَـــــنَّـــــا')}",
+                icon_url=developer_avatar
             )
-            
-            # === STEP 4: Send Welcome Message to Prison Channel ===
-            # Send both AI response and rich embed together
-            # Format: "@user [AI roast]" + [Rich Embed with details]
-            await prison_channel.send(f"{member.mention} {response}", embed=embed)
-            
-            # === STEP 5: Update Bot Rich Presence ===
-            # Temporarily change bot's Discord status to show new prisoner arrival
-            # Displays on bot's profile: "🔒 username: reason" or special messages for repeat offenders
-            total_mutes = prisoner_stats.get('total_mutes', 1) if prisoner_stats else 1
-            # Create async task so presence update doesn't block (runs in parallel)
-            asyncio.create_task(self.bot.presence_handler.show_prisoner_arrived(
-                username=member.name,    # Who got muted
-                reason=mute_reason,      # Why they got muted
-                mute_count=total_mutes   # How many times (for repeat offender detection)
-            ))
-            
-            # === STEP 6: Get Trigger Message for Database ===
-            # Retrieve the last message this user sent before getting muted
-            # This is cached in memory by on_message handler
-            # Used for contextual roasting: "You said X and got muted for it"
-            trigger_message = self.last_messages.get(member.id, None)
 
-            # === STEP 7: Record Mute in Database ===
-            # Log this mute event to prisoner_history table for analytics and history
-            # This creates a permanent record with all mute details
+            await prison_channel.send(f"{member.mention} {response}", embed=embed)
+
+            total_mutes = prisoner_stats.get('total_mutes', 1) if prisoner_stats else 1
+            asyncio.create_task(self.bot.presence_handler.show_prisoner_arrived(
+                username=member.name,
+                reason=mute_reason,
+                mute_count=total_mutes
+            ))
+
+            # Get the most recent message (last in the deque) as trigger message
+            trigger_message = None
+            if member.id in self.last_messages and "messages" in self.last_messages[member.id]:
+                messages = self.last_messages[member.id]["messages"]
+                if messages:
+                    trigger_message = messages[-1]  # Get the most recent message
+
             await self.bot.db.record_mute(
-                user_id=member.id,                   # Discord ID (indexed for fast lookups)
-                username=member.name,                 # Username at time of mute (preserved)
-                reason=mute_reason or "Unknown",      # Mute reason from logs (or "Unknown" fallback)
-                muted_by=None,                        # Who muted them (could extract from embeds later)
-                trigger_message=trigger_message       # Message that got them muted (for AI context)
+                user_id=member.id,
+                username=member.name,
+                reason=mute_reason or "Unknown",
+                muted_by=None,
+                trigger_message=trigger_message
             )
-            
-            # === STEP 8: Log Welcome Event to Console ===
-            # Create structured log entry for monitoring and debugging
-            # Tree format makes it easy to read in logs
+
             logger.tree("NEW PRISONER WELCOMED", [
-                ("Prisoner", str(member)),  # Full Discord username#discriminator
-                # Truncate reason to configurable length (default 50 chars)
+                ("Prisoner", str(member)),
                 ("Reason", mute_reason[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))] if mute_reason else "Unknown"),
-                ("Times Muted", str(prisoner_stats['total_mutes'] + 1)),  # Total count including this one
-                # Truncate AI response for log readability
+                ("Times Muted", str(prisoner_stats['total_mutes'] + 1)),
                 ("Welcome", response[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))])
-            ], "⛓️")  # Prison chain emoji for visual identification
-            
+            ], "⛓️")
+
         except Exception as e:
             ErrorHandler.handle(
                 e,
@@ -307,42 +279,34 @@ class PrisonHandler:
                 member=member.name,
                 member_id=member.id
             )
-    
+
     async def handle_prisoner_release(self, member: discord.Member) -> None:
         """
         Send a message when a user gets unmuted (freed from prison).
-        
+
         Sends a sarcastic/mocking message to the general chat when someone
         gets unmuted, making fun of their time in prison.
-        
+
         Args:
             member (discord.Member): The newly unmuted Discord member
         """
         try:
             logger.info(f"Handling prisoner release: {member.name} (ID: {member.id})")
-            
-            # Get the general channel
+
             general_channel: Optional[discord.TextChannel] = self.bot.get_channel(self.bot.general_channel_id)
-            
+
             if not general_channel:
                 logger.error(f"General channel not found: {self.bot.general_channel_id}")
                 return
-            
-            # Get their mute reason if we have it
-            # Try both user ID and username for maximum reliability
+
             mute_reason: Optional[str] = self.mute_reasons.get(member.id) or self.mute_reasons.get(member.name.lower())
-            
-            # Get prisoner's history
+
             prisoner_stats: Dict[str, Any] = await self.bot.db.get_prisoner_stats(member.id)
 
-            # Get the duration of this specific mute session
             current_session_duration: int = await self.bot.db.get_current_mute_duration(member.id)
-            
-            # Generate a release message
-            # Create different prompts based on whether we have the original offense
+
             release_prompt: str
             if mute_reason:
-                # Contextual release prompt with specific offense reference
                 release_prompt = (
                     f"Someone just got released from prison where they were locked up for: '{mute_reason}'. "
                     f"Mock them sarcastically about being freed. Make jokes about their time in jail. "
@@ -351,49 +315,39 @@ class PrisonHandler:
                     f"IMPORTANT: Do NOT mention their name, just refer to them as 'you' since they will be pinged."
                 )
             else:
-                # Generic release prompt when offense is unknown
                 release_prompt = (
                     f"Someone just got released from prison. "
                     f"Mock them about finally being free. Be sarcastic about their jail time. "
                     f"Make jokes about them probably going back soon. Keep it under {os.getenv('RELEASE_PROMPT_WORD_LIMIT', '50')} words. "
                     f"IMPORTANT: Do NOT mention their name, just refer to them as 'you' since they will be pinged."
                 )
-            
-            # Generate AI response
-            # Pass mute_reason to AI for contextual release messages
+
             response: str = await self.ai.generate_response(
                 release_prompt,
                 member.display_name,
-                False,  # They're NOT muted anymore
+                False,
                 mute_reason
             )
-            
-            # Send release message to general channel as embed
-            # Create embed with black code box for response
+
             embed = discord.Embed(
                 title="🔓 PRISONER RELEASED",
                 description=f"{member.mention}\n",
-                color=int(os.getenv('EMBED_COLOR_RELEASE', '0x00FF00'), 16)  # Green color for freedom
+                color=int(os.getenv('EMBED_COLOR_RELEASE', '0x00FF00'), 16)
             )
-            
-            # Add original crime if available
+
             if mute_reason:
                 embed.add_field(
                     name="Released From",
                     value=f"{mute_reason[:int(os.getenv('MUTE_REASON_MAX_LENGTH', '100'))]}",
                     inline=False
                 )
-            
-            # Remove the AI response from embed - it will be sent as a separate message
-            
-            # Add prison stats with spacing
+
             if prisoner_stats['total_mutes'] > 0:
                 embed.add_field(
                     name="Total Visits",
                     value=str(prisoner_stats['total_mutes']),
                     inline=True
                 )
-                # Show the duration of THIS mute session
                 if current_session_duration > 0:
                     session_time = format_duration(current_session_duration)
                     embed.add_field(
@@ -402,52 +356,46 @@ class PrisonHandler:
                         inline=True
                     )
                 else:
-                    # Fallback to total time if current session is 0
-                    # (shouldn't happen but just in case)
                     embed.add_field(
                         name="Time Served",
                         value="< 1 minute",
                         inline=True
                     )
-            
-            # Set thumbnail to prisoner's avatar
+
             embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
-            
-            # Set footer with developer credit and avatar
+
             developer = await self.bot.fetch_user(self.bot.developer_id)
             developer_avatar = developer.avatar.url if developer and developer.avatar else None
             embed.set_footer(text=f"Developed By: {os.getenv('DEVELOPER_NAME', 'حَـــــنَّـــــا')}", icon_url=developer_avatar)
-            
-            # Send both the AI response text and the embed
+
             await general_channel.send(f"{member.mention} {response}", embed=embed)
-            
-            # Update presence to show prisoner release with name and duration
+
             asyncio.create_task(self.bot.presence_handler.show_prisoner_released(
                 username=member.name,
                 duration_minutes=current_session_duration
             ))
-            
-            # Record unmute in database
+
             await self.bot.db.record_unmute(
                 user_id=member.id,
-                unmuted_by=None  # We could track who unmuted later
+                unmuted_by=None
             )
-            
-            # Clear their mute reason since they're free now
-            # Clean up both user ID and username mappings
+
             if member.id in self.mute_reasons:
                 del self.mute_reasons[member.id]
             if member.name.lower() in self.mute_reasons:
                 del self.mute_reasons[member.name.lower()]
-            
-            # Log the release event
+
+            # Schedule message cleanup for 1 hour later (background task)
+            asyncio.create_task(self._delayed_message_cleanup(member))
+
             logger.tree("PRISONER RELEASED", [
                 ("Ex-Prisoner", str(member)),
                 ("Previous Offense", mute_reason[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))] if mute_reason else "Unknown"),
                 ("Total Times Muted", str(prisoner_stats['total_mutes'])),
+                ("Cleanup Scheduled", "In 1 hour"),
                 ("Release Message", response[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))])
             ], "🔓")
-            
+
         except Exception as e:
             ErrorHandler.handle(
                 e,
@@ -455,4 +403,261 @@ class PrisonHandler:
                 critical=False,
                 member=member.name,
                 member_id=member.id
+            )
+
+    async def _delayed_message_cleanup(self, member: discord.Member) -> None:
+        """
+        Wait 1 hour before deleting prisoner messages.
+
+        This gives people time to see the conversation history before cleanup.
+        Runs as a background task so it doesn't block the release process.
+
+        Args:
+            member (discord.Member): The released prisoner whose messages will be deleted
+        """
+        try:
+            # Wait 1 hour (3600 seconds) before cleaning up
+            logger.info(f"⏰ Scheduled cleanup for {member.name} in 1 hour")
+            await asyncio.sleep(3600)
+
+            # Now delete the messages
+            deleted_count: int = await self._delete_prisoner_messages(member)
+
+            logger.tree("DELAYED CLEANUP COMPLETED", [
+                ("Ex-Prisoner", str(member)),
+                ("Messages Deleted", str(deleted_count)),
+                ("Delay", "1 hour")
+            ], "🧹")
+
+        except Exception as e:
+            ErrorHandler.handle(
+                e,
+                location="PrisonHandler._delayed_message_cleanup",
+                critical=False,
+                member=member.name,
+                member_id=member.id
+            )
+
+    async def _delete_prisoner_messages(self, member: discord.Member) -> int:
+        """
+        Delete all messages from a prisoner in the prison channel.
+
+        This method scans the prison channel's message history and deletes all
+        messages sent by the specified member. Uses Discord's bulk delete feature
+        for recent messages (< 14 days) and individual deletion for older messages.
+
+        Args:
+            member (discord.Member): The member whose messages should be deleted
+
+        Returns:
+            int: Number of messages successfully deleted
+        """
+        try:
+            prison_channel: Optional[discord.TextChannel] = self.bot.get_channel(self.bot.prison_channel_id)
+
+            if not prison_channel:
+                logger.error(f"Prison channel not found: {self.bot.prison_channel_id}")
+                return 0
+
+            logger.info(f"Deleting messages from {member.name} in prison channel...")
+
+            messages_to_delete: List[discord.Message] = []
+            old_messages: List[discord.Message] = []
+            deleted_count: int = 0
+
+            two_weeks_ago: datetime = datetime.now(timezone.utc) - timedelta(days=14)
+
+            async for message in prison_channel.history(limit=int(os.getenv('PRISON_MESSAGE_SCAN_LIMIT', '500'))):
+                # Delete prisoner's own messages
+                if message.author.id == member.id:
+                    if message.created_at > two_weeks_ago:
+                        messages_to_delete.append(message)
+                    else:
+                        old_messages.append(message)
+                # Also delete bot's replies to the prisoner
+                elif message.author.id == self.bot.user.id and message.reference:
+                    # Check if this is a reply to the prisoner
+                    if message.reference.resolved and message.reference.resolved.author.id == member.id:
+                        if message.created_at > two_weeks_ago:
+                            messages_to_delete.append(message)
+                        else:
+                            old_messages.append(message)
+
+            if messages_to_delete:
+                try:
+                    await prison_channel.delete_messages(messages_to_delete)
+                    deleted_count += len(messages_to_delete)
+                    logger.info(f"Bulk deleted {len(messages_to_delete)} recent messages from {member.name}")
+                except discord.HTTPException as e:
+                    logger.warning(f"Bulk delete failed, falling back to individual deletion: {str(e)[:100]}")
+                    for message in messages_to_delete:
+                        try:
+                            await message.delete()
+                            deleted_count += 1
+                            await asyncio.sleep(0.5)
+                        except Exception:
+                            pass
+
+            for message in old_messages:
+                try:
+                    await message.delete()
+                    deleted_count += 1
+                    await asyncio.sleep(0.5)
+                except Exception:
+                    pass
+
+            if deleted_count > 0:
+                logger.success(f"Deleted {deleted_count} messages from {member.name} in prison channel")
+            else:
+                logger.info(f"No messages found from {member.name} in prison channel")
+
+            return deleted_count
+
+        except Exception as e:
+            ErrorHandler.handle(
+                e,
+                location="PrisonHandler._delete_prisoner_messages",
+                critical=False,
+                member=member.name,
+                member_id=member.id
+            )
+            return 0
+
+    async def _daily_cleanup_loop(self) -> None:
+        """
+        Background task that clears the entire prison channel daily at midnight.
+
+        This loop runs continuously and:
+        1. Calculates time until next midnight (or configured cleanup time)
+        2. Sleeps until that time
+        3. Deletes ALL messages in the prison channel
+        4. Logs the cleanup action
+        5. Repeats daily
+
+        Cleanup time can be configured via PRISON_CLEANUP_HOUR env variable (0-23).
+        Default is midnight (0).
+        """
+        try:
+            # Wait for bot to be fully ready before starting cleanup loop
+            await self.bot.wait_until_ready()
+
+            logger.info("🔄 Daily Prison Cleanup Loop Started")
+
+            while not self.bot.is_closed():
+                try:
+                    # Get cleanup time from environment (default midnight)
+                    cleanup_hour: int = int(os.getenv('PRISON_CLEANUP_HOUR', '0'))
+                    timezone_offset: int = int(os.getenv('TIMEZONE_OFFSET_HOURS', '-5'))
+                    est: timezone = timezone(timedelta(hours=timezone_offset))
+
+                    # Get current time in EST
+                    now: datetime = datetime.now(est)
+
+                    # Calculate next cleanup time (midnight or configured hour)
+                    next_cleanup: datetime = now.replace(
+                        hour=cleanup_hour,
+                        minute=0,
+                        second=0,
+                        microsecond=0
+                    )
+
+                    # If cleanup time already passed today, schedule for tomorrow
+                    if next_cleanup <= now:
+                        next_cleanup += timedelta(days=1)
+
+                    # Calculate sleep duration
+                    sleep_seconds: float = (next_cleanup - now).total_seconds()
+
+                    logger.info(
+                        f"⏰ Next prison cleanup scheduled for: "
+                        f"{next_cleanup.strftime('%Y-%m-%d %I:%M %p EST')} "
+                        f"(in {sleep_seconds/3600:.1f} hours)"
+                    )
+
+                    # Sleep until cleanup time
+                    await asyncio.sleep(sleep_seconds)
+
+                    # Execute cleanup
+                    prison_channel: Optional[discord.TextChannel] = self.bot.get_channel(
+                        self.bot.prison_channel_id
+                    )
+
+                    if not prison_channel:
+                        logger.error(
+                            f"Prison channel not found: {self.bot.prison_channel_id} "
+                            f"- skipping daily cleanup"
+                        )
+                        continue
+
+                    logger.info(f"🧹 Starting daily prison cleanup in #{prison_channel.name}")
+
+                    deleted_count: int = 0
+                    messages_to_delete: List[discord.Message] = []
+                    old_messages: List[discord.Message] = []
+
+                    two_weeks_ago: datetime = datetime.now(timezone.utc) - timedelta(days=14)
+
+                    # Collect all messages
+                    async for message in prison_channel.history(
+                        limit=int(os.getenv('DAILY_CLEANUP_SCAN_LIMIT', '1000'))
+                    ):
+                        if message.created_at > two_weeks_ago:
+                            messages_to_delete.append(message)
+                        else:
+                            old_messages.append(message)
+
+                    # Bulk delete recent messages
+                    if messages_to_delete:
+                        try:
+                            # Discord allows max 100 messages per bulk delete
+                            for i in range(0, len(messages_to_delete), 100):
+                                batch = messages_to_delete[i:i + 100]
+                                await prison_channel.delete_messages(batch)
+                                deleted_count += len(batch)
+                                await asyncio.sleep(1)  # Rate limit protection
+
+                            logger.info(f"Bulk deleted {deleted_count} recent messages")
+                        except discord.HTTPException as e:
+                            logger.warning(
+                                f"Bulk delete failed, falling back to individual deletion: "
+                                f"{str(e)[:100]}"
+                            )
+                            for message in messages_to_delete:
+                                try:
+                                    await message.delete()
+                                    deleted_count += 1
+                                    await asyncio.sleep(0.5)
+                                except Exception:
+                                    pass
+
+                    # Delete old messages individually
+                    for message in old_messages:
+                        try:
+                            await message.delete()
+                            deleted_count += 1
+                            await asyncio.sleep(0.5)
+                        except Exception:
+                            pass
+
+                    logger.tree("DAILY PRISON CLEANUP COMPLETED", [
+                        ("Channel", f"#{prison_channel.name}"),
+                        ("Messages Deleted", str(deleted_count)),
+                        ("Time", datetime.now(est).strftime('%I:%M %p EST')),
+                        ("Next Cleanup", next_cleanup.strftime('%I:%M %p EST'))
+                    ], "🧹")
+
+                except Exception as loop_error:
+                    ErrorHandler.handle(
+                        loop_error,
+                        location="PrisonHandler._daily_cleanup_loop (iteration)",
+                        critical=False
+                    )
+                    # Wait 1 hour before retrying on error
+                    await asyncio.sleep(3600)
+
+        except Exception as e:
+            ErrorHandler.handle(
+                e,
+                location="PrisonHandler._daily_cleanup_loop (setup)",
+                critical=True
             )

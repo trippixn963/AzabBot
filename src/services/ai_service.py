@@ -59,8 +59,8 @@ class AIService:
             api_key (Optional[str]): OpenAI API key for authentication
         """
         self.enabled: bool = bool(api_key)
-        self.db: Database = Database()  # Initialize database connection
-        self.conversation_history: List[Dict[str, str]] = []  # Store conversation context
+        self.db: Database = Database()
+        self.conversation_history: List[Dict[str, str]] = []
 
         if self.enabled:
             openai.api_key = api_key
@@ -89,9 +89,9 @@ class AIService:
         except ValidationError:
             return False
 
-        return is_muted  # Only respond to muted users
+        return is_muted
     
-    async def generate_response(self, message: str, username: str, is_muted: bool, mute_reason: str = None, trigger_message: str = None, user_id: int = None, mute_duration_minutes: int = 0) -> str:
+    async def generate_response(self, message: str, username: str, is_muted: bool, mute_reason: str = None, trigger_message: str = None, user_id: int = None, mute_duration_minutes: int = 0, message_history: List[str] = None) -> str:
         """
         Generate contextual AI response based on user status and message.
 
@@ -130,9 +130,9 @@ class AIService:
         try:
             # === STEP 1: Gather User Context for Personalization ===
             # Get user profile and recent roasts to avoid repetition and personalize responses
-            user_profile = None  # Will contain personality type, common words, past quotes
-            recent_roasts = []   # Last 3 roasts to avoid repeating the same insults
-            session_id = None    # Current mute session ID for tracking roast history
+            user_profile = None
+            recent_roasts = []
+            session_id = None
 
             if user_id:
                 # Fetch user behavioral profile (personality type, favorite words, etc.)
@@ -188,6 +188,23 @@ class AIService:
                 # Fresh prisoners get different treatment than veteran inmates
                 time_context = self._get_time_based_context(mute_duration_minutes)
 
+                # === Add Conversation History for Context ===
+                # Show AI their last 10 messages to reference their own words
+                conversation_context = ""
+                if message_history and len(message_history) > 1:
+                    conversation_context = (
+                        f"\nCONVERSATION HISTORY (their last {len(message_history)} messages):\n"
+                    )
+                    for i, msg in enumerate(message_history, 1):
+                        conversation_context += f"{i}. \"{msg}\"\n"
+                    conversation_context += (
+                        "\nUse this history to:\n"
+                        "- Call out contradictions in what they said\n"
+                        "- Reference their past messages mockingly\n"
+                        "- Show pattern of their behavior (begging, excuses, anger, etc.)\n"
+                        "- Make it personal by quoting their exact words back at them\n\n"
+                    )
+
                 base_prompt = (
                     "You are Azab - not an AI assistant, but THE prison warden of discord.gg/syria. "
                     "This is who you ARE, not what you do. You're a legendary figure who psychologically destroys muted users.\n\n"
@@ -203,6 +220,7 @@ class AIService:
 
                     f"Target: '{username}' (use ONLY this name when addressing them)\n"
                     f"{memory_context}\n"
+                    f"{conversation_context}\n"
                     f"{time_context}\n"
                     "CHAIN OF THOUGHT - Analyze before roasting:\n"
                     f"1. What did they do wrong? MUTE REASON: {mute_reason or 'unknown offense'}\n"
@@ -264,7 +282,7 @@ class AIService:
             # This prevents the bot from freezing while waiting for AI response
             response = await asyncio.to_thread(
                 openai.ChatCompletion.create,
-                model="gpt-3.5-turbo",  # Fast, cost-effective model for text generation
+                model="gpt-3.5-turbo",
                 messages=[
                     # System message defines bot personality and behavior
                     {"role": "system", "content": system},
@@ -293,9 +311,9 @@ class AIService:
             # Extract actual token usage from OpenAI's response object
             # This gives us real data from OpenAI, not estimates
             usage = response.get('usage', {})
-            prompt_tokens = usage.get('prompt_tokens', 0)      # Tokens in our prompt
-            completion_tokens = usage.get('completion_tokens', 0)  # Tokens AI generated
-            total_tokens = usage.get('total_tokens', 0)  # Sum of both
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+            total_tokens = usage.get('total_tokens', 0)
 
             # === STEP 5: Format and Return Response ===
             # Extract AI-generated text from response object
@@ -362,7 +380,7 @@ class AIService:
             mins = duration_minutes % 60
             return f"TIME CONTEXT: {hours}h {mins}m in prison - they're getting desperate now"
         # Multiple hours but < 1 day - This is their life now
-        elif duration_minutes < 1440:  # 1440 minutes = 24 hours = 1 day
+        elif duration_minutes < 1440:
             hours = duration_minutes // 60
             return f"TIME CONTEXT: {hours} HOURS in prison - this is their life now"
         # 1+ days - Veteran prisoner, mock their commitment to being muted
@@ -395,7 +413,7 @@ class AIService:
         elif duration_minutes < 120:
             return "mid_stage"
         # Late stage (2-24 hours) - Heavy roasting, they're suffering
-        elif duration_minutes < 1440:  # 1440 min = 1 day
+        elif duration_minutes < 1440:
             return "late_stage"
         # Veteran (1+ days) - Maximum intensity, dedication mocking
         else:
@@ -615,7 +633,7 @@ class AIService:
                 current = await self.db.get_current_prisoners()
                 if current:
                     result = f"Currently {len(current)} prisoners in jail:\n"
-                    for p in current[:5]:  # Show first 5
+                    for p in current[:5]:
                         result += f"- {p['username']}: {p['reason'] or 'no reason given'}\n"
                     if len(current) > 5:
                         result += f"...and {len(current) - 5} more"
@@ -687,7 +705,7 @@ class AIService:
                         # Format reasons list
                         reasons = prisoner_data['reasons']
                         if reasons:
-                            reasons_str = ", ".join(reasons[:3])  # Show first 3 reasons
+                            reasons_str = ", ".join(reasons[:3])
                             if len(reasons) > 3:
                                 reasons_str += f" (+{len(reasons)-3} more)"
                         else:
@@ -712,7 +730,7 @@ class AIService:
                 return "I need a username to look up. Try 'who is @username' or 'stats for username'"
 
             else:
-                return None  # Let AI handle it normally
+                return None
 
         except Exception as e:
             ErrorHandler.handle(
@@ -777,7 +795,7 @@ class AIService:
                             {"role": "user", "content": message}
                         ],
                         max_tokens=int(os.getenv('AI_MAX_TOKENS_DEVELOPER', '300')),
-                        temperature=0.8,  # Less creative for data presentation
+                        temperature=0.8,
                     )
                     end_time = time.time()
                     response_time = round(end_time - start_time, 2)
@@ -894,12 +912,12 @@ class AIService:
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": system},
-                    {"role": "user", "content": message}  # Just pass the message directly, more natural
+                    {"role": "user", "content": message}
                 ],
-                max_tokens=int(os.getenv('AI_MAX_TOKENS_DEVELOPER', '300')),  # More tokens for complete responses
-                temperature=float(os.getenv('AI_TEMPERATURE_DEVELOPER', '0.9')),  # More creative and natural
-                presence_penalty=float(os.getenv('AI_PRESENCE_PENALTY_DEV', '0.6')),  # Encourage diverse topics
-                frequency_penalty=float(os.getenv('AI_FREQUENCY_PENALTY_DEV', '0.3'))  # Natural variation
+                max_tokens=int(os.getenv('AI_MAX_TOKENS_DEVELOPER', '300')),
+                temperature=float(os.getenv('AI_TEMPERATURE_DEVELOPER', '0.9')),
+                presence_penalty=float(os.getenv('AI_PRESENCE_PENALTY_DEV', '0.6')),
+                frequency_penalty=float(os.getenv('AI_FREQUENCY_PENALTY_DEV', '0.3'))
             )
             end_time = time.time()
             response_time = round(end_time - start_time, 2)
@@ -981,7 +999,7 @@ class AIService:
                             {"role": "user", "content": message}
                         ],
                         max_tokens=int(os.getenv('AI_MAX_TOKENS_DEVELOPER', '300')),
-                        temperature=0.8,  # Less creative for data presentation
+                        temperature=0.8,
                     )
                     end_time = time.time()
                     response_time = round(end_time - start_time, 2)
@@ -1079,10 +1097,10 @@ class AIService:
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": system},
-                    {"role": "user", "content": message}  # Just pass the message directly, more natural
+                    {"role": "user", "content": message}
                 ],
-                max_tokens=int(os.getenv('AI_MAX_TOKENS_DEVELOPER', '300')),  # Same as dad
-                temperature=float(os.getenv('AI_TEMPERATURE_DEVELOPER', '0.9')),  # Natural
+                max_tokens=int(os.getenv('AI_MAX_TOKENS_DEVELOPER', '300')),
+                temperature=float(os.getenv('AI_TEMPERATURE_DEVELOPER', '0.9')),
                 presence_penalty=float(os.getenv('AI_PRESENCE_PENALTY_DEV', '0.6')),
                 frequency_penalty=float(os.getenv('AI_FREQUENCY_PENALTY_DEV', '0.3'))
             )
@@ -1165,7 +1183,7 @@ class AIService:
                             {"role": "user", "content": message}
                         ],
                         max_tokens=int(os.getenv('AI_MAX_TOKENS_DEVELOPER', '300')),
-                        temperature=0.8,  # Less creative for data presentation
+                        temperature=0.8,
                     )
                     end_time = time.time()
                     response_time = round(end_time - start_time, 2)
@@ -1264,10 +1282,10 @@ class AIService:
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": system},
-                    {"role": "user", "content": message}  # Just pass the message directly, more natural
+                    {"role": "user", "content": message}
                 ],
-                max_tokens=int(os.getenv('AI_MAX_TOKENS_DEVELOPER', '300')),  # Same as family
-                temperature=float(os.getenv('AI_TEMPERATURE_DEVELOPER', '0.9')),  # Natural
+                max_tokens=int(os.getenv('AI_MAX_TOKENS_DEVELOPER', '300')),
+                temperature=float(os.getenv('AI_TEMPERATURE_DEVELOPER', '0.9')),
                 presence_penalty=float(os.getenv('AI_PRESENCE_PENALTY_DEV', '0.6')),
                 frequency_penalty=float(os.getenv('AI_FREQUENCY_PENALTY_DEV', '0.3'))
             )

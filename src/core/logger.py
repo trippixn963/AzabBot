@@ -28,150 +28,92 @@ from typing import List, Tuple, Optional
 
 
 class MiniTreeLogger:
-    """
-    Custom logger with tree-style formatting and EST timezone support.
-    
-    Provides structured logging capabilities for the Azab Discord bot:
-    - Unique run ID for each bot session
-    - EST timezone timestamps (UTC-5)
-    - Tree-style formatting for hierarchical data
-    - Simultaneous console and file output
-    - Emoji-enhanced log levels for visual clarity
-    
-    Log files are stored in logs/ directory with daily rotation.
-    """
-    
+    """Custom logger with tree-style formatting and EST timezone support."""
+
     def __init__(self) -> None:
-        """
-        Initialize the logger with unique run ID and daily log file rotation.
-        
-        Creates logs directory if it doesn't exist and generates a unique
-        run ID for tracking this bot session. Also cleans up old log files.
-        """
-        self.run_id: str = str(uuid.uuid4())[:8]  # Short unique ID for this run
+        """Initialize the logger with unique run ID and daily log file rotation."""
+        self.run_id: str = str(uuid.uuid4())[:8]
         self.log_file: Path = Path('logs') / f'azab_{datetime.now().strftime("%Y-%m-%d")}.log'
         self.log_file.parent.mkdir(exist_ok=True)
-        
-        # Clean up old log files on startup
+
         self._cleanup_old_logs()
-        
-        # Write session start header with run ID
+
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write(f"\n{'='*60}\n")
             f.write(f"NEW SESSION STARTED - RUN ID: {self.run_id}\n")
             f.write(f"{self._get_timestamp()}\n")
             f.write(f"{'='*60}\n\n")
-    
+
     def _cleanup_old_logs(self) -> None:
-        """
-        Clean up log files older than 30 days.
-        
-        Automatically removes old log files to prevent disk space issues.
-        Runs on bot startup to keep logs directory clean.
-        """
+        """Clean up log files older than configured retention days."""
         try:
             logs_dir = Path('logs')
             if not logs_dir.exists():
                 return
-            
-            # Get current time
+
             now = datetime.now()
-            
-            # Check each log file
+
             deleted_count = 0
             for log_file in logs_dir.glob('azab_*.log'):
-                # Get file modification time
                 file_time = datetime.fromtimestamp(os.path.getmtime(log_file))
-                
-                # If file is older than configured days, delete it
+
                 if (now - file_time).days > int(os.getenv('LOG_RETENTION_DAYS', '30')):
                     log_file.unlink()
                     deleted_count += 1
-            
-            # Log cleanup results (but don't use self._write since it's not initialized yet)
+
             if deleted_count > 0:
                 print(f"[LOG CLEANUP] Deleted {deleted_count} old log files (>{os.getenv('LOG_RETENTION_DAYS', '30')} days)")
-                
+
         except Exception as e:
             print(f"[LOG CLEANUP ERROR] Failed to clean old logs: {e}")
-    
+
     def _get_timestamp(self) -> str:
-        """
-        Get current timestamp in Eastern timezone (auto EST/EDT).
-        
-        Returns:
-            str: Formatted timestamp string in ET (auto-adjusts for daylight saving)
-        """
-        # Use system local time which is set to America/New_York
-        # This automatically handles EST/EDT based on the date
+        """Get current timestamp in Eastern timezone (auto EST/EDT)."""
         current_time = datetime.now()
-        # Determine if we're in EDT (summer) or EST (winter)
         tz_name = "EDT" if current_time.month >= 3 and current_time.month <= 11 else "EST"
         return current_time.strftime(f'[%I:%M:%S %p {tz_name}]')
-    
+
     def _write(self, message: str, emoji: str = "", include_timestamp: bool = True) -> None:
-        """
-        Write log message to both console and file.
-        
-        Args:
-            message (str): The log message to write
-            emoji (str): Optional emoji to prefix the message
-            include_timestamp (bool): Whether to include timestamp
-        """
+        """Write log message to both console and file."""
         if include_timestamp:
             timestamp: str = self._get_timestamp()
             full_message: str = f"{timestamp} {emoji} {message}" if emoji else f"{timestamp} {message}"
         else:
             full_message: str = f"{emoji} {message}" if emoji else message
-        
-        # Output to console
+
         print(full_message)
-        
-        # Write to log file (without RUN ID on every line)
+
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write(f"{full_message}\n")
-    
+
     def tree(self, title: str, items: List[Tuple[str, str]], emoji: str = "📦") -> None:
-        """
-        Log structured data in tree format.
-        
-        Creates a hierarchical tree structure for logging structured data
-        like bot status, command execution details, etc.
-        
-        Args:
-            title (str): Main title for the tree
-            items (List[Tuple[str, str]]): List of (key, value) tuples to display
-            emoji (str): Emoji to prefix the title
-        """
-        # Add line break before tree for better readability
+        """Log structured data in tree format."""
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write("\n")
-        
+
         self._write(f"{title}", emoji=emoji)
         for i, (key, value) in enumerate(items):
             prefix: str = "└─" if i == len(items) - 1 else "├─"
             self._write(f"  {prefix} {key}: {value}", include_timestamp=False)
-        
-        # Add line break after tree
+
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write("\n")
-    
+
     def info(self, msg: str) -> None:
         """Log an informational message."""
         self._write(msg, "ℹ️")
-    
+
     def success(self, msg: str) -> None:
         """Log a success message."""
         self._write(msg, "✅")
-    
+
     def error(self, msg: str) -> None:
         """Log an error message."""
         self._write(msg, "❌")
-    
+
     def warning(self, msg: str) -> None:
         """Log a warning message."""
         self._write(msg, "⚠️")
 
 
-# Global logger instance for use throughout the bot
 logger = MiniTreeLogger()
