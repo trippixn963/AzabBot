@@ -1,13 +1,12 @@
-# 🔥 Azab - Advanced Discord Prison Bot
+# 🔥 AzabBot - AI-Powered Discord Prison Bot
 
 <div align="center">
 
-![Azab Banner](images/BANNER.gif)
+![AzabBot Banner](images/BANNER.gif)
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue.svg)
 ![Discord.py](https://img.shields.io/badge/Discord.py-2.3.2+-green.svg)
-![OpenAI](https://img.shields.io/badge/OpenAI-GPT--3.5--turbo-orange.svg)
-![License](https://img.shields.io/badge/License-MIT-red.svg)
+![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4-orange.svg)
 ![Latest Release](https://img.shields.io/github/v/release/trippixn963/AzabBot?label=Latest%20Release&color=purple)
 
 **A sophisticated Discord bot designed for psychological warfare against muted users**
@@ -24,81 +23,75 @@
 
 ## 🎯 Overview
 
-**Azab** is a custom-built Discord bot that specializes in advanced psychological warfare against muted users. Unlike traditional moderation bots, Azab doesn't mute users - it **ragebaits** them after they've already been muted by other systems.
+**AzabBot** is a custom-built Discord bot that specializes in advanced psychological warfare against muted users. Unlike traditional moderation bots, AzabBot doesn't mute users - it **ragebaits** them after they've already been muted by other systems.
 
 ### ⚠️ **Important Notice**
 This bot was custom-built for **discord.gg/syria** and is provided as-is for educational purposes. **No support will be provided** for setup, configuration, or troubleshooting.
 
-### 🆕 **What's New in v2.4.0**
-- **🎭 Enhanced AI Identity**: Bot never says "I am just an AI" - owns its identity as Azab
-- **🌟 Rich Presence System**: 14 rotating status messages with emoji-first design
-- **👁️ Active Variations**: 7 creative messages (Watching, Torturing, Roasting, Destroying, etc.)
-- **💤 Idle Variations**: 7 sleep messages (Napping, Off duty, Resting, Dreaming, etc.)
-- **📊 Stats Display**: 10% chance to show prison statistics in presence
-- **🚨 Emergency Mode**: "Mass arrest" status when 5+ prisoners appear
-- **🔥 Repeat Offender Detection**: Special messages for users muted 5+ times
-- **🔓 Release Messages**: Shows username and time served when freed
-- **🔒 Instance Lock**: Prevents duplicate bot processes from running
-- **📝 Comprehensive Documentation**: Step-by-step inline comments with ASCII dividers
+### 🆕 **Latest Features**
+- **🔄 Daily Prison Cleanup**: Automatic channel cleanup at midnight to keep prison fresh
+- **💬 Enhanced Message Context**: Tracks last 10 messages per user for better AI roasting
+- **⏰ Delayed Message Cleanup**: 1-hour delay before deleting released prisoner messages
+- **🎭 Dynamic Rich Presence**: 14 rotating status messages showing bot activity
+- **📊 Prisoner Statistics**: Complete mute history tracking and analytics
+- **🧠 AI-Powered Responses**: GPT-4 contextual roasting with conversation history
+- **👨‍👩‍👦 Family Recognition**: Special responses for developer and family members
+- **🔒 Instance Lock**: Prevents duplicate bot processes system-wide
 
 ---
 
 ## ✨ Features
 
-### 🧠 **AI Self-Awareness System** ⭐ *ENHANCED v2.4.0*
-- **Strong Identity**: Bot never says "I am just an AI" - owns its identity as Azab
-- **Complete Codebase Knowledge**: Bot knows its entire architecture and implementation
-- **Feature Explanations**: Can explain any feature or system in detail
-- **Technical Question Detection**: Automatically provides accurate technical information
-- **System Knowledge Module**: Comprehensive documentation integrated into AI
-- **Confident Personality**: Responds as a real entity, not a scripted bot
-
-### 👨‍👩‍👦 **Family Recognition System** ⭐ *NEW v2.3.0*
-- **Developer (Dad)**: Gets intelligent ChatGPT-like responses with full access
-- **Uncle Support**: Uncle Zaid gets respectful yet friendly responses
-- **Brother Support**: Brother Ward gets casual sibling interactions
-- **Bypass Restrictions**: Family members work even when bot is deactivated
-- **Unique Relationships**: Each family member has personalized response style
-- **Ping Requirement**: Family must mention bot to get responses (v2.4.0)
-
-## ✨ Core Features
-
 ### 🧠 **AI-Powered Ragebaiting**
-- **OpenAI Integration**: Uses GPT-3.5-turbo for contextual, creative responses
-- **Contextual Mocking**: References specific mute reasons and user messages
-- **Adaptive Responses**: Different response styles based on user status
-- **Response Time Tracking**: Shows generation time in Discord small text format
-- **Trigger Message Awareness**: Uses the actual message that caused the mute
+- **OpenAI GPT-4 Integration**: Contextual, creative responses to muted users
+- **10-Message Context**: Tracks conversation history for better roasting
+- **Adaptive Responses**: Different styles based on user status and behavior
+- **Trigger Message Awareness**: References the actual message that caused the mute
+- **Contradiction Detection**: AI calls out inconsistencies in user's statements
+- **Pattern Recognition**: Identifies begging, excuses, anger patterns
 - **Fallback System**: Works even without AI service
+
+### 🏰 **Prison Management System**
+- **Automatic Welcomes**: Savage welcome messages for new prisoners with mute context
+- **Daily Cleanup**: Automatic midnight channel cleanup to keep prison fresh
+- **Delayed Message Deletion**: 1-hour delay after unmute before cleanup
+- **Channel Integration**: Monitors logs channel for mute information
+- **Prisoner History**: Tracks repeat offenders with comprehensive statistics
+- **Enhanced Roasting**: Special messages for users with multiple prison visits
+- **Trigger Message Storage**: Saves the message that led to each mute
+- **Accurate Duration Tracking**: Shows exact time served for current session
 
 ### 🔍 **Advanced Mute Detection**
 - **Role-Based Detection**: Monitors for muted role assignments
 - **Timeout Monitoring**: Tracks Discord timeout status changes
 - **Embed Processing**: Extracts mute reasons from moderation bot embeds
 - **Real-Time Tracking**: Instant detection of new prisoners
+- **General Chat Notifications**: Announces mutes in general chat with AI mockery
 
-### 🏰 **Prison Management System**
-- **Automatic Welcomes**: New prisoners get savage welcome messages
-- **Channel Integration**: Monitors logs channel for mute information
-- **Prison Channel**: Dedicated space for ragebaiting activities
-- **Contextual Responses**: Uses actual mute reasons for maximum impact
-- **Prisoner History**: Tracks repeat offenders with comprehensive mute statistics
-- **Enhanced Roasting**: Special messages for users with multiple prison visits
-- **Trigger Message Storage**: Saves the message that led to each mute
-- **Accurate Duration Tracking**: Shows exact time served for current session
-- **Database Queries**: "Who is the most muted?", "Current prisoners", user lookups
-
-### 🎮 **Dynamic Rich Presence** ⭐ *ENHANCED v2.4.0*
-- **14 Rotating Messages**: Creative emoji-first status variations (1-3 words)
-- **Active Mode (7 variations)**: 👁️ Watching, 😈 Torturing, 🔥 Roasting, 💀 Destroying, etc.
-- **Idle Mode (7 variations)**: 💤 Napping, 😴 Off duty, 🌙 Resting, 💭 Dreaming, etc.
-- **Stats Display**: 10% chance to show prison statistics (📊 X mutes, ⏰ X days served, 👑 Record)
-- **Emergency Mode**: 🚨 Mass arrest status when 5+ prisoners appear suddenly
-- **Repeat Offender Alerts**: 🔥 Username again, 🤡 Username back (for 5+ mutes)
-- **Release Notifications**: 🔓 Username (5d) showing time served
-- **Event Notifications**: Special presence for prisoner arrivals with mute reasons
+### 🎮 **Dynamic Rich Presence**
+- **14 Rotating Messages**: Creative emoji-first status variations
+- **Active Mode**: 👁️ Watching, 😈 Torturing, 🔥 Roasting, 💀 Destroying, etc.
+- **Idle Mode**: 💤 Napping, 😴 Off duty, 🌙 Resting, 💭 Dreaming, etc.
+- **Stats Display**: Shows prison statistics (mutes, days served, record holder)
+- **Emergency Mode**: 🚨 Mass arrest status when 5+ prisoners appear
+- **Release Notifications**: Shows username and time served when freed
 - **Auto-Updates**: Presence refreshes every 30 seconds
-- **Live Feedback**: See bot activity directly in Discord status
+
+### 👨‍👩‍👦 **Family Recognition System**
+- **Developer (Dad)**: Gets intelligent ChatGPT-like responses with full access
+- **Uncle Support**: Uncle Zaid gets respectful yet friendly responses
+- **Brother Support**: Brother Ward gets casual sibling interactions
+- **Bypass Restrictions**: Family members work even when bot is deactivated
+- **Unique Relationships**: Each family member has personalized response style
+- **Ping Requirement**: Family must mention bot to get responses
+
+### 🧠 **AI Self-Awareness System**
+- **Strong Identity**: Bot owns its identity as Azab, never says "I am just an AI"
+- **Complete Codebase Knowledge**: Bot knows its entire architecture
+- **Feature Explanations**: Can explain any feature or system in detail
+- **Technical Question Detection**: Automatically provides accurate information
+- **System Knowledge Module**: Comprehensive documentation integrated into AI
+- **Confident Personality**: Responds as a real entity, not a scripted bot
 
 ### 📊 **Analytics & Logging**
 - **Message Tracking**: Logs all user interactions to SQLite database
@@ -108,7 +101,7 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 - **Performance Monitoring**: Tracks bot performance and errors
 - **Persistent State**: Saves activation state to survive restarts
 
-### 🛡️ **Security & Validation** ⭐ *ENHANCED v2.4.0*
+### 🛡️ **Security & Validation**
 - **Input Validation**: All user inputs validated against Discord limits
 - **SQL Injection Prevention**: Parameterized queries and input sanitization
 - **Error Context Capture**: Comprehensive error tracking with recovery suggestions
@@ -117,28 +110,29 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 - **Username Validation**: Checks 32 character username limit
 - **Instance Lock Mechanism**: Prevents duplicate bot processes system-wide
 
-### 📈 **AI Usage Monitoring** ⭐ *NEW v2.3.0*
+### 📈 **AI Usage Monitoring**
 - **Real-Time Token Tracking**: Actual OpenAI API usage from response data
-- **Cost Calculation**: Automatic pricing based on GPT-3.5-turbo rates
+- **Cost Calculation**: Automatic pricing based on GPT-4 rates
 - **Usage Statistics**: Daily, monthly, and all-time tracking
 - **Response Metrics**: Shows generation time and tokens used
 - **Data Persistence**: Usage data saved to JSON for analysis
 - **Session Tracking**: Monitor current session usage
-- **Automatic Cleanup**: Old data cleanup after 30 days
 
 ### 🎮 **Command System**
 - **Slash Commands**: Modern Discord slash command interface
-- **Admin Controls**: `/activate` and `/deactivate` commands
-- **Permission System**: Administrator-only access to controls
+- **/activate**: Enable ragebaiting mode
+- **/deactivate**: Disable ragebaiting mode
+- **/ignore**: Ignore/unignore specific users
+- **Permission Management**: Command permissions managed via Discord integrations
 - **Ephemeral Responses**: Private command confirmations
-- **Developer Override**: Creator bypasses all restrictions and deactivation
+- **Developer Override**: Creator bypasses all restrictions
 
 ---
 
 ## 🚀 Installation
 
 ### Prerequisites
-- Python 3.12 (Note: 3.13 not supported due to audioop removal)
+- Python 3.12+ (Note: 3.13 not supported due to audioop removal)
 - Discord Bot Token
 - OpenAI API Key (optional but recommended)
 
@@ -146,8 +140,8 @@ This bot was custom-built for **discord.gg/syria** and is provided as-is for edu
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/azab-discord-bot.git
-cd azab-discord-bot
+git clone https://github.com/trippixn963/AzabBot.git
+cd AzabBot
 ```
 
 2. **Create virtual environment**
@@ -184,16 +178,19 @@ Create a `.env` file in the project root:
 # Discord Configuration
 DISCORD_TOKEN=your_discord_bot_token
 DEVELOPER_ID=your_discord_user_id
-UNCLE_ID=uncle_discord_user_id  # Optional
-BROTHER_ID=brother_discord_user_id  # Optional
+DEVELOPER_NAME=حَـــــنَّـــــا
+UNCLE_ID=uncle_discord_user_id
+BROTHER_ID=brother_discord_user_id
 
 # OpenAI Configuration (Optional but recommended)
 OPENAI_API_KEY=your_openai_api_key
 
 # Channel Configuration
 LOGS_CHANNEL_ID=channel_id_for_moderation_logs
-PRISON_CHANNEL_IDS=channel_id_for_prison_messages
+PRISON_CHANNEL_ID=channel_id_for_prison_messages
 GENERAL_CHANNEL_ID=channel_id_for_release_messages
+
+# Role Configuration
 MUTED_ROLE_ID=role_id_for_muted_users
 
 # Bot Behavior Settings
@@ -202,6 +199,8 @@ AI_MAX_TOKENS=150
 AI_TEMPERATURE_MUTED=0.95
 PRESENCE_UPDATE_INTERVAL=30
 PRESENCE_EVENT_DURATION=5
+PRISON_CLEANUP_HOUR=0
+TIMEZONE_OFFSET_HOURS=-5
 ```
 
 ### Discord Bot Setup
@@ -215,6 +214,7 @@ PRESENCE_EVENT_DURATION=5
 2. **Set Bot Permissions**
    - Enable "Message Content Intent"
    - Enable "Server Members Intent"
+   - Enable "Reactions Intent" (for reaction management)
    - Add bot to your server with appropriate permissions
 
 3. **Configure Channels**
@@ -229,9 +229,9 @@ PRESENCE_EVENT_DURATION=5
 <div align="center">
 
 ### Bot in Action
-![Azab Bot Avatar](images/PFP.gif)
+![AzabBot Avatar](images/PFP.gif)
 
-*The Azab bot ready to engage in psychological warfare*
+*The AzabBot ready to engage in psychological warfare*
 
 </div>
 
@@ -241,10 +241,11 @@ PRESENCE_EVENT_DURATION=5
 
 ### Basic Commands
 
-| Command | Description | Permission |
-|---------|-------------|------------|
-| `/activate` | Enable ragebaiting mode | Administrator |
-| `/deactivate` | Disable ragebaiting mode | Administrator |
+| Command | Description | Access |
+|---------|-------------|--------|
+| `/activate` | Enable ragebaiting mode | Configurable via Discord |
+| `/deactivate` | Disable ragebaiting mode | Configurable via Discord |
+| `/ignore` | Ignore or unignore a specific user | Configurable via Discord |
 
 ### Bot Behavior
 
@@ -253,20 +254,25 @@ PRESENCE_EVENT_DURATION=5
 - Generates AI responses to muted users only
 - Welcomes new prisoners with contextual messages
 - Logs all interactions for analytics
+- Daily prison cleanup at midnight
 
 **When Inactive:**
 - Stays connected but doesn't respond
 - Continues monitoring for new mutes
 - Maintains database logging
+- Daily cleanup still runs
 
 ### Example Interactions
 
 ```
 User (muted): "This is so unfair!"
-Azab: "Imagine getting muted and still complaining 😂 Welcome to prison, enjoy your stay! 🔒"
+AzabBot: "Imagine getting muted and still complaining 😂 Welcome to prison, enjoy your stay! 🔒"
 
 User (muted): "I didn't do anything wrong"
-Azab: "That's what they all say in jail 💀 Maybe next time don't spam the chat?"
+AzabBot: "That's what they all say in jail 💀 Maybe next time don't spam the chat?"
+
+User (released after 2 days):
+AzabBot: "Look who finally got out! Think you learned your lesson this time? 🤔"
 ```
 
 ---
@@ -276,31 +282,34 @@ Azab: "That's what they all say in jail 💀 Maybe next time don't spam the chat
 ### Project Structure
 
 ```
-azab-discord-bot/
+AzabBot/
 ├── src/
 │   ├── bot.py                 # Main bot class and event handlers
 │   ├── commands/
 │   │   ├── activate.py        # /activate command
-│   │   └── deactivate.py      # /deactivate command
+│   │   ├── deactivate.py      # /deactivate command
+│   │   └── ignore.py          # /ignore command
 │   ├── core/
 │   │   ├── database.py        # SQLite database wrapper
 │   │   └── logger.py          # Custom logging system
 │   ├── handlers/
-│   │   ├── prison_handler.py  # Prisoner welcome/release management
+│   │   ├── prison_handler.py  # Prisoner welcome/release + daily cleanup
 │   │   ├── mute_handler.py    # Mute embed processing
 │   │   └── presence_handler.py # Dynamic rich presence updates
 │   ├── services/
-│   │   └── ai_service.py      # OpenAI integration
+│   │   ├── ai_service.py      # OpenAI integration
+│   │   └── system_knowledge.py # Bot self-awareness system
 │   └── utils/
-│       ├── version.py         # Version management system
-│       └── update_version.py  # Version update script
-├── data/
-│   └── azab.db               # SQLite database
-├── logs/
-│   └── azab_YYYY-MM-DD.log   # Daily log files
-├── .env                      # Environment configuration
-├── main.py                   # Application entry point
-└── requirements.txt          # Python dependencies
+│       ├── error_handler.py   # Error handling utilities
+│       ├── time_format.py     # Time formatting
+│       ├── validators.py      # Input validation
+│       ├── ai_monitor.py      # AI usage tracking
+│       └── version.py         # Version management
+├── images/                    # Bot images and assets
+├── logs/                      # Daily log files
+├── .env                       # Environment configuration
+├── main.py                    # Application entry point
+└── requirements.txt           # Python dependencies
 ```
 
 ### Core Components
@@ -312,24 +321,27 @@ azab-discord-bot/
 - Rich presence management
 
 **Handlers**
-- **PrisonHandler**: Manages prisoner welcome/release messages
+- **PrisonHandler**: Manages prisoner welcome/release + daily cleanup loop
 - **MuteHandler**: Processes mute embeds and extracts reasons
 - **PresenceHandler**: Manages dynamic Discord rich presence
 
 **AIService**
-- OpenAI API integration
+- OpenAI GPT-4 integration
 - Contextual response generation
+- 10-message conversation history
 - Fallback response system
 
 **Database**
 - SQLite for message logging
 - User statistics tracking
+- Prisoner history with mute reasons
 - Async database operations
 
 **Logger**
 - Custom logging with run IDs
 - EST timezone support
 - Daily log rotation
+- Tree-style structured logs
 
 ### Bot Workflow Diagram
 
@@ -340,21 +352,26 @@ graph TD
     B -->|Yes| D[Log to Database]
     D --> E{User Muted?}
     E -->|No| F[No Response]
-    E -->|Yes| G[Check Mute Reason]
-    G --> H[Generate AI Response]
+    E -->|Yes| G[Check Conversation History]
+    G --> H[Generate AI Response with Context]
     H --> I[Send Ragebait Reply]
-    
+
     J[User Gets Muted] --> K[Detect Role Change]
     K --> L[Scan Logs Channel]
     L --> M[Extract Mute Reason]
-    M --> N[Send Welcome to Prison]
-    
-    O[User Gets Unmuted] --> P[Detect Role Removal]
-    P --> Q[Send Release Message]
-    Q --> R[Clear Mute Reason]
-    
-    S["/activate Command"] --> T[Enable Ragebaiting]
-    U["/deactivate Command"] --> V[Disable Ragebaiting]
+    M --> N[Send Mute Notification to General]
+    N --> O[Send Welcome to Prison]
+
+    P[User Gets Unmuted] --> Q[Detect Role Removal]
+    Q --> R[Send Release Message]
+    R --> S[Schedule Cleanup in 1 Hour]
+    S --> T[Delete Messages After Delay]
+
+    U[Midnight EST] --> V[Daily Cleanup Loop]
+    V --> W[Clear Entire Prison Channel]
+
+    X["/activate Command"] --> Y[Enable Ragebaiting]
+    Z["/deactivate Command"] --> AA[Disable Ragebaiting]
 ```
 
 ### System Architecture
@@ -366,21 +383,26 @@ graph LR
     A --> D[Services]
     A --> E[Core]
     A --> F[Utils]
-    
+
     B --> B1[ActivateCommand]
     B --> B2[DeactivateCommand]
-    
+    B --> B3[IgnoreCommand]
+
     C --> C1[PrisonHandler]
     C --> C2[MuteHandler]
     C --> C3[PresenceHandler]
-    
+
     D --> D1[AIService]
-    
+    D --> D2[SystemKnowledge]
+
     E --> E1[Database]
     E --> E2[Logger]
-    
-    F --> F1[Version]
-    
+
+    F --> F1[ErrorHandler]
+    F --> F2[Validators]
+    F --> F3[TimeFormat]
+    F --> F4[AIMonitor]
+
     C1 --> D1
     C2 --> C1
     C3 --> A
@@ -396,7 +418,7 @@ graph LR
 ### Dependencies
 
 - **discord.py**: Discord API wrapper
-- **openai**: AI response generation
+- **openai**: AI response generation (GPT-4)
 - **python-dotenv**: Environment management
 - **aiohttp**: Async HTTP client
 
@@ -406,13 +428,17 @@ graph LR
 - **Connection Pooling**: Efficient database connections
 - **Error Handling**: Comprehensive error recovery
 - **Resource Management**: Proper cleanup and shutdown
+- **Message Context**: 10-message history using deque
+- **Background Tasks**: Daily cleanup and presence updates
 
 ### Security Features
 
-- **Permission Checks**: Administrator-only commands
+- **Permission Management**: Via Discord integrations
 - **Input Validation**: Safe message processing
+- **SQL Injection Prevention**: Parameterized queries
 - **Rate Limiting**: Prevents API abuse
 - **Secure Configuration**: Environment-based secrets
+- **Instance Locking**: Prevents duplicate processes
 
 ---
 
@@ -421,9 +447,11 @@ graph LR
 ### Logging System
 
 - **Run ID Tracking**: Each session gets unique identifier
-- **Structured Logs**: JSON-formatted log entries
-- **Daily Rotation**: Automatic log file management
-- **Error Tracking**: Comprehensive error logging
+- **Tree-Style Logs**: Professional structured logs with emojis
+- **Daily Rotation**: Automatic log file management by date
+- **EST Timezone**: Consistent timezone handling with DST support
+- **Error Tracking**: Comprehensive error logging with context
+- **Performance Metrics**: Bot performance and API monitoring
 
 ### Database Schema
 
@@ -446,13 +474,13 @@ CREATE TABLE messages (
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Prisoner history table (v2.4.0)
+-- Prisoner history table
 CREATE TABLE prisoner_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     username TEXT,
     mute_reason TEXT,
-    trigger_message TEXT,  -- Added in v2.4.0
+    trigger_message TEXT,
     muted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     unmuted_at TIMESTAMP,
     duration_minutes INTEGER,
@@ -472,12 +500,6 @@ CREATE TABLE prisoner_history (
 - **Use at Own Risk**: Not responsible for any consequences
 - **Server-Specific**: Built for discord.gg/syria, may not work elsewhere
 - **Moderation Tool**: Designed to work alongside existing moderation systems
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
