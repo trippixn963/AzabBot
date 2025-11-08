@@ -89,18 +89,6 @@ TIMEZONE_OFFSET_HOURS=-5
 
 ---
 
-## 🖼️ Visual
-
-<div align="center">
-
-![AzabBot Avatar](images/PFP.gif)
-
-*Ready to engage*
-
-</div>
-
----
-
 ## 🎮 Usage
 
 **Commands:**
