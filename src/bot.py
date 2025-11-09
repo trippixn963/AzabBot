@@ -232,12 +232,13 @@ class AzabBot(discord.Client):
                 await self.mute_handler.process_mute_embed(message)
                 return
 
-            # Check for polls-only channel enforcement
+            # Enforce polls-only channel (delete everything except polls)
             if self.polls_only_channel_id and message.channel.id == self.polls_only_channel_id:
-                # If message is not a poll, delete it
+                # Keep only poll messages, delete everything else (text, bot messages, results, etc.)
                 if message.poll is None:
+                    message_type = "Bot message" if message.author.bot else "User message"
                     await message.delete()
-                    logger.info(f"🗑️ Deleted non-poll message in polls-only channel from {message.author} (ID: {message.author.id})")
+                    logger.info(f"🗑️ Polls-Only Channel: Deleted {message_type} from {message.author} (ID: {message.author.id})")
                     return
 
             if message.author.bot:
