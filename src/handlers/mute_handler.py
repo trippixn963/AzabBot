@@ -64,9 +64,14 @@ class MuteHandler:
         for embed in message.embeds:
             logger.info(f"Processing embed - Title: {embed.title}, Author: {embed.author}")
 
+            # DESIGN: Check multiple embed locations for mute detection
+            # Different mod bots put "mute" in different places (title, author, description)
+            # Combining all text ensures we catch all mod bot formats
             embed_text: str = (str(embed.title or '') + str(embed.author.name if embed.author else '') +
                          str(embed.description or '')).lower()
 
+            # DESIGN: Early exit for non-mute embeds
+            # Saves processing time on unrelated log messages (joins, messages, etc.)
             if 'mute' not in embed_text and 'timeout' not in embed_text:
                 continue
 
@@ -76,16 +81,25 @@ class MuteHandler:
             user_name: Optional[str] = None
             reason: Optional[str] = None
 
+            # DESIGN: Try extracting user ID from description first
+            # Some mod bots put user mention in description instead of fields
+            # Regex pattern <@!?(\d+)> matches both <@123> and <@!123> formats
             if embed.description:
-                match = re.search(r'<@!?(\d+)>', embed.description)
+                match: Optional[re.Match[str]] = re.search(r'<@!?(\d+)>', embed.description)
                 if match:
                     user_id = int(match.group(1))
                     logger.info(f"Found user ID in description: {user_id}")
 
+            # DESIGN: Parse embed fields to extract user info and mute reason
+            # Field names vary by mod bot: "User", "Member", "Target", "Offender", "Reason"
+            # Lowercase comparison ensures we catch all variations
             for field in embed.fields:
                 field_name_lower: str = field.name.lower()
                 logger.info(f"Field: {field.name} = {field.value[:100]}")
 
+                # DESIGN: Check multiple field name keywords for user identification
+                # Different mod bots use different field names for the same information
+                # any() checks all variations in one pass for efficiency
                 if any(x in field_name_lower for x in ['user', 'member', 'target', 'offender']):
                     if '<@' in field.value:
                         match: Optional[re.Match[str]] = re.search(r'<@!?(\d+)>', field.value)
@@ -93,6 +107,9 @@ class MuteHandler:
                             user_id = int(match.group(1))
                             logger.info(f"Extracted user ID: {user_id}")
 
+                    # DESIGN: Extract plain username without mention tags
+                    # Regex captures everything before <@ or end of string
+                    # "username123 <@123>" → "username123"
                     user_name_match: Optional[re.Match[str]] = re.search(r'([^<>@]+?)(?:\s*<@|$)', field.value)
                     if user_name_match:
                         user_name = user_name_match.group(1).strip()
@@ -102,6 +119,10 @@ class MuteHandler:
                     reason = field.value.strip()
                     logger.info(f"Extracted reason: {reason}")
 
+            # DESIGN: Store mute reason by both user_id AND username for reliability
+            # Moderation logs are inconsistent - sometimes only ID available, sometimes only username
+            # Dual storage ensures AI can always find context regardless of embed format
+            # Lowercase username for case-insensitive lookups (kamarian = Kamarian = KAMARIAN)
             if reason:
                 if user_id:
                     self.prison_handler.mute_reasons[user_id] = reason
@@ -128,6 +149,10 @@ class MuteHandler:
         Returns:
             bool: True if user has muted role, False otherwise
         """
+        # DESIGN: Iterate through roles manually instead of using member.get_role()
+        # get_role() requires guild.roles lookup which adds extra API calls
+        # Direct iteration through member.roles is O(n) but roles list is small (~5-15)
+        # hasattr check prevents AttributeError if member object is malformed
         if hasattr(member, 'roles'):
             for role in member.roles:
                 if role.id == muted_role_id:

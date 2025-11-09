@@ -73,6 +73,9 @@ class DeactivateCommand:
             self.bot.is_active = False
             self.bot._save_state()
 
+            # DESIGN: Update presence immediately to show bot is sleeping
+            # Changes rich presence from "Stalking prisoners 👁️" to "Sleeping 💤"
+            # Visual feedback that bot won't respond to prisoners anymore
             await self.bot.presence_handler.update_presence()
 
             est: timezone = timezone(timedelta(hours=int(os.getenv('TIMEZONE_OFFSET_HOURS', '-5'))))

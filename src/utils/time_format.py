@@ -39,19 +39,24 @@ def format_duration(total_minutes: int) -> str:
         - 1500 minutes: "1d 1h"
         - 0 minutes: "0m"
     """
-    # Handle invalid or zero durations
+    # DESIGN: Handle invalid or zero durations gracefully
+    # Negative durations shouldn't occur but protect against data corruption
+    # Empty string or zero returns "0m" for user-friendly display
     if not total_minutes or total_minutes < 0:
         return "0m"
 
-    # Calculate days, hours, and minutes from total minutes
-    # 1 day = 24 * 60 = 1440 minutes
-    days = total_minutes // (24 * 60)
-    remaining = total_minutes % (24 * 60)
-    hours = remaining // 60
-    minutes = remaining % 60
+    # DESIGN: Calculate days, hours, minutes using integer division
+    # // operator gives whole number of days/hours, % gives remainder
+    # 1 day = 24 * 60 = 1440 minutes constant for clarity
+    days: int = total_minutes // (24 * 60)
+    remaining: int = total_minutes % (24 * 60)
+    hours: int = remaining // 60
+    minutes: int = remaining % 60
 
-    # Build duration string with only non-zero components
-    parts = []
+    # DESIGN: Build duration string with only non-zero components
+    # Omits days if 0, omits hours if 0 for compact display
+    # Always shows minutes as fallback (prevents empty string)
+    parts: list[str] = []
 
     if days > 0:
         parts.append(f"{days}d")
@@ -61,5 +66,6 @@ def format_duration(total_minutes: int) -> str:
     if minutes > 0 or (days == 0 and hours == 0):
         parts.append(f"{minutes}m")
 
-    # Join parts with spaces for readability
+    # DESIGN: Join with spaces for readability in Discord embeds
+    # "1d 2h 30m" is easier to read than "1d2h30m"
     return " ".join(parts)

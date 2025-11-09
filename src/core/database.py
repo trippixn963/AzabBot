@@ -178,10 +178,14 @@ class Database:
             channel_id (int): Discord channel ID
             guild_id (int): Discord guild/server ID
         """
-        # Import validators here to avoid circular import
+        # DESIGN: Import validators locally to avoid circular import
+        # validators.py imports logger.py which imports database.py
+        # Local import breaks the cycle while keeping validation available
         from src.utils.validators import Validators, ValidationError
 
-        # Validate and sanitize inputs
+        # DESIGN: Validate all inputs before database operations
+        # Prevents SQL injection and data corruption from malformed Discord payloads
+        # Returns early on validation failure to avoid writing bad data
         try:
             user_id = Validators.validate_discord_id(user_id)
             username = Validators.validate_username(username) or "Unknown User"
@@ -191,6 +195,10 @@ class Database:
         except ValidationError as e:
             logger.warning(f"Validation error in log_message: {e}")
             return
+
+        # DESIGN: Nested _log() function to wrap sync database operations
+        # asyncio.to_thread (below) executes this in thread pool
+        # Keeps main bot responsive while SQLite does disk I/O
         def _log() -> None:
             """
             Internal function to log message to database.
