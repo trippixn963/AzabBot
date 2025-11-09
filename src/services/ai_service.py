@@ -57,8 +57,16 @@ class AIService:
         Args:
             api_key (Optional[str]): OpenAI API key for authentication
         """
+        # DESIGN: enabled flag allows graceful degradation to fallback responses
+        # Bot can still function without AI, just with pre-written roasts
         self.enabled: bool = bool(api_key)
+
+        # DESIGN: Single database instance shared across all AI operations
+        # SQLite handles concurrent access with locking, no need for pooling
         self.db: Database = Database()
+
+        # DESIGN: Conversation history for developer/family responses
+        # Maintains context across multiple messages for natural dialogue
         self.conversation_history: List[Dict[str, str]] = []
 
         if self.enabled:
@@ -128,23 +136,26 @@ class AIService:
         
         try:
             # === STEP 1: Gather User Context for Personalization ===
-            # Get user profile and recent roasts to avoid repetition and personalize responses
-            user_profile = None
-            recent_roasts = []
-            session_id = None
+            # DESIGN: Track user profiles to create personalized roasts
+            # Instead of generic responses, AI can reference their past behavior
+            # This makes roasts feel more targeted and devastating
+            user_profile: Optional[Dict[str, Any]] = None
+            recent_roasts: List[str] = []
+            session_id: Optional[int] = None
 
             if user_id:
                 # Fetch user behavioral profile (personality type, favorite words, etc.)
                 user_profile = await self.db.get_user_profile(user_id)
-                
-                # Get their 3 most recent roasts to ensure variety
+
+                # DESIGN: Get last 3 roasts to prevent repetitive responses
+                # AI analyzes these and generates something fresh each time
                 recent_roasts = await self.db.get_recent_roasts(user_id, limit=3)
-                
+
                 # Get current mute session ID for linking roasts to specific incidents
                 session_id = await self.db.get_current_mute_session_id(user_id)
-                
-                # Update their profile with this new message for future personality analysis
-                # This extracts personality traits, common words, and memorable quotes
+
+                # DESIGN: Update profile with every message for personality learning
+                # Over time, AI learns their speech patterns and can mock them better
                 await self.db.update_user_profile(user_id, message)
 
             # === STEP 2: Build AI Prompt Based on User Status ===
@@ -157,39 +168,47 @@ class AIService:
                 trigger_msg = trigger_message if trigger_message else message
 
                 # === Build Memory Context Section ===
-                # Include user profile data to personalize roasts based on their behavior
-                memory_context = ""
+                # DESIGN: Personalization creates psychological impact
+                # Generic roasts don't hurt - targeted roasts about their personality do
+                memory_context: str = ""
                 if user_profile:
-                    # Add their personality profile to the prompt
-                    # Helps AI target specific personality traits (apologetic, aggressive, victim_complex, etc.)
+                    # DESIGN: AI targets personality traits for maximum psychological damage
+                    # "apologetic" types get roasted for constant begging
+                    # "aggressive" types get mocked for powerlessness
+                    # "victim_complex" users get roasted for playing victim
                     memory_context = (
                         f"\nUSER PROFILE (use this to personalize roasts):\n"
                         f"- Personality type: {user_profile.get('personality_type', 'unknown')}\n"
                         f"- Total roasts received: {user_profile.get('total_roasts_received', 0)}\n"
                         f"- Most used words: {user_profile.get('most_used_words', 'none')}\n"
                     )
-                    # Include memorable quotes they've said before for callback humor
-                    # This allows AI to reference their past statements: "Remember when you said...?"
+                    # DESIGN: Callback humor creates devastating "remember when you said" moments
+                    # Nothing hurts more than your own words thrown back at you
                     if user_profile.get('callback_references'):
-                        old_quotes = user_profile['callback_references'].split('|||')[-2:]
+                        old_quotes: List[str] = user_profile['callback_references'].split('|||')[-2:]
                         if old_quotes:
                             memory_context += f"- Things they've said before: {', '.join([f'"{q}"' for q in old_quotes])}\n"
 
                 # === Add Recent Roasts to Prevent Repetition ===
-                # Show AI the last 3 roasts so it generates fresh, non-repetitive content
+                # DESIGN: Variety prevents users from tuning out repetitive roasts
+                # Fresh responses keep prisoners engaged and suffering
                 if recent_roasts:
                     memory_context += f"\nRECENT ROASTS (avoid repeating these):\n"
                     for roast in recent_roasts:
                         memory_context += f"- {roast[:100]}...\n"
 
                 # === Add Time-Based Context for Dynamic Roasting ===
-                # Changes roasting style based on how long they've been muted
-                # Fresh prisoners get different treatment than veteran inmates
-                time_context = self._get_time_based_context(mute_duration_minutes)
+                # DESIGN: Roasting style evolves with mute duration
+                # 5 min: "Fresh meat, welcome to prison"
+                # 2 hours: "Reality setting in? Good."
+                # 1 day+: "Veteran prisoner, dedication roasts"
+                time_context: str = self._get_time_based_context(mute_duration_minutes)
 
                 # === Add Conversation History for Context ===
-                # Show AI their last 10 messages to reference their own words
-                conversation_context = ""
+                # DESIGN: 10-message history allows AI to reference contradictions
+                # "5 messages ago you said X, now you're saying Y? 🤡"
+                # This creates devastating callback moments that hurt more than generic roasts
+                conversation_context: str = ""
                 if message_history and len(message_history) > 1:
                     conversation_context = (
                         f"\nCONVERSATION HISTORY (their last {len(message_history)} messages):\n"
@@ -274,12 +293,14 @@ class AIService:
                 )
             
             # === STEP 3: Generate AI Response Using OpenAI API ===
-            # Call OpenAI's GPT-3.5-turbo model with timing for performance monitoring
-            start_time = time.time()
-            
-            # Use asyncio.to_thread to run synchronous OpenAI API call without blocking
-            # This prevents the bot from freezing while waiting for AI response
-            response = await asyncio.to_thread(
+            # DESIGN: Track response time for performance monitoring and cost optimization
+            start_time: float = time.time()
+
+            # DESIGN: asyncio.to_thread wraps synchronous OpenAI SDK to avoid blocking
+            # OpenAI's SDK is synchronous (not async), would freeze Discord bot while waiting
+            # asyncio.to_thread runs it in thread pool, bot stays responsive during API calls
+            # This allows handling multiple prisoners simultaneously without blocking
+            response: Dict[str, Any] = await asyncio.to_thread(
                 openai.ChatCompletion.create,
                 model="gpt-3.5-turbo",
                 messages=[
@@ -288,46 +309,58 @@ class AIService:
                     # User message provides the context we're responding to
                     {"role": "user", "content": f"[USERNAME: {username}] Message: {message}"}
                 ],
-                # Max tokens limits response length (prevents overly long responses)
+                # DESIGN: 150 tokens = ~100-120 words, keeps roasts punchy and savage
+                # Shorter responses have more impact than long-winded roasts
                 max_tokens=int(os.getenv('AI_MAX_TOKENS', '150')),
-                # Temperature controls creativity (0.95 = highly creative and unpredictable)
+
+                # DESIGN: Temperature 0.95 = maximum creativity and unpredictability
+                # High temperature makes AI more chaotic, creative, and entertaining
+                # 0.95 ensures no two roasts are similar, even for same message
                 temperature=float(os.getenv('AI_TEMPERATURE_MUTED', '0.95')),
-                # Presence penalty encourages discussing new topics (0.6 = moderate encouragement)
+
+                # DESIGN: Presence penalty 0.6 = moderate encouragement to discuss new topics
+                # Prevents AI from repeating same themes (e.g., constantly saying "enjoy prison")
+                # Forces variety in roasting angles and approaches
                 presence_penalty=float(os.getenv('AI_PRESENCE_PENALTY_MUTED', '0.6')),
-                # Frequency penalty reduces word repetition (0.3 = light reduction)
+
+                # DESIGN: Frequency penalty 0.3 = light reduction of word repetition
+                # Stops AI from using same words repeatedly in single response
+                # "you're stuck, you're trapped, you're caught" → varied vocabulary
                 frequency_penalty=float(os.getenv('AI_FREQUENCY_PENALTY_MUTED', '0.3'))
             )
             
             # Calculate API response time for monitoring
-            end_time = time.time()
-            response_time = round(end_time - start_time, 2)
+            end_time: float = time.time()
+            response_time: float = round(end_time - start_time, 2)
 
             # === STEP 4: Track API Usage for Cost Monitoring ===
-            # Send response to AI monitor for token counting and cost calculation
-            # This tracks: input tokens, output tokens, total cost in USD
-            usage_stats = ai_monitor.track_usage(response, model='gpt-3.5-turbo')
+            # DESIGN: Token tracking allows monitoring costs and optimizing prompts
+            # GPT-3.5-turbo costs per token, need to track usage to avoid runaway costs
+            # Monitoring helps identify expensive prompts that need optimization
+            usage_stats: Dict[str, Any] = ai_monitor.track_usage(response, model='gpt-3.5-turbo')
 
             # Extract actual token usage from OpenAI's response object
-            # This gives us real data from OpenAI, not estimates
-            usage = response.get('usage', {})
-            prompt_tokens = usage.get('prompt_tokens', 0)
-            completion_tokens = usage.get('completion_tokens', 0)
-            total_tokens = usage.get('total_tokens', 0)
+            usage: Dict[str, int] = response.get('usage', {})
+            prompt_tokens: int = usage.get('prompt_tokens', 0)
+            completion_tokens: int = usage.get('completion_tokens', 0)
+            total_tokens: int = usage.get('total_tokens', 0)
 
             # === STEP 5: Format and Return Response ===
             # Extract AI-generated text from response object
-            content = response.choices[0].message.content
-            
-            # Add metadata footer in Discord's small text format (-# prefix)
-            # Shows response time and token usage for transparency
-            full_response = f"{content}\n-# ⏱ {response_time}s • {total_tokens}"
+            content: str = response.choices[0].message.content
+
+            # DESIGN: Metadata footer shows response time and token usage
+            # -# prefix is Discord's small text formatting (like subscript)
+            # Helps track performance and debug slow responses
+            full_response: str = f"{content}\n-# ⏱ {response_time}s • {total_tokens}"
 
             # === STEP 6: Save to Database for History Tracking ===
-            # Store roast in database to avoid repetition in future interactions
-            # Only saved for muted users (prisoners get tracked roasts)
+            # DESIGN: Database tracking enables "recent roasts" feature above
+            # Without saving roasts, AI would repeat itself constantly
+            # Category tracking allows analyzing which roast types work best
             if is_muted and user_id:
                 # Categorize roast by mute duration (welcome, early, mid, late, veteran)
-                category = self._get_roast_category(mute_duration_minutes)
+                category: str = self._get_roast_category(mute_duration_minutes)
                 # Save to roast_history table with link to current mute session
                 await self.db.save_roast(user_id, content, category, session_id)
 

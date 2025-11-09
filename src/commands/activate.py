@@ -73,8 +73,13 @@ class ActivateCommand:
             self.bot.is_active = True
             self.bot._save_state()
 
+            # DESIGN: Update presence immediately to show bot is active
+            # Changes rich presence from "Sleeping 💤" to "Stalking prisoners 👁️"
             await self.bot.presence_handler.update_presence()
 
+            # DESIGN: Count currently muted users for activation summary
+            # Shows admin how many prisoners they'll be monitoring
+            # Helps confirm bot will actually do something when activated
             muted_count: int = 0
             if interaction.guild:
                 for member in interaction.guild.members:

@@ -53,11 +53,20 @@ class PrisonHandler:
         """
         self.bot: Any = bot
         self.ai: AIService = ai_service
+
+        # DESIGN: mute_reasons tracks why users were muted for contextual roasting
+        # Keyed by both user_id (int) and username.lower() (str) for flexible lookup
+        # Moderation logs sometimes use ID, sometimes username - support both
         self.mute_reasons: Dict[int, str] = {}
-        # Store last 10 messages per user: {user_id: {"messages": deque([msg1, msg2, ...]), "channel_id": int}}
+
+        # DESIGN: last_messages tracks conversation history for AI context
+        # Structure: {user_id: {"messages": deque([msg1, msg2, ...], maxlen=10), "channel_id": int}}
+        # deque(maxlen=10) auto-removes oldest messages, preventing memory leaks
+        # channel_id tracks where they were last active for mute notifications
         self.last_messages: Dict[int, Dict[str, Any]] = {}
 
-        # Start daily cleanup loop
+        # DESIGN: Start daily cleanup loop immediately on handler init
+        # asyncio.create_task runs it in background without blocking bot startup
         asyncio.create_task(self._daily_cleanup_loop())
 
     async def handle_new_prisoner(self, member: discord.Member) -> None:
@@ -92,7 +101,9 @@ class PrisonHandler:
                 logger.error(f"Channels not found - logs: {self.bot.logs_channel_id}, prison: {self.bot.prison_channel_id}")
                 return
 
-            # Send mute notification to the channel where they got muted (or general chat as fallback)
+            # DESIGN: Send mute notification to the channel where they were most recently active
+            # This provides context for other users who saw the interaction that led to the mute
+            # Fallback to general chat if we have no activity history for this user
             mute_channel_id: Optional[int] = None
             if member.id in self.last_messages:
                 mute_channel_id = self.last_messages[member.id].get("channel_id")
@@ -384,7 +395,9 @@ class PrisonHandler:
             if member.name.lower() in self.mute_reasons:
                 del self.mute_reasons[member.name.lower()]
 
-            # Schedule message cleanup for 1 hour later (background task)
+            # DESIGN: Schedule cleanup 1 hour later instead of immediately
+            # Gives people time to read conversation history before it disappears
+            # Background task (create_task) prevents blocking the release process
             asyncio.create_task(self._delayed_message_cleanup(member))
 
             logger.tree("PRISONER RELEASED", [
@@ -460,6 +473,9 @@ class PrisonHandler:
 
             logger.info(f"Deleting messages from {member.name} in prison channel...")
 
+            # DESIGN: Separate recent messages from old messages for different deletion strategies
+            # Discord bulk delete API only works for messages < 14 days old
+            # Older messages must be deleted individually (much slower)
             messages_to_delete: List[discord.Message] = []
             old_messages: List[discord.Message] = []
             deleted_count: int = 0
@@ -467,7 +483,8 @@ class PrisonHandler:
             two_weeks_ago: datetime = datetime.now(timezone.utc) - timedelta(days=14)
 
             async for message in prison_channel.history(limit=int(os.getenv('PRISON_MESSAGE_SCAN_LIMIT', '500'))):
-                # Delete prisoner's own messages
+                # DESIGN: Delete both prisoner's messages AND bot's replies to keep channel clean
+                # Checking message.reference catches bot's replies to this specific prisoner
                 if message.author.id == member.id:
                     if message.created_at > two_weeks_ago:
                         messages_to_delete.append(message)
@@ -482,21 +499,29 @@ class PrisonHandler:
                         else:
                             old_messages.append(message)
 
+            # DESIGN: Bulk delete for efficiency (recent messages)
+            # Single API call deletes up to 100 messages at once
+            # Much faster than individual deletion, avoids rate limits
             if messages_to_delete:
                 try:
                     await prison_channel.delete_messages(messages_to_delete)
                     deleted_count += len(messages_to_delete)
                     logger.info(f"Bulk deleted {len(messages_to_delete)} recent messages from {member.name}")
                 except discord.HTTPException as e:
+                    # DESIGN: Fallback to individual deletion if bulk fails
+                    # Bulk can fail for various reasons (permissions, some messages too old, etc.)
                     logger.warning(f"Bulk delete failed, falling back to individual deletion: {str(e)[:100]}")
                     for message in messages_to_delete:
                         try:
                             await message.delete()
                             deleted_count += 1
+                            # DESIGN: 0.5s delay prevents rate limiting (2 messages/second)
                             await asyncio.sleep(0.5)
                         except Exception:
                             pass
 
+            # DESIGN: Individual deletion required for messages > 14 days old
+            # Discord API restriction, no way around this
             for message in old_messages:
                 try:
                     await message.delete()
@@ -544,7 +569,8 @@ class PrisonHandler:
 
             while not self.bot.is_closed():
                 try:
-                    # Get cleanup time from environment (default midnight)
+                    # DESIGN: Configurable cleanup time via env variable
+                    # Default midnight (hour 0), but can be changed for server timezone
                     cleanup_hour: int = int(os.getenv('PRISON_CLEANUP_HOUR', '0'))
                     timezone_offset: int = int(os.getenv('TIMEZONE_OFFSET_HOURS', '-5'))
                     est: timezone = timezone(timedelta(hours=timezone_offset))
@@ -552,7 +578,8 @@ class PrisonHandler:
                     # Get current time in EST
                     now: datetime = datetime.now(est)
 
-                    # Calculate next cleanup time (midnight or configured hour)
+                    # DESIGN: Calculate next cleanup by replacing hour/minute/second
+                    # This ensures cleanup happens at exact time daily (e.g., 12:00:00 AM)
                     next_cleanup: datetime = now.replace(
                         hour=cleanup_hour,
                         minute=0,
@@ -560,7 +587,8 @@ class PrisonHandler:
                         microsecond=0
                     )
 
-                    # If cleanup time already passed today, schedule for tomorrow
+                    # DESIGN: If cleanup time already passed today, schedule for tomorrow
+                    # Example: If it's 2 AM and cleanup is midnight, next one is tomorrow at midnight
                     if next_cleanup <= now:
                         next_cleanup += timedelta(days=1)
 
@@ -605,15 +633,19 @@ class PrisonHandler:
                         else:
                             old_messages.append(message)
 
-                    # Bulk delete recent messages
+                    # DESIGN: Bulk delete recent messages in batches
                     if messages_to_delete:
                         try:
-                            # Discord allows max 100 messages per bulk delete
+                            # DESIGN: Discord API limit is 100 messages per bulk delete
+                            # For large cleanups (1000+ messages), batch into groups of 100
+                            # This prevents API errors and spreads deletion over time
                             for i in range(0, len(messages_to_delete), 100):
-                                batch = messages_to_delete[i:i + 100]
+                                batch: List[discord.Message] = messages_to_delete[i:i + 100]
                                 await prison_channel.delete_messages(batch)
                                 deleted_count += len(batch)
-                                await asyncio.sleep(1)  # Rate limit protection
+                                # DESIGN: 1s delay between batches prevents rate limit errors
+                                # Discord rate limit: ~5 bulk deletes per second
+                                await asyncio.sleep(1)
 
                             logger.info(f"Bulk deleted {deleted_count} recent messages")
                         except discord.HTTPException as e:
