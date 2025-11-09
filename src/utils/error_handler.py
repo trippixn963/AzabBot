@@ -42,7 +42,10 @@ class ErrorContext:
         Returns:
             Dictionary with full error context
         """
-        context = {
+        # DESIGN: Build comprehensive error context dictionary
+        # Timestamp in ISO format for consistency across timezones
+        # Traceback captures full call stack for debugging
+        context: Dict[str, Any] = {
             'timestamp': datetime.now().isoformat(),
             'location': location,
             'error_type': type(e).__name__,
@@ -52,9 +55,11 @@ class ErrorContext:
             'additional_context': kwargs
         }
 
-        # Add Discord-specific context if available
+        # DESIGN: Extract Discord-specific context if message object available
+        # Guild/channel/author info helps debug permission and context issues
+        # Content truncated to 100 chars to prevent log bloat
         if 'message' in kwargs and isinstance(kwargs['message'], discord.Message):
-            msg = kwargs['message']
+            msg: discord.Message = kwargs['message']
             context['discord_context'] = {
                 'guild': msg.guild.name if msg.guild else 'DM',
                 'channel': msg.channel.name if hasattr(msg.channel, 'name') else str(msg.channel),
@@ -176,13 +181,15 @@ class ErrorHandler:
             critical: Whether this error should stop execution
             **context: Additional context
         """
-        # Get error details
-        category = cls.categorize_error(e)
-        suggestion = cls.get_recovery_suggestion(e, category)
-        full_context = ErrorContext.get_full_context(e, location, **context)
+        # DESIGN: Categorize error for appropriate handling and logging
+        # Category affects suggestion, log level, and potential auto-recovery
+        # Types: discord (permissions), api (network), database (SQLite), ai (OpenAI)
+        category: str = cls.categorize_error(e)
+        suggestion: str = cls.get_recovery_suggestion(e, category)
+        full_context: Dict[str, Any] = ErrorContext.get_full_context(e, location, **context)
 
-        # Format error message
-        error_msg = f"[{category.upper()}] in {location}"
+        # Format error message with category for log filtering
+        error_msg: str = f"[{category.upper()}] in {location}"
 
         # Log with appropriate level
         if critical:
