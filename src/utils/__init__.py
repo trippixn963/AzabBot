@@ -14,7 +14,6 @@ Available Utilities:
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.3.0
 """
 
 from .version import Version, get_version_string, get_version_info

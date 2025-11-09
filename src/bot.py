@@ -16,7 +16,6 @@ Features:
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.3.0
 """
 
 import discord
@@ -226,17 +225,26 @@ class AzabBot(discord.Client):
             )
 
     async def on_message(self, message: discord.Message) -> None:
-        """Discord message event handler - Core message processing logic."""
+        """
+        Discord message event handler - Core message processing logic.
+
+        Design Decision: Processing order matters for performance and correctness.
+        Early returns prevent unnecessary processing and improve response time.
+        """
         try:
+            # DESIGN: Check logs channel first - mute detection is time-sensitive
+            # We want to extract mute reasons ASAP before other processing
             if message.channel.id == self.logs_channel_id and message.embeds:
                 await self.mute_handler.process_mute_embed(message)
                 return
 
-            # Enforce polls-only channel (delete everything except polls)
+            # DESIGN: Polls-only enforcement happens before bot checks
+            # This allows us to delete poll result messages that come from the bot itself
+            # Otherwise, "if message.author.bot: return" would prevent cleanup
             if self.polls_only_channel_id and message.channel.id == self.polls_only_channel_id:
                 # Keep only poll messages, delete everything else (text, bot messages, results, etc.)
                 if message.poll is None:
-                    message_type = "Bot message" if message.author.bot else "User message"
+                    message_type: str = "Bot message" if message.author.bot else "User message"
                     await message.delete()
                     logger.info(f"🗑️ Polls-Only Channel: Deleted {message_type} from {message.author} (ID: {message.author.id})")
                     return
@@ -244,7 +252,8 @@ class AzabBot(discord.Client):
             if message.author.bot:
                 return
 
-            # Check if user is ignored (skip all processing)
+            # DESIGN: Check ignored users early to avoid unnecessary database writes
+            # This prevents spam from ignored users filling up the database
             if message.author.id in self.ignored_users:
                 return
 
@@ -257,14 +266,20 @@ class AzabBot(discord.Client):
             else:
                 return
 
+            # DESIGN: Family system allows developer and family members to bypass restrictions
+            # This enables testing and debugging in production without affecting regular users
             is_developer: bool = message.author.id == self.developer_id
-            is_uncle: bool = self.uncle_id and message.author.id == self.uncle_id
-            is_brother: bool = self.brother_id and message.author.id == self.brother_id
+            is_uncle: bool = self.uncle_id is not None and message.author.id == self.uncle_id
+            is_brother: bool = self.brother_id is not None and message.author.id == self.brother_id
             is_family: bool = is_developer or is_uncle or is_brother
 
+            # DESIGN: Allow family members to interact even when bot is deactivated
+            # This prevents us from being locked out of our own bot during testing
             if not self.is_active and not is_family:
                 return
 
+            # DESIGN: Channel restrictions don't apply to family members
+            # Allows us to test bot behavior in any channel
             if not is_family and self.allowed_channels and message.channel.id not in self.allowed_channels:
                 return
 
@@ -285,6 +300,9 @@ class AzabBot(discord.Client):
                         message.guild.id
                     )
 
+                # DESIGN: Use deque with maxlen for automatic memory management
+                # When limit is reached, oldest messages are auto-removed (FIFO queue)
+                # This prevents memory leaks from long-running bot instances
                 # Track last 10 messages per user for better AI context
                 if message.author.id not in self.prison_handler.last_messages:
                     self.prison_handler.last_messages[message.author.id] = {
@@ -293,6 +311,8 @@ class AzabBot(discord.Client):
                     }
 
                 self.prison_handler.last_messages[message.author.id]["messages"].append(message.content)
+                # DESIGN: Track channel ID to know where to send mute notifications
+                # Users might be muted in different channels, need context for announcements
                 self.prison_handler.last_messages[message.author.id]["channel_id"] = message.channel.id
 
             is_muted: bool = self.is_user_muted(message.author)
@@ -335,13 +355,18 @@ class AzabBot(discord.Client):
 
             if self.ai.should_respond(message.content, self.user.mentioned_in(message), is_muted):
                 if is_muted:
-                    user_id = message.author.id
-                    current_time = datetime.now()
+                    user_id: int = message.author.id
+                    current_time: datetime = datetime.now()
 
+                    # DESIGN: Per-user cooldowns prevent API spam and rate limit issues
+                    # Cooldowns are tracked per prisoner, not globally, for fairness
                     if user_id in self.prisoner_cooldowns:
-                        last_response_time = self.prisoner_cooldowns[user_id]
-                        time_since_last = (current_time - last_response_time).total_seconds()
+                        last_response_time: datetime = self.prisoner_cooldowns[user_id]
+                        time_since_last: float = (current_time - last_response_time).total_seconds()
 
+                        # DESIGN: Buffer messages during cooldown instead of ignoring them
+                        # This allows us to batch-process multiple messages into one response
+                        # Prevents prisoners from thinking we're ignoring them (better UX)
                         if time_since_last < self.PRISONER_COOLDOWN_SECONDS:
                             if user_id not in self.prisoner_message_buffer:
                                 self.prisoner_message_buffer[user_id] = []
@@ -351,21 +376,27 @@ class AzabBot(discord.Client):
                             return
 
                     async with message.channel.typing():
+                        # DESIGN: Look up mute reason by both user ID and username
+                        # Some moderation logs use ID, others use username - we support both
                         mute_reason: Optional[str] = (self.prison_handler.mute_reasons.get(message.author.id) or
                                       self.prison_handler.mute_reasons.get(message.author.name.lower()))
 
-                        combined_context = message.content
+                        # DESIGN: Combine buffered messages into single AI request to save API calls
+                        # This turns 5 rapid messages into 1 API call instead of 5
+                        combined_context: str = message.content
                         if user_id in self.prisoner_message_buffer and self.prisoner_message_buffer[user_id]:
-                            all_messages = self.prisoner_message_buffer[user_id] + [message.content]
+                            all_messages: List[str] = self.prisoner_message_buffer[user_id] + [message.content]
                             combined_context = f"The user sent multiple messages: {' | '.join(all_messages)}"
 
+                            # Clear buffer after processing to prevent reuse
                             self.prisoner_message_buffer[user_id] = []
 
                             logger.info(f"Processing {len(all_messages)} messages from {message.author.name}")
 
-                        # Get message history for better AI context
-                        message_history = []
-                        trigger_msg = None
+                        # DESIGN: Provide conversation history to AI for contextual responses
+                        # 10 messages give AI enough context without excessive token usage
+                        message_history: List[str] = []
+                        trigger_msg: Optional[str] = None
                         if message.author.id in self.prison_handler.last_messages:
                             messages_deque = self.prison_handler.last_messages[message.author.id].get("messages", deque())
                             message_history = list(messages_deque)  # Convert deque to list

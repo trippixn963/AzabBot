@@ -14,7 +14,6 @@ Features:
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.4.0
 """
 
 import discord
@@ -74,7 +73,9 @@ class IgnoreCommand:
             """
             await interaction.response.defer(ephemeral=True)
 
-            # Prevent ignoring bot itself, developer, or other admins
+            # DESIGN: Prevent ignoring bot itself, developer, and family members
+            # This is a safety mechanism to prevent accidental lockout from bot control
+            # If we allowed ignoring developer, we'd lose all control over the bot
             if user.id == self.bot.user.id:
                 await interaction.followup.send("❌ I cannot ignore myself!", ephemeral=True)
                 return
@@ -83,6 +84,8 @@ class IgnoreCommand:
                 await interaction.followup.send("❌ I cannot ignore my developer!", ephemeral=True)
                 return
 
+            # DESIGN: Family members can't be ignored for debugging/testing purposes
+            # They need to bypass all restrictions to test bot functionality
             if user.id == self.bot.uncle_id or user.id == self.bot.brother_id:
                 await interaction.followup.send("❌ I cannot ignore family members!", ephemeral=True)
                 return

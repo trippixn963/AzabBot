@@ -16,7 +16,6 @@ Discord.py slash command integration.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.4.0
 """
 
 from .activate import ActivateCommand

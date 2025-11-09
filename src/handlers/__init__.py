@@ -12,7 +12,6 @@ Available Handlers:
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.3.0
 """
 
 from .prison_handler import PrisonHandler
