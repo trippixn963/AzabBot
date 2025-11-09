@@ -107,6 +107,9 @@ class AzabBot(discord.Client):
         brother_id_str: Optional[str] = os.getenv('BROTHER_ID')
         self.brother_id: Optional[int] = int(brother_id_str) if brother_id_str else None
 
+        polls_only_channel_id_str: Optional[str] = os.getenv('POLLS_ONLY_CHANNEL_ID')
+        self.polls_only_channel_id: Optional[int] = int(polls_only_channel_id_str) if polls_only_channel_id_str else None
+
         self.prison_handler: PrisonHandler = PrisonHandler(self, self.ai)
         self.mute_handler: MuteHandler = MuteHandler(self.prison_handler)
         self.presence_handler: PresenceHandler = PresenceHandler(self)
@@ -228,6 +231,14 @@ class AzabBot(discord.Client):
             if message.channel.id == self.logs_channel_id and message.embeds:
                 await self.mute_handler.process_mute_embed(message)
                 return
+
+            # Check for polls-only channel enforcement
+            if self.polls_only_channel_id and message.channel.id == self.polls_only_channel_id:
+                # If message is not a poll, delete it
+                if message.poll is None:
+                    await message.delete()
+                    logger.info(f"🗑️ Deleted non-poll message in polls-only channel from {message.author} (ID: {message.author.id})")
+                    return
 
             if message.author.bot:
                 return
