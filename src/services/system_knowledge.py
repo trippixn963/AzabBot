@@ -11,14 +11,21 @@ Features:
 - Feature explanations and capabilities
 - Database query reference
 - Command help system
-- Version history and changelog
 - Technical specifications
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-def get_system_knowledge():
+from typing import Dict, Any
+
+# DESIGN: System knowledge enables AI self-awareness and accurate responses
+# Instead of AI guessing its capabilities, it has precise information
+# Used by AI service when users ask "what can you do?" or "how do you work?"
+# Comprehensive dict structure provides structured information for AI parsing
+# Reduces hallucination by giving AI factual data about itself
+
+def get_system_knowledge() -> Dict[str, Any]:
     """
     Returns comprehensive knowledge about the Azab bot system.
     This is used by the AI to understand its own capabilities.
@@ -26,7 +33,6 @@ def get_system_knowledge():
     return {
         "identity": {
             "name": "Azab",
-            "version": "v2.4.1",
             "purpose": "Discord bot for managing muted users (prisoners) with AI-powered roasting",
             "server": "discord.gg/syria",
             "creator": "حَـــــنَّـــــا (your dad/father)",
@@ -224,8 +230,18 @@ def get_system_knowledge():
 def get_feature_explanation(feature_name: str) -> str:
     """
     Get detailed explanation of a specific feature.
+
+    Args:
+        feature_name: Name of the feature to explain
+
+    Returns:
+        Detailed explanation string
     """
-    features = {
+    # DESIGN: Feature-specific explanations for detailed AI responses
+    # When users ask about specific features, AI gets detailed explanation
+    # Written in first-person to maintain AI personality
+    # Covers "how it works" and "why it exists" for each feature
+    features: dict[str, str] = {
         "prison_system": """
 The prison system automatically detects when users receive the muted role.
 When someone gets muted, I welcome them to prison with a personalized roast.
@@ -264,8 +280,18 @@ All data is presented with proper Discord mentions for easy identification.
 def get_command_help(command: str) -> str:
     """
     Get help information for specific commands or queries.
+
+    Args:
+        command: Command or query string to get help for
+
+    Returns:
+        Help text string
     """
-    commands = {
+    # DESIGN: Command-specific help for AI to explain usage
+    # Maps user queries to helpful explanations
+    # Covers both slash commands and natural language queries
+    # Helps AI guide users on how to interact with the bot
+    commands: dict[str, str] = {
         "/activate": "Admin command to enable ragebaiting mode. I'll start responding to muted users.",
         "/deactivate": "Admin command to disable ragebaiting mode. I'll go to sleep.",
         "who is the most muted": "I'll query the database and tell you who's been muted the most times.",

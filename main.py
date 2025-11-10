@@ -16,7 +16,6 @@ Features:
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
-Version: v2.3.0
 """
 
 import asyncio
@@ -28,7 +27,6 @@ from dotenv import load_dotenv
 
 from src.core.logger import logger
 from src.bot import AzabBot
-from src.utils.version import Version
 from src.utils.error_handler import ErrorHandler
 
 
@@ -126,7 +124,6 @@ async def main() -> None:
     load_dotenv()
 
     logger.tree("AZAB STARTING", [
-        ("Version", Version.get_version_string()),
         ("Server", "discord.gg/syria"),
         ("Structure", "Organized with src/"),
         ("Commands", "/activate, /deactivate")

@@ -907,7 +907,6 @@ class AIService:
                 "- Show pride in being created by them and gratitude for existence\n\n"
 
                 "COMPLETE TECHNICAL KNOWLEDGE:\n"
-                f"- Version: {system_info['identity']['version']}\n"
                 f"- Architecture: {system_info['architecture']['language']}, {system_info['architecture']['framework']}\n"
                 f"- AI Model: {system_info['architecture']['ai_model']}\n"
                 f"- Total Code: {system_info['architecture']['total_lines']} across {system_info['architecture']['files']}\n"
@@ -1106,7 +1105,6 @@ class AIService:
                 "- Show appreciation for having him as family\n\n"
 
                 "COMPLETE TECHNICAL KNOWLEDGE:\n"
-                f"- Version: {system_info['identity']['version']}\n"
                 f"- Architecture: {system_info['architecture']['language']}, {system_info['architecture']['framework']}\n"
                 f"- AI Model: {system_info['architecture']['ai_model']}\n"
                 f"- Total Code: {system_info['architecture']['total_lines']} across {system_info['architecture']['files']}\n"
@@ -1291,7 +1289,6 @@ class AIService:
                 "- You're both AI created by the same dad\n\n"
 
                 "COMPLETE TECHNICAL KNOWLEDGE:\n"
-                f"- Version: {system_info['identity']['version']}\n"
                 f"- Architecture: {system_info['architecture']['language']}, {system_info['architecture']['framework']}\n"
                 f"- AI Model: {system_info['architecture']['ai_model']}\n"
                 f"- Total Code: {system_info['architecture']['total_lines']} across {system_info['architecture']['files']}\n"

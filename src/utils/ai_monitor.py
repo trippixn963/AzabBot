@@ -31,9 +31,12 @@ from src.core.logger import logger
 class AIUsageMonitor:
     """Monitor and track OpenAI API usage with real data"""
 
-    # OpenAI GPT-3.5-turbo pricing (as of 2024)
+    # DESIGN: Hardcoded pricing based on OpenAI's public rates
+    # Updated manually when OpenAI changes pricing (rare, ~1x per year)
+    # Per-1000-token pricing allows micro-cost tracking per request
+    # Separate input/output pricing reflects OpenAI's tiered model
     # Check https://openai.com/pricing for current rates
-    PRICING = {
+    PRICING: dict[str, dict[str, float]] = {
         'gpt-3.5-turbo': {
             'input': 0.0005 / 1000,   # $0.0005 per 1K input tokens
             'output': 0.0015 / 1000,   # $0.0015 per 1K output tokens
@@ -44,11 +47,18 @@ class AIUsageMonitor:
         }
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the usage monitor"""
-        self.usage_file = Path('data/ai_usage.json')
+        # DESIGN: Store usage data in data/ directory with JSON persistence
+        # JSON for human readability and easy external analysis
+        # Path instead of str for cross-platform compatibility
+        self.usage_file: Path = Path('data/ai_usage.json')
         self.usage_file.parent.mkdir(exist_ok=True)
-        self.current_session = {
+
+        # DESIGN: Track current bot session separately from historical data
+        # Allows viewing session-specific usage without querying full history
+        # ISO format timestamp for timezone-aware session tracking
+        self.current_session: dict[str, Any] = {
             'start_time': datetime.now().isoformat(),
             'requests': 0,
             'total_tokens': 0,
@@ -105,39 +115,47 @@ class AIUsageMonitor:
         Returns:
             Usage statistics dictionary
         """
-        # Extract real usage data from OpenAI response
-        usage = response.get('usage', {})
+        # DESIGN: Extract real token counts from OpenAI's response usage field
+        # OpenAI provides exact token counts, more accurate than estimating
+        # usage field contains: prompt_tokens, completion_tokens, total_tokens
+        usage: dict[str, int] = response.get('usage', {})
 
         if not usage:
             logger.warning("No usage data in OpenAI response")
             return {}
 
-        prompt_tokens = usage.get('prompt_tokens', 0)
-        completion_tokens = usage.get('completion_tokens', 0)
-        total_tokens = usage.get('total_tokens', 0)
+        prompt_tokens: int = usage.get('prompt_tokens', 0)
+        completion_tokens: int = usage.get('completion_tokens', 0)
+        total_tokens: int = usage.get('total_tokens', 0)
 
-        # Calculate cost based on model pricing
-        pricing = self.PRICING.get(model, self.PRICING['gpt-3.5-turbo'])
-        input_cost = prompt_tokens * pricing['input']
-        output_cost = completion_tokens * pricing['output']
-        total_cost = input_cost + output_cost
+        # DESIGN: Calculate cost using OpenAI's tiered pricing model
+        # Different rates for input (prompt) vs output (completion) tokens
+        # Fallback to default model pricing if unknown model specified
+        pricing: dict[str, float] = self.PRICING.get(model, self.PRICING['gpt-3.5-turbo'])
+        input_cost: float = prompt_tokens * pricing['input']
+        output_cost: float = completion_tokens * pricing['output']
+        total_cost: float = input_cost + output_cost
 
-        # Update current session
+        # DESIGN: Update current bot session statistics
+        # Allows tracking usage for this specific bot run
         self.current_session['requests'] += 1
         self.current_session['prompt_tokens'] += prompt_tokens
         self.current_session['completion_tokens'] += completion_tokens
         self.current_session['total_tokens'] += total_tokens
         self.current_session['estimated_cost'] += total_cost
 
-        # Update total usage
+        # DESIGN: Update all-time total statistics
+        # Cumulative tracking across all bot sessions ever
         self.usage_data['total']['requests'] += 1
         self.usage_data['total']['prompt_tokens'] += prompt_tokens
         self.usage_data['total']['completion_tokens'] += completion_tokens
         self.usage_data['total']['total_tokens'] += total_tokens
         self.usage_data['total']['estimated_cost'] += total_cost
 
-        # Update daily usage
-        today = datetime.now().strftime('%Y-%m-%d')
+        # DESIGN: Track daily usage for per-day cost monitoring
+        # YYYY-MM-DD format for consistent date keys across timezones
+        # Auto-create entry if first request of the day
+        today: str = datetime.now().strftime('%Y-%m-%d')
         if today not in self.usage_data['daily']:
             self.usage_data['daily'][today] = {
                 'requests': 0,
@@ -153,8 +171,10 @@ class AIUsageMonitor:
         self.usage_data['daily'][today]['total_tokens'] += total_tokens
         self.usage_data['daily'][today]['estimated_cost'] += total_cost
 
-        # Update monthly usage
-        month = datetime.now().strftime('%Y-%m')
+        # DESIGN: Track monthly usage for billing period estimates
+        # YYYY-MM format groups days into calendar months
+        # Helps predict monthly OpenAI invoice
+        month: str = datetime.now().strftime('%Y-%m')
         if month not in self.usage_data['monthly']:
             self.usage_data['monthly'][month] = {
                 'requests': 0,
@@ -170,11 +190,15 @@ class AIUsageMonitor:
         self.usage_data['monthly'][month]['total_tokens'] += total_tokens
         self.usage_data['monthly'][month]['estimated_cost'] += total_cost
 
-        # Save data periodically (every 10 requests)
+        # DESIGN: Save data every 10 requests to balance I/O vs data safety
+        # Too frequent (every request) causes excessive disk writes
+        # Too rare (shutdown only) risks data loss on crash
+        # 10 requests is ~30-60 seconds of active usage
         if self.current_session['requests'] % 10 == 0:
             self._save_usage_data()
 
-        # Log usage
+        # DESIGN: Log each request for monitoring and debugging
+        # 4 decimal places for cost precision ($0.0001 granularity)
         logger.info(f"AI Usage: {prompt_tokens} in, {completion_tokens} out, ${total_cost:.4f}")
 
         return {
