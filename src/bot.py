@@ -61,38 +61,57 @@ class AzabBot(discord.Client):
         super().__init__(intents=intents)
 
         self.db: Database = Database()
-        self.ai: AIService = AIService(os.getenv('OPENAI_API_KEY'))
+        self.ai: AIService = AIService(os.getenv("OPENAI_API_KEY"))
         self.start_time: datetime = datetime.now()
 
-        self.state_file: str = 'bot_state.json'
-        self.ignored_users_file: str = 'ignored_users.json'
+        self.state_file: str = "bot_state.json"
+        self.ignored_users_file: str = "ignored_users.json"
         self.is_active: bool = self._load_state()
         self.ignored_users: Set[int] = self._load_ignored_users()
 
         self.tree: app_commands.CommandTree = app_commands.CommandTree(self)
 
-        prison_channels: Optional[str] = os.getenv('PRISON_CHANNEL_IDS', '')
-        self.allowed_channels: Set[int] = {int(ch) for ch in prison_channels.split(',') if ch.strip()}
+        prison_channels: Optional[str] = os.getenv("PRISON_CHANNEL_IDS", "")
+        self.allowed_channels: Set[int] = {
+            int(ch) for ch in prison_channels.split(",") if ch.strip()
+        }
         if self.allowed_channels:
             logger.info(f"Bot restricted to channels: {self.allowed_channels}")
 
-        logs_channel_id_str: Optional[str] = os.getenv('LOGS_CHANNEL_ID')
-        prison_channel_id_str: Optional[str] = os.getenv('PRISON_CHANNEL_IDS')
-        muted_role_id_str: Optional[str] = os.getenv('MUTED_ROLE_ID')
-        general_channel_id_str: Optional[str] = os.getenv('GENERAL_CHANNEL_ID')
-        developer_id_str: Optional[str] = os.getenv('DEVELOPER_ID')
+        logs_channel_id_str: Optional[str] = os.getenv("LOGS_CHANNEL_ID")
+        prison_channel_id_str: Optional[str] = os.getenv("PRISON_CHANNEL_IDS")
+        muted_role_id_str: Optional[str] = os.getenv("MUTED_ROLE_ID")
+        general_channel_id_str: Optional[str] = os.getenv("GENERAL_CHANNEL_ID")
+        developer_id_str: Optional[str] = os.getenv("DEVELOPER_ID")
 
-        if not all([logs_channel_id_str, prison_channel_id_str, muted_role_id_str, general_channel_id_str, developer_id_str]):
+        if not all(
+            [
+                logs_channel_id_str,
+                prison_channel_id_str,
+                muted_role_id_str,
+                general_channel_id_str,
+                developer_id_str,
+            ]
+        ):
             missing_vars = []
-            if not logs_channel_id_str: missing_vars.append('LOGS_CHANNEL_ID')
-            if not prison_channel_id_str: missing_vars.append('PRISON_CHANNEL_IDS')
-            if not muted_role_id_str: missing_vars.append('MUTED_ROLE_ID')
-            if not general_channel_id_str: missing_vars.append('GENERAL_CHANNEL_ID')
-            if not developer_id_str: missing_vars.append('DEVELOPER_ID')
+            if not logs_channel_id_str:
+                missing_vars.append("LOGS_CHANNEL_ID")
+            if not prison_channel_id_str:
+                missing_vars.append("PRISON_CHANNEL_IDS")
+            if not muted_role_id_str:
+                missing_vars.append("MUTED_ROLE_ID")
+            if not general_channel_id_str:
+                missing_vars.append("GENERAL_CHANNEL_ID")
+            if not developer_id_str:
+                missing_vars.append("DEVELOPER_ID")
 
-            logger.error(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
+            logger.error(
+                f"❌ Missing required environment variables: {', '.join(missing_vars)}"
+            )
             logger.error("   Please add these to your .env file")
-            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+            raise ValueError(
+                f"Missing required environment variables: {', '.join(missing_vars)}"
+            )
 
         self.logs_channel_id: int = int(logs_channel_id_str)
         self.prison_channel_id: int = int(prison_channel_id_str)
@@ -100,14 +119,16 @@ class AzabBot(discord.Client):
         self.general_channel_id: int = int(general_channel_id_str)
         self.developer_id: int = int(developer_id_str)
 
-        uncle_id_str: Optional[str] = os.getenv('UNCLE_ID')
+        uncle_id_str: Optional[str] = os.getenv("UNCLE_ID")
         self.uncle_id: Optional[int] = int(uncle_id_str) if uncle_id_str else None
 
-        brother_id_str: Optional[str] = os.getenv('BROTHER_ID')
+        brother_id_str: Optional[str] = os.getenv("BROTHER_ID")
         self.brother_id: Optional[int] = int(brother_id_str) if brother_id_str else None
 
-        polls_only_channel_id_str: Optional[str] = os.getenv('POLLS_ONLY_CHANNEL_ID')
-        self.polls_only_channel_id: Optional[int] = int(polls_only_channel_id_str) if polls_only_channel_id_str else None
+        polls_only_channel_id_str: Optional[str] = os.getenv("POLLS_ONLY_CHANNEL_ID")
+        self.polls_only_channel_id: Optional[int] = (
+            int(polls_only_channel_id_str) if polls_only_channel_id_str else None
+        )
 
         self.prison_handler: PrisonHandler = PrisonHandler(self, self.ai)
         self.mute_handler: MuteHandler = MuteHandler(self.prison_handler)
@@ -115,7 +136,9 @@ class AzabBot(discord.Client):
 
         self.prisoner_cooldowns: Dict[int, datetime] = {}
         self.prisoner_message_buffer: Dict[int, List[str]] = {}
-        self.PRISONER_COOLDOWN_SECONDS: int = int(os.getenv('PRISONER_COOLDOWN_SECONDS', '10'))
+        self.PRISONER_COOLDOWN_SECONDS: int = int(
+            os.getenv("PRISONER_COOLDOWN_SECONDS", "10")
+        )
 
         self._register_commands()
 
@@ -123,41 +146,42 @@ class AzabBot(discord.Client):
         """Load bot activation state from file."""
         try:
             if os.path.exists(self.state_file):
-                with open(self.state_file, 'r') as f:
+                with open(self.state_file, "r") as f:
                     data = json.load(f)
-                    state = data.get('is_active', True)
-                    logger.info(f"Loaded bot state: {'ACTIVE' if state else 'INACTIVE'}")
+                    state = data.get("is_active", True)
+                    logger.info(
+                        f"Loaded bot state: {'ACTIVE' if state else 'INACTIVE'}"
+                    )
                     return state
         except Exception as e:
             ErrorHandler.handle(
                 e,
                 location="Bot._load_state",
                 critical=False,
-                state_file=self.state_file
+                state_file=self.state_file,
             )
         return True
 
     def _save_state(self) -> None:
         """Save bot activation state to file for persistence."""
         try:
-            with open(self.state_file, 'w') as f:
-                json.dump({'is_active': self.is_active}, f)
-            logger.info(f"Saved bot state: {'ACTIVE' if self.is_active else 'INACTIVE'}")
+            with open(self.state_file, "w") as f:
+                json.dump({"is_active": self.is_active}, f)
+            logger.info(
+                f"Saved bot state: {'ACTIVE' if self.is_active else 'INACTIVE'}"
+            )
         except Exception as e:
             ErrorHandler.handle(
-                e,
-                location="Bot._save_state",
-                critical=False,
-                state=self.is_active
+                e, location="Bot._save_state", critical=False, state=self.is_active
             )
 
     def _load_ignored_users(self) -> Set[int]:
         """Load ignored users list from file."""
         try:
             if os.path.exists(self.ignored_users_file):
-                with open(self.ignored_users_file, 'r') as f:
+                with open(self.ignored_users_file, "r") as f:
                     data = json.load(f)
-                    ignored_set = set(data.get('ignored_users', []))
+                    ignored_set = set(data.get("ignored_users", []))
                     if ignored_set:
                         logger.info(f"Loaded {len(ignored_set)} ignored user(s)")
                     return ignored_set
@@ -166,22 +190,22 @@ class AzabBot(discord.Client):
                 e,
                 location="Bot._load_ignored_users",
                 critical=False,
-                file=self.ignored_users_file
+                file=self.ignored_users_file,
             )
         return set()
 
     def _save_ignored_users(self) -> None:
         """Save ignored users list to file for persistence."""
         try:
-            with open(self.ignored_users_file, 'w') as f:
-                json.dump({'ignored_users': list(self.ignored_users)}, f, indent=2)
+            with open(self.ignored_users_file, "w") as f:
+                json.dump({"ignored_users": list(self.ignored_users)}, f, indent=2)
             logger.info(f"Saved {len(self.ignored_users)} ignored user(s)")
         except Exception as e:
             ErrorHandler.handle(
                 e,
                 location="Bot._save_ignored_users",
                 critical=False,
-                count=len(self.ignored_users)
+                count=len(self.ignored_users),
             )
 
     def is_user_muted(self, member: discord.Member) -> bool:
@@ -208,12 +232,16 @@ class AzabBot(discord.Client):
     async def on_ready(self) -> None:
         """Discord bot ready event handler."""
         try:
-            logger.tree("BOT ONLINE", [
-                ("Name", self.user.name),
-                ("ID", str(self.user.id)),
-                ("Servers", str(len(self.guilds))),
-                ("Status", "ACTIVE - Ragebaiting enabled")
-            ], "🚀")
+            logger.tree(
+                "BOT ONLINE",
+                [
+                    ("Name", self.user.name),
+                    ("ID", str(self.user.id)),
+                    ("Servers", str(len(self.guilds))),
+                    ("Status", "ACTIVE - Ragebaiting enabled"),
+                ],
+                "🚀",
+            )
 
             await self.presence_handler.start_presence_loop()
         except Exception as e:
@@ -221,7 +249,7 @@ class AzabBot(discord.Client):
                 e,
                 location="Bot.on_ready",
                 critical=False,
-                bot_name=self.user.name if self.user else "Unknown"
+                bot_name=self.user.name if self.user else "Unknown",
             )
 
     async def on_message(self, message: discord.Message) -> None:
@@ -241,12 +269,31 @@ class AzabBot(discord.Client):
             # DESIGN: Polls-only enforcement happens before bot checks
             # This allows us to delete poll result messages that come from the bot itself
             # Otherwise, "if message.author.bot: return" would prevent cleanup
-            if self.polls_only_channel_id and message.channel.id == self.polls_only_channel_id:
-                # Keep only poll messages, delete everything else (text, bot messages, results, etc.)
+            if (
+                self.polls_only_channel_id
+                and message.channel.id == self.polls_only_channel_id
+            ):
+                # DESIGN: Keep only ACTIVE polls, delete everything else
+                # Poll result messages have poll object but poll.is_finalized() == True
+                # System messages about poll closing need to be deleted too
+                # Only keep messages with active (non-finalized) polls
+                should_delete: bool = False
+
                 if message.poll is None:
-                    message_type: str = "Bot message" if message.author.bot else "User message"
+                    # No poll at all - delete (text messages, bot responses, etc.)
+                    should_delete = True
+                elif message.poll.is_finalized():
+                    # Poll is closed/finalized - delete result announcements
+                    should_delete = True
+
+                if should_delete:
+                    message_type: str = (
+                        "Bot message" if message.author.bot else "User message"
+                    )
                     await message.delete()
-                    logger.info(f"🗑️ Polls-Only Channel: Deleted {message_type} from {message.author} (ID: {message.author.id})")
+                    logger.info(
+                        f"🗑️ Polls-Only Channel: Deleted {message_type} from {message.author} (ID: {message.author.id})"
+                    )
                     return
 
             if message.author.bot:
@@ -259,9 +306,13 @@ class AzabBot(discord.Client):
 
             if message.content:
                 try:
-                    validated_content = Validators.validate_message_content(message.content)
+                    validated_content = Validators.validate_message_content(
+                        message.content
+                    )
                 except ValidationError as e:
-                    logger.warning(f"Invalid message content from {message.author}: {e}")
+                    logger.warning(
+                        f"Invalid message content from {message.author}: {e}"
+                    )
                     return
             else:
                 return
@@ -269,8 +320,12 @@ class AzabBot(discord.Client):
             # DESIGN: Family system allows developer and family members to bypass restrictions
             # This enables testing and debugging in production without affecting regular users
             is_developer: bool = message.author.id == self.developer_id
-            is_uncle: bool = self.uncle_id is not None and message.author.id == self.uncle_id
-            is_brother: bool = self.brother_id is not None and message.author.id == self.brother_id
+            is_uncle: bool = (
+                self.uncle_id is not None and message.author.id == self.uncle_id
+            )
+            is_brother: bool = (
+                self.brother_id is not None and message.author.id == self.brother_id
+            )
             is_family: bool = is_developer or is_uncle or is_brother
 
             # DESIGN: Allow family members to interact even when bot is deactivated
@@ -280,7 +335,11 @@ class AzabBot(discord.Client):
 
             # DESIGN: Channel restrictions don't apply to family members
             # Allows us to test bot behavior in any channel
-            if not is_family and self.allowed_channels and message.channel.id not in self.allowed_channels:
+            if (
+                not is_family
+                and self.allowed_channels
+                and message.channel.id not in self.allowed_channels
+            ):
                 return
 
             if message.guild:
@@ -288,16 +347,16 @@ class AzabBot(discord.Client):
                     user_id=message.author.id,
                     username=str(message.author),
                     message=message.content,
-                    channel_id=message.channel.id
+                    channel_id=message.channel.id,
                 )
 
-                if sanitized.get('user_id') and sanitized.get('channel_id'):
+                if sanitized.get("user_id") and sanitized.get("channel_id"):
                     await self.db.log_message(
-                        sanitized['user_id'],
-                        sanitized.get('username', 'Unknown User'),
-                        sanitized.get('message', '[Empty]'),
-                        sanitized['channel_id'],
-                        message.guild.id
+                        sanitized["user_id"],
+                        sanitized.get("username", "Unknown User"),
+                        sanitized.get("message", "[Empty]"),
+                        sanitized["channel_id"],
+                        message.guild.id,
                     )
 
                 # DESIGN: Use deque with maxlen for automatic memory management
@@ -307,13 +366,17 @@ class AzabBot(discord.Client):
                 if message.author.id not in self.prison_handler.last_messages:
                     self.prison_handler.last_messages[message.author.id] = {
                         "messages": deque(maxlen=10),  # Auto-removes oldest when > 10
-                        "channel_id": message.channel.id
+                        "channel_id": message.channel.id,
                     }
 
-                self.prison_handler.last_messages[message.author.id]["messages"].append(message.content)
+                self.prison_handler.last_messages[message.author.id]["messages"].append(
+                    message.content
+                )
                 # DESIGN: Track channel ID to know where to send mute notifications
                 # Users might be muted in different channels, need context for announcements
-                self.prison_handler.last_messages[message.author.id]["channel_id"] = message.channel.id
+                self.prison_handler.last_messages[message.author.id][
+                    "channel_id"
+                ] = message.channel.id
 
             is_muted: bool = self.is_user_muted(message.author)
 
@@ -324,36 +387,49 @@ class AzabBot(discord.Client):
                     async with message.channel.typing():
                         if is_developer:
                             response: str = await self.ai.generate_developer_response(
-                                message.content,
-                                message.author.display_name
+                                message.content, message.author.display_name
                             )
                             log_title = "CREATOR INTERACTION"
                             log_icon = "👑"
                         elif is_uncle:
                             response: str = await self.ai.generate_uncle_response(
-                                message.content,
-                                message.author.display_name
+                                message.content, message.author.display_name
                             )
                             log_title = "UNCLE INTERACTION"
                             log_icon = "🎩"
                         else:
                             response: str = await self.ai.generate_brother_response(
-                                message.content,
-                                message.author.display_name
+                                message.content, message.author.display_name
                             )
                             log_title = "BROTHER INTERACTION"
                             log_icon = "🤝"
 
                         await message.reply(response)
 
-                        logger.tree(log_title, [
-                            ("Family", str(message.author)),
-                            ("Message", message.content[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))]),
-                            ("Response", response[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))])
-                        ], log_icon)
+                        logger.tree(
+                            log_title,
+                            [
+                                ("Family", str(message.author)),
+                                (
+                                    "Message",
+                                    message.content[
+                                        : int(os.getenv("LOG_TRUNCATE_LENGTH", "50"))
+                                    ],
+                                ),
+                                (
+                                    "Response",
+                                    response[
+                                        : int(os.getenv("LOG_TRUNCATE_LENGTH", "50"))
+                                    ],
+                                ),
+                            ],
+                            log_icon,
+                        )
                     return
 
-            if self.ai.should_respond(message.content, self.user.mentioned_in(message), is_muted):
+            if self.ai.should_respond(
+                message.content, self.user.mentioned_in(message), is_muted
+            ):
                 if is_muted:
                     user_id: int = message.author.id
                     current_time: datetime = datetime.now()
@@ -362,7 +438,9 @@ class AzabBot(discord.Client):
                     # Cooldowns are tracked per prisoner, not globally, for fairness
                     if user_id in self.prisoner_cooldowns:
                         last_response_time: datetime = self.prisoner_cooldowns[user_id]
-                        time_since_last: float = (current_time - last_response_time).total_seconds()
+                        time_since_last: float = (
+                            current_time - last_response_time
+                        ).total_seconds()
 
                         # DESIGN: Buffer messages during cooldown instead of ignoring them
                         # This allows us to batch-process multiple messages into one response
@@ -370,40 +448,64 @@ class AzabBot(discord.Client):
                         if time_since_last < self.PRISONER_COOLDOWN_SECONDS:
                             if user_id not in self.prisoner_message_buffer:
                                 self.prisoner_message_buffer[user_id] = []
-                            self.prisoner_message_buffer[user_id].append(message.content)
+                            self.prisoner_message_buffer[user_id].append(
+                                message.content
+                            )
 
-                            logger.info(f"Rate limited {message.author.name} - buffering message (total: {len(self.prisoner_message_buffer[user_id])})")
+                            logger.info(
+                                f"Rate limited {message.author.name} - buffering message (total: {len(self.prisoner_message_buffer[user_id])})"
+                            )
                             return
 
                     async with message.channel.typing():
                         # DESIGN: Look up mute reason by both user ID and username
                         # Some moderation logs use ID, others use username - we support both
-                        mute_reason: Optional[str] = (self.prison_handler.mute_reasons.get(message.author.id) or
-                                      self.prison_handler.mute_reasons.get(message.author.name.lower()))
+                        mute_reason: Optional[
+                            str
+                        ] = self.prison_handler.mute_reasons.get(
+                            message.author.id
+                        ) or self.prison_handler.mute_reasons.get(
+                            message.author.name.lower()
+                        )
 
                         # DESIGN: Combine buffered messages into single AI request to save API calls
                         # This turns 5 rapid messages into 1 API call instead of 5
                         combined_context: str = message.content
-                        if user_id in self.prisoner_message_buffer and self.prisoner_message_buffer[user_id]:
-                            all_messages: List[str] = self.prisoner_message_buffer[user_id] + [message.content]
+                        if (
+                            user_id in self.prisoner_message_buffer
+                            and self.prisoner_message_buffer[user_id]
+                        ):
+                            all_messages: List[str] = self.prisoner_message_buffer[
+                                user_id
+                            ] + [message.content]
                             combined_context = f"The user sent multiple messages: {' | '.join(all_messages)}"
 
                             # Clear buffer after processing to prevent reuse
                             self.prisoner_message_buffer[user_id] = []
 
-                            logger.info(f"Processing {len(all_messages)} messages from {message.author.name}")
+                            logger.info(
+                                f"Processing {len(all_messages)} messages from {message.author.name}"
+                            )
 
                         # DESIGN: Provide conversation history to AI for contextual responses
                         # 10 messages give AI enough context without excessive token usage
                         message_history: List[str] = []
                         trigger_msg: Optional[str] = None
                         if message.author.id in self.prison_handler.last_messages:
-                            messages_deque = self.prison_handler.last_messages[message.author.id].get("messages", deque())
-                            message_history = list(messages_deque)  # Convert deque to list
+                            messages_deque = self.prison_handler.last_messages[
+                                message.author.id
+                            ].get("messages", deque())
+                            message_history = list(
+                                messages_deque
+                            )  # Convert deque to list
                             if message_history:
-                                trigger_msg = message_history[-1]  # Get most recent as trigger
+                                trigger_msg = message_history[
+                                    -1
+                                ]  # Get most recent as trigger
 
-                        mute_duration = await self.db.get_current_mute_duration(message.author.id)
+                        mute_duration = await self.db.get_current_mute_duration(
+                            message.author.id
+                        )
 
                         response: str = await self.ai.generate_response(
                             combined_context,
@@ -413,26 +515,47 @@ class AzabBot(discord.Client):
                             trigger_msg,
                             user_id=message.author.id,
                             mute_duration_minutes=mute_duration,
-                            message_history=message_history  # Pass full conversation history
+                            message_history=message_history,  # Pass full conversation history
                         )
                         await message.reply(response)
 
                         self.prisoner_cooldowns[user_id] = current_time
 
-                        logger.tree("RAGEBAITED PRISONER", [
-                            ("Target", str(message.author)),
-                            ("Message", message.content[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))]),
-                            ("Response", response[:int(os.getenv('LOG_TRUNCATE_LENGTH', '50'))]),
-                            ("Cooldown", f"{self.PRISONER_COOLDOWN_SECONDS}s")
-                        ], "😈")
+                        logger.tree(
+                            "RAGEBAITED PRISONER",
+                            [
+                                ("Target", str(message.author)),
+                                (
+                                    "Message",
+                                    message.content[
+                                        : int(os.getenv("LOG_TRUNCATE_LENGTH", "50"))
+                                    ],
+                                ),
+                                (
+                                    "Response",
+                                    response[
+                                        : int(os.getenv("LOG_TRUNCATE_LENGTH", "50"))
+                                    ],
+                                ),
+                                ("Cooldown", f"{self.PRISONER_COOLDOWN_SECONDS}s"),
+                            ],
+                            "😈",
+                        )
                 else:
                     async with message.channel.typing():
-                        mute_reason: Optional[str] = (self.prison_handler.mute_reasons.get(message.author.id) or
-                                      self.prison_handler.mute_reasons.get(message.author.name.lower()))
+                        mute_reason: Optional[
+                            str
+                        ] = self.prison_handler.mute_reasons.get(
+                            message.author.id
+                        ) or self.prison_handler.mute_reasons.get(
+                            message.author.name.lower()
+                        )
 
                         trigger_msg = None
                         if message.author.id in self.prison_handler.last_messages:
-                            trigger_msg = self.prison_handler.last_messages[message.author.id].get("content")
+                            trigger_msg = self.prison_handler.last_messages[
+                                message.author.id
+                            ].get("content")
 
                         response: str = await self.ai.generate_response(
                             message.content,
@@ -441,7 +564,7 @@ class AzabBot(discord.Client):
                             mute_reason,
                             trigger_msg,
                             user_id=message.author.id,
-                            mute_duration_minutes=0
+                            mute_duration_minutes=0,
                         )
                     await message.reply(response)
         except discord.errors.Forbidden:
@@ -450,20 +573,23 @@ class AzabBot(discord.Client):
             logger.error(f"Discord API error in on_message: {e}")
         except Exception as e:
             ErrorHandler.handle(
-                e,
-                location="Bot.on_message",
-                critical=False,
-                message=message
+                e, location="Bot.on_message", critical=False, message=message
             )
 
-    async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
+    async def on_member_update(
+        self, before: discord.Member, after: discord.Member
+    ) -> None:
         """Discord member update event handler - monitors role changes for mute detection."""
         try:
             if not self.is_active:
                 return
 
-            had_muted_role: bool = any(role.id == self.muted_role_id for role in before.roles)
-            has_muted_role: bool = any(role.id == self.muted_role_id for role in after.roles)
+            had_muted_role: bool = any(
+                role.id == self.muted_role_id for role in before.roles
+            )
+            has_muted_role: bool = any(
+                role.id == self.muted_role_id for role in after.roles
+            )
 
             if not had_muted_role and has_muted_role:
                 logger.success(f"New prisoner detected: {after.name}")
@@ -488,5 +614,5 @@ class AzabBot(discord.Client):
                 critical=False,
                 member=after,
                 before_roles=[r.name for r in before.roles],
-                after_roles=[r.name for r in after.roles]
+                after_roles=[r.name for r in after.roles],
             )
