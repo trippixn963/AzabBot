@@ -17,9 +17,6 @@ DESIGN:
     5. Bot will auto-load it on startup
 
 Available Commands:
-    /activate: Activate bot's ragebaiting mode (developer only)
-    /deactivate: Deactivate bot and return to standby (developer only)
-    /ignore: Ignore or unignore specific users (developer only)
     /mute: Mute a user by assigning the muted role (moderator)
     /unmute: Unmute a user by removing the muted role (moderator)
 
@@ -32,8 +29,6 @@ Server: discord.gg/syria
 # =============================================================================
 
 COMMAND_COGS = [
-    "src.commands.toggle",
-    "src.commands.ignore",
     "src.commands.mute",
 ]
 """

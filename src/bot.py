@@ -652,17 +652,10 @@ class AzabBot(commands.Bot):
                     await self.mod_tracker.cache_message(message)
 
         # -----------------------------------------------------------------
-        # Determine response type
+        # Prisoner Response - DISABLED
         # -----------------------------------------------------------------
-        is_muted = self.is_user_muted(message.author)
-        mentioned = self.user.mentioned_in(message) if self.user else False
-
-        # Prisoner roasting
-        if self.ai_service and self.ai_service.should_respond(message.content, mentioned, is_muted):
-            if is_muted:
-                await self._handle_prisoner_message(message)
-            else:
-                await self._handle_normal_message(message, is_muted)
+        # AI prisoner roasting is currently disabled
+        return
 
     async def _handle_prisoner_message(self, message: discord.Message) -> None:
         """
