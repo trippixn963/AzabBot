@@ -46,35 +46,39 @@ class ErrorContext:
         # Timestamp in ISO format for consistency across timezones
         # Traceback captures full call stack for debugging
         context: Dict[str, Any] = {
-            'timestamp': datetime.now().isoformat(),
-            'location': location,
-            'error_type': type(e).__name__,
-            'error_message': str(e),
-            'traceback': traceback.format_exc(),
-            'python_version': sys.version,
-            'additional_context': kwargs
+            "timestamp": datetime.now().isoformat(),
+            "location": location,
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "traceback": traceback.format_exc(),
+            "python_version": sys.version,
+            "additional_context": kwargs,
         }
 
         # DESIGN: Extract Discord-specific context if message object available
         # Guild/channel/author info helps debug permission and context issues
         # Content truncated to 100 chars to prevent log bloat
-        if 'message' in kwargs and isinstance(kwargs['message'], discord.Message):
-            msg: discord.Message = kwargs['message']
-            context['discord_context'] = {
-                'guild': msg.guild.name if msg.guild else 'DM',
-                'channel': msg.channel.name if hasattr(msg.channel, 'name') else str(msg.channel),
-                'author': str(msg.author),
-                'author_id': msg.author.id,
-                'content': msg.content[:100] if msg.content else None
+        if "message" in kwargs and isinstance(kwargs["message"], discord.Message):
+            msg: discord.Message = kwargs["message"]
+            context["discord_context"] = {
+                "guild": msg.guild.name if msg.guild else "DM",
+                "channel": (
+                    msg.channel.name
+                    if hasattr(msg.channel, "name")
+                    else str(msg.channel)
+                ),
+                "author": str(msg.author),
+                "author_id": msg.author.id,
+                "content": msg.content[:100] if msg.content else None,
             }
 
-        if 'member' in kwargs and isinstance(kwargs['member'], discord.Member):
-            member = kwargs['member']
-            context['member_context'] = {
-                'name': str(member),
-                'id': member.id,
-                'roles': [role.name for role in member.roles],
-                'joined_at': member.joined_at.isoformat() if member.joined_at else None
+        if "member" in kwargs and isinstance(kwargs["member"], discord.Member):
+            member = kwargs["member"]
+            context["member_context"] = {
+                "name": str(member),
+                "id": member.id,
+                "roles": [role.name for role in member.roles],
+                "joined_at": member.joined_at.isoformat() if member.joined_at else None,
             }
 
         return context
@@ -84,26 +88,18 @@ class ErrorHandler:
     """Enhanced error handling with context and recovery"""
 
     ERROR_CATEGORIES = {
-        'discord': [
+        "discord": [
             discord.errors.Forbidden,
             discord.errors.HTTPException,
-            discord.errors.NotFound
+            discord.errors.NotFound,
         ],
-        'api': [
-            ConnectionError,
-            TimeoutError,
-            OSError
+        "api": [ConnectionError, TimeoutError, OSError],
+        "database": [
+            "sqlite3.Error",
+            "sqlite3.OperationalError",
+            "sqlite3.IntegrityError",
         ],
-        'database': [
-            'sqlite3.Error',
-            'sqlite3.OperationalError',
-            'sqlite3.IntegrityError'
-        ],
-        'ai': [
-            'openai.error',
-            'RateLimitError',
-            'APIError'
-        ]
+        "ai": ["openai.error", "RateLimitError", "APIError"],
     }
 
     @classmethod
@@ -120,11 +116,17 @@ class ErrorHandler:
         error_type = type(e)
 
         for category, error_types in cls.ERROR_CATEGORIES.items():
-            if any(isinstance(e, err_type) if isinstance(err_type, type) else
-                   err_type in str(type(e)) for err_type in error_types):
+            if any(
+                (
+                    isinstance(e, err_type)
+                    if isinstance(err_type, type)
+                    else err_type in str(type(e))
+                )
+                for err_type in error_types
+            ):
                 return category
 
-        return 'general'
+        return "general"
 
     @classmethod
     def get_recovery_suggestion(cls, e: Exception, category: str) -> str:
@@ -139,26 +141,26 @@ class ErrorHandler:
             Recovery suggestion string
         """
         suggestions = {
-            'discord': {
+            "discord": {
                 discord.errors.Forbidden: "Check bot permissions in server settings",
                 discord.errors.HTTPException: "Discord API issue - will retry automatically",
-                discord.errors.NotFound: "Resource not found - check IDs and channels"
+                discord.errors.NotFound: "Resource not found - check IDs and channels",
             },
-            'api': {
+            "api": {
                 ConnectionError: "Network connection issue - check internet connection",
                 TimeoutError: "Request timed out - will retry automatically",
-                OSError: "System resource issue - check disk space and permissions"
+                OSError: "System resource issue - check disk space and permissions",
             },
-            'database': {
-                'OperationalError': "Database locked - will retry automatically",
-                'IntegrityError': "Database constraint violation - check data validity",
-                'Error': "General database error - check database file"
+            "database": {
+                "OperationalError": "Database locked - will retry automatically",
+                "IntegrityError": "Database constraint violation - check data validity",
+                "Error": "General database error - check database file",
             },
-            'ai': {
-                'RateLimitError': "OpenAI rate limit - will use fallback responses",
-                'APIError': "OpenAI API error - check API key and quota",
-                'error': "AI service error - using fallback responses"
-            }
+            "ai": {
+                "RateLimitError": "OpenAI rate limit - will use fallback responses",
+                "APIError": "OpenAI API error - check API key and quota",
+                "error": "AI service error - using fallback responses",
+            },
         }
 
         if category in suggestions:
@@ -171,7 +173,9 @@ class ErrorHandler:
         return "Unexpected error - check logs for details"
 
     @classmethod
-    def handle(cls, e: Exception, location: str, critical: bool = False, **context) -> None:
+    def handle(
+        cls, e: Exception, location: str, critical: bool = False, **context
+    ) -> None:
         """
         Handle an error with full context.
 
@@ -186,24 +190,32 @@ class ErrorHandler:
         # Types: discord (permissions), api (network), database (SQLite), ai (OpenAI)
         category: str = cls.categorize_error(e)
         suggestion: str = cls.get_recovery_suggestion(e, category)
-        full_context: Dict[str, Any] = ErrorContext.get_full_context(e, location, **context)
+        full_context: Dict[str, Any] = ErrorContext.get_full_context(
+            e, location, **context
+        )
 
         # Format error message with category for log filtering
         error_msg: str = f"[{category.upper()}] in {location}"
 
         # Log with appropriate level
         if critical:
-            logger.error(f"💥 CRITICAL ERROR {error_msg}: {full_context['error_type']} - {full_context['error_message']} | Recovery: {suggestion}")
+            logger.error(
+                f"💥 CRITICAL ERROR {error_msg}: {full_context['error_type']} - {full_context['error_message']} | Recovery: {suggestion}"
+            )
 
             # Log full traceback for critical errors
             logger.info(f"Traceback:\n{full_context['traceback']}")
 
             # If Discord context available, log it
-            if 'discord_context' in full_context:
-                dc = full_context['discord_context']
-                logger.info(f"Discord Context: Guild={dc['guild']}, Channel={dc['channel']}, User={dc['author']}")
+            if "discord_context" in full_context:
+                dc = full_context["discord_context"]
+                logger.info(
+                    f"Discord Context: Guild={dc['guild']}, Channel={dc['channel']}, User={dc['author']}"
+                )
         else:
-            logger.warning(f"⚠️ ERROR {error_msg}: {full_context['error_type']} - {str(e)[:100]} | Recovery: {suggestion}")
+            logger.warning(
+                f"⚠️ ERROR {error_msg}: {full_context['error_type']} - {str(e)[:100]} | Recovery: {suggestion}"
+            )
 
         # Store error for analysis (could be sent to monitoring service)
         if critical:
@@ -221,13 +233,13 @@ class ErrorHandler:
             import json
             from pathlib import Path
 
-            error_dir = Path('logs/errors')
+            error_dir = Path("logs/errors")
             error_dir.mkdir(exist_ok=True, parents=True)
 
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             error_file = error_dir / f"error_{timestamp}.json"
 
-            with open(error_file, 'w') as f:
+            with open(error_file, "w") as f:
                 json.dump(context, f, indent=2, default=str)
 
             logger.info(f"Critical error saved to {error_file}")
@@ -256,7 +268,7 @@ def safe_execute(func):
                 location=f"{func.__module__}.{func.__name__}",
                 critical=False,
                 function_args=str(args)[:100],
-                function_kwargs=str(kwargs)[:100]
+                function_kwargs=str(kwargs)[:100],
             )
             return None
 

@@ -7,7 +7,6 @@
 ![Python](https://img.shields.io/badge/Python-3.12-blue.svg)
 ![Discord.py](https://img.shields.io/badge/Discord.py-2.3.2+-green.svg)
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4-orange.svg)
-![Latest Release](https://img.shields.io/github/v/release/trippixn963/AzabBot?label=Latest%20Release&color=purple)
 
 **AI-powered psychological warfare against muted users**
 

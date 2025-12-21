@@ -6,14 +6,38 @@ The main source package for the Azab Discord bot, built specifically
 for discord.gg/syria. This package contains all core bot functionality
 organized in a modular architecture.
 
-Package Structure:
-- bot.py: Main Discord bot class and event handlers
-- commands/: Slash command implementations (/activate, /deactivate)
-- core/: Database and logging utilities
-- handlers/: Event and message handlers (prison, mute, presence)
-- services/: AI and external service integrations
-- utils/: Helper functions and utilities
+DESIGN:
+    The package follows a layered architecture:
+    - core/: Foundation services (config, database, logging, health)
+    - handlers/: Discord event handlers (prison, mute, presence)
+    - services/: External integrations (AI, future APIs)
+    - commands/: Slash command implementations (as cogs)
+    - utils/: Helper functions and utilities
+
+    New features should be added to the appropriate layer:
+    - New event handlers → handlers/
+    - New slash commands → commands/
+    - New API integrations → services/
+    - New helper functions → utils/
+    - Core infrastructure → core/
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
+
+# =============================================================================
+# Package Version
+# =============================================================================
+
+__version__ = "2.0.0"
+__author__ = "حَـــــنَّـــــا"
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = [
+    "__version__",
+    "__author__",
+]

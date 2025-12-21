@@ -1,917 +1,1303 @@
 """
-Azab Discord Bot - Database Module
-=================================
+Azab Discord Bot - Unified Database
+====================================
 
-SQLite database wrapper for storing user messages and analytics.
-Provides async database operations for logging Discord interactions
-and maintaining user statistics.
+Central SQLite database manager for all bot data.
 
-Features:
-- User message logging and counting
-- Message content storage with timestamps
-- User imprisonment status tracking
-- Prisoner history with mute reasons
-- Roast history to avoid repetition
-- User behavioral profiling
-- Async database operations for performance
-- Comprehensive prison statistics
+Consolidates:
+- Bot state (active/disabled)
+- Ignored users list
+- Prisoner tracking and statistics
+- Message logging
+- Roast history
+
+Single database file: data/azab.db
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
 import sqlite3
+import threading
 import asyncio
-import os
+import time
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Tuple, Optional
-from .logger import logger
+from datetime import datetime
+from typing import Optional, List, Tuple, Any, Set, Dict
+
+from src.core.logger import logger
+from src.core.config import NY_TZ
 
 
-class Database:
+# =============================================================================
+# Constants
+# =============================================================================
+
+DATA_DIR: Path = Path(__file__).parent.parent.parent / "data"
+DB_PATH: Path = DATA_DIR / "azab.db"
+
+
+# =============================================================================
+# Database Manager (Singleton)
+# =============================================================================
+
+class DatabaseManager:
     """
-    SQLite database wrapper for Azab Discord bot.
-    
-    Handles all database operations including:
-    - User information storage and updates
-    - Message logging with timestamps
-    - User statistics tracking
-    - Async database operations for performance
-    
-    Database Schema:
-    - users: User information and message counts
-    - messages: Individual message logs with metadata
+    Centralized database manager with thread-safe operations.
+
+    DESIGN: Singleton pattern ensures single database connection.
+    Uses WAL mode for better concurrency with multiple readers.
+    All operations are thread-safe via internal locking.
     """
-    
+
+    _instance: Optional["DatabaseManager"] = None
+    _lock: threading.Lock = threading.Lock()
+
+    def __new__(cls) -> "DatabaseManager":
+        """Singleton pattern - only one instance."""
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self) -> None:
-        """
-        Initialize the database connection and create tables.
-        
-        Creates the database file in data/ directory and initializes
-        required tables for user and message storage.
-        """
-        self.db_path: Path = Path('data/azab.db')
-        self.db_path.parent.mkdir(exist_ok=True)
-        self._init_db()
-    
-    def _init_db(self) -> None:
-        """
-        Initialize database tables and indexes.
-        
-        Creates the database schema with three main tables:
-        1. users: User information and statistics
-        2. messages: Individual message logs for analytics
-        3. prisoner_history: Complete mute/unmute event tracking
-        
-        Sets up proper indexes for optimal query performance.
-        """
-        conn: sqlite3.Connection = sqlite3.connect(self.db_path)
-        
-        # Users table: Core user information and denormalized statistics
-        # user_id: Discord user ID (primary key for fast lookups)
-        # username: Current Discord username (updated on each message)
-        # messages_count: Denormalized counter for analytics (updated incrementally)
-        # is_imprisoned: Denormalized status flag for quick mute checks
-        conn.execute('''CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            messages_count INTEGER DEFAULT 0,
-            is_imprisoned BOOLEAN DEFAULT 0
-        )''')
-        
-        # Messages table: Individual message logs for analytics and debugging
-        # id: Auto-incrementing primary key for message ordering
-        # user_id: Foreign key reference to users table
-        # content: Message text (truncated to prevent bloat)
-        # channel_id/guild_id: Discord channel and server identifiers
-        # timestamp: EST timestamp for consistent logging across timezones
-        conn.execute('''CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            content TEXT,
-            channel_id INTEGER,
-            guild_id INTEGER,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-        
-        # Prisoner history table: Complete audit trail of all mute/unmute events
-        # id: Auto-incrementing primary key for event ordering
-        # user_id: Discord user ID (indexed for fast user lookups)
-        # username: Username at time of mute (preserved for historical accuracy)
-        # mute_reason: Reason for mute (extracted from moderation bot embeds)
-        # muted_at: Timestamp when mute was applied
-        # unmuted_at: Timestamp when mute was removed (NULL if still active)
-        # duration_minutes: Calculated duration in minutes (NULL if still active)
-        # muted_by/unmuted_by: Moderator who applied/removed mute
-        # is_active: Boolean flag for quick active mute lookups (indexed)
-        # trigger_message: The message content that led to the mute
-        conn.execute('''CREATE TABLE IF NOT EXISTS prisoner_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            username TEXT,
-            mute_reason TEXT,
-            trigger_message TEXT,
-            muted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            unmuted_at TIMESTAMP,
-            duration_minutes INTEGER,
-            muted_by TEXT,
-            unmuted_by TEXT,
-            is_active BOOLEAN DEFAULT 1
-        )''')
-        
-        # Create indexes for optimal query performance
-        # Index on user_id for fast prisoner history lookups
-        conn.execute('CREATE INDEX IF NOT EXISTS idx_prisoner_user ON prisoner_history(user_id)')
-        # Index on is_active for fast active mute queries
-        conn.execute('CREATE INDEX IF NOT EXISTS idx_prisoner_active ON prisoner_history(is_active)')
+        """Initialize database connection and tables."""
+        if self._initialized:
+            return
 
-        # Add trigger_message column if it doesn't exist (migration)
+        self._db_lock: threading.Lock = threading.Lock()
+        self._conn: Optional[sqlite3.Connection] = None
+
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        self._connect()
+        self._init_tables()
+        self._initialized = True
+
+        logger.tree("Database Manager Initialized", [
+            ("Path", str(DB_PATH)),
+            ("WAL Mode", "Enabled"),
+            ("Cache Size", "64MB"),
+        ], emoji="🗄️")
+
+    # =========================================================================
+    # Connection Management
+    # =========================================================================
+
+    def _connect(self) -> None:
+        """
+        Establish database connection with WAL mode.
+
+        DESIGN: WAL mode provides better concurrency for read-heavy workloads.
+        64MB cache improves performance for frequently accessed data.
+        """
+        try:
+            self._conn = sqlite3.connect(
+                str(DB_PATH),
+                check_same_thread=False,
+                timeout=30.0,
+            )
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+            self._conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
+            self._conn.execute("PRAGMA temp_store=MEMORY")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+            self._conn.row_factory = sqlite3.Row
+        except sqlite3.Error as e:
+            logger.error("Database Connection Failed", [("Error", str(e))])
+            raise
+
+    def _ensure_connection(self) -> sqlite3.Connection:
+        """Ensure connection is valid, reconnect if needed."""
+        if self._conn is None:
+            self._connect()
+        try:
+            self._conn.execute("SELECT 1")
+        except sqlite3.Error:
+            self._connect()
+        return self._conn
+
+    def execute(
+        self,
+        query: str,
+        params: Tuple = (),
+        commit: bool = True
+    ) -> sqlite3.Cursor:
+        """Execute a query with thread safety."""
+        with self._db_lock:
+            conn = self._ensure_connection()
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            if commit:
+                conn.commit()
+            return cursor
+
+    def executemany(
+        self,
+        query: str,
+        params_list: List[Tuple],
+        commit: bool = True
+    ) -> sqlite3.Cursor:
+        """Execute many queries with thread safety."""
+        with self._db_lock:
+            conn = self._ensure_connection()
+            cursor = conn.cursor()
+            cursor.executemany(query, params_list)
+            if commit:
+                conn.commit()
+            return cursor
+
+    def fetchone(self, query: str, params: Tuple = ()) -> Optional[sqlite3.Row]:
+        """Execute query and fetch one result."""
+        cursor = self.execute(query, params, commit=False)
+        return cursor.fetchone()
+
+    def fetchall(self, query: str, params: Tuple = ()) -> List[sqlite3.Row]:
+        """Execute query and fetch all results."""
+        cursor = self.execute(query, params, commit=False)
+        return cursor.fetchall()
+
+    def close(self) -> None:
+        """Close database connection."""
+        with self._db_lock:
+            if self._conn:
+                self._conn.close()
+                self._conn = None
+                logger.info("Database Connection Closed")
+
+    # =========================================================================
+    # Table Initialization
+    # =========================================================================
+
+    def _init_tables(self) -> None:
+        """
+        Initialize all database tables.
+
+        DESIGN: Tables are created if not exist, allowing safe restarts.
+        Indexes added for frequently queried columns.
+        """
+        conn = self._ensure_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(prisoner_history)")
-        columns = [column[1] for column in cursor.fetchall()]
-        if 'trigger_message' not in columns:
-            conn.execute('ALTER TABLE prisoner_history ADD COLUMN trigger_message TEXT')
-            logger.info("Added trigger_message column to prisoner_history table")
 
-        # Create roast_history table for tracking AI responses to avoid repetition
-        conn.execute('''CREATE TABLE IF NOT EXISTS roast_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            roast_text TEXT,
-            roast_category TEXT,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            mute_session_id INTEGER,
-            FOREIGN KEY (mute_session_id) REFERENCES prisoner_history(id)
-        )''')
+        # -----------------------------------------------------------------
+        # Bot State Table (replaces bot_state.json)
+        # DESIGN: Key-value store for bot configuration
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bot_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at REAL NOT NULL
+            )
+        """)
 
-        # Create user_profiles table for building behavioral patterns
-        conn.execute('''CREATE TABLE IF NOT EXISTS user_profiles (
-            user_id INTEGER PRIMARY KEY,
-            favorite_excuse TEXT,
-            most_used_words TEXT,
-            personality_type TEXT,
-            total_roasts_received INTEGER DEFAULT 0,
-            last_roast_time TIMESTAMP,
-            callback_references TEXT
-        )''')
+        # -----------------------------------------------------------------
+        # Ignored Users Table (replaces ignored_users.json)
+        # DESIGN: Users the bot will not respond to
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ignored_users (
+                user_id INTEGER PRIMARY KEY,
+                added_at REAL NOT NULL
+            )
+        """)
 
-        # Indexes for roast history
-        conn.execute('CREATE INDEX IF NOT EXISTS idx_roast_user ON roast_history(user_id)')
-        conn.execute('CREATE INDEX IF NOT EXISTS idx_roast_session ON roast_history(mute_session_id)')
+        # -----------------------------------------------------------------
+        # Users Table
+        # DESIGN: Tracks all users who have interacted with bot
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                messages_count INTEGER DEFAULT 0,
+                is_imprisoned BOOLEAN DEFAULT 0
+            )
+        """)
 
-        # Commit schema changes and close connection
+        # -----------------------------------------------------------------
+        # Messages Table
+        # DESIGN: Logs messages for AI context
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                content TEXT,
+                channel_id INTEGER,
+                guild_id INTEGER,
+                timestamp TEXT
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # Prisoner History Table
+        # DESIGN: Complete history of all mutes/unmutes
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS prisoner_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                username TEXT,
+                mute_reason TEXT,
+                trigger_message TEXT,
+                muted_at TEXT,
+                unmuted_at TEXT,
+                duration_minutes INTEGER,
+                muted_by TEXT,
+                unmuted_by TEXT,
+                is_active BOOLEAN DEFAULT 1
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_prisoner_user ON prisoner_history(user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_prisoner_active ON prisoner_history(is_active)"
+        )
+
+        # -----------------------------------------------------------------
+        # Roast History Table
+        # DESIGN: Tracks AI-generated roasts to avoid repetition
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS roast_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                roast_text TEXT,
+                roast_category TEXT,
+                timestamp TEXT,
+                mute_session_id INTEGER,
+                FOREIGN KEY (mute_session_id) REFERENCES prisoner_history(id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_roast_user ON roast_history(user_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # User Profiles Table
+        # DESIGN: AI personalization data
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                user_id INTEGER PRIMARY KEY,
+                favorite_excuse TEXT,
+                most_used_words TEXT,
+                personality_type TEXT,
+                total_roasts_received INTEGER DEFAULT 0,
+                last_roast_time TEXT,
+                callback_references TEXT
+            )
+        """)
+
+        # -----------------------------------------------------------------
+        # Active Mutes Table
+        # DESIGN: Tracks currently muted users for auto-unmute scheduler
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS active_mutes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                moderator_id INTEGER NOT NULL,
+                reason TEXT,
+                muted_at REAL NOT NULL,
+                expires_at REAL,
+                unmuted INTEGER DEFAULT 0,
+                UNIQUE(user_id, guild_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_active_mutes_expires ON active_mutes(expires_at)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_active_mutes_user ON active_mutes(user_id, guild_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # Mute History Table
+        # DESIGN: Complete log of all mute/unmute actions for modlog
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mute_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                moderator_id INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                reason TEXT,
+                duration_seconds INTEGER,
+                timestamp REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mute_history_user ON mute_history(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mute_history_time ON mute_history(timestamp)"
+        )
+
+        # -----------------------------------------------------------------
+        # Case Logs Table
+        # DESIGN: Tracks unique case threads per user in mods forum
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS case_logs (
+                user_id INTEGER PRIMARY KEY,
+                case_id INTEGER UNIQUE NOT NULL,
+                thread_id INTEGER NOT NULL,
+                mute_count INTEGER DEFAULT 1,
+                created_at REAL NOT NULL,
+                last_mute_at REAL,
+                last_unmute_at REAL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_case_logs_case_id ON case_logs(case_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # Case Counter Table
+        # DESIGN: Auto-incrementing case ID counter
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS case_counter (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                next_case_id INTEGER DEFAULT 1
+            )
+        """)
+        # Initialize counter if not exists
+        cursor.execute(
+            "INSERT OR IGNORE INTO case_counter (id, next_case_id) VALUES (1, 1)"
+        )
+
+        # -----------------------------------------------------------------
+        # Mod Tracker Table
+        # DESIGN: Tracks moderators and their activity log threads
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mod_tracker (
+                mod_id INTEGER PRIMARY KEY,
+                thread_id INTEGER NOT NULL,
+                display_name TEXT,
+                avatar_hash TEXT,
+                username TEXT,
+                created_at REAL NOT NULL
+            )
+        """)
+
+        # -----------------------------------------------------------------
+        # Nickname History Table
+        # DESIGN: Tracks all past nicknames for users
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS nickname_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                old_nickname TEXT,
+                new_nickname TEXT,
+                changed_by INTEGER,
+                changed_at REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_nickname_user ON nickname_history(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_nickname_time ON nickname_history(changed_at)"
+        )
+
         conn.commit()
-        conn.close()
-    
-    async def log_message(self, user_id: int, username: str, content: str, channel_id: int, guild_id: int) -> None:
+
+    # =========================================================================
+    # Bot State Operations
+    # =========================================================================
+
+    def get_bot_state(self, key: str, default: Any = None) -> Any:
         """
-        Log a Discord message to the database.
-
-        Stores the message content, user information, and metadata.
-        Updates user statistics including message count.
-
-        Args:
-            user_id (int): Discord user ID
-            username (str): Discord username
-            content (str): Message content (truncated to 500 chars)
-            channel_id (int): Discord channel ID
-            guild_id (int): Discord guild/server ID
-        """
-        # DESIGN: Import validators locally to avoid circular import
-        # validators.py imports logger.py which imports database.py
-        # Local import breaks the cycle while keeping validation available
-        from src.utils.validators import Validators, ValidationError
-
-        # DESIGN: Validate all inputs before database operations
-        # Prevents SQL injection and data corruption from malformed Discord payloads
-        # Returns early on validation failure to avoid writing bad data
-        try:
-            user_id = Validators.validate_discord_id(user_id)
-            username = Validators.validate_username(username) or "Unknown User"
-            content = Validators.validate_message_content(content, 500)
-            channel_id = Validators.validate_channel_id(channel_id)
-            guild_id = Validators.validate_discord_id(guild_id, "guild_id")
-        except ValidationError as e:
-            logger.warning(f"Validation error in log_message: {e}")
-            return
-
-        # DESIGN: Nested _log() function to wrap sync database operations
-        # asyncio.to_thread (below) executes this in thread pool
-        # Keeps main bot responsive while SQLite does disk I/O
-        def _log() -> None:
-            """
-            Internal function to log message to database.
-            Runs in thread pool to avoid blocking the main event loop.
-            
-            This function executes synchronous database operations in a separate thread
-            to prevent blocking Discord's async event loop. All three SQL operations
-            are executed in a single transaction for atomicity.
-            
-            Database Operations:
-            1. UPSERT user information (insert new or update existing)
-            2. Insert message with EST timestamp for consistent logging
-            3. Increment user's message count for analytics
-            """
-            # Open database connection (SQLite is thread-safe for this use case)
-            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
-            
-            # === SQL OPERATION 1: UPSERT User Information ===
-            # INSERT OR REPLACE acts as an UPSERT (update if exists, insert if not)
-            # This keeps user information current even if they change their Discord username
-            # Primary key: user_id ensures we never have duplicate user records
-            # Preserves messages_count and is_imprisoned from existing record
-            conn.execute('INSERT OR REPLACE INTO users (user_id, username) VALUES (?, ?)',
-                        (user_id, username))
-            
-            # === Prepare Timestamp for Message Logging ===
-            # Convert current time to EST timezone for consistent logging
-            # Server location doesn't matter - all timestamps are in EST for uniformity
-            est: timezone = timezone(timedelta(hours=int(os.getenv('TIMEZONE_OFFSET_HOURS', '-5'))))
-            est_timestamp: str = datetime.now(est).strftime('%Y-%m-%d %H:%M:%S')
-            
-            # Truncate message content to prevent database bloat
-            # Configurable via MESSAGE_CONTENT_MAX_LENGTH env var (default 500 chars)
-            truncated_content = content[:int(os.getenv('MESSAGE_CONTENT_MAX_LENGTH', '500'))]
-            
-            # === SQL OPERATION 2: Insert Message Log ===
-            # Stores individual message for analytics and debugging
-            # Fields: user_id (FK), content, channel_id, guild_id, timestamp
-            # Auto-incrementing id field provides message ordering
-            conn.execute('INSERT INTO messages (user_id, content, channel_id, guild_id, timestamp) VALUES (?, ?, ?, ?, ?)',
-                        (user_id, truncated_content, channel_id, guild_id, est_timestamp))
-            
-            # === SQL OPERATION 3: Increment Message Counter ===
-            # Denormalized counter for fast analytics queries
-            # Avoids expensive COUNT(*) queries on messages table
-            # WHERE clause ensures we only update the correct user
-            conn.execute('UPDATE users SET messages_count = messages_count + 1 WHERE user_id = ?',
-                        (user_id,))
-            
-            # Commit all three operations atomically
-            # If any operation fails, all are rolled back (transaction safety)
-            conn.commit()
-            conn.close()
-        
-        # Run database operations in thread pool to avoid blocking
-        await asyncio.to_thread(_log)
-    
-    async def record_mute(self, user_id: int, username: str, reason: str, muted_by: Optional[str] = None, trigger_message: Optional[str] = None) -> None:
-        """
-        Record a new mute event in prisoner history.
+        Get a bot state value.
 
         Args:
-            user_id: Discord user ID
-            username: Discord username
-            reason: Reason for mute
-            muted_by: Who issued the mute (moderator name)
-            trigger_message: The message content that triggered the mute
-        """
-        # Import validators here to avoid circular import
-        from src.utils.validators import Validators, ValidationError
-
-        # Validate and sanitize inputs
-        try:
-            user_id = Validators.validate_discord_id(user_id)
-            username = Validators.validate_username(username) or "Unknown User"
-            reason = Validators.validate_mute_reason(reason)
-            if muted_by:
-                muted_by = Validators.validate_username(muted_by, allow_none=True)
-            if trigger_message:
-                trigger_message = Validators.validate_message_content(trigger_message, 500)
-        except ValidationError as e:
-            logger.error(f"Validation error in record_mute: {e}")
-            return
-        def _record() -> None:
-            """
-            Internal function to record a new mute event in the database.
-            Handles re-mute scenarios by deactivating previous mutes first.
-            
-            This function ensures data integrity by:
-            - Deactivating old mutes before creating new ones (prevents duplicates)
-            - Maintaining denormalized imprisoned status for performance
-            - Recording complete mute context (reason, moderator, trigger message)
-            
-            Database Operations:
-            1. Deactivate any existing active mutes for this user (re-mute scenario)
-            2. Insert new mute record with current timestamp
-            3. Update user's imprisoned status for quick lookups
-            """
-            # Open database connection
-            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
-            
-            # === SQL OPERATION 1: Deactivate Previous Active Mutes ===
-            # UPDATE prisoner_history SET is_active = 0
-            # WHERE user_id = ? AND is_active = 1
-            # 
-            # This handles re-mute scenarios where user gets muted again before unmute
-            # Sets is_active to 0 for any currently active mutes (should be max 1)
-            # Maintains historical record but marks it as no longer active
-            # Prevents duplicate active mutes which would break analytics
-            conn.execute('UPDATE prisoner_history SET is_active = 0 WHERE user_id = ? AND is_active = 1',
-                        (user_id,))
-            
-            # === SQL OPERATION 2: Insert New Mute Record ===
-            # INSERT INTO prisoner_history (user_id, username, mute_reason, muted_by, trigger_message, is_active)
-            # VALUES (?, ?, ?, ?, ?, 1)
-            #
-            # Creates new prisoner_history record with:
-            # - user_id: Discord user ID (indexed for fast lookups)
-            # - username: Username at time of mute (preserved for history)
-            # - mute_reason: Why they were muted (extracted from logs)
-            # - muted_by: Moderator who issued mute (optional)
-            # - trigger_message: Message that got them muted (for AI context)
-            # - is_active: Set to 1 (this is now the current active mute)
-            # - muted_at: Auto-populated with CURRENT_TIMESTAMP
-            # - id: Auto-incrementing primary key for this mute session
-            conn.execute('''INSERT INTO prisoner_history
-                           (user_id, username, mute_reason, muted_by, trigger_message, is_active)
-                           VALUES (?, ?, ?, ?, ?, 1)''',
-                        (user_id, username, reason, muted_by, trigger_message))
-            
-            # === SQL OPERATION 3: Update Denormalized Imprisoned Status ===
-            # UPDATE users SET is_imprisoned = 1 WHERE user_id = ?
-            #
-            # Sets denormalized field for O(1) lookup performance
-            # Avoids expensive JOIN with prisoner_history table
-            # Used for quick "is user muted?" checks in message handler
-            # Trade-off: Slight data duplication for massive performance gain
-            conn.execute('UPDATE users SET is_imprisoned = 1 WHERE user_id = ?', (user_id,))
-            
-            # Commit all three operations as single atomic transaction
-            # Either all succeed or all fail (maintains data integrity)
-            conn.commit()
-            conn.close()
-        
-        await asyncio.to_thread(_record)
-    
-    async def record_unmute(self, user_id: int, unmuted_by: Optional[str] = None) -> None:
-        """
-        Record unmute event and calculate imprisonment duration.
-        
-        Args:
-            user_id: Discord user ID
-            unmuted_by: Who removed the mute
-        """
-        def _record() -> None:
-            """
-            Internal function to record an unmute event and calculate imprisonment duration.
-            Updates the active mute record with release information and duration.
-            
-            This function completes the mute cycle by:
-            - Recording when and by whom the user was unmuted
-            - Calculating exact duration of the mute in minutes
-            - Deactivating the mute record (is_active = 0)
-            - Updating denormalized imprisoned status
-            
-            Database Operations:
-            1. Calculate mute duration using SQLite's JULIANDAY function
-            2. Update active mute record with unmute timestamp and duration
-            3. Update user's imprisoned status for quick lookups
-            """
-            # Open database connection
-            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
-            
-            # === Prepare EST Timestamp ===
-            # Get current time in EST timezone for consistent logging
-            # Must match timezone used in record_mute for accurate duration calculation
-            est: timezone = timezone(timedelta(hours=int(os.getenv('TIMEZONE_OFFSET_HOURS', '-5'))))
-            current_time: str = datetime.now(est).strftime('%Y-%m-%d %H:%M:%S')
-            
-            # === SQL OPERATION: Update Mute Record with Release Info ===
-            # UPDATE prisoner_history SET ...
-            # WHERE user_id = ? AND is_active = 1
-            #
-            # Complex query that updates multiple fields:
-            # 1. unmuted_at = ? - Records when user was freed (EST timestamp)
-            # 2. unmuted_by = ? - Records who unmuted them (moderator name, optional)
-            # 3. is_active = 0 - Marks mute as complete/inactive
-            # 4. duration_minutes = ABS(ROUND((JULIANDAY(?) - JULIANDAY(muted_at)) * 24 * 60))
-            #    This is a complex calculation:
-            #    - JULIANDAY(?) converts unmuted_at timestamp to Julian day number
-            #    - JULIANDAY(muted_at) converts mute start to Julian day number
-            #    - Subtraction gives difference in days (decimal)
-            #    - * 24 * 60 converts days to minutes
-            #    - ROUND() converts decimal to integer minutes
-            #    - ABS() ensures positive value (safety check)
-            #    Result: Total minutes user was muted (precise calculation)
-            #
-            # WHERE clause targets only the currently active mute (should be exactly 1 record)
-            conn.execute('''UPDATE prisoner_history
-                           SET unmuted_at = ?,
-                               unmuted_by = ?,
-                               is_active = 0,
-                               duration_minutes = ABS(ROUND((JULIANDAY(?) - JULIANDAY(muted_at)) * 24 * 60))
-                           WHERE user_id = ? AND is_active = 1''',
-                        (current_time, unmuted_by, current_time, user_id))
-            
-            # === SQL OPERATION: Update Denormalized Status ===
-            # UPDATE users SET is_imprisoned = 0 WHERE user_id = ?
-            #
-            # Clears the imprisoned flag in users table for fast lookups
-            # Allows O(1) "is user muted?" checks without JOIN to prisoner_history
-            # Maintains denormalized data consistency
-            conn.execute('UPDATE users SET is_imprisoned = 0 WHERE user_id = ?', (user_id,))
-            
-            # Commit both operations as atomic transaction
-            # Either both succeed or both fail (data integrity)
-            conn.commit()
-            conn.close()
-        
-        await asyncio.to_thread(_record)
-    
-    async def get_current_mute_duration(self, user_id: int) -> int:
-        """
-        Get the duration of the current active mute session in minutes.
-
-        Args:
-            user_id: Discord user ID
+            key: State key to retrieve
+            default: Default value if key not found
 
         Returns:
-            Duration in minutes of the current mute, 0 if not found
+            Stored value or default
         """
-        def _get_duration() -> int:
-            """
-            Internal function to calculate current mute duration in real-time.
-            
-            Uses JULIANDAY to calculate precise duration from mute start to now.
-            """
-            # Open database connection
-            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
-            cursor: sqlite3.Cursor = conn.cursor()
+        import json
+        row = self.fetchone("SELECT value FROM bot_state WHERE key = ?", (key,))
+        if row:
+            try:
+                return json.loads(row["value"])
+            except json.JSONDecodeError:
+                return row["value"]
+        return default
 
-            # === SQL QUERY: Calculate Real-Time Mute Duration ===
-            # SELECT ABS(ROUND((JULIANDAY('now') - JULIANDAY(muted_at)) * 24 * 60)) as duration
-            # FROM prisoner_history
-            # WHERE user_id = ? AND is_active = 1
-            #
-            # Query breakdown:
-            # - JULIANDAY('now') gets current timestamp as Julian day
-            # - JULIANDAY(muted_at) converts mute start to Julian day
-            # - Subtraction gives duration in days (decimal)
-            # - * 24 * 60 converts days to minutes
-            # - ROUND() converts to integer minutes
-            # - ABS() ensures positive value
-            # - WHERE is_active = 1 ensures we only get current mute (not historical)
-            #
-            # Result: How many minutes user has been muted so far
-            # Used for time-based roasting (fresh vs veteran prisoners)
-            cursor.execute('''SELECT
-                                ABS(ROUND((JULIANDAY('now') - JULIANDAY(muted_at)) * 24 * 60)) as duration
-                             FROM prisoner_history
-                             WHERE user_id = ? AND is_active = 1''', (user_id,))
+    def set_bot_state(self, key: str, value: Any) -> None:
+        """
+        Set a bot state value.
 
-            row = cursor.fetchone()
-            conn.close()
+        Args:
+            key: State key to set
+            value: Value to store (will be JSON encoded)
+        """
+        import json
+        value_str = json.dumps(value) if not isinstance(value, str) else value
+        self.execute(
+            "INSERT OR REPLACE INTO bot_state (key, value, updated_at) VALUES (?, ?, ?)",
+            (key, value_str, time.time())
+        )
 
-            # Return duration if found, otherwise 0 (user not currently muted)
-            return row[0] if row and row[0] else 0
+    def is_active(self) -> bool:
+        """Check if bot is active (not disabled)."""
+        return self.get_bot_state("is_active", True)
 
-        return await asyncio.to_thread(_get_duration)
+    def set_active(self, active: bool) -> None:
+        """
+        Set bot active state.
+
+        Args:
+            active: True to enable, False to disable
+        """
+        self.set_bot_state("is_active", active)
+        logger.info("Bot State Changed", [
+            ("Active", str(active)),
+        ])
+
+    # =========================================================================
+    # Ignored Users Operations
+    # =========================================================================
+
+    def get_ignored_users(self) -> Set[int]:
+        """Get set of ignored user IDs."""
+        rows = self.fetchall("SELECT user_id FROM ignored_users")
+        return {row["user_id"] for row in rows}
+
+    def add_ignored_user(self, user_id: int) -> None:
+        """Add a user to ignored list."""
+        self.execute(
+            "INSERT OR IGNORE INTO ignored_users (user_id, added_at) VALUES (?, ?)",
+            (user_id, time.time())
+        )
+        logger.info("User Added to Ignore List", [
+            ("User ID", str(user_id)),
+        ])
+
+    def remove_ignored_user(self, user_id: int) -> None:
+        """Remove a user from ignored list."""
+        self.execute("DELETE FROM ignored_users WHERE user_id = ?", (user_id,))
+        logger.info("User Removed from Ignore List", [
+            ("User ID", str(user_id)),
+        ])
+
+    def is_user_ignored(self, user_id: int) -> bool:
+        """Check if a user is ignored."""
+        row = self.fetchone(
+            "SELECT 1 FROM ignored_users WHERE user_id = ?",
+            (user_id,)
+        )
+        return row is not None
+
+    # =========================================================================
+    # Message Logging
+    # =========================================================================
+
+    async def log_message(
+        self,
+        user_id: int,
+        username: str,
+        content: str,
+        channel_id: int,
+        guild_id: int,
+    ) -> None:
+        """
+        Log a message to the database.
+
+        DESIGN: Runs in thread to avoid blocking event loop.
+        Content truncated to 500 chars for storage efficiency.
+        """
+        def _log():
+            timestamp = datetime.now(NY_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            truncated = content[:500] if content else ""
+
+            self.execute(
+                "INSERT OR REPLACE INTO users (user_id, username) VALUES (?, ?)",
+                (user_id, username)
+            )
+            self.execute(
+                """INSERT INTO messages
+                   (user_id, content, channel_id, guild_id, timestamp)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (user_id, truncated, channel_id, guild_id, timestamp)
+            )
+            self.execute(
+                "UPDATE users SET messages_count = messages_count + 1 WHERE user_id = ?",
+                (user_id,)
+            )
+
+        await asyncio.to_thread(_log)
+
+    # =========================================================================
+    # Prisoner Operations
+    # =========================================================================
+
+    async def record_mute(
+        self,
+        user_id: int,
+        username: str,
+        reason: str,
+        muted_by: Optional[str] = None,
+        trigger_message: Optional[str] = None,
+    ) -> None:
+        """
+        Record a new mute event.
+
+        DESIGN: Deactivates previous mutes before recording new one.
+        This ensures only one active mute per user.
+        """
+        def _record():
+            timestamp = datetime.now(NY_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+            # Deactivate previous mutes
+            self.execute(
+                "UPDATE prisoner_history SET is_active = 0 WHERE user_id = ? AND is_active = 1",
+                (user_id,)
+            )
+
+            # Insert new mute
+            self.execute(
+                """INSERT INTO prisoner_history
+                   (user_id, username, mute_reason, muted_by, trigger_message, muted_at, is_active)
+                   VALUES (?, ?, ?, ?, ?, ?, 1)""",
+                (user_id, username, reason, muted_by, trigger_message, timestamp)
+            )
+
+            # Update user status
+            self.execute(
+                "UPDATE users SET is_imprisoned = 1 WHERE user_id = ?",
+                (user_id,)
+            )
+
+            logger.tree("Mute Recorded", [
+                ("User", username),
+                ("Reason", reason[:50] if reason else "Unknown"),
+            ], emoji="🔒")
+
+        await asyncio.to_thread(_record)
+
+    async def record_unmute(self, user_id: int, unmuted_by: Optional[str] = None) -> None:
+        """
+        Record unmute event.
+
+        DESIGN: Calculates duration automatically from muted_at timestamp.
+        """
+        def _record():
+            timestamp = datetime.now(NY_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+            self.execute(
+                """UPDATE prisoner_history SET
+                   unmuted_at = ?,
+                   unmuted_by = ?,
+                   is_active = 0,
+                   duration_minutes = ABS(ROUND((JULIANDAY(?) - JULIANDAY(muted_at)) * 24 * 60))
+                   WHERE user_id = ? AND is_active = 1""",
+                (timestamp, unmuted_by, timestamp, user_id)
+            )
+
+            self.execute(
+                "UPDATE users SET is_imprisoned = 0 WHERE user_id = ?",
+                (user_id,)
+            )
+
+            logger.info("Unmute Recorded", [
+                ("User ID", str(user_id)),
+            ])
+
+        await asyncio.to_thread(_record)
+
+    async def get_current_mute_duration(self, user_id: int) -> int:
+        """
+        Get current mute duration in minutes.
+
+        Returns:
+            Duration in minutes, or 0 if not muted
+        """
+        def _get():
+            row = self.fetchone(
+                """SELECT ABS(ROUND((JULIANDAY('now') - JULIANDAY(muted_at)) * 24 * 60)) as duration
+                   FROM prisoner_history WHERE user_id = ? AND is_active = 1""",
+                (user_id,)
+            )
+            return row["duration"] if row and row["duration"] else 0
+
+        return await asyncio.to_thread(_get)
 
     async def get_prisoner_stats(self, user_id: int) -> Dict[str, Any]:
         """
-        Get comprehensive stats about a prisoner's history.
-        
-        Args:
-            user_id: Discord user ID
-            
-        Returns:
-            Dictionary with prisoner statistics
-        """
-        def _get_stats() -> Dict[str, Any]:
-            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
-            cursor: sqlite3.Cursor = conn.cursor()
-            
-            # Get all mute history
-            cursor.execute('''SELECT COUNT(*) as total_mutes,
-                                    SUM(duration_minutes) as total_minutes,
-                                    MAX(muted_at) as last_mute,
-                                    COUNT(DISTINCT mute_reason) as unique_reasons
-                             FROM prisoner_history 
-                             WHERE user_id = ?''', (user_id,))
-            
-            row: Optional[Tuple] = cursor.fetchone()
-            
-            # Get all reasons
-            cursor.execute('''SELECT mute_reason, COUNT(*) as count 
-                             FROM prisoner_history 
-                             WHERE user_id = ? 
-                             GROUP BY mute_reason
-                             ORDER BY count DESC''', (user_id,))
-            reasons: List[Tuple] = cursor.fetchall()
-            
-            # Check if currently muted
-            cursor.execute('SELECT is_active, mute_reason FROM prisoner_history WHERE user_id = ? AND is_active = 1',
-                          (user_id,))
-            current: Optional[Tuple] = cursor.fetchone()
-            
-            conn.close()
-            
-            return {
-                'total_mutes': row[0] or 0,
-                'total_minutes': row[1] or 0,
-                'last_mute': row[2],
-                'unique_reasons': row[3] or 0,
-                'reason_counts': {reason: count for reason, count in reasons},
-                'is_currently_muted': bool(current),
-                'current_reason': current[1] if current else None
-            }
-        
-        return await asyncio.to_thread(_get_stats)
-    
-    async def get_top_prisoners(self, limit: int = None) -> List[Tuple]:
-        """
-        Get the most frequently muted users (repeat offenders).
-
-        Args:
-            limit: Number of top prisoners to return
+        Get comprehensive prisoner stats.
 
         Returns:
-            List of tuples (username, total_mutes, total_minutes)
+            Dict with total_mutes, total_minutes, last_mute, etc.
         """
-        if limit is None:
-            limit = int(os.getenv('TOP_PRISONERS_DEFAULT_LIMIT', '10'))
+        def _get():
+            row = self.fetchone(
+                """SELECT COUNT(*) as total_mutes,
+                   COALESCE(SUM(duration_minutes), 0) as total_minutes,
+                   MAX(muted_at) as last_mute,
+                   COUNT(DISTINCT mute_reason) as unique_reasons
+                   FROM prisoner_history WHERE user_id = ?""",
+                (user_id,)
+            )
 
-        def _get_top() -> List[Tuple]:
-            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
-            cursor: sqlite3.Cursor = conn.cursor()
-            
-            cursor.execute('''SELECT username, 
-                                    COUNT(*) as total_mutes,
-                                    SUM(duration_minutes) as total_minutes
-                             FROM prisoner_history
-                             GROUP BY user_id
-                             ORDER BY total_mutes DESC
-                             LIMIT ?''', (limit,))
-            
-            results: List[Tuple] = cursor.fetchall()
-            conn.close()
-            return results
-        
-        return await asyncio.to_thread(_get_top)
+            reasons = self.fetchall(
+                """SELECT mute_reason, COUNT(*) as count FROM prisoner_history
+                   WHERE user_id = ? GROUP BY mute_reason ORDER BY count DESC""",
+                (user_id,)
+            )
 
-    async def get_current_prisoners(self) -> List[Dict[str, Any]]:
-        """
-        Get all currently muted users.
-
-        Returns:
-            List of dictionaries with current prisoner information
-        """
-        def _get_current() -> List[Dict[str, Any]]:
-            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
-            cursor: sqlite3.Cursor = conn.cursor()
-
-            cursor.execute('''SELECT user_id, username, mute_reason, muted_at, muted_by
-                             FROM prisoner_history
-                             WHERE is_active = 1
-                             ORDER BY muted_at DESC''')
-
-            results = []
-            for row in cursor.fetchall():
-                results.append({
-                    'user_id': row[0],
-                    'username': row[1],
-                    'reason': row[2],
-                    'muted_at': row[3],
-                    'muted_by': row[4]
-                })
-
-            conn.close()
-            return results
-
-        return await asyncio.to_thread(_get_current)
-
-    async def get_longest_sentence(self) -> Optional[Dict[str, Any]]:
-        """
-        Get the longest prison sentence ever served.
-
-        Returns:
-            Dictionary with longest sentence information
-        """
-        def _get_longest() -> Optional[Dict[str, Any]]:
-            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
-            cursor: sqlite3.Cursor = conn.cursor()
-
-            cursor.execute('''SELECT username, duration_minutes, mute_reason, muted_at, unmuted_at
-                             FROM prisoner_history
-                             WHERE duration_minutes IS NOT NULL
-                             ORDER BY duration_minutes DESC
-                             LIMIT 1''')
-
-            row = cursor.fetchone()
-            conn.close()
-
-            if row:
-                return {
-                    'username': row[0],
-                    'duration_minutes': row[1],
-                    'reason': row[2],
-                    'muted_at': row[3],
-                    'unmuted_at': row[4]
-                }
-            return None
-
-        return await asyncio.to_thread(_get_longest)
-
-    async def get_prison_stats(self) -> Dict[str, Any]:
-        """
-        Get overall prison statistics.
-
-        Returns:
-            Dictionary with comprehensive prison statistics
-        """
-        def _get_stats() -> Dict[str, Any]:
-            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
-            cursor: sqlite3.Cursor = conn.cursor()
-
-            # Total mutes ever
-            cursor.execute('SELECT COUNT(*) FROM prisoner_history')
-            total_mutes = cursor.fetchone()[0]
-
-            # Currently muted
-            cursor.execute('SELECT COUNT(*) FROM prisoner_history WHERE is_active = 1')
-            current_prisoners = cursor.fetchone()[0]
-
-            # Total unique prisoners
-            cursor.execute('SELECT COUNT(DISTINCT user_id) FROM prisoner_history')
-            unique_prisoners = cursor.fetchone()[0]
-
-            # Total time served
-            cursor.execute('SELECT SUM(duration_minutes) FROM prisoner_history WHERE duration_minutes IS NOT NULL')
-            total_time = cursor.fetchone()[0] or 0
-
-            # Most common reason
-            cursor.execute('''SELECT mute_reason, COUNT(*) as count
-                             FROM prisoner_history
-                             WHERE mute_reason IS NOT NULL
-                             GROUP BY mute_reason
-                             ORDER BY count DESC
-                             LIMIT 1''')
-            top_reason = cursor.fetchone()
-
-            conn.close()
+            current = self.fetchone(
+                "SELECT is_active, mute_reason FROM prisoner_history WHERE user_id = ? AND is_active = 1",
+                (user_id,)
+            )
 
             return {
-                'total_mutes': total_mutes,
-                'current_prisoners': current_prisoners,
-                'unique_prisoners': unique_prisoners,
-                'total_time_minutes': total_time,
-                'most_common_reason': top_reason[0] if top_reason else None,
-                'most_common_reason_count': top_reason[1] if top_reason else 0
+                "total_mutes": row["total_mutes"] or 0,
+                "total_minutes": row["total_minutes"] or 0,
+                "last_mute": row["last_mute"],
+                "unique_reasons": row["unique_reasons"] or 0,
+                "reason_counts": {r["mute_reason"]: r["count"] for r in reasons},
+                "is_currently_muted": bool(current),
+                "current_reason": current["mute_reason"] if current else None,
             }
 
-        return await asyncio.to_thread(_get_stats)
+        return await asyncio.to_thread(_get)
 
-    async def search_prisoner_by_name(self, username: str) -> Optional[Dict[str, Any]]:
+    async def get_current_mute_session_id(self, user_id: int) -> Optional[int]:
+        """Get current active mute session ID."""
+        def _get():
+            row = self.fetchone(
+                "SELECT id FROM prisoner_history WHERE user_id = ? AND is_active = 1",
+                (user_id,)
+            )
+            return row["id"] if row else None
+
+        return await asyncio.to_thread(_get)
+
+    # =========================================================================
+    # Roast History
+    # =========================================================================
+
+    async def save_roast(
+        self,
+        user_id: int,
+        roast_text: str,
+        category: str = "general",
+        session_id: Optional[int] = None,
+    ) -> None:
         """
-        Search for a prisoner by username (partial match).
+        Save a roast to history.
 
-        Args:
-            username: Username to search for
-
-        Returns:
-            Dictionary with prisoner information or None
-        """
-        def _search() -> Optional[Dict[str, Any]]:
-            conn: sqlite3.Connection = sqlite3.connect(self.db_path)
-            cursor: sqlite3.Cursor = conn.cursor()
-
-            # Search for user (case insensitive, partial match)
-            cursor.execute('''SELECT user_id, username,
-                                    COUNT(*) as total_mutes,
-                                    SUM(duration_minutes) as total_minutes,
-                                    GROUP_CONCAT(DISTINCT mute_reason) as reasons
-                             FROM prisoner_history
-                             WHERE LOWER(username) LIKE LOWER(?)
-                             GROUP BY user_id
-                             ORDER BY total_mutes DESC
-                             LIMIT 1''', (f'%{username}%',))
-
-            row = cursor.fetchone()
-
-            if row:
-                # Check if currently muted
-                cursor.execute('SELECT mute_reason, muted_at FROM prisoner_history WHERE user_id = ? AND is_active = 1',
-                              (row[0],))
-                current = cursor.fetchone()
-
-                # Get last mute date if not currently muted
-                if not current:
-                    cursor.execute('SELECT MAX(muted_at) FROM prisoner_history WHERE user_id = ?', (row[0],))
-                    last_mute = cursor.fetchone()[0]
-                else:
-                    last_mute = None
-
-                conn.close()
-
-                return {
-                    'user_id': row[0],
-                    'username': row[1],
-                    'total_mutes': row[2],
-                    'total_minutes': row[3] or 0,
-                    'reasons': row[4].split(',') if row[4] else [],
-                    'is_currently_muted': bool(current),
-                    'current_reason': current[0] if current else None,
-                    'currently_muted_since': current[1] if current else None,
-                    'last_mute_date': last_mute
-                }
-
-            conn.close()
-            return None
-
-        return await asyncio.to_thread(_search)
-
-    async def save_roast(self, user_id: int, roast_text: str, category: str = "general", session_id: int = None) -> None:
-        """
-        Save a roast to history to avoid repetition.
-
-        Args:
-            user_id: Discord user ID
-            roast_text: The roast that was delivered
-            category: Type of roast (welcome, time_based, response, etc.)
-            session_id: Current mute session ID from prisoner_history
+        DESIGN: Tracks roasts to avoid repetition in AI generation.
         """
         def _save():
-            conn = sqlite3.connect(self.db_path)
-            conn.execute(
-                "INSERT INTO roast_history (user_id, roast_text, roast_category, mute_session_id) VALUES (?, ?, ?, ?)",
-                (user_id, roast_text[:500], category, session_id)
+            timestamp = datetime.now(NY_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            self.execute(
+                """INSERT INTO roast_history
+                   (user_id, roast_text, roast_category, timestamp, mute_session_id)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (user_id, roast_text[:500], category, timestamp, session_id)
             )
 
-            # Update user profile
-            conn.execute(
+            self.execute(
                 """INSERT INTO user_profiles (user_id, total_roasts_received, last_roast_time)
-                   VALUES (?, 1, CURRENT_TIMESTAMP)
+                   VALUES (?, 1, ?)
                    ON CONFLICT(user_id) DO UPDATE SET
                    total_roasts_received = total_roasts_received + 1,
-                   last_roast_time = CURRENT_TIMESTAMP"""
-                , (user_id,)
+                   last_roast_time = ?""",
+                (user_id, timestamp, timestamp)
             )
-            conn.commit()
-            conn.close()
 
         await asyncio.to_thread(_save)
 
     async def get_recent_roasts(self, user_id: int, limit: int = 5) -> List[str]:
         """
-        Get recent roasts for a user to avoid repetition.
+        Get recent roasts for a user.
 
         Args:
-            user_id: Discord user ID
-            limit: Number of recent roasts to retrieve
+            user_id: User to get roasts for
+            limit: Maximum number of roasts to return
 
         Returns:
             List of recent roast texts
         """
         def _get():
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                """SELECT roast_text FROM roast_history
-                   WHERE user_id = ?
-                   ORDER BY timestamp DESC
-                   LIMIT ?""",
+            rows = self.fetchall(
+                "SELECT roast_text FROM roast_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT ?",
                 (user_id, limit)
             )
-            roasts = [row[0] for row in cursor.fetchall()]
-            conn.close()
-            return roasts
+            return [row["roast_text"] for row in rows]
 
         return await asyncio.to_thread(_get)
 
-    async def get_user_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
+    # =========================================================================
+    # Moderation Mute Operations
+    # =========================================================================
+
+    def add_mute(
+        self,
+        user_id: int,
+        guild_id: int,
+        moderator_id: int,
+        reason: Optional[str] = None,
+        duration_seconds: Optional[int] = None,
+    ) -> int:
         """
-        Get user profile with behavioral patterns.
+        Add a mute record to the database.
+
+        DESIGN:
+            Uses INSERT OR REPLACE to handle re-muting.
+            Stores expiration time for scheduler to auto-unmute.
+            Logs to mute_history for modlog.
 
         Args:
-            user_id: Discord user ID
+            user_id: Discord user ID being muted.
+            guild_id: Guild where mute occurred.
+            moderator_id: Moderator who issued mute.
+            reason: Optional reason for mute.
+            duration_seconds: Duration in seconds, None for permanent.
 
         Returns:
-            User profile dict or None if not found
+            Row ID of the mute record.
         """
-        def _get():
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                """SELECT favorite_excuse, most_used_words, personality_type,
-                          total_roasts_received, last_roast_time, callback_references
-                   FROM user_profiles WHERE user_id = ?""",
-                (user_id,)
-            )
-            row = cursor.fetchone()
-            conn.close()
+        now = time.time()
+        expires_at = now + duration_seconds if duration_seconds else None
 
-            if row:
-                return {
-                    'favorite_excuse': row[0],
-                    'most_used_words': row[1],
-                    'personality_type': row[2],
-                    'total_roasts_received': row[3],
-                    'last_roast_time': row[4],
-                    'callback_references': row[5]
-                }
-            return None
+        # Insert/update active mute
+        cursor = self.execute(
+            """INSERT OR REPLACE INTO active_mutes
+               (user_id, guild_id, moderator_id, reason, muted_at, expires_at, unmuted)
+               VALUES (?, ?, ?, ?, ?, ?, 0)""",
+            (user_id, guild_id, moderator_id, reason, now, expires_at)
+        )
 
-        return await asyncio.to_thread(_get)
+        # Log to history
+        self.execute(
+            """INSERT INTO mute_history
+               (user_id, guild_id, moderator_id, action, reason, duration_seconds, timestamp)
+               VALUES (?, ?, ?, 'mute', ?, ?, ?)""",
+            (user_id, guild_id, moderator_id, reason, duration_seconds, now)
+        )
 
-    async def update_user_profile(self, user_id: int, message_content: str) -> None:
+        logger.tree("Moderation Mute Added", [
+            ("User ID", str(user_id)),
+            ("Moderator ID", str(moderator_id)),
+            ("Duration", f"{duration_seconds}s" if duration_seconds else "Permanent"),
+            ("Reason", (reason or "None")[:50]),
+        ], emoji="🔇")
+
+        return cursor.lastrowid
+
+    def remove_mute(
+        self,
+        user_id: int,
+        guild_id: int,
+        moderator_id: int,
+        reason: Optional[str] = None,
+    ) -> bool:
         """
-        Update user profile based on their messages.
+        Remove a mute (unmute a user).
 
         Args:
-            user_id: Discord user ID
-            message_content: Their latest message to analyze
-        """
-        import re
-        from collections import Counter
-
-        def _update():
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-
-            # Get existing profile
-            cursor.execute("SELECT most_used_words, callback_references FROM user_profiles WHERE user_id = ?", (user_id,))
-            existing = cursor.fetchone()
-
-            # Extract words (excluding common ones)
-            words = re.findall(r'\b\w+\b', message_content.lower())
-            common_words = {'the', 'is', 'at', 'which', 'on', 'a', 'an', 'as', 'are', 'was', 'were', 'to', 'for', 'of', 'with', 'in'}
-            meaningful_words = [w for w in words if w not in common_words and len(w) > 2]
-
-            # Update most used words
-            if existing and existing[0]:
-                old_words = existing[0].split(',') if existing[0] else []
-                all_words = old_words + meaningful_words
-                word_counts = Counter(all_words)
-                most_common = ','.join([w for w, _ in word_counts.most_common(10)])
-            else:
-                most_common = ','.join(meaningful_words[:10])
-
-            # Detect personality type based on message patterns
-            personality = "standard"
-            if any(word in message_content.lower() for word in ['sorry', 'please', 'apologize', 'didnt mean']):
-                personality = "apologetic"
-            elif any(word in message_content.lower() for word in ['unfair', 'why me', 'not fair', 'bullshit']):
-                personality = "victim_complex"
-            elif any(word in message_content.lower() for word in ['fuck', 'shit', 'damn', 'hell']):
-                personality = "aggressive"
-            elif '?' in message_content:
-                personality = "questioning"
-
-            # Store memorable quotes for callbacks
-            if len(message_content) > 20 and len(message_content) < 100:
-                callbacks = existing[1] if existing and existing[1] else ""
-                if callbacks:
-                    callbacks = callbacks.split('|||')[-4:] # Keep last 4
-                    callbacks.append(message_content)
-                    callbacks = '|||'.join(callbacks)
-                else:
-                    callbacks = message_content
-
-                conn.execute(
-                    """INSERT INTO user_profiles (user_id, most_used_words, personality_type, callback_references)
-                       VALUES (?, ?, ?, ?)
-                       ON CONFLICT(user_id) DO UPDATE SET
-                       most_used_words = ?,
-                       personality_type = ?,
-                       callback_references = ?""",
-                    (user_id, most_common, personality, callbacks, most_common, personality, callbacks)
-                )
-            else:
-                conn.execute(
-                    """INSERT INTO user_profiles (user_id, most_used_words, personality_type)
-                       VALUES (?, ?, ?)
-                       ON CONFLICT(user_id) DO UPDATE SET
-                       most_used_words = ?,
-                       personality_type = ?""",
-                    (user_id, most_common, personality, most_common, personality)
-                )
-
-            conn.commit()
-            conn.close()
-
-        await asyncio.to_thread(_update)
-
-    async def get_current_mute_session_id(self, user_id: int) -> Optional[int]:
-        """
-        Get the current active mute session ID for a user.
-
-        Args:
-            user_id: Discord user ID
+            user_id: Discord user ID being unmuted.
+            guild_id: Guild where unmute occurred.
+            moderator_id: Moderator who issued unmute.
+            reason: Optional reason for unmute.
 
         Returns:
-            Session ID or None if not muted
+            True if user was muted and is now unmuted, False if wasn't muted.
         """
-        def _get():
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id FROM prisoner_history WHERE user_id = ? AND is_active = 1",
-                (user_id,)
-            )
-            result = cursor.fetchone()
-            conn.close()
-            return result[0] if result else None
+        now = time.time()
 
-        return await asyncio.to_thread(_get)
+        # Check if user is muted
+        row = self.fetchone(
+            "SELECT id FROM active_mutes WHERE user_id = ? AND guild_id = ? AND unmuted = 0",
+            (user_id, guild_id)
+        )
+
+        if not row:
+            return False
+
+        # Mark as unmuted
+        self.execute(
+            "UPDATE active_mutes SET unmuted = 1 WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+
+        # Log to history
+        self.execute(
+            """INSERT INTO mute_history
+               (user_id, guild_id, moderator_id, action, reason, duration_seconds, timestamp)
+               VALUES (?, ?, ?, 'unmute', ?, NULL, ?)""",
+            (user_id, guild_id, moderator_id, reason, now)
+        )
+
+        logger.tree("Moderation Mute Removed", [
+            ("User ID", str(user_id)),
+            ("Moderator ID", str(moderator_id)),
+            ("Reason", (reason or "None")[:50]),
+        ], emoji="🔊")
+
+        return True
+
+    def get_active_mute(
+        self,
+        user_id: int,
+        guild_id: int,
+    ) -> Optional[sqlite3.Row]:
+        """
+        Get active mute for a user in a guild.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Mute record row or None if not muted.
+        """
+        return self.fetchone(
+            """SELECT * FROM active_mutes
+               WHERE user_id = ? AND guild_id = ? AND unmuted = 0""",
+            (user_id, guild_id)
+        )
+
+    def is_user_muted(self, user_id: int, guild_id: int) -> bool:
+        """
+        Check if a user is muted in a guild.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            True if user has active mute.
+        """
+        row = self.fetchone(
+            "SELECT 1 FROM active_mutes WHERE user_id = ? AND guild_id = ? AND unmuted = 0",
+            (user_id, guild_id)
+        )
+        return row is not None
+
+    def get_expired_mutes(self) -> List[sqlite3.Row]:
+        """
+        Get all mutes that have expired and need auto-unmute.
+
+        DESIGN:
+            Returns mutes where expires_at < current time and not yet unmuted.
+            Used by the mute scheduler to process auto-unmutes.
+
+        Returns:
+            List of expired mute records.
+        """
+        now = time.time()
+        return self.fetchall(
+            """SELECT * FROM active_mutes
+               WHERE expires_at IS NOT NULL
+               AND expires_at <= ?
+               AND unmuted = 0""",
+            (now,)
+        )
+
+    def get_all_active_mutes(self, guild_id: Optional[int] = None) -> List[sqlite3.Row]:
+        """
+        Get all active mutes, optionally filtered by guild.
+
+        Args:
+            guild_id: Optional guild ID to filter by.
+
+        Returns:
+            List of active mute records.
+        """
+        if guild_id:
+            return self.fetchall(
+                "SELECT * FROM active_mutes WHERE guild_id = ? AND unmuted = 0",
+                (guild_id,)
+            )
+        return self.fetchall("SELECT * FROM active_mutes WHERE unmuted = 0")
+
+    def get_user_mute_history(
+        self,
+        user_id: int,
+        guild_id: int,
+        limit: int = 10,
+    ) -> List[sqlite3.Row]:
+        """
+        Get mute history for a user in a guild.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+            limit: Maximum records to return.
+
+        Returns:
+            List of mute history records, newest first.
+        """
+        return self.fetchall(
+            """SELECT * FROM mute_history
+               WHERE user_id = ? AND guild_id = ?
+               ORDER BY timestamp DESC
+               LIMIT ?""",
+            (user_id, guild_id, limit)
+        )
+
+    def get_user_mute_count(self, user_id: int, guild_id: int) -> int:
+        """
+        Get total number of mutes for a user in a guild.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Total mute count.
+        """
+        row = self.fetchone(
+            """SELECT COUNT(*) as count FROM mute_history
+               WHERE user_id = ? AND guild_id = ? AND action = 'mute'""",
+            (user_id, guild_id)
+        )
+        return row["count"] if row else 0
+
+    # =========================================================================
+    # Case Log Operations
+    # =========================================================================
+
+    def get_next_case_id(self) -> int:
+        """
+        Get and increment the next case ID.
+
+        DESIGN:
+            Atomic increment ensures unique case IDs across all users.
+            Returns the ID before incrementing.
+
+        Returns:
+            Next available case ID.
+        """
+        row = self.fetchone("SELECT next_case_id FROM case_counter WHERE id = 1")
+        next_id = row["next_case_id"] if row else 1
+
+        self.execute(
+            "UPDATE case_counter SET next_case_id = next_case_id + 1 WHERE id = 1"
+        )
+
+        return next_id
+
+    def get_case_log(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get case log for a user.
+
+        Args:
+            user_id: Discord user ID.
+
+        Returns:
+            Case log dict or None if no case exists.
+        """
+        row = self.fetchone(
+            "SELECT * FROM case_logs WHERE user_id = ?",
+            (user_id,)
+        )
+        if row:
+            return dict(row)
+        return None
+
+    def create_case_log(
+        self,
+        user_id: int,
+        case_id: int,
+        thread_id: int,
+    ) -> None:
+        """
+        Create a new case log for a user.
+
+        Args:
+            user_id: Discord user ID.
+            case_id: Unique case ID.
+            thread_id: Forum thread ID for this case.
+        """
+        now = time.time()
+        self.execute(
+            """INSERT INTO case_logs
+               (user_id, case_id, thread_id, mute_count, created_at, last_mute_at)
+               VALUES (?, ?, ?, 1, ?, ?)""",
+            (user_id, case_id, thread_id, now, now)
+        )
+
+        logger.tree("Case Log Created", [
+            ("User ID", str(user_id)),
+            ("Case ID", f"{case_id:04d}"),
+            ("Thread ID", str(thread_id)),
+        ], emoji="📋")
+
+    def increment_mute_count(self, user_id: int) -> int:
+        """
+        Increment mute count for a user's case.
+
+        Args:
+            user_id: Discord user ID.
+
+        Returns:
+            New mute count.
+        """
+        now = time.time()
+        self.execute(
+            """UPDATE case_logs
+               SET mute_count = mute_count + 1, last_mute_at = ?
+               WHERE user_id = ?""",
+            (now, user_id)
+        )
+
+        row = self.fetchone(
+            "SELECT mute_count FROM case_logs WHERE user_id = ?",
+            (user_id,)
+        )
+        return row["mute_count"] if row else 1
+
+    def update_last_unmute(self, user_id: int) -> None:
+        """
+        Update last unmute timestamp for a user's case.
+
+        Args:
+            user_id: Discord user ID.
+        """
+        now = time.time()
+        self.execute(
+            "UPDATE case_logs SET last_unmute_at = ? WHERE user_id = ?",
+            (now, user_id)
+        )
+
+    def get_all_case_logs(self) -> List[Dict[str, Any]]:
+        """
+        Get all case logs.
+
+        Returns:
+            List of all case log dicts.
+        """
+        rows = self.fetchall("SELECT * FROM case_logs ORDER BY case_id")
+        return [dict(row) for row in rows]
+
+    # =========================================================================
+    # Mod Tracker Operations
+    # =========================================================================
+
+    def get_tracked_mod(self, mod_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get tracked mod info.
+
+        Args:
+            mod_id: Discord user ID of the mod.
+
+        Returns:
+            Dict with mod tracker info or None if not tracked.
+        """
+        row = self.fetchone(
+            "SELECT * FROM mod_tracker WHERE mod_id = ?",
+            (mod_id,)
+        )
+        return dict(row) if row else None
+
+    def add_tracked_mod(
+        self,
+        mod_id: int,
+        thread_id: int,
+        display_name: str,
+        username: str,
+        avatar_hash: Optional[str] = None,
+    ) -> None:
+        """
+        Add a mod to the tracker.
+
+        Args:
+            mod_id: Discord user ID.
+            thread_id: Forum thread ID for their activity log.
+            display_name: Current display name.
+            username: Current username.
+            avatar_hash: Current avatar hash for change detection.
+        """
+        now = time.time()
+        self.execute(
+            """INSERT OR REPLACE INTO mod_tracker
+               (mod_id, thread_id, display_name, avatar_hash, username, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (mod_id, thread_id, display_name, avatar_hash, username, now)
+        )
+
+    def remove_tracked_mod(self, mod_id: int) -> bool:
+        """
+        Remove a mod from the tracker.
+
+        Args:
+            mod_id: Discord user ID.
+
+        Returns:
+            True if mod was removed, False if not found.
+        """
+        row = self.fetchone(
+            "SELECT mod_id FROM mod_tracker WHERE mod_id = ?",
+            (mod_id,)
+        )
+        if row:
+            self.execute("DELETE FROM mod_tracker WHERE mod_id = ?", (mod_id,))
+            return True
+        return False
+
+    def get_all_tracked_mods(self) -> List[Dict[str, Any]]:
+        """
+        Get all tracked mods.
+
+        Returns:
+            List of all tracked mod dicts.
+        """
+        rows = self.fetchall("SELECT * FROM mod_tracker")
+        return [dict(row) for row in rows]
+
+    def update_mod_info(
+        self,
+        mod_id: int,
+        display_name: Optional[str] = None,
+        username: Optional[str] = None,
+        avatar_hash: Optional[str] = None,
+    ) -> None:
+        """
+        Update stored mod info for change detection.
+
+        Args:
+            mod_id: Discord user ID.
+            display_name: New display name (if changed).
+            username: New username (if changed).
+            avatar_hash: New avatar hash (if changed).
+        """
+        updates = []
+        params = []
+
+        if display_name is not None:
+            updates.append("display_name = ?")
+            params.append(display_name)
+        if username is not None:
+            updates.append("username = ?")
+            params.append(username)
+        if avatar_hash is not None:
+            updates.append("avatar_hash = ?")
+            params.append(avatar_hash)
+
+        if updates:
+            params.append(mod_id)
+            self.execute(
+                f"UPDATE mod_tracker SET {', '.join(updates)} WHERE mod_id = ?",
+                tuple(params)
+            )
+
+    # =========================================================================
+    # Nickname History Operations
+    # =========================================================================
+
+    def save_nickname_change(
+        self,
+        user_id: int,
+        guild_id: int,
+        old_nickname: Optional[str],
+        new_nickname: Optional[str],
+        changed_by: Optional[int] = None,
+    ) -> None:
+        """
+        Save a nickname change to history.
+
+        Args:
+            user_id: Discord user ID whose nickname changed.
+            guild_id: Guild where the change occurred.
+            old_nickname: Previous nickname (None if no nickname).
+            new_nickname: New nickname (None if cleared).
+            changed_by: User ID who made the change (None if self).
+        """
+        now = time.time()
+        self.execute(
+            """INSERT INTO nickname_history
+               (user_id, guild_id, old_nickname, new_nickname, changed_by, changed_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, guild_id, old_nickname, new_nickname, changed_by, now)
+        )
+
+    def get_nickname_history(
+        self,
+        user_id: int,
+        guild_id: int,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get nickname history for a user.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+            limit: Maximum records to return.
+
+        Returns:
+            List of nickname history records, newest first.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM nickname_history
+               WHERE user_id = ? AND guild_id = ?
+               ORDER BY changed_at DESC
+               LIMIT ?""",
+            (user_id, guild_id, limit)
+        )
+        return [dict(row) for row in rows]
+
+    def get_all_nicknames(
+        self,
+        user_id: int,
+        guild_id: int,
+    ) -> List[str]:
+        """
+        Get all unique nicknames a user has had.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            List of unique nicknames (excluding None).
+        """
+        rows = self.fetchall(
+            """SELECT DISTINCT old_nickname FROM nickname_history
+               WHERE user_id = ? AND guild_id = ? AND old_nickname IS NOT NULL
+               UNION
+               SELECT DISTINCT new_nickname FROM nickname_history
+               WHERE user_id = ? AND guild_id = ? AND new_nickname IS NOT NULL""",
+            (user_id, guild_id, user_id, guild_id)
+        )
+        return [row["old_nickname"] or row["new_nickname"] for row in rows if row[0]]
+
+
+# =============================================================================
+# Global Instance
+# =============================================================================
+
+def get_db() -> DatabaseManager:
+    """Get the global database manager instance."""
+    return DatabaseManager()
+
+
+# Legacy alias for backwards compatibility
+Database = DatabaseManager
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["DatabaseManager", "Database", "get_db", "DB_PATH", "DATA_DIR"]

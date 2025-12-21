@@ -4,17 +4,61 @@ Azab Discord Bot - Core Package
 
 Core components and utilities for the Azab Discord bot.
 This package contains essential services like database management,
-logging systems, and other core functionality.
+configuration, logging, and health monitoring.
 
-Components:
-- Database: SQLite database wrapper for message logging and analytics
-- logger: Custom logging system with EST/EDT timezone support
+DESIGN:
+    Core modules are designed as singletons or global instances
+    to ensure consistent state across the application:
+    - get_config() returns the same Config instance
+    - get_db() returns the same Database instance
+    - logger is a global TreeLogger instance
+
+    All core modules are imported here for convenient access.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-from .database import Database
-from .logger import logger
+# =============================================================================
+# Core Imports
+# =============================================================================
 
-__all__ = ['Database', 'logger']
+from .config import (
+    Config,
+    ConfigValidationError,
+    EmbedColors,
+    NY_TZ,
+    get_config,
+    is_developer,
+    is_moderator,
+)
+
+from .database import Database, get_db
+
+from .logger import logger, TreeLogger
+
+from .health import HealthCheckServer
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = [
+    # Config
+    "Config",
+    "ConfigValidationError",
+    "EmbedColors",
+    "NY_TZ",
+    "get_config",
+    "is_developer",
+    "is_moderator",
+    # Database
+    "Database",
+    "get_db",
+    # Logger
+    "logger",
+    "TreeLogger",
+    # Health
+    "HealthCheckServer",
+]

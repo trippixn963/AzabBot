@@ -19,7 +19,7 @@ Server: discord.gg/syria
 def format_duration(total_minutes: int) -> str:
     """
     Format minutes into a human-readable duration string.
-    
+
     Converts a duration in minutes to a compact human-readable format
     suitable for Discord embeds and messages. Handles edge cases like
     zero or negative durations gracefully.
@@ -32,7 +32,7 @@ def format_duration(total_minutes: int) -> str:
         - X = days (omitted if 0)
         - Y = hours (omitted if 0)
         - Z = minutes (always shown if days and hours are 0)
-        
+
         Examples:
         - 45 minutes: "45m"
         - 125 minutes: "2h 5m"

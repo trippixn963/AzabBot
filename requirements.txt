@@ -1,18 +1,28 @@
 # Azab Discord Bot - Dependencies
-# ===============================
-# 
-# Required packages for the Azab Discord bot built for discord.gg/syria
-# Author: حَـــــنَّـــــا
+# ================================
 #
-# Core Discord Bot Dependencies
-# -----------------------------
-discord.py==2.3.2          # Discord API wrapper for Python
-python-dotenv==1.0.0       # Environment variable management
+# Required packages for the Azab Discord bot built for discord.gg/syria
+#
+# Author: حَـــــنَّـــــا
+# Server: discord.gg/syria
 
-# AI Service Dependencies  
-# ----------------------
-openai==0.28.1             # OpenAI API for AI-powered responses (v0.28.1 for compatibility)
+# Core Discord API Library
+# =========================
+# Discord.py 2.7.0 dev for latest features
+git+https://github.com/Rapptz/discord.py.git@master#egg=discord.py
 
-# Optional Dependencies
-# --------------------
-aiohttp==3.9.1             # Async HTTP client (recommended for performance)
+# Environment Configuration
+# ==========================
+python-dotenv>=1.0.0
+
+# HTTP Client
+# ============
+aiohttp>=3.9.1
+
+# AI Integration
+# ===============
+openai>=1.40.0
+
+# System Monitoring
+# ==================
+psutil>=5.9.0

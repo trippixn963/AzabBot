@@ -1,16 +1,13 @@
 """
-Azab Discord Bot - Ignore User Command
+Azab Discord Bot - Ignore Command Cog
 ======================================
 
-Slash command implementation for ignoring/unignoring specific users.
-Allows administrators to prevent the bot from responding to certain users.
+Slash command for ignoring/unignoring specific users.
 
-Features:
-- Ignore specific users (bot won't respond to them)
-- Unignore previously ignored users
-- Persistent storage of ignored users
-- Administrator-only access
-- Visual confirmation embeds
+DESIGN:
+    Allows developers to prevent the bot from responding to specific users.
+    Ignored users are stored in the database and persist across restarts.
+    The developer cannot be ignored to prevent lockout scenarios.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -18,158 +15,211 @@ Server: discord.gg/syria
 
 import discord
 from discord import app_commands
-import os
-from typing import Any, Optional, Literal
-from datetime import datetime
+from discord.ext import commands
+from typing import Literal, TYPE_CHECKING
 
 from src.core.logger import logger
+from src.core.config import get_config, is_developer, EmbedColors
+
+if TYPE_CHECKING:
+    from src.bot import AzabBot
 
 
-class IgnoreCommand:
+# =============================================================================
+# Ignore Cog
+# =============================================================================
+
+class IgnoreCog(commands.Cog):
     """
-    Discord slash command for ignoring/unignoring specific users.
+    Commands for managing ignored users.
 
-    This command allows administrators to add or remove users from the bot's
-    ignore list. Ignored users will be completely ignored by the bot - no
-    responses, no logging, no interactions.
+    DESIGN:
+        Developer-only command for blocking problem users.
+        Uses database for persistence across restarts.
+        Prevents ignoring the developer or the bot itself.
+
+    Attributes:
+        bot: Reference to the main bot instance.
+        config: Bot configuration.
     """
 
-    def __init__(self, bot: Any) -> None:
+    # =========================================================================
+    # Initialization
+    # =========================================================================
+
+    def __init__(self, bot: "AzabBot") -> None:
         """
-        Initialize the ignore command.
+        Initialize the ignore cog.
 
         Args:
-            bot: The main AzabBot instance
+            bot: Main bot instance.
         """
-        self.bot: Any = bot
+        self.bot = bot
+        self.config = get_config()
 
-    def create_command(self) -> app_commands.Command:
+    # =========================================================================
+    # Permission Check
+    # =========================================================================
+
+    async def cog_check(self, interaction: discord.Interaction) -> bool:
         """
-        Create and return the Discord slash command.
+        Only developers can use these commands.
+
+        Args:
+            interaction: Discord interaction to check.
 
         Returns:
-            discord.app_commands.Command: The configured slash command
+            True if user is the developer.
         """
-        @app_commands.command(name="ignore", description="Ignore or unignore a specific user")
-        @app_commands.describe(
-            action="Choose to ignore or unignore the user",
-            user="The user to ignore or unignore"
-        )
-        async def ignore(
-            interaction: discord.Interaction,
-            action: Literal["ignore", "unignore"],
-            user: discord.User
-        ) -> None:
-            """
-            Handle the /ignore slash command.
+        return is_developer(interaction.user.id)
 
-            Allows administrators to ignore or unignore specific users.
-            Ignored users are stored persistently and the bot won't respond to them.
+    # =========================================================================
+    # Ignore Command
+    # =========================================================================
 
-            Args:
-                interaction (discord.Interaction): The Discord interaction object
-                action (Literal["ignore", "unignore"]): Action to perform
-                user (discord.User): The user to ignore/unignore
-            """
-            await interaction.response.defer(ephemeral=True)
+    @app_commands.command(name="ignore", description="Ignore or unignore a specific user")
+    @app_commands.describe(
+        action="Choose to ignore or unignore the user",
+        user="The user to ignore or unignore",
+    )
+    async def ignore(
+        self,
+        interaction: discord.Interaction,
+        action: Literal["ignore", "unignore"],
+        user: discord.User,
+    ) -> None:
+        """
+        Manage the bot's ignore list.
 
-            # DESIGN: Prevent ignoring bot itself, developer, and family members
-            # This is a safety mechanism to prevent accidental lockout from bot control
-            # If we allowed ignoring developer, we'd lose all control over the bot
-            if user.id == self.bot.user.id:
-                await interaction.followup.send("❌ I cannot ignore myself!", ephemeral=True)
+        DESIGN:
+            Validates target before modifying ignore list.
+            Logs all changes with tree format for visibility.
+            Shows confirmation embed with user details.
+
+        Args:
+            interaction: Discord interaction context.
+            action: Whether to ignore or unignore.
+            user: Target user to modify.
+        """
+        await interaction.response.defer(ephemeral=True)
+
+        # -------------------------------------------------------------------------
+        # Validate Target
+        # -------------------------------------------------------------------------
+
+        # Prevent ignoring the bot itself
+        if self.bot.user and user.id == self.bot.user.id:
+            await interaction.followup.send(
+                "I cannot ignore myself!",
+                ephemeral=True,
+            )
+            return
+
+        # Prevent ignoring the developer
+        if is_developer(user.id):
+            await interaction.followup.send(
+                "I cannot ignore the developer!",
+                ephemeral=True,
+            )
+            return
+
+        # -------------------------------------------------------------------------
+        # Handle Ignore Action
+        # -------------------------------------------------------------------------
+
+        if action == "ignore":
+            if self.bot.db.is_user_ignored(user.id):
+                await interaction.followup.send(
+                    f"**{user.name}** is already being ignored.",
+                    ephemeral=True,
+                )
                 return
 
-            if user.id == self.bot.developer_id:
-                await interaction.followup.send("❌ I cannot ignore my developer!", ephemeral=True)
+            self.bot.db.add_ignored_user(user.id)
+
+            embed = discord.Embed(
+                title="User Ignored",
+                description="The bot will now ignore all messages from this user.",
+                color=EmbedColors.ERROR,
+            )
+
+            embed.add_field(name="User", value=user.mention, inline=True)
+            embed.add_field(name="User ID", value=str(user.id), inline=True)
+            embed.add_field(name="Action", value="Ignored", inline=True)
+
+            embed.set_thumbnail(
+                url=user.avatar.url if user.avatar else user.default_avatar.url
+            )
+            embed.set_footer(
+                text=f"Executed by {interaction.user.name} | Developed By: {self.config.developer_name}"
+            )
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+            logger.tree("USER IGNORED", [
+                ("User", str(user)),
+                ("User ID", str(user.id)),
+                ("By", str(interaction.user)),
+                ("By ID", str(interaction.user.id)),
+            ], emoji="🔇")
+
+        # -------------------------------------------------------------------------
+        # Handle Unignore Action
+        # -------------------------------------------------------------------------
+
+        elif action == "unignore":
+            if not self.bot.db.is_user_ignored(user.id):
+                await interaction.followup.send(
+                    f"**{user.name}** is not currently being ignored.",
+                    ephemeral=True,
+                )
                 return
 
-            # DESIGN: Family members can't be ignored for debugging/testing purposes
-            # They need to bypass all restrictions to test bot functionality
-            if user.id == self.bot.uncle_id or user.id == self.bot.brother_id:
-                await interaction.followup.send("❌ I cannot ignore family members!", ephemeral=True)
-                return
+            self.bot.db.remove_ignored_user(user.id)
 
-            if action == "ignore":
-                if user.id in self.bot.ignored_users:
-                    await interaction.followup.send(
-                        f"ℹ️ **{user.name}** is already being ignored.",
-                        ephemeral=True
-                    )
-                    return
+            embed = discord.Embed(
+                title="User Unignored",
+                description="The bot will now respond to this user again.",
+                color=EmbedColors.SUCCESS,
+            )
 
-                self.bot.ignored_users.add(user.id)
-                self.bot._save_ignored_users()
+            embed.add_field(name="User", value=user.mention, inline=True)
+            embed.add_field(name="User ID", value=str(user.id), inline=True)
+            embed.add_field(name="Action", value="Unignored", inline=True)
 
-                embed = discord.Embed(
-                    title="🔇 User Ignored",
-                    description=f"The bot will now ignore all messages from this user.",
-                    color=int(os.getenv('EMBED_COLOR_ERROR', '0xFF0000'), 16)
-                )
+            embed.set_thumbnail(
+                url=user.avatar.url if user.avatar else user.default_avatar.url
+            )
+            embed.set_footer(
+                text=f"Executed by {interaction.user.name} | Developed By: {self.config.developer_name}"
+            )
 
-                embed.add_field(name="👤 User", value=user.mention, inline=True)
-                embed.add_field(name="🆔 User ID", value=str(user.id), inline=True)
-                embed.add_field(name="⚙️ Action", value="Ignored", inline=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
-                embed.add_field(name="📝 Effect", value="Bot will not respond to their messages", inline=False)
+            logger.tree("USER UNIGNORED", [
+                ("User", str(user)),
+                ("User ID", str(user.id)),
+                ("By", str(interaction.user)),
+                ("By ID", str(interaction.user.id)),
+            ], emoji="🔊")
 
-                embed.set_thumbnail(url=user.avatar.url if user.avatar else user.default_avatar.url)
 
-                developer: Optional[discord.User] = await self.bot.fetch_user(self.bot.developer_id)
-                developer_avatar: Optional[str] = developer.avatar.url if developer and developer.avatar else None
-                embed.set_footer(
-                    text=f"Executed by {interaction.user.name} • Developed By: {os.getenv('DEVELOPER_NAME', 'حَـــــنَّـــــا')}",
-                    icon_url=developer_avatar
-                )
+# =============================================================================
+# Cog Setup
+# =============================================================================
 
-                await interaction.followup.send(embed=embed, ephemeral=True)
+async def setup(bot: "AzabBot") -> None:
+    """
+    Load the ignore cog.
 
-                logger.tree("USER IGNORED", [
-                    ("User", str(user)),
-                    ("User ID", str(user.id)),
-                    ("By", str(interaction.user)),
-                    ("Total Ignored", str(len(self.bot.ignored_users)))
-                ], "🔇")
+    Args:
+        bot: Main bot instance.
+    """
+    await bot.add_cog(IgnoreCog(bot))
 
-            elif action == "unignore":
-                if user.id not in self.bot.ignored_users:
-                    await interaction.followup.send(
-                        f"ℹ️ **{user.name}** is not currently being ignored.",
-                        ephemeral=True
-                    )
-                    return
 
-                self.bot.ignored_users.remove(user.id)
-                self.bot._save_ignored_users()
+# =============================================================================
+# Module Export
+# =============================================================================
 
-                embed = discord.Embed(
-                    title="🔊 User Unignored",
-                    description=f"The bot will now respond to this user again.",
-                    color=int(os.getenv('EMBED_COLOR_SUCCESS', '0x00FF00'), 16)
-                )
-
-                embed.add_field(name="👤 User", value=user.mention, inline=True)
-                embed.add_field(name="🆔 User ID", value=str(user.id), inline=True)
-                embed.add_field(name="⚙️ Action", value="Unignored", inline=True)
-
-                embed.add_field(name="📝 Effect", value="Bot will respond normally to their messages", inline=False)
-
-                embed.set_thumbnail(url=user.avatar.url if user.avatar else user.default_avatar.url)
-
-                developer: Optional[discord.User] = await self.bot.fetch_user(self.bot.developer_id)
-                developer_avatar: Optional[str] = developer.avatar.url if developer and developer.avatar else None
-                embed.set_footer(
-                    text=f"Executed by {interaction.user.name} • Developed By: {os.getenv('DEVELOPER_NAME', 'حَـــــنَّـــــا')}",
-                    icon_url=developer_avatar
-                )
-
-                await interaction.followup.send(embed=embed, ephemeral=True)
-
-                logger.tree("USER UNIGNORED", [
-                    ("User", str(user)),
-                    ("User ID", str(user.id)),
-                    ("By", str(interaction.user)),
-                    ("Total Ignored", str(len(self.bot.ignored_users)))
-                ], "🔊")
-
-        return ignore
+__all__ = ["IgnoreCog", "setup"]
