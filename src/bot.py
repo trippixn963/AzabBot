@@ -350,7 +350,7 @@ class AzabBot(commands.Bot):
             # -----------------------------------------------------------------
             # Logging Service - Server activity logging
             # -----------------------------------------------------------------
-            from src.services.logging_service import LoggingService
+            from src.services.server_logs import LoggingService
             self.logging_service = LoggingService(self)
             if await self.logging_service.initialize():
                 logger.tree("Logging Service Initialized", [
