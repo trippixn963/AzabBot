@@ -4,35 +4,12 @@ Azab Discord Bot - Server Logging Service
 
 Comprehensive server activity logging using a forum channel with categorized threads.
 
-DESIGN:
-    Uses a forum channel with 15 dedicated threads for different log categories.
-    Each thread handles a specific type of server activity for easy filtering.
-
-Categories:
-    - Bans & Kicks
-    - Mutes & Timeouts
-    - Message Logs (edits, deletes, bulk)
-    - Member Joins
-    - Member Leaves
-    - Role Changes
-    - Name Changes
-    - Avatar Changes
-    - Voice Activity
-    - Channel Changes
-    - Role Management
-    - Emoji & Stickers
-    - Server Settings
-    - Permissions
-    - Bots & Integrations
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional, Dict, List, Tuple, Union
-from dataclasses import dataclass
-from enum import Enum
 import asyncio
 import io
 
@@ -42,67 +19,11 @@ import discord
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 
+# Import from local package
+from .categories import LogCategory, THREAD_DESCRIPTIONS
+
 if TYPE_CHECKING:
     from src.bot import AzabBot
-
-
-# =============================================================================
-# Log Categories
-# =============================================================================
-
-class LogCategory(Enum):
-    """Log category enum mapping to thread names."""
-    BANS_KICKS = "🔨 Bans & Kicks"
-    MUTES_TIMEOUTS = "🔇 Mutes & Timeouts"
-    MESSAGES = "📝 Message Logs"
-    JOINS = "📥 Member Joins"
-    LEAVES = "📤 Member Leaves"
-    ROLE_CHANGES = "🏷️ Role Changes"
-    NAME_CHANGES = "✨ Name Changes"
-    AVATAR_CHANGES = "🖼️ Avatar Changes"
-    VOICE = "🔊 Voice Activity"
-    CHANNELS = "📁 Channel Changes"
-    THREADS = "🧵 Thread Activity"
-    ROLES = "🎭 Role Management"
-    EMOJI_STICKERS = "😀 Emoji & Stickers"
-    SERVER_SETTINGS = "⚙️ Server Settings"
-    PERMISSIONS = "🔐 Permissions"
-    BOTS_INTEGRATIONS = "🤖 Bots & Integrations"
-    AUTOMOD = "🛡️ AutoMod Actions"
-    EVENTS = "📅 Scheduled Events"
-    REACTIONS = "💬 Reactions"
-    STAGE = "🎤 Stage Activity"
-    BOOSTS = "💎 Server Boosts"
-    INVITES = "🔗 Invite Activity"
-    ALERTS = "🚨 Security Alerts"
-
-
-# Thread descriptions for each category
-THREAD_DESCRIPTIONS = {
-    LogCategory.BANS_KICKS: "Logs for bans, unbans, and kicks",
-    LogCategory.MUTES_TIMEOUTS: "Logs for mutes, unmutes, timeouts, and timeout removals",
-    LogCategory.MESSAGES: "Logs for message edits, deletes, and bulk deletes",
-    LogCategory.JOINS: "Logs for new member joins with invite tracking",
-    LogCategory.LEAVES: "Logs for member leaves with role info and duration",
-    LogCategory.ROLE_CHANGES: "Logs for role additions and removals from users",
-    LogCategory.NAME_CHANGES: "Logs for nickname and username changes",
-    LogCategory.AVATAR_CHANGES: "Logs for profile picture changes",
-    LogCategory.VOICE: "Logs for voice joins, leaves, moves, mutes, and deafens",
-    LogCategory.CHANNELS: "Logs for channel creates, deletes, and updates",
-    LogCategory.THREADS: "Logs for thread and forum post creates, archives, and deletes",
-    LogCategory.ROLES: "Logs for role creates, deletes, and updates",
-    LogCategory.EMOJI_STICKERS: "Logs for emoji and sticker changes",
-    LogCategory.SERVER_SETTINGS: "Logs for server setting changes",
-    LogCategory.PERMISSIONS: "Logs for permission overwrite changes",
-    LogCategory.BOTS_INTEGRATIONS: "Logs for bot, webhook, and integration changes",
-    LogCategory.AUTOMOD: "Logs for AutoMod actions and blocked messages",
-    LogCategory.EVENTS: "Logs for scheduled event creates, updates, and deletes",
-    LogCategory.REACTIONS: "Logs for reaction adds and removes",
-    LogCategory.STAGE: "Logs for stage channel activity and speakers",
-    LogCategory.BOOSTS: "Logs for server boost and unboost events",
-    LogCategory.INVITES: "Logs for invite creates, deletes, and usage details",
-    LogCategory.ALERTS: "Security alerts for raids, suspicious activity, and threats",
-}
 
 
 # =============================================================================

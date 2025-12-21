@@ -8,26 +8,14 @@ DESIGN:
     Each tracked mod gets a forum thread where all their activities
     are logged: avatar changes, name changes, message edits/deletes, etc.
 
-Features:
-    - Create tracking thread for new mods
-    - Log avatar/username/nickname changes
-    - Log message edits and deletions
-    - Log role changes
-    - Log voice channel activity
-    - Log mute/unmute actions
-    - Log mod actions (kick/ban/timeout)
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
 from datetime import datetime, timedelta, time
 from typing import TYPE_CHECKING, Optional, List, Tuple, Callable, Any, Dict
-from dataclasses import dataclass, field
 from collections import defaultdict
-from functools import wraps
 import asyncio
-import re
 import io
 
 import aiohttp
@@ -37,132 +25,28 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 
+# Import from local package modules
+from .constants import (
+    MAX_RETRIES,
+    BASE_RETRY_DELAY,
+    RATE_LIMIT_DELAY,
+    CACHE_TTL,
+    INACTIVITY_DAYS,
+    MESSAGE_CACHE_SIZE,
+    MESSAGE_CACHE_TTL,
+    BULK_ACTION_WINDOW,
+    BULK_BAN_THRESHOLD,
+    BULK_DELETE_THRESHOLD,
+    BULK_TIMEOUT_THRESHOLD,
+    SUSPICIOUS_UNBAN_WINDOW,
+    BAN_HISTORY_TTL,
+    MASS_PERMISSION_WINDOW,
+    MASS_PERMISSION_THRESHOLD,
+)
+from .helpers import CachedMessage, strip_emojis, retry_async
+
 if TYPE_CHECKING:
     from src.bot import AzabBot
-
-
-# =============================================================================
-# Constants
-# =============================================================================
-
-MAX_RETRIES = 3
-BASE_RETRY_DELAY = 1.0  # seconds
-RATE_LIMIT_DELAY = 1.5  # seconds between API calls
-CACHE_TTL = 300  # 5 minutes cache for forum channel
-
-# Inactivity alerts
-INACTIVITY_DAYS = 7  # Days before alerting about inactive mod
-ALERT_USER_ID = 259725211664908288  # User to ping for alerts
-
-# Message caching
-MESSAGE_CACHE_SIZE = 50  # Messages to cache per mod
-MESSAGE_CACHE_TTL = 3600  # 1 hour cache for messages
-
-# Bulk action detection
-BULK_ACTION_WINDOW = 300  # 5 minutes window
-BULK_BAN_THRESHOLD = 5  # Bans in window to trigger alert
-BULK_DELETE_THRESHOLD = 10  # Message deletes in window to trigger alert
-BULK_TIMEOUT_THRESHOLD = 8  # Timeouts in window to trigger alert
-
-# Suspicious pattern detection
-SUSPICIOUS_UNBAN_WINDOW = 3600  # 1 hour - alert if unban within this time of ban
-BAN_HISTORY_TTL = 86400  # 24 hours - how long to keep ban history
-
-# Mass permission change detection
-MASS_PERMISSION_WINDOW = 300  # 5 minutes
-MASS_PERMISSION_THRESHOLD = 5  # Permission changes in window to trigger alert
-
-
-# =============================================================================
-# Data Classes
-# =============================================================================
-
-@dataclass
-class CachedMessage:
-    """Cached message with downloaded attachments."""
-    message_id: int
-    author_id: int
-    channel_id: int
-    content: str
-    cached_at: datetime
-    attachments: List[Tuple[str, bytes]] = field(default_factory=list)  # (filename, data)
-
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-# Regex pattern to match ONLY standard emojis (not custom fonts)
-EMOJI_PATTERN = re.compile(
-    "["
-    "\U0001F600-\U0001F64F"  # Emoticons
-    "\U0001F300-\U0001F5FF"  # Misc Symbols and Pictographs
-    "\U0001F680-\U0001F6FF"  # Transport and Map
-    "\U0001F900-\U0001F9FF"  # Supplemental Symbols and Pictographs
-    "\U0001FA00-\U0001FA6F"  # Chess Symbols
-    "\U0001FA70-\U0001FAFF"  # Symbols and Pictographs Extended-A
-    "\U00002702-\U000027B0"  # Dingbats
-    "\U0001F1E0-\U0001F1FF"  # Flags
-    "]+",
-    flags=re.UNICODE,
-)
-
-
-def strip_emojis(text: str) -> str:
-    """
-    Remove standard emojis from text, keeping custom fonts.
-
-    Args:
-        text: Input string that may contain emojis.
-
-    Returns:
-        String with emojis removed but custom fonts preserved.
-    """
-    # Remove only standard emojis
-    cleaned = EMOJI_PATTERN.sub("", text)
-    # Clean up extra whitespace
-    cleaned = " ".join(cleaned.split())
-    return cleaned.strip()
-
-
-async def retry_async(
-    coro_func: Callable,
-    *args,
-    max_retries: int = MAX_RETRIES,
-    base_delay: float = BASE_RETRY_DELAY,
-    **kwargs,
-) -> Any:
-    """
-    Retry an async function with exponential backoff.
-
-    Args:
-        coro_func: Async function to retry.
-        max_retries: Maximum number of retry attempts.
-        base_delay: Base delay between retries (doubles each retry).
-
-    Returns:
-        Result of the function call.
-
-    Raises:
-        Last exception if all retries fail.
-    """
-    last_exception = None
-    for attempt in range(max_retries):
-        try:
-            return await coro_func(*args, **kwargs)
-        except discord.HTTPException as e:
-            last_exception = e
-            if e.status == 429:  # Rate limited
-                retry_after = getattr(e, 'retry_after', base_delay * (2 ** attempt))
-                await asyncio.sleep(retry_after)
-            elif e.status >= 500:  # Server error, retry
-                await asyncio.sleep(base_delay * (2 ** attempt))
-            else:
-                raise  # Client error, don't retry
-        except (asyncio.TimeoutError, ConnectionError) as e:
-            last_exception = e
-            await asyncio.sleep(base_delay * (2 ** attempt))
-    raise last_exception
 
 
 # =============================================================================
@@ -510,7 +394,7 @@ class ModTrackerService:
                 await asyncio.sleep(RATE_LIMIT_DELAY)
 
             await thread.send(
-                content=f"<@{ALERT_USER_ID}>",
+                content=f"<@{self.config.developer_id}>",
                 embed=embed,
             )
 

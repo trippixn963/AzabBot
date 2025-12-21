@@ -38,7 +38,7 @@ from .ai_service import AIService
 from .mute_scheduler import MuteScheduler
 from .case_log import CaseLogService
 from .mod_tracker import ModTrackerService
-from .logging_service import LoggingService
+from .server_logs import LoggingService
 from .webhook_alerts import WebhookAlertService, get_alert_service
 
 
