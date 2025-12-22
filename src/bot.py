@@ -119,6 +119,7 @@ class AzabBot(commands.Bot):
         self.mod_tracker = None       # ModTrackerService - mod activity tracking
         self.logging_service = None   # LoggingService - server activity logging
         self.webhook_alert_service = None  # WebhookAlertService - status alerts
+        self.voice_handler = None     # VoiceHandler - voice state enforcement
 
         # =================================================================
         # Prisoner Rate Limiting
@@ -372,6 +373,13 @@ class AzabBot(commands.Bot):
             self.webhook_alert_service.set_bot(self)
             await self.webhook_alert_service.send_startup_alert()
             await self.webhook_alert_service.start_hourly_alerts()
+
+            # -----------------------------------------------------------------
+            # Voice Handler - Voice state enforcement
+            # -----------------------------------------------------------------
+            from src.handlers.voice_handler import VoiceHandler
+            self.voice_handler = VoiceHandler(self)
+            logger.info("Voice Handler Initialized")
 
         except Exception as e:
             logger.error("Service Initialization Failed", [
@@ -1009,54 +1017,9 @@ class AzabBot(commands.Bot):
         before: discord.VoiceState,
         after: discord.VoiceState,
     ) -> None:
-        """Track voice channel activity for tracked mods."""
-        if not self.mod_tracker or not self.mod_tracker.is_tracked(member.id):
-            return
-
-        # Joined a voice channel
-        if before.channel is None and after.channel is not None:
-            await self.mod_tracker.log_voice_activity(
-                mod=member,
-                action="Joined",
-                channel=after.channel,
-            )
-
-        # Left a voice channel
-        elif before.channel is not None and after.channel is None:
-            await self.mod_tracker.log_voice_activity(
-                mod=member,
-                action="Left",
-                channel=before.channel,
-            )
-
-        # Moved between voice channels
-        elif before.channel != after.channel:
-            await self.mod_tracker.log_voice_activity(
-                mod=member,
-                action="Moved",
-                from_channel=before.channel,
-                to_channel=after.channel,
-            )
-
-        # -----------------------------------------------------------------
-        # Logging Service - Voice Activity
-        # -----------------------------------------------------------------
-        if self.logging_service and self.logging_service.enabled:
-            if before.channel is None and after.channel is not None:
-                await self.logging_service.log_voice_join(member, after.channel)
-            elif before.channel is not None and after.channel is None:
-                await self.logging_service.log_voice_leave(member, before.channel)
-            elif before.channel != after.channel and before.channel and after.channel:
-                await self.logging_service.log_voice_move(member, before.channel, after.channel)
-
-            # Stage speaker changes
-            if after.channel and isinstance(after.channel, discord.StageChannel):
-                # Became a speaker (suppress changed from True to False)
-                if before.suppress and not after.suppress:
-                    await self.logging_service.log_stage_speaker(member, after.channel, True)
-                # Stopped being a speaker (suppress changed from False to True)
-                elif not before.suppress and after.suppress:
-                    await self.logging_service.log_stage_speaker(member, after.channel, False)
+        """Delegate voice state changes to the voice handler."""
+        if self.voice_handler:
+            await self.voice_handler.handle_voice_state_update(member, before, after)
 
     # =========================================================================
     # Logging Service Events

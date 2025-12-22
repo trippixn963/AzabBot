@@ -511,6 +511,41 @@ class LoggingService:
 
         await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
 
+    async def log_muted_vc_violation(
+        self,
+        member: discord.Member,
+        channel_name: str,
+        timeout_duration: "timedelta",
+    ) -> None:
+        """Log when a muted user attempts to join voice and gets timed out."""
+        if not self._should_log(member.guild.id):
+            return
+
+        from datetime import timedelta
+
+        # Format timeout duration
+        hours = int(timeout_duration.total_seconds() // 3600)
+        timeout_str = f"{hours} hour{'s' if hours != 1 else ''}"
+
+        embed = self._create_embed(
+            "🔇 Muted User VC Violation",
+            EmbedColors.ERROR,
+            category="VC Violation",
+            user_id=member.id,
+        )
+        embed.add_field(name="User", value=self._format_user_field(member), inline=True)
+        embed.add_field(name="Attempted Channel", value=f"🔊 {channel_name}", inline=True)
+        embed.add_field(name="Action", value="Disconnected", inline=True)
+        embed.add_field(name="Timeout Applied", value=f"`{timeout_str}`", inline=True)
+        embed.add_field(
+            name="Reason",
+            value="Muted users are not allowed in voice channels",
+            inline=False,
+        )
+        self._set_user_thumbnail(embed, member)
+
+        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=member.id)
+
     # =========================================================================
     # Message Logs
     # =========================================================================

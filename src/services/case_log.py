@@ -570,6 +570,68 @@ class CaseLogService:
                 ("Error", str(e)[:100]),
             ])
 
+    async def log_muted_vc_violation(
+        self,
+        user_id: int,
+        display_name: str,
+        channel_name: str,
+    ) -> None:
+        """
+        Log when a muted user attempts to join voice and gets timed out.
+
+        Args:
+            user_id: The user's Discord ID.
+            display_name: The user's display name.
+            channel_name: The voice channel they attempted to join.
+        """
+        if not self.enabled:
+            return
+
+        try:
+            case = self.db.get_case_log(user_id)
+            if not case:
+                return
+
+            case_thread = await self._get_case_thread(case["thread_id"])
+            if case_thread:
+                embed = discord.Embed(
+                    title="🔇 Voice Channel Violation",
+                    description="User attempted to join a voice channel while muted. They have been disconnected and given a 1-hour timeout.",
+                    color=EmbedColors.ERROR,
+                )
+
+                now = datetime.now(NY_TZ)
+                embed.add_field(
+                    name="Attempted Channel",
+                    value=f"🔊 {channel_name}",
+                    inline=True,
+                )
+                embed.add_field(
+                    name="Action Taken",
+                    value="Disconnected + 1h Timeout",
+                    inline=True,
+                )
+                embed.add_field(
+                    name="Time",
+                    value=f"<t:{int(now.timestamp())}:F>",
+                    inline=True,
+                )
+
+                set_footer(embed)
+                await case_thread.send(embed=embed)
+
+                logger.tree("Case Log: VC Violation", [
+                    ("User", f"{display_name} ({user_id})"),
+                    ("Case ID", case['case_id']),
+                    ("Channel", channel_name),
+                ], emoji="🔇")
+
+        except Exception as e:
+            logger.error("Case Log: Failed To Log VC Violation", [
+                ("User ID", str(user_id)),
+                ("Error", str(e)[:100]),
+            ])
+
     # =========================================================================
     # Case Management
     # =========================================================================
