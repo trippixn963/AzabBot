@@ -31,6 +31,14 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.views import CASE_EMOJI, MESSAGE_EMOJI, DownloadButton
+from src.utils.retry import (
+    retry_async,
+    safe_fetch_channel,
+    safe_fetch_message,
+    safe_send,
+    safe_edit,
+    safe_delete,
+)
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -101,6 +109,8 @@ class CaseLogService:
 
     # Cache TTL for thread lookups (5 minutes)
     THREAD_CACHE_TTL = timedelta(minutes=5)
+    # Debounce delay for profile stats updates (seconds)
+    PROFILE_UPDATE_DEBOUNCE = 2.0
 
     def __init__(self, bot: "AzabBot") -> None:
         """
@@ -119,6 +129,9 @@ class CaseLogService:
         # Pending reason scheduler
         self._reason_check_task: Optional[asyncio.Task] = None
         self._reason_check_running: bool = False
+        # Debounced profile updates: user_id -> case_data
+        self._pending_profile_updates: Dict[int, dict] = {}
+        self._profile_update_task: Optional[asyncio.Task] = None
 
     # =========================================================================
     # Pending Reason Scheduler
@@ -187,7 +200,8 @@ class CaseLogService:
                 action_type = pending["action_type"]
                 target_user_id = pending["target_user_id"]
 
-                await thread.send(
+                await safe_send(
+                    thread,
                     f"⚠️ <@{owner_id}> **Alert:** <@{moderator_id}> did not provide a reason for "
                     f"this {action_type} on <@{target_user_id}> within 1 hour."
                 )
@@ -207,6 +221,44 @@ class CaseLogService:
                     ("Pending ID", str(pending["id"])),
                     ("Error", str(e)[:50]),
                 ])
+
+    # =========================================================================
+    # Debounced Profile Updates
+    # =========================================================================
+
+    def _schedule_profile_update(self, user_id: int, case: dict) -> None:
+        """
+        Schedule a debounced profile stats update.
+
+        DESIGN:
+            Multiple rapid updates for the same user are coalesced.
+            After PROFILE_UPDATE_DEBOUNCE seconds, all pending updates are processed.
+
+        Args:
+            user_id: User ID to update.
+            case: Case data from database.
+        """
+        # Add/replace in pending updates
+        self._pending_profile_updates[user_id] = case
+
+        # Schedule processing if not already scheduled
+        if self._profile_update_task is None or self._profile_update_task.done():
+            self._profile_update_task = asyncio.create_task(self._process_profile_updates())
+
+    async def _process_profile_updates(self) -> None:
+        """Process all pending profile updates after debounce delay."""
+        await asyncio.sleep(self.PROFILE_UPDATE_DEBOUNCE)
+
+        # Take a snapshot and clear pending
+        pending = self._pending_profile_updates.copy()
+        self._pending_profile_updates.clear()
+
+        # Process each pending update
+        for user_id, case in pending.items():
+            try:
+                await self._update_profile_stats(user_id, case)
+            except Exception as e:
+                logger.warning(f"Failed to update profile stats for {user_id}: {str(e)[:50]}")
 
     # =========================================================================
     # Properties
@@ -282,19 +334,19 @@ class CaseLogService:
             if now - self._forum_cache_time < self.THREAD_CACHE_TTL:
                 return self._forum
 
-        # Cache miss or expired - fetch forum
-        try:
-            channel = self.bot.get_channel(self.config.case_log_forum_id)
-            if channel is None:
-                channel = await self.bot.fetch_channel(self.config.case_log_forum_id)
-            if isinstance(channel, discord.ForumChannel):
-                self._forum = channel
-                self._forum_cache_time = now
-        except Exception as e:
-            logger.warning(f"Failed To Get Case Log Forum: {self.config.case_log_forum_id} - {str(e)[:50]}")
+        # Cache miss or expired - fetch forum with retry
+        channel = await safe_fetch_channel(self.bot, self.config.case_log_forum_id)
+        if channel is None:
+            logger.warning(f"Failed To Get Case Log Forum: {self.config.case_log_forum_id}")
             return None
 
-        return self._forum
+        if isinstance(channel, discord.ForumChannel):
+            self._forum = channel
+            self._forum_cache_time = now
+            return self._forum
+
+        logger.warning(f"Channel {self.config.case_log_forum_id} is not a ForumChannel")
+        return None
 
     async def _get_case_thread(self, thread_id: int) -> Optional[discord.Thread]:
         """
@@ -317,30 +369,22 @@ class CaseLogService:
                 # Cache expired, remove it
                 del self._thread_cache[thread_id]
 
-        # Cache miss - fetch thread
-        try:
-            thread = self.bot.get_channel(thread_id)
-            fetch_method = "get_channel" if thread else "fetch_channel"
-            if thread is None:
-                thread = await self.bot.fetch_channel(thread_id)
-            if isinstance(thread, discord.Thread):
-                # Cache the result
-                self._thread_cache[thread_id] = (thread, now)
-                # Cleanup old cache entries (keep max 100)
-                if len(self._thread_cache) > 100:
-                    oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
-                    del self._thread_cache[oldest]
-                return thread
-            else:
-                logger.warning(f"Channel {thread_id} is not a Thread: {type(thread)}")
-        except discord.NotFound:
+        # Cache miss - fetch thread with retry
+        channel = await safe_fetch_channel(self.bot, thread_id)
+        if channel is None:
             logger.warning(f"Case Thread Not Found: {thread_id}")
-        except Exception as e:
-            logger.error("Case Thread Fetch Failed", [
-                ("Thread ID", str(thread_id)),
-                ("Error Type", type(e).__name__),
-                ("Error", str(e)[:100]),
-            ])
+            return None
+
+        if isinstance(channel, discord.Thread):
+            # Cache the result
+            self._thread_cache[thread_id] = (channel, now)
+            # Cleanup old cache entries (keep max 100)
+            if len(self._thread_cache) > 100:
+                oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
+                del self._thread_cache[oldest]
+            return channel
+
+        logger.warning(f"Channel {thread_id} is not a Thread: {type(channel)}")
         return None
 
     # =========================================================================
@@ -406,12 +450,16 @@ class CaseLogService:
                 message_url=source_message_url,
                 case_thread_id=case["thread_id"],
             )
-            embed_message = await case_thread.send(embed=embed, view=view)
+            embed_message = await safe_send(case_thread, embed=embed, view=view)
+            if not embed_message:
+                logger.warning(f"log_mute: Failed to send embed to thread {case_thread.id}")
+                return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             # If no reason provided, ping moderator and track pending reason
             if not reason:
                 action_type = "extension" if is_extension else "mute"
-                warning_message = await case_thread.send(
+                warning_message = await safe_send(
+                    case_thread,
                     f"⚠️ {moderator.mention} No reason was provided for this {action_type}.\n\n"
                     f"**Reply to this message** with:\n"
                     f"• A reason **and** an attachment (screenshot/video), OR\n"
@@ -419,15 +467,16 @@ class CaseLogService:
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
-                # Track pending reason in database
-                self.db.create_pending_reason(
-                    thread_id=case_thread.id,
-                    warning_message_id=warning_message.id,
-                    embed_message_id=embed_message.id,
-                    moderator_id=moderator.id,
-                    target_user_id=user.id,
-                    action_type=action_type,
-                )
+                # Track pending reason in database (only if warning sent)
+                if warning_message:
+                    self.db.create_pending_reason(
+                        thread_id=case_thread.id,
+                        warning_message_id=warning_message.id,
+                        embed_message_id=embed_message.id,
+                        moderator_id=moderator.id,
+                        target_user_id=user.id,
+                        action_type=action_type,
+                    )
 
             # Repeat offender alert at 3+ mutes (not for extensions)
             if not is_extension:
@@ -440,7 +489,7 @@ class CaseLogService:
                         timestamp=datetime.now(NY_TZ),
                     )
                     alert_embed.set_footer(text=f"Alert • ID: {user.id}")
-                    await case_thread.send(embed=alert_embed)
+                    await safe_send(case_thread, embed=alert_embed)
 
             if is_extension:
                 log_type = "Mute Extended"
@@ -458,10 +507,10 @@ class CaseLogService:
                 ("Reason", reason if reason else "Not provided"),
             ], emoji="🔇")
 
-            # Update the profile stats
+            # Schedule debounced profile stats update
             updated_case = self.db.get_case_log(user.id)
             if updated_case:
-                await self._update_profile_stats(user.id, updated_case)
+                self._schedule_profile_update(user.id, updated_case)
 
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
@@ -522,24 +571,29 @@ class CaseLogService:
                     message_url=source_message_url,
                     case_thread_id=case["thread_id"],
                 )
-                embed_message = await case_thread.send(embed=embed, view=view)
+                embed_message = await safe_send(case_thread, embed=embed, view=view)
+                if not embed_message:
+                    logger.warning(f"log_unmute: Failed to send embed to thread {case_thread.id}")
+                    return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
                 # If no reason provided, ping moderator and track pending reason
                 if not reason:
-                    warning_message = await case_thread.send(
+                    warning_message = await safe_send(
+                        case_thread,
                         f"⚠️ {moderator.mention} No reason was provided for this unmute.\n\n"
                         f"**Reply to this message** with the reason within **1 hour** or the owner will be notified.\n"
                         f"_Only replies from you will be accepted._"
                     )
-                    # Track pending reason in database
-                    self.db.create_pending_reason(
-                        thread_id=case_thread.id,
-                        warning_message_id=warning_message.id,
-                        embed_message_id=embed_message.id,
-                        moderator_id=moderator.id,
-                        target_user_id=user_id,
-                        action_type="unmute",
-                    )
+                    # Track pending reason in database (only if warning sent)
+                    if warning_message:
+                        self.db.create_pending_reason(
+                            thread_id=case_thread.id,
+                            warning_message_id=warning_message.id,
+                            embed_message_id=embed_message.id,
+                            moderator_id=moderator.id,
+                            target_user_id=user_id,
+                            action_type="unmute",
+                        )
 
                 logger.tree("Case Log: Unmute Logged", [
                     ("User", f"{display_name} ({user_id})"),
@@ -548,10 +602,10 @@ class CaseLogService:
                     ("Reason", reason if reason else "Not provided"),
                 ], emoji="🔊")
 
-                # Update the profile stats
+                # Schedule debounced profile stats update
                 updated_case = self.db.get_case_log(user_id)
                 if updated_case:
-                    await self._update_profile_stats(user_id, updated_case)
+                    self._schedule_profile_update(user_id, updated_case)
 
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
@@ -625,11 +679,15 @@ class CaseLogService:
                 message_url=source_message_url,
                 case_thread_id=case["thread_id"],
             )
-            embed_message = await case_thread.send(embed=embed, view=view)
+            embed_message = await safe_send(case_thread, embed=embed, view=view)
+            if not embed_message:
+                logger.warning(f"log_ban: Failed to send embed to thread {case_thread.id}")
+                return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             # If no reason provided, ping moderator and track pending reason
             if not reason:
-                warning_message = await case_thread.send(
+                warning_message = await safe_send(
+                    case_thread,
                     f"⚠️ {moderator.mention} No reason was provided for this ban.\n\n"
                     f"**Reply to this message** with:\n"
                     f"• A reason **and** an attachment (screenshot/video), OR\n"
@@ -637,15 +695,16 @@ class CaseLogService:
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
-                # Track pending reason in database
-                self.db.create_pending_reason(
-                    thread_id=case_thread.id,
-                    warning_message_id=warning_message.id,
-                    embed_message_id=embed_message.id,
-                    moderator_id=moderator.id,
-                    target_user_id=user.id,
-                    action_type="ban",
-                )
+                # Track pending reason in database (only if warning sent)
+                if warning_message:
+                    self.db.create_pending_reason(
+                        thread_id=case_thread.id,
+                        warning_message_id=warning_message.id,
+                        embed_message_id=embed_message.id,
+                        moderator_id=moderator.id,
+                        target_user_id=user.id,
+                        action_type="ban",
+                    )
 
             logger.tree("Case Log: Ban Logged", [
                 ("User", f"{user} ({user.id})"),
@@ -653,10 +712,10 @@ class CaseLogService:
                 ("Banned By", f"{moderator.display_name}"),
             ], emoji="🔨")
 
-            # Update the profile stats
+            # Schedule debounced profile stats update
             updated_case = self.db.get_case_log(user.id)
             if updated_case:
-                await self._update_profile_stats(user.id, updated_case)
+                self._schedule_profile_update(user.id, updated_case)
 
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
@@ -721,24 +780,29 @@ class CaseLogService:
                     message_url=source_message_url,
                     case_thread_id=case["thread_id"],
                 )
-                embed_message = await case_thread.send(embed=embed, view=view)
+                embed_message = await safe_send(case_thread, embed=embed, view=view)
+                if not embed_message:
+                    logger.warning(f"log_unban: Failed to send embed to thread {case_thread.id}")
+                    return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
                 # If no reason provided, ping moderator and track pending reason
                 if not reason:
-                    warning_message = await case_thread.send(
+                    warning_message = await safe_send(
+                        case_thread,
                         f"⚠️ {moderator.mention} No reason was provided for this unban.\n\n"
                         f"**Reply to this message** with the reason within **1 hour** or the owner will be notified.\n"
                         f"_Only replies from you will be accepted._"
                     )
-                    # Track pending reason in database
-                    self.db.create_pending_reason(
-                        thread_id=case_thread.id,
-                        warning_message_id=warning_message.id,
-                        embed_message_id=embed_message.id,
-                        moderator_id=moderator.id,
-                        target_user_id=user_id,
-                        action_type="unban",
-                    )
+                    # Track pending reason in database (only if warning sent)
+                    if warning_message:
+                        self.db.create_pending_reason(
+                            thread_id=case_thread.id,
+                            warning_message_id=warning_message.id,
+                            embed_message_id=embed_message.id,
+                            moderator_id=moderator.id,
+                            target_user_id=user_id,
+                            action_type="unban",
+                        )
 
                 logger.tree("Case Log: Unban Logged", [
                     ("User", f"{username} ({user_id})"),
@@ -746,10 +810,10 @@ class CaseLogService:
                     ("Unbanned By", f"{moderator.display_name}"),
                 ], emoji="🔓")
 
-                # Update the profile stats
+                # Schedule debounced profile stats update
                 updated_case = self.db.get_case_log(user_id)
                 if updated_case:
-                    await self._update_profile_stats(user_id, updated_case)
+                    self._schedule_profile_update(user_id, updated_case)
 
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
@@ -793,7 +857,7 @@ class CaseLogService:
                     guild_id=case_thread.guild.id,
                     case_thread_id=case["thread_id"],
                 )
-                await case_thread.send(embed=embed, view=view)
+                await safe_send(case_thread, embed=embed, view=view)
 
                 logger.tree("Case Log: Mute Expiry Logged", [
                     ("User", f"{display_name} ({user_id})"),
@@ -849,7 +913,7 @@ class CaseLogService:
                 )
 
                 embed.set_footer(text=f"Leave • ID: {user_id}")
-                await case_thread.send(embed=embed)
+                await safe_send(case_thread, embed=embed)
 
                 logger.tree("Case Log: Member Left Muted", [
                     ("User", f"{display_name} ({user_id})"),
@@ -934,12 +998,12 @@ class CaseLogService:
                     guild_id=member.guild.id,
                     case_thread_id=case["thread_id"],
                 )
-                await case_thread.send(embed=embed, view=view)
+                await safe_send(case_thread, embed=embed, view=view)
 
                 # Ping all moderators who muted this user
                 if moderator_ids:
                     pings = " ".join(f"<@{mod_id}>" for mod_id in moderator_ids)
-                    await case_thread.send(f"🔔 {pings}")
+                    await safe_send(case_thread, pings)
 
                 logger.tree("Case Log: Mute Evasion Return", [
                     ("User", f"{member} ({member.id})"),
@@ -998,7 +1062,7 @@ class CaseLogService:
                 )
 
                 embed.set_footer(text=f"Violation • ID: {user_id}")
-                await case_thread.send(embed=embed)
+                await safe_send(case_thread, embed=embed)
 
                 logger.tree("Case Log: VC Violation", [
                     ("User", f"{display_name} ({user_id})"),
@@ -1157,10 +1221,7 @@ class CaseLogService:
 
             # Try to get stored message ID first
             if case.get("profile_message_id"):
-                try:
-                    profile_msg = await case_thread.fetch_message(case["profile_message_id"])
-                except discord.NotFound:
-                    pass
+                profile_msg = await safe_fetch_message(case_thread, case["profile_message_id"])
 
             # If not found, search pinned messages (for existing cases)
             if not profile_msg:
@@ -1240,8 +1301,8 @@ class CaseLogService:
 
             set_footer(embed)
 
-            # Edit the message
-            await profile_msg.edit(embed=embed)
+            # Edit the message with retry
+            await safe_edit(profile_msg, embed=embed)
 
         except Exception as e:
             logger.warning(f"Failed to update profile stats: {str(e)[:50]}")
@@ -1451,7 +1512,7 @@ class CaseLogService:
 
         try:
             thread = message.channel
-            embed_message = await thread.fetch_message(pending["embed_message_id"])
+            embed_message = await safe_fetch_message(thread, pending["embed_message_id"])
 
             if not embed_message or not embed_message.embeds:
                 return False
@@ -1481,15 +1542,13 @@ class CaseLogService:
             if attachment_url:
                 embed.set_image(url=attachment_url)
 
-            await embed_message.edit(embed=embed)
+            await safe_edit(embed_message, embed=embed)
 
             # Delete the warning message and mod's reply silently
             for msg_id in [pending["warning_message_id"], message.id]:
-                try:
-                    msg = await thread.fetch_message(msg_id)
-                    await msg.delete()
-                except (discord.NotFound, discord.HTTPException):
-                    pass
+                msg = await safe_fetch_message(thread, msg_id)
+                if msg:
+                    await safe_delete(msg)
 
             # Remove the pending reason from database
             self.db.delete_pending_reason(pending["id"])

@@ -18,6 +18,8 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -352,6 +354,19 @@ class BanCog(commands.Cog):
                 reason=f"[SOFTBAN] {reason}" if is_softban else reason,
                 evidence=evidence,
                 source_message_url=sent_message.jump_url,
+            )
+
+        # -----------------------------------------------------------------
+        # Alt Detection (background task, regular bans only)
+        # -----------------------------------------------------------------
+
+        if not is_softban and self.bot.alt_detection and self.bot.alt_detection.enabled and case_info:
+            asyncio.create_task(
+                self.bot.alt_detection.detect_alts_for_ban(
+                    banned_user=user,
+                    guild=interaction.guild,
+                    case_thread_id=case_info["thread_id"],
+                )
             )
 
         return True

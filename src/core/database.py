@@ -461,6 +461,55 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_pending_reasons_created ON pending_reasons(created_at)"
         )
 
+        # -----------------------------------------------------------------
+        # Alt Links Table
+        # DESIGN: Stores detected alt account relationships
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS alt_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                banned_user_id INTEGER NOT NULL,
+                potential_alt_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                confidence TEXT NOT NULL,
+                total_score INTEGER NOT NULL,
+                signals TEXT NOT NULL,
+                detected_at REAL NOT NULL,
+                reviewed INTEGER DEFAULT 0,
+                reviewed_by INTEGER,
+                reviewed_at REAL,
+                UNIQUE(banned_user_id, potential_alt_id, guild_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alt_links_banned ON alt_links(banned_user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alt_links_alt ON alt_links(potential_alt_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # User Join Info Table
+        # DESIGN: Stores invite/join data for alt detection
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_join_info (
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                invite_code TEXT,
+                inviter_id INTEGER,
+                joined_at REAL NOT NULL,
+                avatar_hash TEXT,
+                PRIMARY KEY (user_id, guild_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_join_inviter ON user_join_info(inviter_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_join_avatar ON user_join_info(avatar_hash)"
+        )
+
         conn.commit()
 
     # =========================================================================
@@ -1606,6 +1655,195 @@ class DatabaseManager:
             "DELETE FROM pending_reasons WHERE owner_notified = 1 AND created_at < ?",
             (cutoff,)
         )
+
+    # =========================================================================
+    # Alt Detection Operations
+    # =========================================================================
+
+    def save_alt_link(
+        self,
+        banned_user_id: int,
+        potential_alt_id: int,
+        guild_id: int,
+        confidence: str,
+        total_score: int,
+        signals: dict,
+    ) -> int:
+        """
+        Save a detected alt link to the database.
+
+        Args:
+            banned_user_id: The banned user's ID.
+            potential_alt_id: The potential alt account's ID.
+            guild_id: The guild ID.
+            confidence: Confidence level (LOW, MEDIUM, HIGH).
+            total_score: Total detection score.
+            signals: Dictionary of matched signals.
+
+        Returns:
+            The row ID of the inserted record.
+        """
+        import json
+        signals_json = json.dumps(signals)
+        cursor = self.execute(
+            """
+            INSERT OR REPLACE INTO alt_links
+            (banned_user_id, potential_alt_id, guild_id, confidence, total_score, signals, detected_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (banned_user_id, potential_alt_id, guild_id, confidence, total_score, signals_json, time.time())
+        )
+        return cursor.lastrowid
+
+    def get_alt_links_for_user(self, user_id: int, guild_id: int) -> List[Dict]:
+        """
+        Get all potential alts linked to a user.
+
+        Args:
+            user_id: The banned user's ID.
+            guild_id: The guild ID.
+
+        Returns:
+            List of alt link records.
+        """
+        import json
+        rows = self.fetchall(
+            "SELECT * FROM alt_links WHERE banned_user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        results = []
+        for row in rows:
+            record = dict(row)
+            record['signals'] = json.loads(record['signals'])
+            results.append(record)
+        return results
+
+    def get_users_linked_to_alt(self, alt_id: int, guild_id: int) -> List[Dict]:
+        """
+        Get all users that have this account flagged as an alt.
+
+        Args:
+            alt_id: The potential alt's ID.
+            guild_id: The guild ID.
+
+        Returns:
+            List of alt link records.
+        """
+        import json
+        rows = self.fetchall(
+            "SELECT * FROM alt_links WHERE potential_alt_id = ? AND guild_id = ?",
+            (alt_id, guild_id)
+        )
+        results = []
+        for row in rows:
+            record = dict(row)
+            record['signals'] = json.loads(record['signals'])
+            results.append(record)
+        return results
+
+    def mark_alt_link_reviewed(
+        self,
+        link_id: int,
+        reviewer_id: int,
+        confirmed: bool
+    ) -> None:
+        """
+        Mark an alt link as reviewed.
+
+        Args:
+            link_id: The alt link record ID.
+            reviewer_id: The moderator who reviewed it.
+            confirmed: True if confirmed alt, False if false positive.
+        """
+        status = 1 if confirmed else 2  # 1 = confirmed, 2 = false positive
+        self.execute(
+            "UPDATE alt_links SET reviewed = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?",
+            (status, reviewer_id, time.time(), link_id)
+        )
+
+    # =========================================================================
+    # User Join Info Operations
+    # =========================================================================
+
+    def save_user_join_info(
+        self,
+        user_id: int,
+        guild_id: int,
+        invite_code: Optional[str],
+        inviter_id: Optional[int],
+        joined_at: float,
+        avatar_hash: Optional[str],
+    ) -> None:
+        """
+        Save user join information for alt detection.
+
+        Args:
+            user_id: The user's ID.
+            guild_id: The guild ID.
+            invite_code: The invite code used (if known).
+            inviter_id: The inviter's ID (if known).
+            joined_at: Timestamp of when they joined.
+            avatar_hash: Hash of their avatar (if any).
+        """
+        self.execute(
+            """
+            INSERT OR REPLACE INTO user_join_info
+            (user_id, guild_id, invite_code, inviter_id, joined_at, avatar_hash)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, guild_id, invite_code, inviter_id, joined_at, avatar_hash)
+        )
+
+    def get_user_join_info(self, user_id: int, guild_id: int) -> Optional[Dict]:
+        """
+        Get join information for a user.
+
+        Args:
+            user_id: The user's ID.
+            guild_id: The guild ID.
+
+        Returns:
+            Join info dict or None.
+        """
+        row = self.fetchone(
+            "SELECT * FROM user_join_info WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        return dict(row) if row else None
+
+    def get_users_by_inviter(self, inviter_id: int, guild_id: int) -> List[Dict]:
+        """
+        Get all users invited by a specific person.
+
+        Args:
+            inviter_id: The inviter's ID.
+            guild_id: The guild ID.
+
+        Returns:
+            List of user join info records.
+        """
+        rows = self.fetchall(
+            "SELECT * FROM user_join_info WHERE inviter_id = ? AND guild_id = ?",
+            (inviter_id, guild_id)
+        )
+        return [dict(row) for row in rows]
+
+    def get_users_by_avatar_hash(self, avatar_hash: str, guild_id: int) -> List[Dict]:
+        """
+        Get all users with a specific avatar hash.
+
+        Args:
+            avatar_hash: The avatar hash to search for.
+            guild_id: The guild ID.
+
+        Returns:
+            List of user join info records.
+        """
+        rows = self.fetchall(
+            "SELECT * FROM user_join_info WHERE avatar_hash = ? AND guild_id = ?",
+            (avatar_hash, guild_id)
+        )
+        return [dict(row) for row in rows]
 
 
 # =============================================================================

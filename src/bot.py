@@ -88,6 +88,7 @@ class AzabBot(commands.Bot):
         self.health_server = None
         self.mute_scheduler = None
         self.case_log_service = None
+        self.alt_detection = None
         self.mod_tracker = None
         self.logging_service = None
         self.webhook_alert_service = None
@@ -252,6 +253,13 @@ class AzabBot(commands.Bot):
                 ], emoji="📝")
             else:
                 logger.info("Case Log Service Disabled (no forum configured)")
+
+            from src.services.alt_detection import AltDetectionService
+            self.alt_detection = AltDetectionService(self)
+            if self.alt_detection.enabled:
+                logger.info("Alt Detection Service Initialized")
+            else:
+                logger.info("Alt Detection Service Disabled (no case log forum)")
 
             from src.services.mod_tracker import ModTrackerService
             self.mod_tracker = ModTrackerService(self)

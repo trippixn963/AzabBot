@@ -141,6 +141,9 @@ class MemberEvents(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
         """Log member joins with invite tracking, raid detection, and mute evasion."""
+        invite_code = None
+        inviter = None
+
         if self.bot.logging_service and self.bot.logging_service.enabled:
             invite_info = await self.bot._find_used_invite(member.guild)
             invite_code = invite_info[0] if invite_info else None
@@ -148,6 +151,17 @@ class MemberEvents(commands.Cog):
             await self.bot.logging_service.log_member_join(member, invite_code, inviter)
 
             await self.bot._check_raid_detection(member)
+
+        # Store join info for alt detection
+        db = get_db()
+        db.save_user_join_info(
+            user_id=member.id,
+            guild_id=member.guild.id,
+            invite_code=invite_code,
+            inviter_id=inviter.id if inviter else None,
+            joined_at=member.joined_at.timestamp() if member.joined_at else None,
+            avatar_hash=member.avatar.key if member.avatar else None,
+        )
 
         await self._check_mute_evasion(member)
 
