@@ -70,3 +70,4 @@ ignored_users.json
 # Temporary files
 *.tmp
 *.temp
+CLAUDE.md
