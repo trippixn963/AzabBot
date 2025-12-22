@@ -20,8 +20,8 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Optional, Dict, Tuple
 
 import discord
 
@@ -75,6 +75,9 @@ class CaseLogService:
     # Initialization
     # =========================================================================
 
+    # Cache TTL for thread lookups (5 minutes)
+    THREAD_CACHE_TTL = timedelta(minutes=5)
+
     def __init__(self, bot: "AzabBot") -> None:
         """
         Initialize the case log service.
@@ -86,6 +89,9 @@ class CaseLogService:
         self.config = get_config()
         self.db = get_db()
         self._forum: Optional[discord.ForumChannel] = None
+        self._forum_cache_time: Optional[datetime] = None
+        # Thread cache: thread_id -> (thread, cached_at)
+        self._thread_cache: Dict[int, Tuple[discord.Thread, datetime]] = {}
 
     # =========================================================================
     # Properties
@@ -142,10 +148,10 @@ class CaseLogService:
 
     async def _get_forum(self) -> Optional[discord.ForumChannel]:
         """
-        Get the case log forum channel.
+        Get the case log forum channel with TTL-based caching.
 
         DESIGN:
-            Caches forum reference after first fetch.
+            Caches forum reference with 5-minute TTL.
             Returns None if forum ID not configured or channel not found.
 
         Returns:
@@ -154,22 +160,30 @@ class CaseLogService:
         if not self.config.case_log_forum_id:
             return None
 
-        if self._forum is None:
-            try:
-                channel = self.bot.get_channel(self.config.case_log_forum_id)
-                if channel is None:
-                    channel = await self.bot.fetch_channel(self.config.case_log_forum_id)
-                if isinstance(channel, discord.ForumChannel):
-                    self._forum = channel
-            except Exception as e:
-                logger.warning(f"Failed To Get Case Log Forum: {self.config.case_log_forum_id} - {str(e)[:50]}")
-                return None
+        now = datetime.now(NY_TZ)
+
+        # Check if cache is still valid
+        if self._forum is not None and self._forum_cache_time is not None:
+            if now - self._forum_cache_time < self.THREAD_CACHE_TTL:
+                return self._forum
+
+        # Cache miss or expired - fetch forum
+        try:
+            channel = self.bot.get_channel(self.config.case_log_forum_id)
+            if channel is None:
+                channel = await self.bot.fetch_channel(self.config.case_log_forum_id)
+            if isinstance(channel, discord.ForumChannel):
+                self._forum = channel
+                self._forum_cache_time = now
+        except Exception as e:
+            logger.warning(f"Failed To Get Case Log Forum: {self.config.case_log_forum_id} - {str(e)[:50]}")
+            return None
 
         return self._forum
 
     async def _get_case_thread(self, thread_id: int) -> Optional[discord.Thread]:
         """
-        Get a case thread by ID.
+        Get a case thread by ID with TTL-based caching.
 
         Args:
             thread_id: The thread ID.
@@ -177,11 +191,29 @@ class CaseLogService:
         Returns:
             The thread, or None if not found.
         """
+        now = datetime.now(NY_TZ)
+
+        # Check cache first
+        if thread_id in self._thread_cache:
+            cached_thread, cached_at = self._thread_cache[thread_id]
+            if now - cached_at < self.THREAD_CACHE_TTL:
+                return cached_thread
+            else:
+                # Cache expired, remove it
+                del self._thread_cache[thread_id]
+
+        # Cache miss - fetch thread
         try:
             thread = self.bot.get_channel(thread_id)
             if thread is None:
                 thread = await self.bot.fetch_channel(thread_id)
             if isinstance(thread, discord.Thread):
+                # Cache the result
+                self._thread_cache[thread_id] = (thread, now)
+                # Cleanup old cache entries (keep max 100)
+                if len(self._thread_cache) > 100:
+                    oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
+                    del self._thread_cache[oldest]
                 return thread
         except discord.NotFound:
             logger.warning(f"Case Thread Not Found: {thread_id}")
@@ -510,6 +542,7 @@ class CaseLogService:
         self,
         user_id: int,
         display_name: str,
+        user_avatar_url: Optional[str] = None,
     ) -> None:
         """
         Log an auto-unmute (expired mute) to the user's case thread.
@@ -517,6 +550,7 @@ class CaseLogService:
         Args:
             user_id: The user whose mute expired.
             display_name: Display name of the user.
+            user_avatar_url: Optional avatar URL (avoids API call if provided).
         """
         if not self.enabled:
             return
@@ -528,15 +562,6 @@ class CaseLogService:
 
             # Update last unmute timestamp
             self.db.update_last_unmute(user_id)
-
-            # Try to get user avatar
-            user_avatar_url = None
-            try:
-                user = await self.bot.fetch_user(user_id)
-                if user:
-                    user_avatar_url = user.display_avatar.url
-            except Exception:
-                pass
 
             case_thread = await self._get_case_thread(case["thread_id"])
             if case_thread:

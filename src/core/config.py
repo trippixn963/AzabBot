@@ -136,6 +136,17 @@ class Config:
     prisoner_batch_delay_seconds: float = 5.0
 
     # -------------------------------------------------------------------------
+    # Optional: Scheduler Intervals (seconds)
+    # -------------------------------------------------------------------------
+
+    mute_check_interval: int = 30           # How often to check for expired mutes
+    presence_update_interval: int = 30      # How often to rotate presence status
+    presence_retry_delay: int = 5           # Delay before retrying presence update
+    hourly_task_interval: int = 3600        # Interval for hourly background tasks
+    rate_limit_delay: float = 1.0           # Delay between rate-limited operations
+    message_send_delay: float = 1.0         # Delay between batch message sends
+
+    # -------------------------------------------------------------------------
     # Optional: Limits
     # -------------------------------------------------------------------------
 

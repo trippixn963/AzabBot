@@ -128,14 +128,14 @@ class MuteScheduler:
         while self.running:
             try:
                 await self._process_expired_mutes()
-                await asyncio.sleep(30)
+                await asyncio.sleep(self.config.mute_check_interval)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("Mute Scheduler Error", [
                     ("Error", str(e)[:100]),
                 ])
-                await asyncio.sleep(30)
+                await asyncio.sleep(self.config.mute_check_interval)
 
     # =========================================================================
     # Mute Processing
@@ -250,6 +250,7 @@ class MuteScheduler:
             await self.bot.case_log_service.log_mute_expired(
                 user_id=member.id,
                 display_name=member.display_name,
+                user_avatar_url=member.display_avatar.url,
             )
 
         # DM user (silent fail)

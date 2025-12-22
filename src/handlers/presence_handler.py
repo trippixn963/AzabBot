@@ -127,14 +127,14 @@ class PresenceHandler:
         while True:
             try:
                 await self.update_presence()
-                await asyncio.sleep(30)
+                await asyncio.sleep(self.config.presence_update_interval)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("Presence Loop Error", [
                     ("Error", str(e)[:50]),
                 ])
-                await asyncio.sleep(30)
+                await asyncio.sleep(self.config.presence_update_interval)
 
     # =========================================================================
     # Presence Updates
@@ -277,7 +277,7 @@ class PresenceHandler:
                 ("Status", status_text),
             ], emoji="🔴")
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(self.config.presence_retry_delay)
             await self.update_presence()
 
         except Exception as e:
@@ -332,7 +332,7 @@ class PresenceHandler:
                 ("Status", status_text),
             ], emoji="🟢")
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(self.config.presence_retry_delay)
             await self.update_presence()
 
         except Exception as e:

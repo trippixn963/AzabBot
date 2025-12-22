@@ -444,7 +444,7 @@ class ModTrackerService:
                     logger.error("Mod Tracker: Inactivity Check Error", [
                         ("Error", str(e)[:100]),
                     ])
-                    await asyncio.sleep(3600)
+                    await asyncio.sleep(self.config.hourly_task_interval)
         finally:
             logger.info("Mod Tracker: Inactivity Checker Stopped")
 
@@ -557,7 +557,7 @@ class ModTrackerService:
                         ("Error", str(e)[:100]),
                     ])
                     # Wait an hour before retrying on error
-                    await asyncio.sleep(3600)
+                    await asyncio.sleep(self.config.hourly_task_interval)
         finally:
             self._scheduler_healthy = False
             logger.info("Mod Tracker: Scheduler stopped")
@@ -660,7 +660,7 @@ class ModTrackerService:
                             added_count += 1
                         else:
                             failed_count += 1
-                        await asyncio.sleep(1)  # Rate limit
+                        await asyncio.sleep(self.config.rate_limit_delay)  # Rate limit
                 except Exception as e:
                     failed_count += 1
                     logger.warning("Mod Tracker: Failed To Add New Mod", [
@@ -706,7 +706,7 @@ class ModTrackerService:
                             recreated_count += 1
                         else:
                             failed_count += 1
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(self.config.rate_limit_delay)
                         continue
 
                     # Build expected name
@@ -724,7 +724,7 @@ class ModTrackerService:
                             ("New Title", expected_name[:30]),
                         ], emoji="✏️")
 
-                        await asyncio.sleep(1)  # Rate limit
+                        await asyncio.sleep(self.config.rate_limit_delay)  # Rate limit
                     else:
                         verified_count += 1
 

@@ -26,6 +26,7 @@ from typing import Optional, List
 from src.core.logger import logger
 from src.core.database import get_db
 from src.core.config import get_config
+from src.utils.metrics import metrics, increment_counter
 
 
 # =============================================================================
@@ -195,6 +196,11 @@ class AIService:
             content = response.choices[0].message.content
             usage = response.usage
 
+            # Record metrics
+            metrics.record("api.openai", response_time * 1000)  # Convert to ms
+            increment_counter("ai.requests")
+            increment_counter("ai.tokens", usage.total_tokens)
+
             logger.tree("AI Response Generated", [
                 ("User", username),
                 ("Duration", f"{mute_duration_minutes}min"),
@@ -213,6 +219,7 @@ class AIService:
             return f"{content}\n-# {response_time}s | {usage.total_tokens} tokens"
 
         except Exception as e:
+            increment_counter("ai.errors")
             logger.error("AI Response Generation Failed", [
                 ("User", username),
                 ("Error", str(e)[:100]),

@@ -29,6 +29,7 @@ from typing import Optional, List, Tuple, Any, Set, Dict
 
 from src.core.logger import logger
 from src.core.config import NY_TZ
+from src.utils.metrics import metrics
 
 
 # =============================================================================
@@ -319,6 +320,10 @@ class DatabaseManager:
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_active_mutes_user ON active_mutes(user_id, guild_id)"
+        )
+        # Composite index for efficient expired mute lookups
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_active_mutes_search ON active_mutes(guild_id, unmuted, expires_at)"
         )
 
         # -----------------------------------------------------------------
@@ -661,39 +666,40 @@ class DatabaseManager:
             Dict with total_mutes, total_minutes, last_mute, etc.
         """
         def _get():
-            # Single query with all stats using subqueries
-            row = self.fetchone(
-                """SELECT
-                    (SELECT COUNT(*) FROM prisoner_history WHERE user_id = ?) as total_mutes,
-                    (SELECT COALESCE(SUM(duration_minutes), 0) FROM prisoner_history WHERE user_id = ?) as total_minutes,
-                    (SELECT MAX(muted_at) FROM prisoner_history WHERE user_id = ?) as last_mute,
-                    (SELECT COUNT(DISTINCT mute_reason) FROM prisoner_history WHERE user_id = ?) as unique_reasons,
-                    (SELECT mute_reason FROM prisoner_history WHERE user_id = ? AND is_active = 1 LIMIT 1) as current_reason,
-                    (SELECT GROUP_CONCAT(mute_reason || ':' || cnt) FROM
-                        (SELECT mute_reason, COUNT(*) as cnt FROM prisoner_history
-                         WHERE user_id = ? GROUP BY mute_reason ORDER BY cnt DESC)
-                    ) as reason_breakdown
-                """,
-                (user_id, user_id, user_id, user_id, user_id, user_id)
-            )
+            with metrics.timer("db.get_prisoner_stats"):
+                # Single query with all stats using subqueries
+                row = self.fetchone(
+                    """SELECT
+                        (SELECT COUNT(*) FROM prisoner_history WHERE user_id = ?) as total_mutes,
+                        (SELECT COALESCE(SUM(duration_minutes), 0) FROM prisoner_history WHERE user_id = ?) as total_minutes,
+                        (SELECT MAX(muted_at) FROM prisoner_history WHERE user_id = ?) as last_mute,
+                        (SELECT COUNT(DISTINCT mute_reason) FROM prisoner_history WHERE user_id = ?) as unique_reasons,
+                        (SELECT mute_reason FROM prisoner_history WHERE user_id = ? AND is_active = 1 LIMIT 1) as current_reason,
+                        (SELECT GROUP_CONCAT(mute_reason || ':' || cnt) FROM
+                            (SELECT mute_reason, COUNT(*) as cnt FROM prisoner_history
+                             WHERE user_id = ? GROUP BY mute_reason ORDER BY cnt DESC)
+                        ) as reason_breakdown
+                    """,
+                    (user_id, user_id, user_id, user_id, user_id, user_id)
+                )
 
-            # Parse reason breakdown from concatenated string
-            reason_counts = {}
-            if row["reason_breakdown"]:
-                for item in row["reason_breakdown"].split(","):
-                    if ":" in item:
-                        reason, count = item.rsplit(":", 1)
-                        reason_counts[reason] = int(count)
+                # Parse reason breakdown from concatenated string
+                reason_counts = {}
+                if row["reason_breakdown"]:
+                    for item in row["reason_breakdown"].split(","):
+                        if ":" in item:
+                            reason, count = item.rsplit(":", 1)
+                            reason_counts[reason] = int(count)
 
-            return {
-                "total_mutes": row["total_mutes"] or 0,
-                "total_minutes": row["total_minutes"] or 0,
-                "last_mute": row["last_mute"],
-                "unique_reasons": row["unique_reasons"] or 0,
-                "reason_counts": reason_counts,
-                "is_currently_muted": row["current_reason"] is not None,
-                "current_reason": row["current_reason"],
-            }
+                return {
+                    "total_mutes": row["total_mutes"] or 0,
+                    "total_minutes": row["total_minutes"] or 0,
+                    "last_mute": row["last_mute"],
+                    "unique_reasons": row["unique_reasons"] or 0,
+                    "reason_counts": reason_counts,
+                    "is_currently_muted": row["current_reason"] is not None,
+                    "current_reason": row["current_reason"],
+                }
 
         return await asyncio.to_thread(_get)
 

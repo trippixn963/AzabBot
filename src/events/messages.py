@@ -1,0 +1,245 @@
+"""
+Azab Discord Bot - Message Events
+=================================
+
+Handles message create, delete, and edit events.
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
+"""
+
+import asyncio
+from datetime import datetime
+from collections import deque
+from typing import TYPE_CHECKING
+
+import discord
+from discord.ext import commands
+
+from src.core.logger import logger
+from src.core.config import get_config
+
+if TYPE_CHECKING:
+    from src.bot import AzabBot
+
+
+class MessageEvents(commands.Cog):
+    """Message event handlers."""
+
+    def __init__(self, bot: "AzabBot") -> None:
+        self.bot = bot
+        self.config = get_config()
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        """
+        Event handler for messages.
+
+        DESIGN: Multi-path message routing:
+        1. Logs channel -> Parse mute embeds
+        2. Polls channel -> Delete non-polls
+        3. Ignored users -> Skip
+        4. Muted users -> Roast with batching
+        """
+        # -----------------------------------------------------------------
+        # Route 1: Logs channel - parse mute embeds
+        # -----------------------------------------------------------------
+        if message.channel.id == self.config.logs_channel_id and message.embeds:
+            if self.bot.mute_handler:
+                await self.bot.mute_handler.process_mute_embed(message)
+            return
+
+        # -----------------------------------------------------------------
+        # Route 2: Polls-only channel - delete non-polls
+        # -----------------------------------------------------------------
+        is_polls_channel = (
+            message.channel.id == self.config.polls_only_channel_id or
+            message.channel.id == self.config.permanent_polls_channel_id
+        )
+        if is_polls_channel:
+            if getattr(message, 'poll', None) is None:
+                try:
+                    await message.delete()
+                    logger.debug(f"Deleted Non-Poll Message by {message.author}")
+                except discord.Forbidden:
+                    pass
+            return
+
+        # -----------------------------------------------------------------
+        # Route 3: DM from tracked mod - alert
+        # -----------------------------------------------------------------
+        if isinstance(message.channel, discord.DMChannel):
+            if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(message.author.id):
+                await self.bot.mod_tracker.alert_dm_attempt(
+                    mod_id=message.author.id,
+                    message_content=message.content or "(no text content)",
+                )
+            return
+
+        # -----------------------------------------------------------------
+        # Cache attachments for delete logging
+        # -----------------------------------------------------------------
+        if message.attachments and not message.author.bot:
+            asyncio.create_task(self.bot._cache_message_attachments(message))
+
+        # -----------------------------------------------------------------
+        # Cache message content for mod delete logging
+        # -----------------------------------------------------------------
+        if not message.author.bot and message.guild:
+            if len(self.bot._message_cache) >= self.bot._message_cache_limit:
+                oldest = list(self.bot._message_cache.keys())[:100]
+                for key in oldest:
+                    self.bot._message_cache.pop(key, None)
+
+            self.bot._message_cache[message.id] = {
+                "author": message.author,
+                "content": message.content,
+                "channel_id": message.channel.id,
+                "attachment_names": [a.filename for a in message.attachments] if message.attachments else [],
+                "sticker_names": [s.name for s in message.stickers] if message.stickers else [],
+                "has_embeds": len(message.embeds) > 0,
+                "embed_titles": [e.title for e in message.embeds if e.title] if message.embeds else [],
+                "reply_to": message.reference.message_id if message.reference else None,
+            }
+
+        # -----------------------------------------------------------------
+        # Skip: Bots and empty messages
+        # -----------------------------------------------------------------
+        if message.author.bot:
+            return
+
+        if not message.content:
+            return
+
+        # -----------------------------------------------------------------
+        # Skip: Ignored users
+        # -----------------------------------------------------------------
+        if self.bot.db.is_user_ignored(message.author.id):
+            return
+
+        # -----------------------------------------------------------------
+        # Skip: Bot disabled
+        # -----------------------------------------------------------------
+        if self.bot.disabled:
+            return
+
+        # -----------------------------------------------------------------
+        # Channel restrictions
+        # -----------------------------------------------------------------
+        if self.config.prison_channel_ids:
+            if message.channel.id not in self.config.prison_channel_ids:
+                return
+
+        # -----------------------------------------------------------------
+        # Log message to database for context
+        # -----------------------------------------------------------------
+        if message.guild:
+            await self.bot.db.log_message(
+                message.author.id,
+                str(message.author),
+                message.content,
+                message.channel.id,
+                message.guild.id,
+            )
+
+            # Track message history for AI context
+            if message.author.id not in self.bot.last_messages:
+                self.bot.last_messages[message.author.id] = {
+                    "messages": deque(maxlen=self.config.message_history_size),
+                    "channel_id": message.channel.id,
+                }
+            self.bot.last_messages[message.author.id]["messages"].append(message.content)
+            self.bot.last_messages[message.author.id]["channel_id"] = message.channel.id
+
+            # Cache messages from tracked mods
+            if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(message.author.id):
+                if message.attachments:
+                    await self.bot.mod_tracker.cache_message(message)
+
+    @commands.Cog.listener()
+    async def on_message_delete(self, message: discord.Message) -> None:
+        """Track message deletions for tracked mods and logging service."""
+        if message.author.bot:
+            return
+
+        # -----------------------------------------------------------------
+        # Logging Service: Message Delete
+        # -----------------------------------------------------------------
+        if self.bot.logging_service and self.bot.logging_service.enabled:
+            attachments = self.bot._attachment_cache.pop(message.id, None)
+            await self.bot.logging_service.log_message_delete(message, attachments)
+
+        # -----------------------------------------------------------------
+        # Mod Tracker: Message Delete
+        # -----------------------------------------------------------------
+        if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(message.author.id):
+            reply_to_user = None
+            reply_to_id = None
+            if message.reference and message.reference.message_id:
+                try:
+                    ref_msg = message.reference.cached_message
+                    if not ref_msg:
+                        ref_msg = await message.channel.fetch_message(message.reference.message_id)
+                    if ref_msg:
+                        reply_to_user = ref_msg.author
+                        reply_to_id = ref_msg.author.id
+                except Exception:
+                    pass
+
+            await self.bot.mod_tracker.log_message_delete(
+                mod_id=message.author.id,
+                channel=message.channel,
+                content=message.content or "",
+                attachments=message.attachments,
+                message_id=message.id,
+                reply_to_user=reply_to_user,
+                reply_to_id=reply_to_id,
+            )
+
+    @commands.Cog.listener()
+    async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
+        """Track message edits for tracked mods and logging service."""
+        if before.author.bot:
+            return
+
+        if before.content == after.content:
+            return
+
+        # -----------------------------------------------------------------
+        # Logging Service: Message Edit
+        # -----------------------------------------------------------------
+        if self.bot.logging_service and self.bot.logging_service.enabled:
+            await self.bot.logging_service.log_message_edit(before, after)
+
+        # -----------------------------------------------------------------
+        # Mod Tracker: Message Edit
+        # -----------------------------------------------------------------
+        if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(before.author.id):
+            reply_to_user = None
+            reply_to_id = None
+            if after.reference and after.reference.message_id:
+                try:
+                    ref_msg = after.reference.cached_message
+                    if not ref_msg:
+                        ref_msg = await after.channel.fetch_message(after.reference.message_id)
+                    if ref_msg:
+                        reply_to_user = ref_msg.author
+                        reply_to_id = ref_msg.author.id
+                except Exception:
+                    pass
+
+            await self.bot.mod_tracker.log_message_edit(
+                mod=before.author,
+                channel=before.channel,
+                old_content=before.content or "",
+                new_content=after.content or "",
+                jump_url=after.jump_url,
+                reply_to_user=reply_to_user,
+                reply_to_id=reply_to_id,
+            )
+
+
+async def setup(bot: "AzabBot") -> None:
+    """Add the message events cog to the bot."""
+    await bot.add_cog(MessageEvents(bot))
+    logger.debug("Message Events Loaded")

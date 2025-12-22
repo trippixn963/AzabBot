@@ -8,7 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional, Dict, List, Tuple, Union
 import asyncio
 import io
@@ -240,7 +240,7 @@ class LoggingService:
                         content=THREAD_DESCRIPTIONS.get(category, "Server activity logs"),
                     )
                     self._threads[category] = thread.thread
-                    await asyncio.sleep(0.5)  # Rate limit
+                    await asyncio.sleep(self.config.rate_limit_delay / 2)  # Rate limit
                 except Exception as e:
                     logger.warning(f"Logging Service: Failed to create thread {thread_name}: {e}")
 
@@ -704,13 +704,9 @@ class LoggingService:
         created = int(member.created_at.timestamp())
         embed.add_field(name="Account Age", value=f"<t:{created}:R>", inline=True)
 
-        # Time in server
+        # Time in server (how long they were here)
         if member.joined_at:
-            joined = int(member.joined_at.timestamp())
-            embed.add_field(name="Joined Server", value=f"<t:{joined}:R>", inline=True)
-
-            # Calculate duration with precise formatting
-            total_seconds = int(datetime.now().timestamp() - member.joined_at.timestamp())
+            total_seconds = int(datetime.now(timezone.utc).timestamp() - member.joined_at.timestamp())
             total_seconds = max(0, total_seconds)  # Safety: ensure positive
             duration_str = self._format_duration_precise(total_seconds)
             embed.add_field(name="Time in Server", value=f"`{duration_str}`", inline=True)

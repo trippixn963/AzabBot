@@ -145,7 +145,7 @@ class PrisonHandler:
                 await self._send_mute_notification(member, mute_channel)
 
             # Wait for mute embed to appear in logs
-            await asyncio.sleep(5)
+            await asyncio.sleep(self.config.presence_retry_delay)
 
             # Get mute reason from cache or scan logs
             mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(
@@ -464,7 +464,7 @@ class PrisonHandler:
     async def _delayed_message_cleanup(self, member: discord.Member) -> None:
         """Wait 1 hour before deleting prisoner's messages from prison channel."""
         try:
-            await asyncio.sleep(3600)  # 1 hour
+            await asyncio.sleep(self.config.hourly_task_interval)
             deleted_count = await self._delete_prisoner_messages(member)
             logger.tree("Delayed Message Cleanup", [
                 ("Ex-Prisoner", str(member)),
@@ -506,7 +506,7 @@ class PrisonHandler:
                         try:
                             await message.delete()
                             count += 1
-                            await asyncio.sleep(1.0)
+                            await asyncio.sleep(self.config.rate_limit_delay)
                         except Exception:
                             pass
                     return count
@@ -564,11 +564,11 @@ class PrisonHandler:
                                     batch = messages_to_delete[i:i + 100]
                                     await prison_channel.delete_messages(batch)
                                     deleted_count += len(batch)
-                                    await asyncio.sleep(1)
+                                    await asyncio.sleep(self.config.rate_limit_delay)
                             except discord.HTTPException:
                                 break
 
-                            await asyncio.sleep(2)
+                            await asyncio.sleep(self.config.rate_limit_delay * 2)
 
                         logger.tree("Daily Cleanup Complete", [
                             ("Channel", f"#{prison_channel.name}"),
@@ -579,7 +579,7 @@ class PrisonHandler:
                     logger.error("Cleanup Loop Error", [
                         ("Error", str(e)),
                     ])
-                    await asyncio.sleep(3600)
+                    await asyncio.sleep(self.config.hourly_task_interval)
 
         except Exception as e:
             logger.error("Cleanup Loop Setup Error", [
