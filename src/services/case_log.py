@@ -426,7 +426,10 @@ class CaseLogService:
                 logger.debug(f"log_mute: No reason provided, sending warning to mod {moderator.id}")
                 warning_message = await case_thread.send(
                     f"⚠️ {moderator.mention} No reason was provided for this {action_type}.\n\n"
-                    f"**Reply to this message** with the reason within **1 hour** or the owner will be notified.\n"
+                    f"**Reply to this message** with:\n"
+                    f"• A reason **and** an attachment (screenshot/video), OR\n"
+                    f"• Just an attachment\n\n"
+                    f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
                 logger.debug(f"log_mute: Warning sent, msg_id={warning_message.id}")
@@ -652,7 +655,10 @@ class CaseLogService:
                 logger.debug(f"log_ban: No reason provided, sending warning to mod {moderator.id}")
                 warning_message = await case_thread.send(
                     f"⚠️ {moderator.mention} No reason was provided for this ban.\n\n"
-                    f"**Reply to this message** with the reason within **1 hour** or the owner will be notified.\n"
+                    f"**Reply to this message** with:\n"
+                    f"• A reason **and** an attachment (screenshot/video), OR\n"
+                    f"• Just an attachment\n\n"
+                    f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
                 logger.debug(f"log_ban: Warning sent, msg_id={warning_message.id}")
@@ -1452,8 +1458,34 @@ class CaseLogService:
 
         # Get the reason from the message content (limit to 500 chars)
         reason = message.content.strip()[:500]
-        if not reason:
-            return False
+        action_type = pending["action_type"]
+
+        # Check for attachments (images/videos)
+        attachment_url = None
+        if message.attachments:
+            # Get the first image/video attachment
+            for att in message.attachments:
+                if att.content_type and (att.content_type.startswith("image/") or att.content_type.startswith("video/")):
+                    attachment_url = att.url
+                    break
+
+        # For mute/ban: require attachment (text is optional)
+        # For unmute/unban: require text only
+        if action_type in ("mute", "extension", "ban"):
+            if not attachment_url:
+                # No attachment provided - send reminder and don't process
+                try:
+                    reminder = await message.channel.send(
+                        f"{message.author.mention} An attachment (screenshot/video) is required. Please reply again with evidence attached.",
+                        delete_after=10,
+                    )
+                except discord.HTTPException:
+                    pass
+                return False
+        else:
+            # unmute/unban - just need text
+            if not reason:
+                return False
 
         try:
             thread = message.channel
@@ -1462,25 +1494,30 @@ class CaseLogService:
             if not embed_message or not embed_message.embeds:
                 return False
 
-            # Update the embed with the reason
+            # Update the embed with the reason and/or attachment
             embed = embed_message.embeds[0]
 
-            # Find and update the Reason field, or add it
-            reason_field_index = None
-            for i, field in enumerate(embed.fields):
-                if field.name == "Reason":
-                    reason_field_index = i
-                    break
+            # Find and update the Reason field, or add it (if reason provided)
+            if reason:
+                reason_field_index = None
+                for i, field in enumerate(embed.fields):
+                    if field.name == "Reason":
+                        reason_field_index = i
+                        break
 
-            if reason_field_index is not None:
-                embed.set_field_at(
-                    reason_field_index,
-                    name="Reason",
-                    value=f"`{reason}`",
-                    inline=False,
-                )
-            else:
-                embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
+                if reason_field_index is not None:
+                    embed.set_field_at(
+                        reason_field_index,
+                        name="Reason",
+                        value=f"`{reason}`",
+                        inline=False,
+                    )
+                else:
+                    embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
+
+            # Add attachment as image (for mute/ban)
+            if attachment_url:
+                embed.set_image(url=attachment_url)
 
             await embed_message.edit(embed=embed)
 
@@ -1495,13 +1532,13 @@ class CaseLogService:
             # Remove the pending reason from database
             self.db.delete_pending_reason(pending["id"])
 
-            # React to confirm instead of sending a message
-            # (The message is deleted, so we can't react - just log it)
+            # Log success
             logger.tree("Case Log: Reason Updated", [
                 ("Thread ID", str(thread.id)),
                 ("Moderator", f"{message.author} ({message.author.id})"),
-                ("Action", pending["action_type"]),
-                ("Reason", reason[:50]),
+                ("Action", action_type),
+                ("Reason", reason[:50] if reason else "N/A"),
+                ("Has Attachment", "Yes" if attachment_url else "No"),
             ], emoji="✅")
 
             return True
