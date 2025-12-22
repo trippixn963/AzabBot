@@ -498,9 +498,7 @@ class MuteCog(commands.Cog):
 
         case_info = None
         if self.bot.case_log_service:
-            logger.debug(f"execute_mute: Calling prepare_case for {user.id}")
             case_info = await self.bot.case_log_service.prepare_case(user)
-            logger.debug(f"execute_mute: prepare_case returned case_id={case_info.get('case_id') if case_info else None}")
 
         # ---------------------------------------------------------------------
         # Build & Send Embed
@@ -520,21 +518,15 @@ class MuteCog(commands.Cog):
         embed.set_thumbnail(url=user.display_avatar.url)
         set_footer(embed)
 
-        logger.debug(f"execute_mute: About to send followup, case_info={case_info is not None}")
         sent_message = None
         try:
             if case_info:
-                logger.debug(f"execute_mute: Creating CaseButtonView with guild={interaction.guild.id}, thread={case_info['thread_id']}, user={user.id}")
                 view = CaseButtonView(interaction.guild.id, case_info["thread_id"], user.id)
-                logger.debug(f"execute_mute: Sending followup with view...")
                 sent_message = await interaction.followup.send(embed=embed, view=view)
-                logger.debug(f"execute_mute: Followup sent, msg_id={sent_message.id if sent_message else 'None'}")
             else:
-                logger.debug(f"execute_mute: No case, sending followup without view...")
                 sent_message = await interaction.followup.send(embed=embed)
-                logger.debug(f"execute_mute: Followup sent")
         except Exception as e:
-            logger.error(f"execute_mute: Followup.send failed: {e}")
+            logger.error(f"Mute followup failed: {e}")
 
         # ---------------------------------------------------------------------
         # Concurrent Post-Response Operations

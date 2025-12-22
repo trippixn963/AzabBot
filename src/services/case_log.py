@@ -312,14 +312,10 @@ class CaseLogService:
         if thread_id in self._thread_cache:
             cached_thread, cached_at = self._thread_cache[thread_id]
             if now - cached_at < self.THREAD_CACHE_TTL:
-                logger.debug(f"Thread Cache HIT: {thread_id}")
                 return cached_thread
             else:
                 # Cache expired, remove it
-                logger.debug(f"Thread Cache EXPIRED: {thread_id}")
                 del self._thread_cache[thread_id]
-        else:
-            logger.debug(f"Thread Cache MISS: {thread_id}")
 
         # Cache miss - fetch thread
         try:
@@ -330,7 +326,6 @@ class CaseLogService:
             if isinstance(thread, discord.Thread):
                 # Cache the result
                 self._thread_cache[thread_id] = (thread, now)
-                logger.debug(f"Thread Fetched via {fetch_method}: {thread_id} -> {thread.name}")
                 # Cleanup old cache entries (keep max 100)
                 if len(self._thread_cache) > 100:
                     oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
@@ -382,15 +377,11 @@ class CaseLogService:
             Dict with case_id and thread_id, or None if disabled/failed.
         """
         if not self.enabled:
-            logger.debug(f"log_mute: Service disabled, skipping for {user.id}")
             return None
 
         try:
-            logger.debug(f"log_mute: Getting/creating case for {user.display_name} ({user.id})")
             case = await self._get_or_create_case(user)
-            logger.debug(f"log_mute: Got case {case['case_id']}, thread_id={case['thread_id']}, just_created={case.get('just_created', False)}")
 
-            logger.debug(f"log_mute: Fetching thread {case['thread_id']}")
             case_thread = await self._get_case_thread(case["thread_id"])
 
             if not case_thread:
@@ -408,7 +399,6 @@ class CaseLogService:
                 mute_count = self.db.increment_mute_count(user.id)
 
             # Build and send mute embed with jump button and download
-            logger.debug(f"log_mute: Building mute embed for {user.id}")
             embed = self._build_mute_embed(user, moderator, duration, reason, mute_count, is_extension, evidence)
             view = CaseLogView(
                 user_id=user.id,
@@ -416,14 +406,11 @@ class CaseLogService:
                 message_url=source_message_url,
                 case_thread_id=case["thread_id"],
             )
-            logger.debug(f"log_mute: Sending mute embed to thread {case_thread.id}")
             embed_message = await case_thread.send(embed=embed, view=view)
-            logger.debug(f"log_mute: Mute embed sent, msg_id={embed_message.id}")
 
             # If no reason provided, ping moderator and track pending reason
             if not reason:
                 action_type = "extension" if is_extension else "mute"
-                logger.debug(f"log_mute: No reason provided, sending warning to mod {moderator.id}")
                 warning_message = await case_thread.send(
                     f"⚠️ {moderator.mention} No reason was provided for this {action_type}.\n\n"
                     f"**Reply to this message** with:\n"
@@ -432,7 +419,6 @@ class CaseLogService:
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
-                logger.debug(f"log_mute: Warning sent, msg_id={warning_message.id}")
                 # Track pending reason in database
                 self.db.create_pending_reason(
                     thread_id=case_thread.id,
@@ -442,7 +428,6 @@ class CaseLogService:
                     target_user_id=user.id,
                     action_type=action_type,
                 )
-                logger.debug(f"log_mute: Pending reason tracked in DB")
 
             # Repeat offender alert at 3+ mutes (not for extensions)
             if not is_extension:
@@ -478,7 +463,6 @@ class CaseLogService:
             if updated_case:
                 await self._update_profile_stats(user.id, updated_case)
 
-            logger.debug(f"log_mute: Completed successfully for {user.id}, case={case['case_id']}")
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
         except Exception as e:
@@ -488,7 +472,6 @@ class CaseLogService:
                 ("Error", str(e)[:200]),
             ])
             import traceback
-            logger.debug(f"log_mute traceback: {traceback.format_exc()}")
             return None
 
     # =========================================================================
@@ -605,13 +588,10 @@ class CaseLogService:
             Dict with case_id and thread_id, or None if failed.
         """
         if not self.enabled:
-            logger.debug(f"log_ban: Service disabled, skipping for {user.id}")
             return None
 
         try:
-            logger.debug(f"log_ban: Getting/creating case for {user.display_name} ({user.id})")
             case = await self._get_or_create_case(user)
-            logger.debug(f"log_ban: Got case {case['case_id']}, thread_id={case['thread_id']}")
 
             case_thread = await self._get_case_thread(case["thread_id"])
 
@@ -620,7 +600,6 @@ class CaseLogService:
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             now = datetime.now(NY_TZ)
-            logger.debug(f"log_ban: Building ban embed for {user.id}")
 
             embed = discord.Embed(
                 title="🔨 User Banned",
@@ -646,13 +625,10 @@ class CaseLogService:
                 message_url=source_message_url,
                 case_thread_id=case["thread_id"],
             )
-            logger.debug(f"log_ban: Sending ban embed to thread {case_thread.id}")
             embed_message = await case_thread.send(embed=embed, view=view)
-            logger.debug(f"log_ban: Ban embed sent, msg_id={embed_message.id}")
 
             # If no reason provided, ping moderator and track pending reason
             if not reason:
-                logger.debug(f"log_ban: No reason provided, sending warning to mod {moderator.id}")
                 warning_message = await case_thread.send(
                     f"⚠️ {moderator.mention} No reason was provided for this ban.\n\n"
                     f"**Reply to this message** with:\n"
@@ -661,7 +637,6 @@ class CaseLogService:
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
-                logger.debug(f"log_ban: Warning sent, msg_id={warning_message.id}")
                 # Track pending reason in database
                 self.db.create_pending_reason(
                     thread_id=case_thread.id,
@@ -671,7 +646,6 @@ class CaseLogService:
                     target_user_id=user.id,
                     action_type="ban",
                 )
-                logger.debug(f"log_ban: Pending reason tracked in DB")
 
             logger.tree("Case Log: Ban Logged", [
                 ("User", f"{user} ({user.id})"),
@@ -684,7 +658,6 @@ class CaseLogService:
             if updated_case:
                 await self._update_profile_stats(user.id, updated_case)
 
-            logger.debug(f"log_ban: Completed successfully for {user.id}, case={case['case_id']}")
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
         except Exception as e:
@@ -694,7 +667,6 @@ class CaseLogService:
                 ("Error", str(e)[:200]),
             ])
             import traceback
-            logger.debug(f"log_ban traceback: {traceback.format_exc()}")
             return None
 
     async def log_unban(
@@ -1057,25 +1029,19 @@ class CaseLogService:
         Returns:
             Dict with case info, includes 'just_created' flag if new.
         """
-        logger.debug(f"_get_or_create_case: Checking DB for user {user.id}")
         case = self.db.get_case_log(user.id)
         if case:
-            logger.debug(f"_get_or_create_case: Found existing case {case['case_id']} for user {user.id}")
             return case  # Existing case
 
         # Create new case
-        logger.debug(f"_get_or_create_case: No existing case, creating new for user {user.id}")
         case_id = self.db.get_next_case_id()
-        logger.debug(f"_get_or_create_case: Generated case_id={case_id}")
 
         thread = await self._create_case_thread(user, case_id)
 
         if thread:
-            logger.debug(f"_get_or_create_case: Thread created successfully: {thread.id} ({thread.name})")
             self.db.create_case_log(user.id, case_id, thread.id)
             # Cache the thread immediately so we don't need to fetch it again
             self._thread_cache[thread.id] = (thread, datetime.now(NY_TZ))
-            logger.debug(f"_get_or_create_case: Thread {thread.id} cached, returning case")
             return {
                 "user_id": user.id,
                 "case_id": case_id,
@@ -1106,12 +1072,10 @@ class CaseLogService:
         Returns:
             The created thread, or None on failure.
         """
-        logger.debug(f"_create_case_thread: Starting for user {user.id}, case_id={case_id}")
         forum = await self._get_forum()
         if not forum:
             logger.warning(f"_create_case_thread: Forum not found, cannot create thread")
             return None
-        logger.debug(f"_create_case_thread: Got forum {forum.id} ({forum.name})")
 
         # Build user profile embed
         user_embed = discord.Embed(
@@ -1149,14 +1113,12 @@ class CaseLogService:
 
         # Create thread with user profile only
         thread_name = f"[{case_id}] | {user.display_name}"
-        logger.debug(f"_create_case_thread: Creating thread '{thread_name[:100]}'")
 
         try:
             thread_with_msg = await forum.create_thread(
                 name=thread_name[:100],  # Discord limit
                 embed=user_embed,
             )
-            logger.debug(f"_create_case_thread: Thread created: {thread_with_msg.thread.id}")
 
             # Pin the first message (user profile) and store its ID
             try:
@@ -1164,7 +1126,6 @@ class CaseLogService:
                     await thread_with_msg.message.pin()
                     # Store the message ID for future updates
                     self.db.set_profile_message_id(user.id, thread_with_msg.message.id)
-                    logger.debug(f"_create_case_thread: Profile pinned, msg_id={thread_with_msg.message.id}")
             except Exception as pin_error:
                 logger.warning(f"Failed To Pin User Profile: Case {case_id} - {str(pin_error)[:50]}")
 

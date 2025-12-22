@@ -331,11 +331,15 @@ class BanCog(commands.Cog):
         embed.set_thumbnail(url=user.display_avatar.url)
         set_footer(embed)
 
-        if case_info:
-            view = CaseButtonView(interaction.guild.id, case_info["thread_id"], user.id)
-            sent_message = await interaction.followup.send(embed=embed, view=view, wait=True)
-        else:
-            sent_message = await interaction.followup.send(embed=embed, wait=True)
+        sent_message = None
+        try:
+            if case_info:
+                view = CaseButtonView(interaction.guild.id, case_info["thread_id"], user.id)
+                sent_message = await interaction.followup.send(embed=embed, view=view)
+            else:
+                sent_message = await interaction.followup.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Ban followup failed: {e}")
 
         # -----------------------------------------------------------------
         # Log to Case Forum
@@ -519,11 +523,15 @@ class BanCog(commands.Cog):
         embed.set_thumbnail(url=target_user.display_avatar.url)
         set_footer(embed)
 
-        if case:
-            view = CaseButtonView(interaction.guild.id, case["thread_id"], target_user.id)
-            sent_message = await interaction.followup.send(embed=embed, view=view, wait=True)
-        else:
-            sent_message = await interaction.followup.send(embed=embed, wait=True)
+        sent_message = None
+        try:
+            if case:
+                view = CaseButtonView(interaction.guild.id, case["thread_id"], target_user.id)
+                sent_message = await interaction.followup.send(embed=embed, view=view)
+            else:
+                sent_message = await interaction.followup.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Unban followup failed: {e}")
 
         # -----------------------------------------------------------------
         # Log to Case Forum
