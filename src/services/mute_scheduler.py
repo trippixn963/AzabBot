@@ -27,6 +27,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
+from src.utils.views import CASE_EMOJI
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -286,20 +287,33 @@ class MuteScheduler:
             return
 
         embed = discord.Embed(
-            title="Moderation: Auto-Unmute",
+            title="🔊 Auto-Unmute",
             color=EmbedColors.SUCCESS,
             timestamp=datetime.now(NY_TZ),
         )
 
-        embed.add_field(name="User", value=f"{user.mention} ({user})", inline=True)
-        embed.add_field(name="Moderator", value=f"{self.bot.user.mention} (Auto)", inline=True)
-        embed.add_field(name="Reason", value="Mute duration expired", inline=False)
+        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}`", inline=True)
+        embed.add_field(name="Moderator", value=f"{self.bot.user.mention}\n`Auto`", inline=True)
+        embed.add_field(name="Reason", value="```Mute duration expired```", inline=False)
 
         embed.set_thumbnail(url=user.display_avatar.url)
-        embed.set_footer(text=f"User ID: {user.id}")
+        embed.set_footer(text=f"Unmute • ID: {user.id}")
 
         try:
-            await log_channel.send(embed=embed)
+            # Add Case button if user has an open case
+            view = None
+            case = self.db.get_case_log(user.id)
+            if case:
+                view = discord.ui.View(timeout=None)
+                case_url = f"https://discord.com/channels/{guild.id}/{case['thread_id']}"
+                view.add_item(discord.ui.Button(
+                    label="Case",
+                    url=case_url,
+                    style=discord.ButtonStyle.link,
+                    emoji=CASE_EMOJI,
+                ))
+
+            await log_channel.send(embed=embed, view=view)
         except (discord.Forbidden, discord.HTTPException):
             pass
 

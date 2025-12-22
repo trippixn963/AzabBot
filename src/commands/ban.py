@@ -317,7 +317,7 @@ class BanCog(commands.Cog):
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="User", value=f"`{user.name}` ({user.mention})", inline=False)
-        embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
 
         if case_info:
             embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
@@ -375,7 +375,7 @@ class BanCog(commands.Cog):
     @app_commands.describe(
         user="The user to ban",
         reason="Reason for the ban",
-        evidence="Link to evidence (message link, screenshot, etc.)",
+        evidence="Message link or description of evidence",
     )
     @app_commands.autocomplete(reason=reason_autocomplete)
     async def ban(
@@ -507,7 +507,7 @@ class BanCog(commands.Cog):
             color=EmbedColors.SUCCESS,
         )
         embed.add_field(name="User", value=f"`{target_user.name}` ({target_user.mention})", inline=False)
-        embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
 
         if case:
             embed.add_field(name="Case ID", value=f"`{case['case_id']}`", inline=True)

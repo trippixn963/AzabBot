@@ -21,6 +21,12 @@ if TYPE_CHECKING:
     from src.bot import AzabBot
 
 
+# Bot IDs to ignore when logging moderation actions
+IGNORED_BOT_IDS = {
+    491769129318088714,  # StatBot
+}
+
+
 class AuditLogEvents(commands.Cog):
     """Audit log event handlers."""
 
@@ -405,13 +411,13 @@ class AuditLogEvents(commands.Cog):
                     to_channel = entry.extra.channel
                     count = getattr(entry.extra, 'count', 1)
                     embed = discord.Embed(
-                        title="Users Moved (Voice)",
+                        title="🔀 Voice Move",
                         color=EmbedColors.GOLD,
                         timestamp=datetime.now(NY_TZ),
                     )
-                    embed.add_field(name="To Channel", value=f"🔊 {to_channel.name}", inline=True)
-                    embed.add_field(name="Count", value=str(count), inline=True)
-                    embed.set_footer(text=datetime.now(NY_TZ).strftime("%B %d, %Y"))
+                    embed.add_field(name="To Channel", value=f"`{to_channel.name}`", inline=True)
+                    embed.add_field(name="Count", value=f"`{count}`", inline=True)
+                    embed.set_footer(text="Voice • Bulk Move")
                     await self.bot.mod_tracker._send_log(mod_id, embed, "Voice Move")
 
             # Bulk message delete
@@ -612,6 +618,10 @@ class AuditLogEvents(commands.Cog):
     async def _log_audit_event(self, entry: discord.AuditLogEntry) -> None:
         """Route audit log events to the logging service."""
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
+            return
+
+        # Skip actions taken by ignored bots
+        if entry.user_id in IGNORED_BOT_IDS:
             return
 
         try:

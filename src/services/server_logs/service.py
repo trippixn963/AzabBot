@@ -20,6 +20,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.utils.views import DownloadButton, CASE_EMOJI
 
 # Import from local package
 from .categories import LogCategory, THREAD_DESCRIPTIONS
@@ -73,11 +74,25 @@ class UserIdButton(discord.ui.DynamicItem[discord.ui.Button], template=r"log_use
 
 
 class LogView(discord.ui.View):
-    """Persistent view for log embeds with UserID button."""
+    """Persistent view for log embeds with Case, UserID, and Download buttons."""
 
-    def __init__(self, user_id: int):
+    def __init__(self, user_id: int, guild_id: int):
         super().__init__(timeout=None)
+
+        # Check if user has an open case - add Case button first if so
+        db = get_db()
+        case = db.get_case_log(user_id)
+        if case:
+            case_url = f"https://discord.com/channels/{guild_id}/{case['thread_id']}"
+            self.add_item(discord.ui.Button(
+                label="Case",
+                url=case_url,
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+            ))
+
         self.add_item(UserIdButton(user_id))
+        self.add_item(DownloadButton(user_id))
 
 
 def setup_log_views(bot: "AzabBot") -> None:
@@ -350,8 +365,8 @@ class LoggingService:
 
         try:
             thread = self._threads[category]
-            # Create view with UserID button if user_id is provided
-            view = LogView(user_id) if user_id else None
+            # Create view with Case/UserID/Download buttons if user_id is provided
+            view = LogView(user_id, thread.guild.id) if user_id else None
             message = await thread.send(embed=embed, files=files or [], view=view)
             return message
         except discord.Forbidden:

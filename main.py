@@ -99,18 +99,27 @@ def acquire_lock() -> int:
     except (IOError, OSError):
         # Lock held by another process - check if it's stale
         if _is_stale_lock(fd):
+            # Stale lock - the PID in the file is dead but flock is still held
+            # This can happen if the file was manually created or corrupted
+            # Close our fd and try to forcefully take the lock
             os.close(fd)
             try:
+                # Remove the stale lock file
                 LOCK_FILE_PATH.unlink()
                 logger.warning("🔒 Removed Stale Lock File", [
                     ("Reason", "Dead process"),
                 ])
+                # Small delay to avoid race with other potential starters
+                import time
+                time.sleep(0.1)
                 return acquire_lock()  # Retry
             except OSError as e:
                 logger.debug("Could Not Remove Stale Lock", [
                     ("Error", str(e)),
                     ("Action", "Proceeding to check existing instance"),
                 ])
+                # Another process may have already taken the lock
+                sys.exit(1)
 
         _report_existing_instance(fd)
         os.close(fd)
@@ -182,12 +191,17 @@ def cleanup_temp_files() -> None:
 
     Removes any stale temp files that might have been left
     from previous bot runs or crashes.
+
+    NOTE: Excludes the lock file (azab_bot.lock) which must persist.
     """
     temp_dir = Path("/tmp")
     cleaned = 0
 
     for pattern in ["azabbot_*", "azab_*"]:
         for temp_file in temp_dir.glob(pattern):
+            # Skip the lock file - it must persist for single-instance enforcement
+            if temp_file.name == "azab_bot.lock":
+                continue
             try:
                 if temp_file.is_file():
                     temp_file.unlink()

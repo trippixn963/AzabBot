@@ -245,8 +245,10 @@ class AzabBot(commands.Bot):
             from src.services.case_log import CaseLogService
             self.case_log_service = CaseLogService(self)
             if self.case_log_service.enabled:
+                await self.case_log_service.start_reason_scheduler()
                 logger.tree("Case Log Service Initialized", [
                     ("Forum ID", str(self.config.case_log_forum_id)),
+                    ("Reason Scheduler", "Running"),
                 ], emoji="📝")
             else:
                 logger.info("Case Log Service Disabled (no forum configured)")
@@ -448,6 +450,9 @@ class AzabBot(commands.Bot):
 
         if self.mute_scheduler:
             await self.mute_scheduler.stop()
+
+        if self.case_log_service and self.case_log_service.enabled:
+            await self.case_log_service.stop_reason_scheduler()
 
         if self.health_server:
             await self.health_server.stop()

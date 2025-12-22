@@ -30,8 +30,11 @@ if TYPE_CHECKING:
 # UI Constants
 # =============================================================================
 
-CASE_EMOJI = "<:case:1452426909077213255>"
-INFO_EMOJI = "<:info:1452426910901604362>"
+# App emojis from Discord Developer Portal
+CASE_EMOJI = discord.PartialEmoji(name="case", id=1452426909077213255)
+MESSAGE_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon14", id=1452783032460247150)
+INFO_EMOJI = discord.PartialEmoji(name="info", id=1452510787817046197)
+DOWNLOAD_EMOJI = discord.PartialEmoji(name="download", id=1452689360804909148)
 
 
 # =============================================================================
@@ -169,6 +172,61 @@ class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_info:
 
 
 # =============================================================================
+# Download Avatar Button (Persistent)
+# =============================================================================
+
+class DownloadButton(discord.ui.DynamicItem[discord.ui.Button], template=r"download_pfp:(?P<user_id>\d+)"):
+    """
+    Persistent download button that sends avatar as ephemeral message.
+
+    Works after bot restart by using DynamicItem with regex pattern.
+    """
+
+    def __init__(self, user_id: int):
+        super().__init__(
+            discord.ui.Button(
+                label="Avatar",
+                style=discord.ButtonStyle.secondary,
+                emoji=DOWNLOAD_EMOJI,
+                custom_id=f"download_pfp:{user_id}",
+            )
+        )
+        self.user_id = user_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match: re.Match[str],
+    ) -> "DownloadButton":
+        """Reconstruct the button from the custom_id regex match."""
+        user_id = int(match.group("user_id"))
+        return cls(user_id)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Send avatar URL as ephemeral message."""
+        try:
+            # Try to get member first, then fetch user if not found
+            user = None
+            if interaction.guild:
+                user = interaction.guild.get_member(self.user_id)
+
+            if not user:
+                user = await interaction.client.fetch_user(self.user_id)
+
+            # Get high-res avatar URL
+            avatar_url = user.display_avatar.replace(size=4096).url
+
+            # Send just the URL (Discord will embed it as an image)
+            await interaction.response.send_message(avatar_url, ephemeral=True)
+        except discord.NotFound:
+            await interaction.response.send_message("User not found.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"Failed to fetch avatar.", ephemeral=True)
+
+
+# =============================================================================
 # Case Button View
 # =============================================================================
 
@@ -201,7 +259,7 @@ def setup_moderation_views(bot: "AzabBot") -> None:
 
     Call this on bot startup to enable button persistence after restart.
     """
-    bot.add_dynamic_items(InfoButton)
+    bot.add_dynamic_items(InfoButton, DownloadButton)
 
 
 # =============================================================================
@@ -210,8 +268,11 @@ def setup_moderation_views(bot: "AzabBot") -> None:
 
 __all__ = [
     "CASE_EMOJI",
+    "MESSAGE_EMOJI",
     "INFO_EMOJI",
+    "DOWNLOAD_EMOJI",
     "InfoButton",
+    "DownloadButton",
     "CaseButtonView",
     "setup_moderation_views",
 ]

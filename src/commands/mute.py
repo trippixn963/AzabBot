@@ -498,7 +498,9 @@ class MuteCog(commands.Cog):
 
         case_info = None
         if self.bot.case_log_service:
+            logger.debug(f"execute_mute: Calling prepare_case for {user.id}")
             case_info = await self.bot.case_log_service.prepare_case(user)
+            logger.debug(f"execute_mute: prepare_case returned case_id={case_info.get('case_id') if case_info else None}")
 
         # ---------------------------------------------------------------------
         # Build & Send Embed
@@ -508,7 +510,7 @@ class MuteCog(commands.Cog):
         embed = discord.Embed(title=embed_title, color=EmbedColors.ERROR)
         embed.add_field(name="User", value=f"`{user.name}` ({user.mention})", inline=False)
         embed.add_field(name="Duration", value=f"`{duration_display}`", inline=True)
-        embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
 
         if case_info:
             embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
@@ -518,11 +520,21 @@ class MuteCog(commands.Cog):
         embed.set_thumbnail(url=user.display_avatar.url)
         set_footer(embed)
 
-        if case_info:
-            view = CaseButtonView(interaction.guild.id, case_info["thread_id"], user.id)
-            sent_message = await interaction.followup.send(embed=embed, view=view, wait=True)
-        else:
-            sent_message = await interaction.followup.send(embed=embed, wait=True)
+        logger.debug(f"execute_mute: About to send followup, case_info={case_info is not None}")
+        sent_message = None
+        try:
+            if case_info:
+                logger.debug(f"execute_mute: Creating CaseButtonView with guild={interaction.guild.id}, thread={case_info['thread_id']}, user={user.id}")
+                view = CaseButtonView(interaction.guild.id, case_info["thread_id"], user.id)
+                logger.debug(f"execute_mute: Sending followup with view...")
+                sent_message = await interaction.followup.send(embed=embed, view=view)
+                logger.debug(f"execute_mute: Followup sent, msg_id={sent_message.id if sent_message else 'None'}")
+            else:
+                logger.debug(f"execute_mute: No case, sending followup without view...")
+                sent_message = await interaction.followup.send(embed=embed)
+                logger.debug(f"execute_mute: Followup sent")
+        except Exception as e:
+            logger.error(f"execute_mute: Followup.send failed: {e}")
 
         # ---------------------------------------------------------------------
         # Concurrent Post-Response Operations
@@ -593,14 +605,14 @@ class MuteCog(commands.Cog):
         user="The user to mute",
         duration="How long to mute (e.g., 10m, 1h, 1d, permanent)",
         reason="Reason for the mute",
-        evidence="Link or description of evidence (auto-filled if using context menu)",
+        evidence="Message link or description of evidence",
     )
     @app_commands.autocomplete(duration=duration_autocomplete, reason=reason_autocomplete)
     async def mute(
         self,
         interaction: discord.Interaction,
         user: discord.Member,
-        duration: Optional[str] = None,
+        duration: str,
         reason: Optional[str] = None,
         evidence: Optional[str] = None,
     ) -> None:
@@ -767,7 +779,7 @@ class MuteCog(commands.Cog):
 
         embed = discord.Embed(title="🔊 User Unmuted", color=EmbedColors.SUCCESS)
         embed.add_field(name="User", value=f"`{user.name}` ({user.mention})", inline=False)
-        embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
 
         if case_info:
             embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
@@ -775,11 +787,15 @@ class MuteCog(commands.Cog):
         embed.set_thumbnail(url=user.display_avatar.url)
         set_footer(embed)
 
-        if case_info:
-            view = CaseButtonView(interaction.guild.id, case_info["thread_id"], user.id)
-            sent_message = await interaction.followup.send(embed=embed, view=view, wait=True)
-        else:
-            sent_message = await interaction.followup.send(embed=embed, wait=True)
+        sent_message = None
+        try:
+            if case_info:
+                view = CaseButtonView(interaction.guild.id, case_info["thread_id"], user.id)
+                sent_message = await interaction.followup.send(embed=embed, view=view)
+            else:
+                sent_message = await interaction.followup.send(embed=embed)
+        except Exception as e:
+            logger.error(f"execute_unmute: Followup.send failed: {e}")
 
         # ---------------------------------------------------------------------
         # Concurrent Post-Response Operations

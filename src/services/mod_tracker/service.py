@@ -386,7 +386,7 @@ class ModTrackerService:
             color=color,
             timestamp=datetime.now(NY_TZ),
         )
-        embed.set_footer(text=datetime.now(NY_TZ).strftime("%B %d, %Y"))
+        embed.set_footer(text=f"Alert • Mod ID: {mod_id}")
 
         try:
             if thread.archived:

@@ -378,6 +378,10 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE case_logs ADD COLUMN last_ban_at REAL")
         except sqlite3.OperationalError:
             pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE case_logs ADD COLUMN profile_message_id INTEGER")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
         # -----------------------------------------------------------------
         # Mod Tracker Table
@@ -432,6 +436,30 @@ class DatabaseManager:
                 PRIMARY KEY (user_id, guild_id)
             )
         """)
+
+        # -----------------------------------------------------------------
+        # Pending Reasons Table
+        # DESIGN: Tracks mod actions awaiting reason replies
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pending_reasons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                thread_id INTEGER NOT NULL,
+                warning_message_id INTEGER NOT NULL,
+                embed_message_id INTEGER NOT NULL,
+                moderator_id INTEGER NOT NULL,
+                target_user_id INTEGER NOT NULL,
+                action_type TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                owner_notified INTEGER DEFAULT 0
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pending_reasons_thread ON pending_reasons(thread_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pending_reasons_created ON pending_reasons(created_at)"
+        )
 
         conn.commit()
 
@@ -1182,6 +1210,19 @@ class DatabaseManager:
         rows = self.fetchall("SELECT * FROM case_logs ORDER BY case_id")
         return [dict(row) for row in rows]
 
+    def set_profile_message_id(self, user_id: int, message_id: int) -> None:
+        """
+        Set the profile message ID for a case.
+
+        Args:
+            user_id: Discord user ID.
+            message_id: The message ID of the pinned profile.
+        """
+        self.execute(
+            "UPDATE case_logs SET profile_message_id = ? WHERE user_id = ?",
+            (message_id, user_id)
+        )
+
     # =========================================================================
     # Mod Tracker Operations
     # =========================================================================
@@ -1451,6 +1492,120 @@ class DatabaseManager:
             (user_id, guild_id)
         )
         return dict(row) if row else None
+
+    # =========================================================================
+    # Pending Reasons Operations
+    # =========================================================================
+
+    def create_pending_reason(
+        self,
+        thread_id: int,
+        warning_message_id: int,
+        embed_message_id: int,
+        moderator_id: int,
+        target_user_id: int,
+        action_type: str,
+    ) -> int:
+        """
+        Create a pending reason request.
+
+        Args:
+            thread_id: Case thread ID.
+            warning_message_id: ID of the warning message to delete when resolved.
+            embed_message_id: ID of the embed to update with reason.
+            moderator_id: Moderator who needs to provide reason.
+            target_user_id: User the action was taken against.
+            action_type: Type of action (mute, ban, etc).
+
+        Returns:
+            ID of the created pending reason.
+        """
+        return self.execute(
+            """
+            INSERT INTO pending_reasons
+            (thread_id, warning_message_id, embed_message_id, moderator_id, target_user_id, action_type, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (thread_id, warning_message_id, embed_message_id, moderator_id, target_user_id, action_type, time.time())
+        )
+
+    def get_pending_reason_by_thread(self, thread_id: int, moderator_id: int) -> Optional[Dict]:
+        """
+        Get pending reason for a thread and moderator.
+
+        Args:
+            thread_id: Case thread ID.
+            moderator_id: Moderator ID.
+
+        Returns:
+            Pending reason record or None.
+        """
+        row = self.fetchone(
+            """
+            SELECT * FROM pending_reasons
+            WHERE thread_id = ? AND moderator_id = ? AND owner_notified = 0
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (thread_id, moderator_id)
+        )
+        return dict(row) if row else None
+
+    def get_expired_pending_reasons(self, max_age_seconds: int = 3600) -> List[Dict]:
+        """
+        Get pending reasons older than max_age_seconds that haven't been resolved.
+
+        Args:
+            max_age_seconds: Maximum age in seconds (default 1 hour).
+
+        Returns:
+            List of expired pending reason records.
+        """
+        cutoff = time.time() - max_age_seconds
+        rows = self.fetchall(
+            """
+            SELECT * FROM pending_reasons
+            WHERE created_at < ? AND owner_notified = 0
+            """,
+            (cutoff,)
+        )
+        return [dict(row) for row in rows]
+
+    def mark_pending_reason_notified(self, pending_id: int) -> None:
+        """Mark a pending reason as owner notified."""
+        self.execute(
+            "UPDATE pending_reasons SET owner_notified = 1 WHERE id = ?",
+            (pending_id,)
+        )
+
+    def delete_pending_reason(self, pending_id: int) -> None:
+        """Delete a pending reason (when resolved)."""
+        self.execute(
+            "DELETE FROM pending_reasons WHERE id = ?",
+            (pending_id,)
+        )
+
+    def delete_pending_reasons_for_thread(self, thread_id: int, moderator_id: int) -> None:
+        """Delete all pending reasons for a thread and moderator."""
+        self.execute(
+            "DELETE FROM pending_reasons WHERE thread_id = ? AND moderator_id = ?",
+            (thread_id, moderator_id)
+        )
+
+    def cleanup_old_pending_reasons(self, max_age_seconds: int = 86400) -> int:
+        """
+        Delete old pending reasons that have been notified.
+
+        Args:
+            max_age_seconds: Maximum age in seconds (default 24 hours).
+
+        Returns:
+            Number of records deleted.
+        """
+        cutoff = time.time() - max_age_seconds
+        return self.execute(
+            "DELETE FROM pending_reasons WHERE owner_notified = 1 AND created_at < ?",
+            (cutoff,)
+        )
 
 
 # =============================================================================

@@ -20,6 +20,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, Dict, Tuple
 
@@ -29,6 +30,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
+from src.utils.views import CASE_EMOJI, MESSAGE_EMOJI, DownloadButton
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -38,17 +40,39 @@ if TYPE_CHECKING:
 # View Classes
 # =============================================================================
 
-class JumpToMessageView(discord.ui.View):
-    """View with a button linking to the source message."""
+class CaseLogView(discord.ui.View):
+    """View with Case button (if user has case), jump-to-message, and download avatar buttons."""
 
-    def __init__(self, message_url: str):
+    def __init__(
+        self,
+        user_id: int,
+        guild_id: int,
+        message_url: Optional[str] = None,
+        case_thread_id: Optional[int] = None,
+    ):
         super().__init__(timeout=None)
-        self.add_item(discord.ui.Button(
-            label="Jump to Message",
-            url=message_url,
-            style=discord.ButtonStyle.link,
-            emoji="🔗",
-        ))
+
+        # Button 1: Case link (if user has an open case)
+        if case_thread_id:
+            case_url = f"https://discord.com/channels/{guild_id}/{case_thread_id}"
+            self.add_item(discord.ui.Button(
+                label="Case",
+                url=case_url,
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+            ))
+
+        # Button 2: Jump to message (if provided)
+        if message_url:
+            self.add_item(discord.ui.Button(
+                label="Message",
+                url=message_url,
+                style=discord.ButtonStyle.link,
+                emoji=MESSAGE_EMOJI,
+            ))
+
+        # Button 3: Download PFP (persistent button)
+        self.add_item(DownloadButton(user_id))
 
 
 # =============================================================================
@@ -92,6 +116,97 @@ class CaseLogService:
         self._forum_cache_time: Optional[datetime] = None
         # Thread cache: thread_id -> (thread, cached_at)
         self._thread_cache: Dict[int, Tuple[discord.Thread, datetime]] = {}
+        # Pending reason scheduler
+        self._reason_check_task: Optional[asyncio.Task] = None
+        self._reason_check_running: bool = False
+
+    # =========================================================================
+    # Pending Reason Scheduler
+    # =========================================================================
+
+    async def start_reason_scheduler(self) -> None:
+        """Start the background task for checking expired pending reasons."""
+        if self._reason_check_task and not self._reason_check_task.done():
+            self._reason_check_task.cancel()
+
+        self._reason_check_running = True
+        self._reason_check_task = asyncio.create_task(self._reason_check_loop())
+
+        logger.tree("Pending Reason Scheduler Started", [
+            ("Check Interval", "5 minutes"),
+            ("Expiry Time", "1 hour"),
+        ], emoji="⏰")
+
+    async def stop_reason_scheduler(self) -> None:
+        """Stop the pending reason scheduler."""
+        self._reason_check_running = False
+
+        if self._reason_check_task and not self._reason_check_task.done():
+            self._reason_check_task.cancel()
+            try:
+                await self._reason_check_task
+            except asyncio.CancelledError:
+                pass
+
+        logger.info("Pending Reason Scheduler Stopped")
+
+    async def _reason_check_loop(self) -> None:
+        """Background loop to check for expired pending reasons."""
+        await self.bot.wait_until_ready()
+
+        while self._reason_check_running:
+            try:
+                await self._process_expired_reasons()
+                await asyncio.sleep(300)  # Check every 5 minutes
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Pending Reason Scheduler Error", [
+                    ("Error", str(e)[:100]),
+                ])
+                await asyncio.sleep(300)
+
+    async def _process_expired_reasons(self) -> None:
+        """Process expired pending reasons and notify owner."""
+        # Clean up old notified records (older than 24 hours)
+        self.db.cleanup_old_pending_reasons(max_age_seconds=86400)
+
+        expired = self.db.get_expired_pending_reasons(max_age_seconds=3600)  # 1 hour
+
+        for pending in expired:
+            try:
+                thread = await self._get_case_thread(pending["thread_id"])
+                if not thread:
+                    # Thread gone, clean up
+                    self.db.delete_pending_reason(pending["id"])
+                    continue
+
+                # Ping the owner
+                owner_id = self.config.developer_id
+                moderator_id = pending["moderator_id"]
+                action_type = pending["action_type"]
+                target_user_id = pending["target_user_id"]
+
+                await thread.send(
+                    f"⚠️ <@{owner_id}> **Alert:** <@{moderator_id}> did not provide a reason for "
+                    f"this {action_type} on <@{target_user_id}> within 1 hour."
+                )
+
+                # Mark as notified so we don't ping again
+                self.db.mark_pending_reason_notified(pending["id"])
+
+                logger.tree("Owner Notified: Missing Reason", [
+                    ("Thread ID", str(thread.id)),
+                    ("Moderator ID", str(moderator_id)),
+                    ("Action", action_type),
+                    ("Target User ID", str(target_user_id)),
+                ], emoji="⚠️")
+
+            except Exception as e:
+                logger.error("Failed To Notify Owner", [
+                    ("Pending ID", str(pending["id"])),
+                    ("Error", str(e)[:50]),
+                ])
 
     # =========================================================================
     # Properties
@@ -197,28 +312,40 @@ class CaseLogService:
         if thread_id in self._thread_cache:
             cached_thread, cached_at = self._thread_cache[thread_id]
             if now - cached_at < self.THREAD_CACHE_TTL:
+                logger.debug(f"Thread Cache HIT: {thread_id}")
                 return cached_thread
             else:
                 # Cache expired, remove it
+                logger.debug(f"Thread Cache EXPIRED: {thread_id}")
                 del self._thread_cache[thread_id]
+        else:
+            logger.debug(f"Thread Cache MISS: {thread_id}")
 
         # Cache miss - fetch thread
         try:
             thread = self.bot.get_channel(thread_id)
+            fetch_method = "get_channel" if thread else "fetch_channel"
             if thread is None:
                 thread = await self.bot.fetch_channel(thread_id)
             if isinstance(thread, discord.Thread):
                 # Cache the result
                 self._thread_cache[thread_id] = (thread, now)
+                logger.debug(f"Thread Fetched via {fetch_method}: {thread_id} -> {thread.name}")
                 # Cleanup old cache entries (keep max 100)
                 if len(self._thread_cache) > 100:
                     oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
                     del self._thread_cache[oldest]
                 return thread
+            else:
+                logger.warning(f"Channel {thread_id} is not a Thread: {type(thread)}")
         except discord.NotFound:
             logger.warning(f"Case Thread Not Found: {thread_id}")
         except Exception as e:
-            logger.warning(f"Failed To Get Case Thread: {thread_id} - {str(e)[:50]}")
+            logger.error("Case Thread Fetch Failed", [
+                ("Thread ID", str(thread_id)),
+                ("Error Type", type(e).__name__),
+                ("Error", str(e)[:100]),
+            ])
         return None
 
     # =========================================================================
@@ -255,13 +382,19 @@ class CaseLogService:
             Dict with case_id and thread_id, or None if disabled/failed.
         """
         if not self.enabled:
+            logger.debug(f"log_mute: Service disabled, skipping for {user.id}")
             return None
 
         try:
+            logger.debug(f"log_mute: Getting/creating case for {user.display_name} ({user.id})")
             case = await self._get_or_create_case(user)
+            logger.debug(f"log_mute: Got case {case['case_id']}, thread_id={case['thread_id']}, just_created={case.get('just_created', False)}")
+
+            logger.debug(f"log_mute: Fetching thread {case['thread_id']}")
             case_thread = await self._get_case_thread(case["thread_id"])
 
             if not case_thread:
+                logger.warning(f"log_mute: Thread {case['thread_id']} not found, returning early")
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             # Determine mute count (don't increment for extensions)
@@ -274,20 +407,39 @@ class CaseLogService:
             else:
                 mute_count = self.db.increment_mute_count(user.id)
 
-            # Build and send mute embed with jump button
+            # Build and send mute embed with jump button and download
+            logger.debug(f"log_mute: Building mute embed for {user.id}")
             embed = self._build_mute_embed(user, moderator, duration, reason, mute_count, is_extension, evidence)
+            view = CaseLogView(
+                user_id=user.id,
+                guild_id=user.guild.id,
+                message_url=source_message_url,
+                case_thread_id=case["thread_id"],
+            )
+            logger.debug(f"log_mute: Sending mute embed to thread {case_thread.id}")
+            embed_message = await case_thread.send(embed=embed, view=view)
+            logger.debug(f"log_mute: Mute embed sent, msg_id={embed_message.id}")
 
-            if source_message_url:
-                view = JumpToMessageView(source_message_url)
-                await case_thread.send(embed=embed, view=view)
-            else:
-                await case_thread.send(embed=embed)
-
-            # If no reason provided, ping moderator
+            # If no reason provided, ping moderator and track pending reason
             if not reason:
-                await case_thread.send(
-                    f"{moderator.mention} Please provide a reason for this {'extension' if is_extension else 'mute'}."
+                action_type = "extension" if is_extension else "mute"
+                logger.debug(f"log_mute: No reason provided, sending warning to mod {moderator.id}")
+                warning_message = await case_thread.send(
+                    f"⚠️ {moderator.mention} No reason was provided for this {action_type}.\n\n"
+                    f"**Reply to this message** with the reason within **1 hour** or the owner will be notified.\n"
+                    f"_Only replies from you will be accepted._"
                 )
+                logger.debug(f"log_mute: Warning sent, msg_id={warning_message.id}")
+                # Track pending reason in database
+                self.db.create_pending_reason(
+                    thread_id=case_thread.id,
+                    warning_message_id=warning_message.id,
+                    embed_message_id=embed_message.id,
+                    moderator_id=moderator.id,
+                    target_user_id=user.id,
+                    action_type=action_type,
+                )
+                logger.debug(f"log_mute: Pending reason tracked in DB")
 
             # Repeat offender alert at 3+ mutes (not for extensions)
             if not is_extension:
@@ -297,8 +449,9 @@ class CaseLogService:
                         title="⚠️ Repeat Offender Alert",
                         color=EmbedColors.WARNING,
                         description=f"**{user.display_name}** has been muted **{mute_count} times**.\n\nConsider a longer mute duration for this user.",
+                        timestamp=datetime.now(NY_TZ),
                     )
-                    set_footer(alert_embed)
+                    alert_embed.set_footer(text=f"Alert • ID: {user.id}")
                     await case_thread.send(embed=alert_embed)
 
             if is_extension:
@@ -317,13 +470,22 @@ class CaseLogService:
                 ("Reason", reason if reason else "Not provided"),
             ], emoji="🔇")
 
+            # Update the profile stats
+            updated_case = self.db.get_case_log(user.id)
+            if updated_case:
+                await self._update_profile_stats(user.id, updated_case)
+
+            logger.debug(f"log_mute: Completed successfully for {user.id}, case={case['case_id']}")
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
         except Exception as e:
             logger.error("Case Log: Failed To Log Mute", [
                 ("User ID", str(user.id)),
-                ("Error", str(e)[:100]),
+                ("Error Type", type(e).__name__),
+                ("Error", str(e)[:200]),
             ])
+            import traceback
+            logger.debug(f"log_mute traceback: {traceback.format_exc()}")
             return None
 
     # =========================================================================
@@ -368,17 +530,29 @@ class CaseLogService:
             case_thread = await self._get_case_thread(case["thread_id"])
             if case_thread:
                 embed = self._build_unmute_embed(moderator, reason, user_avatar_url)
+                view = CaseLogView(
+                    user_id=user_id,
+                    guild_id=moderator.guild.id,
+                    message_url=source_message_url,
+                    case_thread_id=case["thread_id"],
+                )
+                embed_message = await case_thread.send(embed=embed, view=view)
 
-                if source_message_url:
-                    view = JumpToMessageView(source_message_url)
-                    await case_thread.send(embed=embed, view=view)
-                else:
-                    await case_thread.send(embed=embed)
-
-                # If no reason provided, ping moderator
+                # If no reason provided, ping moderator and track pending reason
                 if not reason:
-                    await case_thread.send(
-                        f"{moderator.mention} Please provide a reason for this unmute."
+                    warning_message = await case_thread.send(
+                        f"⚠️ {moderator.mention} No reason was provided for this unmute.\n\n"
+                        f"**Reply to this message** with the reason within **1 hour** or the owner will be notified.\n"
+                        f"_Only replies from you will be accepted._"
+                    )
+                    # Track pending reason in database
+                    self.db.create_pending_reason(
+                        thread_id=case_thread.id,
+                        warning_message_id=warning_message.id,
+                        embed_message_id=embed_message.id,
+                        moderator_id=moderator.id,
+                        target_user_id=user_id,
+                        action_type="unmute",
                     )
 
                 logger.tree("Case Log: Unmute Logged", [
@@ -387,6 +561,11 @@ class CaseLogService:
                     ("Unmuted By", f"{moderator.display_name}"),
                     ("Reason", reason if reason else "Not provided"),
                 ], emoji="🔊")
+
+                # Update the profile stats
+                updated_case = self.db.get_case_log(user_id)
+                if updated_case:
+                    await self._update_profile_stats(user_id, updated_case)
 
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
@@ -423,52 +602,93 @@ class CaseLogService:
             Dict with case_id and thread_id, or None if failed.
         """
         if not self.enabled:
+            logger.debug(f"log_ban: Service disabled, skipping for {user.id}")
             return None
 
         try:
+            logger.debug(f"log_ban: Getting/creating case for {user.display_name} ({user.id})")
             case = await self._get_or_create_case(user)
+            logger.debug(f"log_ban: Got case {case['case_id']}, thread_id={case['thread_id']}")
+
             case_thread = await self._get_case_thread(case["thread_id"])
 
-            if case_thread:
-                now = datetime.now(NY_TZ)
+            if not case_thread:
+                logger.warning(f"log_ban: Thread {case['thread_id']} not found, returning early")
+                return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
-                embed = discord.Embed(
-                    title="🔨 User Banned",
-                    color=EmbedColors.ERROR,
+            now = datetime.now(NY_TZ)
+            logger.debug(f"log_ban: Building ban embed for {user.id}")
+
+            embed = discord.Embed(
+                title="🔨 User Banned",
+                color=EmbedColors.ERROR,
+                timestamp=now,
+            )
+            embed.set_thumbnail(url=user.display_avatar.url)
+            embed.add_field(name="Moderator", value=f"{moderator.mention}\n`{moderator.display_name}`", inline=True)
+
+            if reason:
+                embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
+            else:
+                embed.add_field(name="Reason", value="```No reason provided```", inline=False)
+
+            if evidence:
+                embed.add_field(name="Evidence", value=evidence, inline=False)
+
+            embed.set_footer(text=f"Ban • ID: {user.id}")
+
+            view = CaseLogView(
+                user_id=user.id,
+                guild_id=user.guild.id,
+                message_url=source_message_url,
+                case_thread_id=case["thread_id"],
+            )
+            logger.debug(f"log_ban: Sending ban embed to thread {case_thread.id}")
+            embed_message = await case_thread.send(embed=embed, view=view)
+            logger.debug(f"log_ban: Ban embed sent, msg_id={embed_message.id}")
+
+            # If no reason provided, ping moderator and track pending reason
+            if not reason:
+                logger.debug(f"log_ban: No reason provided, sending warning to mod {moderator.id}")
+                warning_message = await case_thread.send(
+                    f"⚠️ {moderator.mention} No reason was provided for this ban.\n\n"
+                    f"**Reply to this message** with the reason within **1 hour** or the owner will be notified.\n"
+                    f"_Only replies from you will be accepted._"
                 )
-                embed.set_thumbnail(url=user.display_avatar.url)
-                embed.add_field(name="Moderator", value=f"`{moderator.display_name}`", inline=True)
-                embed.add_field(name="Time", value=f"<t:{int(now.timestamp())}:F>", inline=True)
+                logger.debug(f"log_ban: Warning sent, msg_id={warning_message.id}")
+                # Track pending reason in database
+                self.db.create_pending_reason(
+                    thread_id=case_thread.id,
+                    warning_message_id=warning_message.id,
+                    embed_message_id=embed_message.id,
+                    moderator_id=moderator.id,
+                    target_user_id=user.id,
+                    action_type="ban",
+                )
+                logger.debug(f"log_ban: Pending reason tracked in DB")
 
-                if reason:
-                    embed.add_field(name="Reason", value=reason, inline=False)
-                else:
-                    embed.add_field(name="Reason", value="*No reason provided*", inline=False)
+            logger.tree("Case Log: Ban Logged", [
+                ("User", f"{user} ({user.id})"),
+                ("Case ID", case['case_id']),
+                ("Banned By", f"{moderator.display_name}"),
+            ], emoji="🔨")
 
-                if evidence:
-                    embed.add_field(name="Evidence", value=evidence, inline=False)
+            # Update the profile stats
+            updated_case = self.db.get_case_log(user.id)
+            if updated_case:
+                await self._update_profile_stats(user.id, updated_case)
 
-                set_footer(embed)
-
-                if source_message_url:
-                    view = JumpToMessageView(source_message_url)
-                    await case_thread.send(embed=embed, view=view)
-                else:
-                    await case_thread.send(embed=embed)
-
-                logger.tree("Case Log: Ban Logged", [
-                    ("User", f"{user} ({user.id})"),
-                    ("Case ID", case['case_id']),
-                    ("Banned By", f"{moderator.display_name}"),
-                ], emoji="🔨")
-
+            logger.debug(f"log_ban: Completed successfully for {user.id}, case={case['case_id']}")
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
         except Exception as e:
             logger.error("Case Log: Failed To Log Ban", [
                 ("User ID", str(user.id)),
-                ("Error", str(e)[:100]),
+                ("Error Type", type(e).__name__),
+                ("Error", str(e)[:200]),
             ])
+            import traceback
+            logger.debug(f"log_ban traceback: {traceback.format_exc()}")
             return None
 
     async def log_unban(
@@ -508,26 +728,50 @@ class CaseLogService:
                 embed = discord.Embed(
                     title="🔓 User Unbanned",
                     color=EmbedColors.SUCCESS,
+                    timestamp=now,
                 )
-                embed.add_field(name="Moderator", value=f"`{moderator.display_name}`", inline=True)
-                embed.add_field(name="Time", value=f"<t:{int(now.timestamp())}:F>", inline=True)
+                embed.add_field(name="Moderator", value=f"{moderator.mention}\n`{moderator.display_name}`", inline=True)
 
                 if reason:
-                    embed.add_field(name="Reason", value=reason, inline=False)
+                    embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
 
-                set_footer(embed)
+                embed.set_footer(text=f"Unban • ID: {user_id}")
 
-                if source_message_url:
-                    view = JumpToMessageView(source_message_url)
-                    await case_thread.send(embed=embed, view=view)
-                else:
-                    await case_thread.send(embed=embed)
+                view = CaseLogView(
+                    user_id=user_id,
+                    guild_id=moderator.guild.id,
+                    message_url=source_message_url,
+                    case_thread_id=case["thread_id"],
+                )
+                embed_message = await case_thread.send(embed=embed, view=view)
+
+                # If no reason provided, ping moderator and track pending reason
+                if not reason:
+                    warning_message = await case_thread.send(
+                        f"⚠️ {moderator.mention} No reason was provided for this unban.\n\n"
+                        f"**Reply to this message** with the reason within **1 hour** or the owner will be notified.\n"
+                        f"_Only replies from you will be accepted._"
+                    )
+                    # Track pending reason in database
+                    self.db.create_pending_reason(
+                        thread_id=case_thread.id,
+                        warning_message_id=warning_message.id,
+                        embed_message_id=embed_message.id,
+                        moderator_id=moderator.id,
+                        target_user_id=user_id,
+                        action_type="unban",
+                    )
 
                 logger.tree("Case Log: Unban Logged", [
                     ("User", f"{username} ({user_id})"),
                     ("Case ID", case['case_id']),
                     ("Unbanned By", f"{moderator.display_name}"),
                 ], emoji="🔓")
+
+                # Update the profile stats
+                updated_case = self.db.get_case_log(user_id)
+                if updated_case:
+                    await self._update_profile_stats(user_id, updated_case)
 
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
@@ -566,7 +810,12 @@ class CaseLogService:
             case_thread = await self._get_case_thread(case["thread_id"])
             if case_thread:
                 embed = self._build_expired_embed(user_avatar_url)
-                await case_thread.send(embed=embed)
+                view = CaseLogView(
+                    user_id=user_id,
+                    guild_id=case_thread.guild.id,
+                    case_thread_id=case["thread_id"],
+                )
+                await case_thread.send(embed=embed, view=view)
 
                 logger.tree("Case Log: Mute Expiry Logged", [
                     ("User", f"{display_name} ({user_id})"),
@@ -603,17 +852,13 @@ class CaseLogService:
 
             case_thread = await self._get_case_thread(case["thread_id"])
             if case_thread:
+                now = datetime.now(NY_TZ)
+
                 embed = discord.Embed(
                     title="🚪 Left Server While Muted",
                     description="User left the server with an active mute.",
                     color=EmbedColors.WARNING,
-                )
-
-                now = datetime.now(NY_TZ)
-                embed.add_field(
-                    name="Left At",
-                    value=f"<t:{int(now.timestamp())}:F>",
-                    inline=True,
+                    timestamp=now,
                 )
 
                 # Calculate time since muted
@@ -625,7 +870,7 @@ class CaseLogService:
                     inline=True,
                 )
 
-                set_footer(embed)
+                embed.set_footer(text=f"Leave • ID: {user_id}")
                 await case_thread.send(embed=embed)
 
                 logger.tree("Case Log: Member Left Muted", [
@@ -694,23 +939,24 @@ class CaseLogService:
 
             case_thread = await self._get_case_thread(case["thread_id"])
             if case_thread:
+                now = datetime.now(NY_TZ)
+
                 embed = discord.Embed(
                     title="⚠️ Rejoined While Muted",
                     description="User rejoined the server with an active mute. Muted role has been re-applied.",
                     color=EmbedColors.WARNING,
+                    timestamp=now,
                 )
 
                 embed.set_thumbnail(url=member.display_avatar.url)
+                embed.set_footer(text=f"Rejoin • ID: {member.id}")
 
-                now = datetime.now(NY_TZ)
-                embed.add_field(
-                    name="Time",
-                    value=f"<t:{int(now.timestamp())}:F>",
-                    inline=True,
+                view = CaseLogView(
+                    user_id=member.id,
+                    guild_id=member.guild.id,
+                    case_thread_id=case["thread_id"],
                 )
-
-                set_footer(embed)
-                await case_thread.send(embed=embed)
+                await case_thread.send(embed=embed, view=view)
 
                 # Ping all moderators who muted this user
                 if moderator_ids:
@@ -753,30 +999,27 @@ class CaseLogService:
 
             case_thread = await self._get_case_thread(case["thread_id"])
             if case_thread:
+                now = datetime.now(NY_TZ)
+
                 embed = discord.Embed(
                     title="🔇 Voice Channel Violation",
                     description="User attempted to join a voice channel while muted. They have been disconnected and given a 1-hour timeout.",
                     color=EmbedColors.ERROR,
+                    timestamp=now,
                 )
 
-                now = datetime.now(NY_TZ)
                 embed.add_field(
                     name="Attempted Channel",
-                    value=f"🔊 {channel_name}",
+                    value=f"`{channel_name}`",
                     inline=True,
                 )
                 embed.add_field(
                     name="Action Taken",
-                    value="Disconnected + 1h Timeout",
-                    inline=True,
-                )
-                embed.add_field(
-                    name="Time",
-                    value=f"<t:{int(now.timestamp())}:F>",
+                    value="`Disconnected + 1h Timeout`",
                     inline=True,
                 )
 
-                set_footer(embed)
+                embed.set_footer(text=f"Violation • ID: {user_id}")
                 await case_thread.send(embed=embed)
 
                 logger.tree("Case Log: VC Violation", [
@@ -808,16 +1051,25 @@ class CaseLogService:
         Returns:
             Dict with case info, includes 'just_created' flag if new.
         """
+        logger.debug(f"_get_or_create_case: Checking DB for user {user.id}")
         case = self.db.get_case_log(user.id)
         if case:
+            logger.debug(f"_get_or_create_case: Found existing case {case['case_id']} for user {user.id}")
             return case  # Existing case
 
         # Create new case
+        logger.debug(f"_get_or_create_case: No existing case, creating new for user {user.id}")
         case_id = self.db.get_next_case_id()
+        logger.debug(f"_get_or_create_case: Generated case_id={case_id}")
+
         thread = await self._create_case_thread(user, case_id)
 
         if thread:
+            logger.debug(f"_get_or_create_case: Thread created successfully: {thread.id} ({thread.name})")
             self.db.create_case_log(user.id, case_id, thread.id)
+            # Cache the thread immediately so we don't need to fetch it again
+            self._thread_cache[thread.id] = (thread, datetime.now(NY_TZ))
+            logger.debug(f"_get_or_create_case: Thread {thread.id} cached, returning case")
             return {
                 "user_id": user.id,
                 "case_id": case_id,
@@ -825,6 +1077,7 @@ class CaseLogService:
                 "just_created": True,
             }
 
+        logger.error(f"_get_or_create_case: Failed to create thread for user {user.id}, case_id={case_id}")
         raise RuntimeError("Failed to create case thread")
 
     async def _create_case_thread(
@@ -847,14 +1100,18 @@ class CaseLogService:
         Returns:
             The created thread, or None on failure.
         """
+        logger.debug(f"_create_case_thread: Starting for user {user.id}, case_id={case_id}")
         forum = await self._get_forum()
         if not forum:
+            logger.warning(f"_create_case_thread: Forum not found, cannot create thread")
             return None
+        logger.debug(f"_create_case_thread: Got forum {forum.id} ({forum.name})")
 
         # Build user profile embed
         user_embed = discord.Embed(
             title="📋 User Profile",
             color=EmbedColors.INFO,
+            timestamp=datetime.now(NY_TZ),
         )
         user_embed.set_thumbnail(url=user.display_avatar.url)
         user_embed.add_field(name="Username", value=f"{user.name}", inline=True)
@@ -886,17 +1143,22 @@ class CaseLogService:
 
         # Create thread with user profile only
         thread_name = f"[{case_id}] | {user.display_name}"
+        logger.debug(f"_create_case_thread: Creating thread '{thread_name[:100]}'")
 
         try:
             thread_with_msg = await forum.create_thread(
                 name=thread_name[:100],  # Discord limit
                 embed=user_embed,
             )
+            logger.debug(f"_create_case_thread: Thread created: {thread_with_msg.thread.id}")
 
-            # Pin the first message (user profile)
+            # Pin the first message (user profile) and store its ID
             try:
                 if thread_with_msg.message:
                     await thread_with_msg.message.pin()
+                    # Store the message ID for future updates
+                    self.db.set_profile_message_id(user.id, thread_with_msg.message.id)
+                    logger.debug(f"_create_case_thread: Profile pinned, msg_id={thread_with_msg.message.id}")
             except Exception as pin_error:
                 logger.warning(f"Failed To Pin User Profile: Case {case_id} - {str(pin_error)[:50]}")
 
@@ -906,9 +1168,115 @@ class CaseLogService:
             logger.error("Failed To Create Case Thread", [
                 ("User", f"{user.display_name} ({user.id})"),
                 ("Case ID", case_id),
+                ("Error Type", type(e).__name__),
                 ("Error", str(e)[:100]),
             ])
             return None
+
+    async def _update_profile_stats(self, user_id: int, case: dict) -> None:
+        """
+        Update the pinned profile message with current stats.
+
+        Args:
+            user_id: The user's Discord ID.
+            case: The case data from database.
+        """
+        try:
+            case_thread = await self._get_case_thread(case["thread_id"])
+            if not case_thread:
+                return
+
+            profile_msg = None
+
+            # Try to get stored message ID first
+            if case.get("profile_message_id"):
+                try:
+                    profile_msg = await case_thread.fetch_message(case["profile_message_id"])
+                except discord.NotFound:
+                    pass
+
+            # If not found, search pinned messages (for existing cases)
+            if not profile_msg:
+                try:
+                    pinned = await case_thread.pins()
+                    for msg in pinned:
+                        if msg.embeds and msg.embeds[0].title == "📋 User Profile":
+                            profile_msg = msg
+                            # Store for future use
+                            self.db.set_profile_message_id(user_id, msg.id)
+                            break
+                except Exception:
+                    pass
+
+            if not profile_msg:
+                return
+
+            # Get user info
+            guild = case_thread.guild
+            member = guild.get_member(user_id) if guild else None
+
+            # Build updated embed
+            embed = discord.Embed(
+                title="📋 User Profile",
+                color=EmbedColors.INFO,
+                timestamp=datetime.now(NY_TZ),
+            )
+
+            if member:
+                embed.set_thumbnail(url=member.display_avatar.url)
+                embed.add_field(name="Username", value=f"{member.name}", inline=True)
+                embed.add_field(name="Display Name", value=f"{member.display_name}", inline=True)
+            else:
+                # User left server, try to fetch
+                try:
+                    user = await self.bot.fetch_user(user_id)
+                    embed.set_thumbnail(url=user.display_avatar.url)
+                    embed.add_field(name="Username", value=f"{user.name}", inline=True)
+                    embed.add_field(name="Display Name", value=f"⚠️ Left Server", inline=True)
+                except discord.NotFound:
+                    embed.add_field(name="Username", value=f"Unknown", inline=True)
+                    embed.add_field(name="Display Name", value=f"⚠️ User Not Found", inline=True)
+
+            embed.add_field(name="User ID", value=f"`{user_id}`", inline=True)
+
+            # Stats section
+            mute_count = case.get("mute_count", 0)
+            ban_count = case.get("ban_count", 0)
+
+            embed.add_field(name="Total Mutes", value=f"`{mute_count}`", inline=True)
+            embed.add_field(name="Total Bans", value=f"`{ban_count}`", inline=True)
+
+            # Last action
+            last_mute = case.get("last_mute_at")
+            last_ban = case.get("last_ban_at")
+            if last_mute or last_ban:
+                last_action = max(filter(None, [last_mute, last_ban]))
+                embed.add_field(
+                    name="Last Action",
+                    value=f"<t:{int(last_action)}:R>",
+                    inline=True,
+                )
+
+            # Warning for repeat offenders
+            if mute_count >= 3 or ban_count >= 2:
+                warnings = []
+                if mute_count >= 3:
+                    warnings.append(f"{mute_count} mutes")
+                if ban_count >= 2:
+                    warnings.append(f"{ban_count} bans")
+                embed.add_field(
+                    name="⚠️ Repeat Offender",
+                    value=f"{', '.join(warnings)}",
+                    inline=False,
+                )
+
+            set_footer(embed)
+
+            # Edit the message
+            await profile_msg.edit(embed=embed)
+
+        except Exception as e:
+            logger.warning(f"Failed to update profile stats: {str(e)[:50]}")
 
     # =========================================================================
     # Embed Builders
@@ -949,17 +1317,11 @@ class CaseLogService:
         embed = discord.Embed(
             title=title,
             color=EmbedColors.ERROR,
+            timestamp=datetime.now(NY_TZ),
         )
         embed.set_thumbnail(url=user.display_avatar.url)
         embed.add_field(name="Muted By", value=f"`{moderator.display_name}`", inline=True)
         embed.add_field(name="Duration", value=f"`{duration}`", inline=True)
-
-        now = datetime.now(NY_TZ)
-        embed.add_field(
-            name="Time",
-            value=f"<t:{int(now.timestamp())}:f>",
-            inline=True,
-        )
 
         if reason:
             embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
@@ -990,17 +1352,11 @@ class CaseLogService:
         embed = discord.Embed(
             title="🔊 User Unmuted",
             color=EmbedColors.SUCCESS,
+            timestamp=datetime.now(NY_TZ),
         )
         if user_avatar_url:
             embed.set_thumbnail(url=user_avatar_url)
         embed.add_field(name="Unmuted By", value=f"{moderator.mention}", inline=True)
-
-        now = datetime.now(NY_TZ)
-        embed.add_field(
-            name="Time",
-            value=f"<t:{int(now.timestamp())}:f>",
-            inline=True,
-        )
 
         if reason:
             embed.add_field(name="Reason", value=reason, inline=False)
@@ -1024,16 +1380,10 @@ class CaseLogService:
         embed = discord.Embed(
             title="⏰ Mute Expired (Auto-Unmute)",
             color=EmbedColors.INFO,
+            timestamp=datetime.now(NY_TZ),
         )
         if user_avatar_url:
             embed.set_thumbnail(url=user_avatar_url)
-
-        now = datetime.now(NY_TZ)
-        embed.add_field(
-            name="Time",
-            value=f"<t:{int(now.timestamp())}:f>",
-            inline=True,
-        )
 
         set_footer(embed)
         return embed
@@ -1069,6 +1419,99 @@ class CaseLogService:
             parts.append(f"{days}d")
 
         return " ".join(parts)
+
+    # =========================================================================
+    # Pending Reason Handling
+    # =========================================================================
+
+    async def handle_reason_reply(
+        self,
+        message: "discord.Message",
+    ) -> bool:
+        """
+        Handle a reply message that might be a pending reason response.
+
+        Args:
+            message: The reply message from the moderator.
+
+        Returns:
+            True if the reason was successfully applied, False otherwise.
+        """
+        # Must be a reply
+        if not message.reference or not message.reference.message_id:
+            return False
+
+        # Check if this thread has a pending reason for this moderator
+        pending = self.db.get_pending_reason_by_thread(message.channel.id, message.author.id)
+        if not pending:
+            return False
+
+        # Verify the reply is to the warning message
+        if message.reference.message_id != pending["warning_message_id"]:
+            return False
+
+        # Get the reason from the message content (limit to 500 chars)
+        reason = message.content.strip()[:500]
+        if not reason:
+            return False
+
+        try:
+            thread = message.channel
+            embed_message = await thread.fetch_message(pending["embed_message_id"])
+
+            if not embed_message or not embed_message.embeds:
+                return False
+
+            # Update the embed with the reason
+            embed = embed_message.embeds[0]
+
+            # Find and update the Reason field, or add it
+            reason_field_index = None
+            for i, field in enumerate(embed.fields):
+                if field.name == "Reason":
+                    reason_field_index = i
+                    break
+
+            if reason_field_index is not None:
+                embed.set_field_at(
+                    reason_field_index,
+                    name="Reason",
+                    value=f"`{reason}`",
+                    inline=False,
+                )
+            else:
+                embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
+
+            await embed_message.edit(embed=embed)
+
+            # Delete the warning message and mod's reply silently
+            for msg_id in [pending["warning_message_id"], message.id]:
+                try:
+                    msg = await thread.fetch_message(msg_id)
+                    await msg.delete()
+                except (discord.NotFound, discord.HTTPException):
+                    pass
+
+            # Remove the pending reason from database
+            self.db.delete_pending_reason(pending["id"])
+
+            # React to confirm instead of sending a message
+            # (The message is deleted, so we can't react - just log it)
+            logger.tree("Case Log: Reason Updated", [
+                ("Thread ID", str(thread.id)),
+                ("Moderator", f"{message.author} ({message.author.id})"),
+                ("Action", pending["action_type"]),
+                ("Reason", reason[:50]),
+            ], emoji="✅")
+
+            return True
+
+        except Exception as e:
+            logger.error("Case Log: Failed To Update Reason", [
+                ("Thread ID", str(message.channel.id)),
+                ("Error", str(e)[:100]),
+            ])
+            return False
 
 
 # =============================================================================

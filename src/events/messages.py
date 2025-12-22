@@ -36,13 +36,27 @@ class MessageEvents(commands.Cog):
         Event handler for messages.
 
         DESIGN: Multi-path message routing:
-        1. Logs channel -> Parse mute embeds
-        2. Polls channel -> Delete non-polls
-        3. Ignored users -> Skip
-        4. Muted users -> Roast with batching
+        1. Case forum thread -> Check for reason replies
+        2. Logs channel -> Parse mute embeds
+        3. Polls channel -> Delete non-polls
+        4. Ignored users -> Skip
+        5. Muted users -> Roast with batching
         """
         # -----------------------------------------------------------------
-        # Route 1: Logs channel - parse mute embeds
+        # Route 1: Case forum thread - check for reason replies
+        # -----------------------------------------------------------------
+        if (
+            self.config.case_log_forum_id
+            and isinstance(message.channel, discord.Thread)
+            and message.channel.parent_id == self.config.case_log_forum_id
+            and message.reference  # It's a reply
+            and not message.author.bot
+            and self.bot.case_log_service
+        ):
+            await self.bot.case_log_service.handle_reason_reply(message)
+
+        # -----------------------------------------------------------------
+        # Route 2: Logs channel - parse mute embeds
         # -----------------------------------------------------------------
         if message.channel.id == self.config.logs_channel_id and message.embeds:
             if self.bot.mute_handler:
