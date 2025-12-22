@@ -1217,8 +1217,9 @@ class CaseLogService:
             if not profile_msg:
                 return
 
-            # Get user info
-            guild = case_thread.guild
+            # Get user info from the MAIN guild (not the forum's guild)
+            main_guild_id = self.config.logging_guild_id
+            guild = self.bot.get_guild(main_guild_id) if main_guild_id else case_thread.guild
             member = guild.get_member(user_id) if guild else None
 
             # Build updated embed
