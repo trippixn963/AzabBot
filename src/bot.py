@@ -26,7 +26,7 @@ import discord
 from discord.ext import commands
 
 from src.core.logger import logger
-from src.core.config import get_config, is_developer, NY_TZ
+from src.core.config import get_config, is_developer, NY_TZ, EmbedColors
 from src.core.database import get_db
 
 
@@ -203,6 +203,10 @@ class AzabBot(commands.Bot):
         # Register persistent views for log buttons
         from src.services.server_logs.service import setup_log_views
         setup_log_views(self)
+
+        # Register persistent views for moderation buttons
+        from src.utils.views import setup_moderation_views
+        setup_moderation_views(self)
 
         # Sync commands globally
         try:
@@ -488,6 +492,13 @@ class AzabBot(commands.Bot):
                     pass
 
         if attachments:
+            # Enforce cache size limit
+            if len(self._attachment_cache) >= self._attachment_cache_limit:
+                # Remove oldest entries (first 50)
+                oldest = list(self._attachment_cache.keys())[:50]
+                for key in oldest:
+                    self._attachment_cache.pop(key, None)
+
             self._attachment_cache[message.id] = attachments
 
     async def _check_raid_detection(self, member: discord.Member) -> None:
@@ -1878,7 +1889,7 @@ class AzabBot(commands.Bot):
                     # We'll log it generically
                     embed = discord.Embed(
                         title="Users Moved (Voice)",
-                        color=0xFFFF00,
+                        color=EmbedColors.GOLD,
                         timestamp=datetime.now(NY_TZ),
                     )
                     embed.add_field(name="To Channel", value=f"🔊 {to_channel.name}", inline=True)

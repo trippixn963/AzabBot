@@ -364,6 +364,16 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_case_logs_case_id ON case_logs(case_id)"
         )
 
+        # Migration: Add ban tracking columns if they don't exist
+        try:
+            cursor.execute("ALTER TABLE case_logs ADD COLUMN ban_count INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE case_logs ADD COLUMN last_ban_at REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         # -----------------------------------------------------------------
         # Mod Tracker Table
         # DESIGN: Tracks moderators and their activity log threads
@@ -645,40 +655,44 @@ class DatabaseManager:
 
     async def get_prisoner_stats(self, user_id: int) -> Dict[str, Any]:
         """
-        Get comprehensive prisoner stats.
+        Get comprehensive prisoner stats in a single optimized query.
 
         Returns:
             Dict with total_mutes, total_minutes, last_mute, etc.
         """
         def _get():
+            # Single query with all stats using subqueries
             row = self.fetchone(
-                """SELECT COUNT(*) as total_mutes,
-                   COALESCE(SUM(duration_minutes), 0) as total_minutes,
-                   MAX(muted_at) as last_mute,
-                   COUNT(DISTINCT mute_reason) as unique_reasons
-                   FROM prisoner_history WHERE user_id = ?""",
-                (user_id,)
+                """SELECT
+                    (SELECT COUNT(*) FROM prisoner_history WHERE user_id = ?) as total_mutes,
+                    (SELECT COALESCE(SUM(duration_minutes), 0) FROM prisoner_history WHERE user_id = ?) as total_minutes,
+                    (SELECT MAX(muted_at) FROM prisoner_history WHERE user_id = ?) as last_mute,
+                    (SELECT COUNT(DISTINCT mute_reason) FROM prisoner_history WHERE user_id = ?) as unique_reasons,
+                    (SELECT mute_reason FROM prisoner_history WHERE user_id = ? AND is_active = 1 LIMIT 1) as current_reason,
+                    (SELECT GROUP_CONCAT(mute_reason || ':' || cnt) FROM
+                        (SELECT mute_reason, COUNT(*) as cnt FROM prisoner_history
+                         WHERE user_id = ? GROUP BY mute_reason ORDER BY cnt DESC)
+                    ) as reason_breakdown
+                """,
+                (user_id, user_id, user_id, user_id, user_id, user_id)
             )
 
-            reasons = self.fetchall(
-                """SELECT mute_reason, COUNT(*) as count FROM prisoner_history
-                   WHERE user_id = ? GROUP BY mute_reason ORDER BY count DESC""",
-                (user_id,)
-            )
-
-            current = self.fetchone(
-                "SELECT is_active, mute_reason FROM prisoner_history WHERE user_id = ? AND is_active = 1",
-                (user_id,)
-            )
+            # Parse reason breakdown from concatenated string
+            reason_counts = {}
+            if row["reason_breakdown"]:
+                for item in row["reason_breakdown"].split(","):
+                    if ":" in item:
+                        reason, count = item.rsplit(":", 1)
+                        reason_counts[reason] = int(count)
 
             return {
                 "total_mutes": row["total_mutes"] or 0,
                 "total_minutes": row["total_minutes"] or 0,
                 "last_mute": row["last_mute"],
                 "unique_reasons": row["unique_reasons"] or 0,
-                "reason_counts": {r["mute_reason"]: r["count"] for r in reasons},
-                "is_currently_muted": bool(current),
-                "current_reason": current["mute_reason"] if current else None,
+                "reason_counts": reason_counts,
+                "is_currently_muted": row["current_reason"] is not None,
+                "current_reason": row["current_reason"],
             }
 
         return await asyncio.to_thread(_get)
@@ -1110,6 +1124,47 @@ class DatabaseManager:
             "UPDATE case_logs SET last_unmute_at = ? WHERE user_id = ?",
             (now, user_id)
         )
+
+    def increment_ban_count(self, user_id: int) -> int:
+        """
+        Increment ban count for a user's case.
+
+        Args:
+            user_id: Discord user ID.
+
+        Returns:
+            New ban count.
+        """
+        now = time.time()
+        self.execute(
+            """UPDATE case_logs
+               SET ban_count = COALESCE(ban_count, 0) + 1, last_ban_at = ?
+               WHERE user_id = ?""",
+            (now, user_id)
+        )
+
+        row = self.fetchone(
+            "SELECT ban_count FROM case_logs WHERE user_id = ?",
+            (user_id,)
+        )
+        return row["ban_count"] if row and row["ban_count"] else 1
+
+    def get_user_ban_count(self, user_id: int, guild_id: int) -> int:
+        """
+        Get total number of bans for a user.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID (unused, for API consistency).
+
+        Returns:
+            Total ban count.
+        """
+        row = self.fetchone(
+            "SELECT ban_count FROM case_logs WHERE user_id = ?",
+            (user_id,)
+        )
+        return row["ban_count"] if row and row["ban_count"] else 0
 
     def get_all_case_logs(self) -> List[Dict[str, Any]]:
         """

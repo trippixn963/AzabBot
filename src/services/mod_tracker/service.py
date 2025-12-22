@@ -1545,7 +1545,7 @@ class ModTrackerService:
 
         embed = self._create_embed(
             title="🚨 Management Violation Attempt",
-            color=0xFF0000,  # Red
+            color=EmbedColors.GOLD,
             mod_avatar_url=mod.display_avatar.url,
         )
         self._add_mod_field(embed, mod)
@@ -2868,7 +2868,7 @@ class ModTrackerService:
 
         embed = self._create_embed(
             title="📝 Mod Note Added",
-            color=0x808080,  # Gray
+            color=EmbedColors.GREEN,
         )
         embed.add_field(name="Note", value=note, inline=False)
         embed.add_field(name="Added By", value=f"{added_by.mention} ({added_by.id})", inline=True)

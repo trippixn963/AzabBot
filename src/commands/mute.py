@@ -22,6 +22,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -33,144 +34,15 @@ from src.core.logger import logger
 from src.core.config import get_config, is_developer, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
+from src.utils.views import CaseButtonView
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
 
 
 # =============================================================================
-# UI Constants
-# =============================================================================
-
-CASE_EMOJI = "<:case:1452426909077213255>"
-"""Custom emoji for case button."""
-
-INFO_EMOJI = "<:info:1452510787817046197>"
-"""Custom emoji for info button."""
-
-
-# =============================================================================
 # View Classes
 # =============================================================================
-
-class MuteInfoButton(discord.ui.Button):
-    """Info button that shows user details when clicked."""
-
-    def __init__(self, user_id: int, guild_id: int):
-        super().__init__(
-            label="Info",
-            style=discord.ButtonStyle.secondary,
-            emoji=INFO_EMOJI,
-            custom_id=f"mute_info:{user_id}:{guild_id}",
-        )
-        self.target_user_id = user_id
-        self.target_guild_id = guild_id
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        """Show user info embed when clicked."""
-        db = get_db()
-
-        # Get member from guild
-        guild = interaction.client.get_guild(self.target_guild_id)
-        if not guild:
-            await interaction.response.send_message(
-                "Could not find guild.",
-                ephemeral=True,
-            )
-            return
-
-        member = guild.get_member(self.target_user_id)
-
-        # Build info embed
-        embed = discord.Embed(
-            title="📋 User Info",
-            color=EmbedColors.INFO,
-        )
-
-        if member:
-            embed.set_thumbnail(url=member.display_avatar.url)
-            embed.add_field(name="Username", value=f"`{member.name}`", inline=True)
-            embed.add_field(name="Display Name", value=f"`{member.display_name}`", inline=True)
-            embed.add_field(name="User ID", value=f"`{member.id}`", inline=True)
-
-            # Discord account creation
-            embed.add_field(
-                name="Discord Joined",
-                value=f"<t:{int(member.created_at.timestamp())}:R>",
-                inline=True,
-            )
-
-            # Server join date
-            if member.joined_at:
-                embed.add_field(
-                    name="Server Joined",
-                    value=f"<t:{int(member.joined_at.timestamp())}:R>",
-                    inline=True,
-                )
-
-            # Account age
-            from datetime import datetime
-            now = datetime.now(NY_TZ)
-            created_at = member.created_at.replace(tzinfo=NY_TZ) if member.created_at.tzinfo is None else member.created_at
-            age_days = (now - created_at).days
-            if age_days < 30:
-                age_str = f"{age_days} days"
-            elif age_days < 365:
-                age_str = f"{age_days // 30} months"
-            else:
-                age_str = f"{age_days // 365} years, {(age_days % 365) // 30} months"
-            embed.add_field(name="Account Age", value=f"`{age_str}`", inline=True)
-        else:
-            # User left the server
-            try:
-                user = await interaction.client.fetch_user(self.target_user_id)
-                embed.set_thumbnail(url=user.display_avatar.url)
-                embed.add_field(name="Username", value=f"`{user.name}`", inline=True)
-                embed.add_field(name="User ID", value=f"`{user.id}`", inline=True)
-                embed.add_field(name="Status", value="⚠️ Left Server", inline=True)
-            except Exception:
-                embed.add_field(name="User ID", value=f"`{self.target_user_id}`", inline=True)
-                embed.add_field(name="Status", value="⚠️ User Not Found", inline=True)
-
-        # Mute count
-        mute_count = db.get_user_mute_count(self.target_user_id, self.target_guild_id)
-        embed.add_field(
-            name="Total Mutes",
-            value=f"`{mute_count}`" if mute_count > 0 else "`0`",
-            inline=True,
-        )
-
-        # Warning for repeat offenders
-        if mute_count >= 3:
-            embed.add_field(
-                name="⚠️ Warning",
-                value=f"Repeat offender with {mute_count} mutes",
-                inline=False,
-            )
-
-        set_footer(embed)
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
-class CaseButtonView(discord.ui.View):
-    """View with Case and Info buttons."""
-
-    def __init__(self, guild_id: int, thread_id: int, user_id: int):
-        super().__init__(timeout=None)
-
-        # Case link button
-        url = f"https://discord.com/channels/{guild_id}/{thread_id}"
-        self.add_item(discord.ui.Button(
-            label="Case",
-            url=url,
-            style=discord.ButtonStyle.link,
-            emoji=CASE_EMOJI,
-        ))
-
-        # Info button
-        self.add_item(MuteInfoButton(user_id, guild_id))
-
 
 class MuteModal(discord.ui.Modal, title="Mute User"):
     """Modal for muting a user from context menu."""
@@ -653,59 +525,64 @@ class MuteCog(commands.Cog):
             sent_message = await interaction.followup.send(embed=embed, wait=True)
 
         # ---------------------------------------------------------------------
-        # Log to Case Forum
+        # Concurrent Post-Response Operations
         # ---------------------------------------------------------------------
 
-        if self.bot.case_log_service and case_info and sent_message:
-            await self.bot.case_log_service.log_mute(
+        async def _log_to_case_forum():
+            if self.bot.case_log_service and case_info and sent_message:
+                await self.bot.case_log_service.log_mute(
+                    user=user,
+                    moderator=interaction.user,
+                    duration=duration_display,
+                    reason=reason,
+                    source_message_url=sent_message.jump_url,
+                    is_extension=is_extension,
+                    evidence=evidence,
+                )
+
+        async def _dm_user():
+            try:
+                dm_title = "Your mute has been extended" if is_extension else "You have been muted"
+                dm_embed = discord.Embed(title=dm_title, color=EmbedColors.ERROR)
+                dm_embed.add_field(name="Server", value=f"`{interaction.guild.name}`", inline=False)
+                dm_embed.add_field(name="Duration", value=f"`{duration_display}`", inline=True)
+                dm_embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
+                dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
+                if evidence:
+                    dm_embed.add_field(name="Evidence", value=evidence, inline=False)
+                dm_embed.set_thumbnail(url=user.display_avatar.url)
+                set_footer(dm_embed)
+                await user.send(embed=dm_embed)
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+
+        async def _post_logs():
+            await self._post_mod_log(
+                action="Mute Extended" if is_extension else "Mute",
                 user=user,
                 moderator=interaction.user,
-                duration=duration_display,
                 reason=reason,
-                source_message_url=sent_message.jump_url,
-                is_extension=is_extension,
-                evidence=evidence,
+                duration=duration_display,
+                color=EmbedColors.ERROR,
             )
 
-        # ---------------------------------------------------------------------
-        # DM User
-        # ---------------------------------------------------------------------
+        async def _mod_tracker():
+            if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(interaction.user.id):
+                await self.bot.mod_tracker.log_mute(
+                    mod=interaction.user,
+                    target=user,
+                    duration=duration_display,
+                    reason=reason,
+                )
 
-        try:
-            dm_title = "Your mute has been extended" if is_extension else "You have been muted"
-            dm_embed = discord.Embed(title=dm_title, color=EmbedColors.ERROR)
-            dm_embed.add_field(name="Server", value=f"`{interaction.guild.name}`", inline=False)
-            dm_embed.add_field(name="Duration", value=f"`{duration_display}`", inline=True)
-            dm_embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
-            dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
-            if evidence:
-                dm_embed.add_field(name="Evidence", value=evidence, inline=False)
-            dm_embed.set_thumbnail(url=user.display_avatar.url)
-            set_footer(dm_embed)
-            await user.send(embed=dm_embed)
-        except (discord.Forbidden, discord.HTTPException):
-            pass
-
-        # ---------------------------------------------------------------------
-        # Mod Log & Tracker
-        # ---------------------------------------------------------------------
-
-        await self._post_mod_log(
-            action="Mute Extended" if is_extension else "Mute",
-            user=user,
-            moderator=interaction.user,
-            reason=reason,
-            duration=duration_display,
-            color=EmbedColors.ERROR,
+        # Run all post-response operations concurrently
+        await asyncio.gather(
+            _log_to_case_forum(),
+            _dm_user(),
+            _post_logs(),
+            _mod_tracker(),
+            return_exceptions=True,
         )
-
-        if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(interaction.user.id):
-            await self.bot.mod_tracker.log_mute(
-                mod=interaction.user,
-                target=user,
-                duration=duration_display,
-                reason=reason,
-            )
 
     # =========================================================================
     # Mute Command
@@ -905,51 +782,57 @@ class MuteCog(commands.Cog):
             sent_message = await interaction.followup.send(embed=embed, wait=True)
 
         # ---------------------------------------------------------------------
-        # Log to Case Forum
+        # Concurrent Post-Response Operations
         # ---------------------------------------------------------------------
 
-        if self.bot.case_log_service and case_info and sent_message:
-            await self.bot.case_log_service.log_unmute(
-                user_id=user.id,
+        async def _log_to_case_forum():
+            if self.bot.case_log_service and case_info and sent_message:
+                await self.bot.case_log_service.log_unmute(
+                    user_id=user.id,
+                    moderator=interaction.user,
+                    display_name=user.display_name,
+                    reason=reason,
+                    source_message_url=sent_message.jump_url,
+                    user_avatar_url=user.display_avatar.url,
+                )
+
+        async def _dm_user():
+            try:
+                dm_embed = discord.Embed(title="You have been unmuted", color=EmbedColors.SUCCESS)
+                dm_embed.add_field(name="Server", value=f"`{interaction.guild.name}`", inline=False)
+                dm_embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
+                dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
+                dm_embed.set_thumbnail(url=user.display_avatar.url)
+                set_footer(dm_embed)
+                await user.send(embed=dm_embed)
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+
+        async def _post_logs():
+            await self._post_mod_log(
+                action="Unmute",
+                user=user,
                 moderator=interaction.user,
-                display_name=user.display_name,
                 reason=reason,
-                source_message_url=sent_message.jump_url,
+                color=EmbedColors.SUCCESS,
             )
 
-        # ---------------------------------------------------------------------
-        # DM User
-        # ---------------------------------------------------------------------
+        async def _mod_tracker():
+            if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(interaction.user.id):
+                await self.bot.mod_tracker.log_unmute(
+                    mod=interaction.user,
+                    target=user,
+                    reason=reason,
+                )
 
-        try:
-            dm_embed = discord.Embed(title="You have been unmuted", color=EmbedColors.SUCCESS)
-            dm_embed.add_field(name="Server", value=f"`{interaction.guild.name}`", inline=False)
-            dm_embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
-            dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
-            dm_embed.set_thumbnail(url=user.display_avatar.url)
-            set_footer(dm_embed)
-            await user.send(embed=dm_embed)
-        except (discord.Forbidden, discord.HTTPException):
-            pass
-
-        # ---------------------------------------------------------------------
-        # Mod Log & Tracker
-        # ---------------------------------------------------------------------
-
-        await self._post_mod_log(
-            action="Unmute",
-            user=user,
-            moderator=interaction.user,
-            reason=reason,
-            color=EmbedColors.SUCCESS,
+        # Run all post-response operations concurrently
+        await asyncio.gather(
+            _log_to_case_forum(),
+            _dm_user(),
+            _post_logs(),
+            _mod_tracker(),
+            return_exceptions=True,
         )
-
-        if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(interaction.user.id):
-            await self.bot.mod_tracker.log_unmute(
-                mod=interaction.user,
-                target=user,
-                reason=reason,
-            )
 
     # =========================================================================
     # Unmute Command

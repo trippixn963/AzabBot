@@ -126,11 +126,14 @@ class LoggingService:
         """Check if logging is enabled."""
         return self.config.server_logs_forum_id is not None
 
-    def _should_log(self, guild_id: Optional[int]) -> bool:
-        """Check if we should log for this guild."""
+    def _should_log(self, guild_id: Optional[int], user_id: Optional[int] = None) -> bool:
+        """Check if we should log for this guild and user."""
         if not self.enabled:
             return False
         if guild_id is None:
+            return False
+        # Skip ignored bots (configured via IGNORED_BOT_IDS env var)
+        if user_id and self.config.ignored_bot_ids and user_id in self.config.ignored_bot_ids:
             return False
         # If logging_guild_id is set, only log for that guild
         if self.config.logging_guild_id:
@@ -556,7 +559,7 @@ class LoggingService:
         attachments: Optional[List[Tuple[str, bytes]]] = None,
     ) -> None:
         """Log a message deletion."""
-        if not self._should_log(message.guild.id if message.guild else None):
+        if not self._should_log(message.guild.id if message.guild else None, message.author.id):
             return
 
         embed = self._create_embed("🗑️ Message Deleted", EmbedColors.ERROR, category="Message Delete", user_id=message.author.id)
@@ -590,7 +593,7 @@ class LoggingService:
         after: discord.Message,
     ) -> None:
         """Log a message edit."""
-        if not self._should_log(after.guild.id if after.guild else None):
+        if not self._should_log(after.guild.id if after.guild else None, after.author.id):
             return
 
         # Skip if content didn't change
@@ -645,7 +648,7 @@ class LoggingService:
         inviter: Optional[discord.User] = None,
     ) -> None:
         """Log a member join."""
-        if not self._should_log(member.guild.id):
+        if not self._should_log(member.guild.id, member.id):
             return
 
         # Record join and get count
@@ -687,7 +690,7 @@ class LoggingService:
         # Clean up join message cache
         self._join_messages.pop(member.id, None)
 
-        if not self._should_log(member.guild.id):
+        if not self._should_log(member.guild.id, member.id):
             return
 
         # Record leave and get count
@@ -741,7 +744,7 @@ class LoggingService:
         moderator: Optional[discord.Member] = None,
     ) -> None:
         """Log a role being added to a member."""
-        if not self._should_log(member.guild.id):
+        if not self._should_log(member.guild.id, member.id):
             return
 
         embed = self._create_embed("➕ Role Added", EmbedColors.SUCCESS, category="Role Add", user_id=member.id)
@@ -760,7 +763,7 @@ class LoggingService:
         moderator: Optional[discord.Member] = None,
     ) -> None:
         """Log a role being removed from a member."""
-        if not self._should_log(member.guild.id):
+        if not self._should_log(member.guild.id, member.id):
             return
 
         embed = self._create_embed("➖ Role Removed", EmbedColors.ERROR, category="Role Remove", user_id=member.id)
@@ -783,7 +786,7 @@ class LoggingService:
         after: Optional[str],
     ) -> None:
         """Log a nickname change."""
-        if not self._should_log(member.guild.id):
+        if not self._should_log(member.guild.id, member.id):
             return
 
         embed = self._create_embed("✨ Nickname Changed", EmbedColors.INFO, category="Nickname", user_id=member.id)
@@ -801,7 +804,7 @@ class LoggingService:
         after: str,
     ) -> None:
         """Log a username change."""
-        if not self.enabled:
+        if not self.enabled or (self.config.ignored_bot_ids and user.id in self.config.ignored_bot_ids):
             return
 
         embed = self._create_embed("✨ Username Changed", EmbedColors.INFO, category="Username", user_id=user.id)
@@ -823,7 +826,7 @@ class LoggingService:
         after_url: Optional[str],
     ) -> None:
         """Log an avatar change."""
-        if not self.enabled:
+        if not self.enabled or (self.config.ignored_bot_ids and user.id in self.config.ignored_bot_ids):
             return
 
         embed = self._create_embed("🖼️ Avatar Changed", EmbedColors.INFO, category="Avatar", user_id=user.id)
@@ -860,7 +863,7 @@ class LoggingService:
         channel: discord.VoiceChannel,
     ) -> None:
         """Log a voice channel join."""
-        if not self._should_log(member.guild.id):
+        if not self._should_log(member.guild.id, member.id):
             return
 
         # Skip logging moderator voice activity (too spammy)
@@ -880,7 +883,7 @@ class LoggingService:
         channel: discord.VoiceChannel,
     ) -> None:
         """Log a voice channel leave."""
-        if not self._should_log(member.guild.id):
+        if not self._should_log(member.guild.id, member.id):
             return
 
         # Skip logging moderator voice activity (too spammy)

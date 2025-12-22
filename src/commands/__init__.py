@@ -19,6 +19,8 @@ DESIGN:
 Available Commands:
     /mute: Mute a user by assigning the muted role (moderator)
     /unmute: Unmute a user by removing the muted role (moderator)
+    /ban: Ban a user from the server (moderator)
+    /unban: Unban a user by ID (moderator)
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -30,6 +32,7 @@ Server: discord.gg/syria
 
 COMMAND_COGS = [
     "src.commands.mute",
+    "src.commands.ban",
 ]
 """
 List of command cog module paths for dynamic loading.

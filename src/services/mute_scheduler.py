@@ -143,24 +143,35 @@ class MuteScheduler:
 
     async def _process_expired_mutes(self) -> None:
         """
-        Process all expired mutes and unmute users.
+        Process all expired mutes and unmute users concurrently.
 
         DESIGN:
             Fetches expired mutes from database.
-            Attempts to remove role from each user.
-            Logs to mod log channel on success.
+            Processes up to 25 mutes concurrently using asyncio.gather.
+            Groups by guild to minimize role lookups.
         """
         expired_mutes = self.db.get_expired_mutes()
 
-        for mute in expired_mutes:
-            try:
-                await self._auto_unmute(mute)
-            except Exception as e:
-                logger.error("Auto-Unmute Failed", [
-                    ("User ID", str(mute["user_id"])),
-                    ("Guild ID", str(mute["guild_id"])),
-                    ("Error", str(e)[:50]),
-                ])
+        if not expired_mutes:
+            return
+
+        # Process in batches of 25 concurrently
+        batch_size = 25
+        for i in range(0, len(expired_mutes), batch_size):
+            batch = expired_mutes[i:i + batch_size]
+            tasks = [self._safe_auto_unmute(mute) for mute in batch]
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _safe_auto_unmute(self, mute: dict) -> None:
+        """Wrapper for _auto_unmute with error handling."""
+        try:
+            await self._auto_unmute(mute)
+        except Exception as e:
+            logger.error("Auto-Unmute Failed", [
+                ("User ID", str(mute["user_id"])),
+                ("Guild ID", str(mute["guild_id"])),
+                ("Error", str(e)[:50]),
+            ])
 
     async def _auto_unmute(self, mute: dict) -> None:
         """
@@ -301,71 +312,84 @@ class MuteScheduler:
 
         DESIGN:
             Called on startup to handle changes made while bot was offline.
+            Groups mutes by guild to minimize lookups, then processes concurrently.
             Removes mute records for users who no longer have the role.
-            Handles users who left the server.
         """
         await self.bot.wait_until_ready()
 
         active_mutes = self.db.get_all_active_mutes()
+        if not active_mutes:
+            return
+
+        # Group mutes by guild_id for efficient batch processing
+        from collections import defaultdict
+        mutes_by_guild: dict[int, list] = defaultdict(list)
+        for mute in active_mutes:
+            mutes_by_guild[mute["guild_id"]].append(mute)
+
         synced = 0
         removed = 0
 
-        for mute in active_mutes:
-            guild = self.bot.get_guild(mute["guild_id"])
+        # Process each guild's mutes
+        for guild_id, guild_mutes in mutes_by_guild.items():
+            guild = self.bot.get_guild(guild_id)
             if not guild:
-                # Guild not accessible
-                self.db.remove_mute(
-                    user_id=mute["user_id"],
-                    guild_id=mute["guild_id"],
-                    moderator_id=self.bot.user.id,
-                    reason="Sync: Guild not accessible",
-                )
-                removed += 1
+                # Guild not accessible - remove all mutes for this guild
+                for mute in guild_mutes:
+                    self.db.remove_mute(
+                        user_id=mute["user_id"],
+                        guild_id=guild_id,
+                        moderator_id=self.bot.user.id,
+                        reason="Sync: Guild not accessible",
+                    )
+                removed += len(guild_mutes)
                 continue
 
-            member = guild.get_member(mute["user_id"])
-            if not member:
-                # User left server
-                self.db.remove_mute(
-                    user_id=mute["user_id"],
-                    guild_id=mute["guild_id"],
-                    moderator_id=self.bot.user.id,
-                    reason="Sync: User left server",
-                )
-                removed += 1
-                continue
-
+            # Get muted role once per guild
             muted_role = guild.get_role(self.config.muted_role_id)
             if not muted_role:
-                # Role doesn't exist
-                self.db.remove_mute(
-                    user_id=mute["user_id"],
-                    guild_id=mute["guild_id"],
-                    moderator_id=self.bot.user.id,
-                    reason="Sync: Role not found",
-                )
-                removed += 1
+                # Role doesn't exist - remove all mutes for this guild
+                for mute in guild_mutes:
+                    self.db.remove_mute(
+                        user_id=mute["user_id"],
+                        guild_id=guild_id,
+                        moderator_id=self.bot.user.id,
+                        reason="Sync: Role not found",
+                    )
+                removed += len(guild_mutes)
                 continue
 
-            # Check if user still has the role
-            if muted_role not in member.roles:
-                # Role was manually removed
-                self.db.remove_mute(
-                    user_id=mute["user_id"],
-                    guild_id=mute["guild_id"],
-                    moderator_id=self.bot.user.id,
-                    reason="Sync: Role manually removed",
-                )
-                removed += 1
-                continue
+            # Process each mute in this guild
+            for mute in guild_mutes:
+                member = guild.get_member(mute["user_id"])
+                if not member:
+                    self.db.remove_mute(
+                        user_id=mute["user_id"],
+                        guild_id=guild_id,
+                        moderator_id=self.bot.user.id,
+                        reason="Sync: User left server",
+                    )
+                    removed += 1
+                    continue
 
-            synced += 1
+                if muted_role not in member.roles:
+                    self.db.remove_mute(
+                        user_id=mute["user_id"],
+                        guild_id=guild_id,
+                        moderator_id=self.bot.user.id,
+                        reason="Sync: Role manually removed",
+                    )
+                    removed += 1
+                    continue
+
+                synced += 1
 
         if active_mutes:
             logger.tree("Mute State Synced", [
                 ("Active Mutes", str(synced)),
                 ("Removed Stale", str(removed)),
                 ("Total Checked", str(len(active_mutes))),
+                ("Guilds Processed", str(len(mutes_by_guild))),
             ], emoji="🔄")
 
 

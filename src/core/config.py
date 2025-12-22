@@ -166,6 +166,12 @@ class Config:
     alert_webhook_url: Optional[str] = None
     error_webhook_url: Optional[str] = None
 
+    # -------------------------------------------------------------------------
+    # Optional: Logging Exclusions
+    # -------------------------------------------------------------------------
+
+    ignored_bot_ids: Set[int] = None  # Bot IDs to exclude from logging
+
 
 # =============================================================================
 # Embed Colors
@@ -173,19 +179,23 @@ class Config:
 
 class EmbedColors:
     """
-    Standardized embed colors for visual consistency.
+    Standardized color palette for Discord embeds.
 
-    DESIGN:
-        Using class constants instead of an enum for simpler access.
-        Colors are chosen for accessibility and visual clarity.
+    Matches TahaBot/OthmanBot color scheme for consistency across all bots.
+    Uses two primary colors: GREEN for positive/success, GOLD for warnings/info.
     """
 
-    SUCCESS = 0x00FF00   # Green - operation completed
-    ERROR = 0xFF0000     # Red - operation failed
-    WARNING = 0xFFFF00   # Yellow - caution needed
-    INFO = 0x3498DB      # Blue - informational
-    PRISON = 0x8B0000    # Dark red - prisoner context
-    RELEASE = 0x00FF00   # Green - freedom
+    # Primary colors (TahaBot/OthmanBot color scheme)
+    GREEN = 0x1F5E2E    # #1F5E2E - Primary success/positive
+    GOLD = 0xE6B84A     # #E6B84A - Warnings/info/neutral
+
+    # Semantic aliases for clarity
+    SUCCESS = GREEN     # ✅ Operation completed, positive actions
+    ERROR = GOLD        # ⚠️ Errors, failures (using gold for visibility)
+    WARNING = GOLD      # ⚠️ Caution, warnings
+    INFO = GREEN        # ℹ️ Informational
+    PRISON = GOLD       # 🔒 Prisoner context, mutes
+    RELEASE = GREEN     # 🔓 Freedom, unmutes
 
 
 # =============================================================================
@@ -353,6 +363,7 @@ def load_config() -> Config:
     server_logs_forum_id = _parse_int_optional(os.getenv("SERVER_LOGS_FORUM_ID"))
     logging_guild_id = _parse_int_optional(os.getenv("LOGGING_GUILD_ID"))
     moderator_ids = _parse_int_set(os.getenv("MODERATOR_IDS"))
+    ignored_bot_ids = _parse_int_set(os.getenv("IGNORED_BOT_IDS"))
 
     # -------------------------------------------------------------------------
     # Build Config Object
@@ -390,6 +401,7 @@ def load_config() -> Config:
         moderator_ids=moderator_ids if moderator_ids else None,
         alert_webhook_url=os.getenv("ALERT_WEBHOOK_URL"),
         error_webhook_url=os.getenv("ERROR_WEBHOOK_URL"),
+        ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,
     )
 
 
@@ -419,6 +431,56 @@ def get_config() -> Config:
     if _config is None:
         _config = load_config()
     return _config
+
+
+# =============================================================================
+# Config Validation & Logging
+# =============================================================================
+
+def validate_and_log_config() -> None:
+    """
+    Validate configuration and log results at startup.
+
+    Loads the config (triggering validation) and logs the configuration
+    summary for debugging and verification.
+
+    Raises:
+        ConfigValidationError: If required configuration is missing.
+    """
+    from src.core.logger import logger
+
+    # This will raise ConfigValidationError if config is invalid
+    config = get_config()
+
+    # Log optional features status
+    optional_features = []
+    if config.case_log_forum_id:
+        optional_features.append("Case Logging")
+    if config.mod_tracker_forum_id:
+        optional_features.append("Mod Tracker")
+    if config.server_logs_forum_id:
+        optional_features.append("Server Logs")
+    if config.alert_webhook_url:
+        optional_features.append("Webhook Alerts")
+
+    missing_optional = []
+    if not config.case_log_forum_id:
+        missing_optional.append("CASE_LOG_FORUM_ID")
+    if not config.mod_tracker_forum_id:
+        missing_optional.append("MOD_TRACKER_FORUM_ID")
+    if not config.server_logs_forum_id:
+        missing_optional.append("SERVER_LOGS_FORUM_ID")
+
+    # Log missing optional (info level, not warning)
+    for var in missing_optional:
+        logger.info(f"Optional config not set: {var}")
+
+    logger.tree("Configuration Validated", [
+        ("Required", "✅ All required variables set"),
+        ("Optional Features", ", ".join(optional_features) if optional_features else "None"),
+        ("Prison Channels", str(len(config.prison_channel_ids))),
+        ("AI Model", config.ai_model),
+    ], emoji="⚙️")
 
 
 # =============================================================================
@@ -468,6 +530,7 @@ __all__ = [
     # Functions
     "get_config",
     "load_config",
+    "validate_and_log_config",
     # Permission helpers
     "is_developer",
     "is_moderator",

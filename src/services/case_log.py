@@ -305,6 +305,7 @@ class CaseLogService:
         display_name: str,
         reason: Optional[str] = None,
         source_message_url: Optional[str] = None,
+        user_avatar_url: Optional[str] = None,
     ) -> Optional[dict]:
         """
         Log an unmute action to the user's case thread.
@@ -315,6 +316,7 @@ class CaseLogService:
             display_name: Display name of the user.
             reason: Optional reason for the unmute.
             source_message_url: Optional URL to the unmute message in server.
+            user_avatar_url: Optional avatar URL (avoids API call if provided).
 
         Returns:
             Dict with case_id and thread_id, or None if no case exists.
@@ -330,15 +332,6 @@ class CaseLogService:
 
             # Update last unmute timestamp
             self.db.update_last_unmute(user_id)
-
-            # Try to get user avatar
-            user_avatar_url = None
-            try:
-                user = await self.bot.fetch_user(user_id)
-                if user:
-                    user_avatar_url = user.display_avatar.url
-            except Exception:
-                pass
 
             case_thread = await self._get_case_thread(case["thread_id"])
             if case_thread:
@@ -367,6 +360,147 @@ class CaseLogService:
 
         except Exception as e:
             logger.error("Case Log: Failed To Log Unmute", [
+                ("User ID", str(user_id)),
+                ("Error", str(e)[:100]),
+            ])
+            return None
+
+    # =========================================================================
+    # Ban Logging
+    # =========================================================================
+
+    async def log_ban(
+        self,
+        user: discord.Member,
+        moderator: discord.Member,
+        reason: Optional[str] = None,
+        evidence: Optional[str] = None,
+        source_message_url: Optional[str] = None,
+    ) -> Optional[dict]:
+        """
+        Log a ban action to the user's case thread.
+
+        Args:
+            user: The user being banned.
+            moderator: The moderator who issued the ban.
+            reason: Optional reason for the ban.
+            evidence: Optional evidence link.
+            source_message_url: Optional URL to the ban message in server.
+
+        Returns:
+            Dict with case_id and thread_id, or None if failed.
+        """
+        if not self.enabled:
+            return None
+
+        try:
+            case = await self._get_or_create_case(user)
+            case_thread = await self._get_case_thread(case["thread_id"])
+
+            if case_thread:
+                now = datetime.now(NY_TZ)
+
+                embed = discord.Embed(
+                    title="🔨 User Banned",
+                    color=EmbedColors.ERROR,
+                )
+                embed.set_thumbnail(url=user.display_avatar.url)
+                embed.add_field(name="Moderator", value=f"`{moderator.display_name}`", inline=True)
+                embed.add_field(name="Time", value=f"<t:{int(now.timestamp())}:F>", inline=True)
+
+                if reason:
+                    embed.add_field(name="Reason", value=reason, inline=False)
+                else:
+                    embed.add_field(name="Reason", value="*No reason provided*", inline=False)
+
+                if evidence:
+                    embed.add_field(name="Evidence", value=evidence, inline=False)
+
+                set_footer(embed)
+
+                if source_message_url:
+                    view = JumpToMessageView(source_message_url)
+                    await case_thread.send(embed=embed, view=view)
+                else:
+                    await case_thread.send(embed=embed)
+
+                logger.tree("Case Log: Ban Logged", [
+                    ("User", f"{user} ({user.id})"),
+                    ("Case ID", case['case_id']),
+                    ("Banned By", f"{moderator.display_name}"),
+                ], emoji="🔨")
+
+            return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+
+        except Exception as e:
+            logger.error("Case Log: Failed To Log Ban", [
+                ("User ID", str(user.id)),
+                ("Error", str(e)[:100]),
+            ])
+            return None
+
+    async def log_unban(
+        self,
+        user_id: int,
+        username: str,
+        moderator: discord.Member,
+        reason: Optional[str] = None,
+        source_message_url: Optional[str] = None,
+    ) -> Optional[dict]:
+        """
+        Log an unban action to the user's case thread.
+
+        Args:
+            user_id: The user being unbanned.
+            username: Username of the unbanned user.
+            moderator: The moderator who issued the unban.
+            reason: Optional reason for the unban.
+            source_message_url: Optional URL to the unban message in server.
+
+        Returns:
+            Dict with case_id and thread_id, or None if no case exists.
+        """
+        if not self.enabled:
+            return None
+
+        try:
+            case = self.db.get_case_log(user_id)
+            if not case:
+                return None
+
+            case_thread = await self._get_case_thread(case["thread_id"])
+
+            if case_thread:
+                now = datetime.now(NY_TZ)
+
+                embed = discord.Embed(
+                    title="🔓 User Unbanned",
+                    color=EmbedColors.SUCCESS,
+                )
+                embed.add_field(name="Moderator", value=f"`{moderator.display_name}`", inline=True)
+                embed.add_field(name="Time", value=f"<t:{int(now.timestamp())}:F>", inline=True)
+
+                if reason:
+                    embed.add_field(name="Reason", value=reason, inline=False)
+
+                set_footer(embed)
+
+                if source_message_url:
+                    view = JumpToMessageView(source_message_url)
+                    await case_thread.send(embed=embed, view=view)
+                else:
+                    await case_thread.send(embed=embed)
+
+                logger.tree("Case Log: Unban Logged", [
+                    ("User", f"{username} ({user_id})"),
+                    ("Case ID", case['case_id']),
+                    ("Unbanned By", f"{moderator.display_name}"),
+                ], emoji="🔓")
+
+            return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+
+        except Exception as e:
+            logger.error("Case Log: Failed To Log Unban", [
                 ("User ID", str(user_id)),
                 ("Error", str(e)[:100]),
             ])

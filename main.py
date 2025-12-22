@@ -8,6 +8,7 @@ Application entry point with single-instance enforcement and graceful startup.
 This module handles:
 - Single-instance lock acquisition (prevents duplicate bots)
 - Environment configuration loading
+- Temp file cleanup
 - Graceful error handling and logging
 - Bot initialization and execution
 
@@ -24,30 +25,24 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-import os
-import sys
-import fcntl
-import signal
 import asyncio
+import fcntl
+import os
+import signal
+import sys
 import tempfile
 from pathlib import Path
-from typing import NoReturn, Optional
+from typing import Optional
 
 # CRITICAL: Load environment variables BEFORE importing any local modules
 # that read from environment at import time (e.g., config.py)
 from dotenv import load_dotenv
 load_dotenv()
 
+import discord
 from src.core.logger import logger
-from src.core.config import get_config, ConfigValidationError
-
-
-# =============================================================================
-# Global State for Signal Handling
-# =============================================================================
-
-_bot_instance = None
-_shutdown_event: Optional[asyncio.Event] = None
+from src.core.config import ConfigValidationError, validate_and_log_config
+from src.bot import AzabBot
 
 
 # =============================================================================
@@ -56,6 +51,9 @@ _shutdown_event: Optional[asyncio.Event] = None
 
 LOCK_FILE_PATH = Path(tempfile.gettempdir()) / "azab_bot.lock"
 """Path to the lock file used for single-instance enforcement."""
+
+FILE_PERMISSION_RW = 0o644
+"""File permission for lock file (owner read/write, others read)."""
 
 
 # =============================================================================
@@ -74,15 +72,9 @@ def acquire_lock() -> int:
 
     Raises:
         SystemExit: If another instance is already running.
-
-    Example:
-        >>> lock_fd = acquire_lock()
-        >>> # Bot runs with lock held
-        >>> # Lock automatically released on exit
     """
     try:
-        # Create or open lock file
-        fd = os.open(str(LOCK_FILE_PATH), os.O_RDWR | os.O_CREAT, 0o644)
+        fd = os.open(str(LOCK_FILE_PATH), os.O_RDWR | os.O_CREAT, FILE_PERMISSION_RW)
     except OSError as e:
         logger.error("Failed to Open Lock File", [
             ("Path", str(LOCK_FILE_PATH)),
@@ -98,24 +90,27 @@ def acquire_lock() -> int:
         os.truncate(fd, 0)
         os.write(fd, str(os.getpid()).encode())
 
-        logger.info("Lock Acquired Successfully", [
+        logger.info("🔒 Lock Acquired Successfully", [
             ("PID", str(os.getpid())),
+            ("Lock File", str(LOCK_FILE_PATH)),
         ])
         return fd
 
     except (IOError, OSError):
         # Lock held by another process - check if it's stale
         if _is_stale_lock(fd):
-            # Stale lock - try to clean up and acquire
             os.close(fd)
             try:
                 LOCK_FILE_PATH.unlink()
-                logger.warning("Removed Stale Lock File", [
+                logger.warning("🔒 Removed Stale Lock File", [
                     ("Reason", "Dead process"),
                 ])
                 return acquire_lock()  # Retry
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug("Could Not Remove Stale Lock", [
+                    ("Error", str(e)),
+                    ("Action", "Proceeding to check existing instance"),
+                ])
 
         _report_existing_instance(fd)
         os.close(fd)
@@ -146,7 +141,6 @@ def _is_stale_lock(fd: int) -> bool:
         return False  # Process exists
 
     except (OSError, ValueError):
-        # Process doesn't exist or invalid PID
         return True
 
 
@@ -162,41 +156,95 @@ def _report_existing_instance(fd: int) -> None:
         existing_pid = os.read(fd, 100).decode().strip()
 
         if existing_pid:
-            logger.error("Another Instance Already Running", [
+            logger.error("🔒 Another Instance Already Running", [
                 ("Existing PID", existing_pid),
                 ("Kill Command", f"kill {existing_pid}"),
             ])
         else:
-            logger.error("Another Instance Already Running", [
+            logger.error("🔒 Another Instance Already Running", [
                 ("PID", "Unknown"),
             ])
 
     except (OSError, ValueError) as e:
-        logger.error("Another Instance Already Running", [
+        logger.error("🔒 Another Instance Already Running", [
             ("PID", "Could not read"),
             ("Error", str(e)),
         ])
 
 
 # =============================================================================
-# Configuration
+# Cleanup Functions
 # =============================================================================
 
-def load_configuration() -> str:
+def cleanup_temp_files() -> None:
     """
-    Load and validate environment configuration.
+    Clean up temporary files from previous runs.
 
-    Loads variables from .env file and validates required settings.
+    Removes any stale temp files that might have been left
+    from previous bot runs or crashes.
+    """
+    temp_dir = Path("/tmp")
+    cleaned = 0
 
-    Returns:
-        Discord bot token.
+    for pattern in ["azabbot_*", "azab_*"]:
+        for temp_file in temp_dir.glob(pattern):
+            try:
+                if temp_file.is_file():
+                    temp_file.unlink()
+                    cleaned += 1
+            except Exception:
+                pass
+
+    if cleaned > 0:
+        logger.info("🧹 Temp Files Cleaned", [
+            ("Files Removed", str(cleaned)),
+        ])
+
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
+async def main() -> None:
+    """
+    Main entry point for Azab Discord bot.
+
+    This function handles the complete bot lifecycle:
+    1. Acquires single-instance lock
+    2. Cleans up temp files from previous runs
+    3. Loads and validates configuration
+    4. Initializes bot instance
+    5. Establishes connection to Discord API
+    6. Handles graceful shutdown on interruption
 
     Raises:
-        SystemExit: If required configuration is missing.
+        SystemExit: If bot token is missing or bot fails to start.
     """
+    # Acquire single-instance lock (uses fcntl.flock - auto-releases on crash)
+    lock_fd = acquire_lock()
+
+    shutdown_event = asyncio.Event()
+
+    # Signal handler for graceful shutdown
+    def signal_handler(sig: int, frame) -> None:
+        """Handle shutdown signals gracefully."""
+        sig_name = signal.Signals(sig).name
+        logger.tree("📡 Signal Received", [
+            ("Signal", sig_name),
+            ("Action", "Initiating graceful shutdown"),
+        ])
+        shutdown_event.set()
+
+    # Register signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # Clean up temp files from previous runs
+    cleanup_temp_files()
+
+    # Validate configuration at startup
     try:
-        config = get_config()
-        return config.discord_token
+        validate_and_log_config()
     except ConfigValidationError as e:
         logger.error("Configuration Validation Failed", [
             ("Error", str(e)),
@@ -204,118 +252,158 @@ def load_configuration() -> str:
         ])
         sys.exit(1)
 
-
-# =============================================================================
-# Signal Handlers
-# =============================================================================
-
-def _create_signal_handler(signum: int) -> None:
-    """
-    Create a thread-safe signal handler for the given signal.
-
-    This is called from the event loop via loop.add_signal_handler(),
-    ensuring thread-safety when accessing asyncio primitives.
-
-    Args:
-        signum: Signal number received
-    """
-    global _bot_instance
-
-    signal_name = signal.Signals(signum).name
-    logger.info("Signal Received", [
-        ("Signal", signal_name),
-        ("Action", "Initiating graceful shutdown"),
+    logger.tree("🔥 AZAB STARTING", [
+        ("Purpose", "Prison Warden Bot"),
+        ("Features", "AI roasts, prisoner tracking, moderation"),
+        ("Server", "discord.gg/syria"),
+        ("Lock File", str(LOCK_FILE_PATH)),
+        ("PID", str(os.getpid())),
     ])
 
-    if _bot_instance:
-        # Safe to create task since we're called from the event loop
-        asyncio.create_task(_bot_instance.close())
-
-
-def _setup_signal_handlers_sync() -> None:
-    """
-    Setup synchronous signal handlers (fallback for non-async context).
-
-    Used during startup before the event loop is running.
-    """
-    def handle_signal(signum: int, frame) -> None:
-        signal_name = signal.Signals(signum).name
-        logger.info("Signal Received (Pre-Loop)", [
-            ("Signal", signal_name),
-            ("Action", "Initiating shutdown"),
-        ])
-        sys.exit(0)
-
-    # Only setup on Unix-like systems
-    if hasattr(signal, 'SIGTERM'):
-        signal.signal(signal.SIGTERM, handle_signal)
-
-    if hasattr(signal, 'SIGHUP'):
-        signal.signal(signal.SIGHUP, handle_signal)
-
-
-# =============================================================================
-# Main Entry Point
-# =============================================================================
-
-def main() -> NoReturn:
-    """
-    Main entry point for the Azab Discord bot.
-
-    Execution flow:
-    1. Acquire single-instance lock
-    2. Load environment configuration
-    3. Initialize and start bot
-    4. Handle shutdown gracefully
-
-    Raises:
-        SystemExit: On startup failure or clean shutdown.
-    """
-    # Step 1: Ensure single instance
-    lock_fd = acquire_lock()
-
-    # Step 2: Load configuration
-    token = load_configuration()
-
-    # Step 3: Setup synchronous signal handlers (for pre-loop phase)
-    _setup_signal_handlers_sync()
-
-    # Step 4: Initialize and run bot
-    global _bot_instance
-    try:
-        logger.tree("AZAB STARTING", [
-            ("Purpose", "Prison Warden Bot"),
-            ("Features", "AI roasts, prisoner tracking, family system"),
-            ("Server", "discord.gg/syria"),
-            ("Lock File", str(LOCK_FILE_PATH)),
-            ("PID", str(os.getpid())),
-        ], emoji="🔥")
-
-        from src.bot import AzabBot
-        bot = AzabBot()
-        _bot_instance = bot  # Store for signal handler access
-        bot.run(token)
-
-    except KeyboardInterrupt:
-        logger.info("Shutdown Requested", [
-            ("By", "User (Ctrl+C)"),
-        ])
-        sys.exit(0)
-
-    except Exception as e:
-        logger.error("Fatal Error During Bot Execution", [
-            ("Error", str(e)),
+    token = os.getenv("DISCORD_TOKEN")
+    if not token:
+        # This should not happen if validate_and_log_config() passed
+        logger.error("Missing Discord Token", [
+            ("Variable", "DISCORD_TOKEN"),
+            ("Solution", "Create .env file with DISCORD_TOKEN=your_token_here"),
         ])
         sys.exit(1)
 
-    finally:
-        # Explicitly close lock file descriptor for clarity
-        if 'lock_fd' in locals():
+    bot: Optional[AzabBot] = None
+
+    try:
+        logger.info("🤖 Creating Azab Instance")
+        bot = AzabBot()
+
+        # Start bot task and watch for shutdown signal
+        def bot_exception_handler(task: asyncio.Task) -> None:
+            """Handle exceptions from bot task."""
+            if task.cancelled():
+                return
+            exc = task.exception()
+            if exc:
+                logger.error("💥 Bot Task Exception", [
+                    ("Error", str(exc)[:100]),
+                    ("Action", "Shutdown triggered"),
+                ])
+                shutdown_event.set()
+
+        bot_task = asyncio.create_task(bot.start(token))
+        bot_task.add_done_callback(bot_exception_handler)
+        shutdown_task = asyncio.create_task(shutdown_event.wait())
+
+        # Create a ready waiter task
+        async def wait_for_ready():
+            await bot.wait_until_ready()
+            return True
+
+        ready_task = asyncio.create_task(wait_for_ready())
+
+        # Wait for ready, shutdown, or startup timeout (60 seconds)
+        startup_timeout = 60
+        try:
+            done, pending = await asyncio.wait(
+                [ready_task, shutdown_task, bot_task],
+                timeout=startup_timeout,
+                return_when=asyncio.FIRST_COMPLETED
+            )
+
+            if ready_task in done:
+                logger.success("Discord Connection Established", [
+                    ("Guilds", str(len(bot.guilds))),
+                    ("Latency", f"{bot.latency * 1000:.0f}ms"),
+                ])
+            elif bot_task in done:
+                if bot_task.exception():
+                    raise bot_task.exception()
+            elif shutdown_task in done:
+                logger.info("🛑 Shutdown Requested During Startup")
+            else:
+                # Timeout
+                logger.error("⏰ Startup Timeout", [
+                    ("Timeout", f"{startup_timeout}s"),
+                    ("Action", "Aborting startup"),
+                ])
+                for task in [ready_task, bot_task]:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                raise RuntimeError(f"Bot failed to connect within {startup_timeout}s")
+
+            # Cancel ready task if still pending
+            if ready_task in pending:
+                ready_task.cancel()
+                try:
+                    await ready_task
+                except asyncio.CancelledError:
+                    pass
+
+        except asyncio.TimeoutError:
+            logger.error("⏰ Startup Timeout", [
+                ("Timeout", f"{startup_timeout}s"),
+            ])
+            ready_task.cancel()
+            bot_task.cancel()
+            raise RuntimeError(f"Bot failed to connect within {startup_timeout}s")
+
+        # Wait for either bot to finish or shutdown signal
+        done, pending = await asyncio.wait(
+            [bot_task, shutdown_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )
+
+        # Cancel pending tasks
+        for task in pending:
+            task.cancel()
             try:
-                os.close(lock_fd)
-            except OSError:
+                await task
+            except asyncio.CancelledError:
                 pass
-        logger.info("Bot Shutdown Complete")
+
+    except KeyboardInterrupt:
+        logger.tree("✋ Keyboard Interrupt", [
+            ("Action", "Shutdown requested"),
+            ("Method", "Ctrl+C"),
+        ])
+
+    except discord.LoginFailure as e:
+        logger.error("🔐 Discord Authentication Failed", [
+            ("Error", str(e)[:100]),
+            ("Solution", "Check your DISCORD_TOKEN in .env file"),
+        ])
+
+    except discord.PrivilegedIntentsRequired as e:
+        logger.error("🔒 Missing Required Discord Intents", [
+            ("Error", str(e)[:100]),
+            ("Solution", "Enable intents in Discord Developer Portal"),
+        ])
+
+    except Exception as e:
+        logger.error("💥 Fatal Error Occurred", [
+            ("Error Type", type(e).__name__),
+            ("Error", str(e)[:100]),
+        ])
+        logger.exception("Full traceback:")
+
+    finally:
+        if bot:
+            try:
+                logger.info("🔄 Graceful Shutdown")
+                await bot.close()
+            except Exception as e:
+                logger.error("Error during shutdown", [
+                    ("Error", str(e)[:50]),
+                ])
+
+        # Close lock file descriptor (lock auto-releases)
+        try:
+            os.close(lock_fd)
+        except OSError:
+            pass
+
+        logger.success("🛑 Azab Bot Shutdown Complete")
 
 
 # =============================================================================
@@ -323,4 +411,29 @@ def main() -> NoReturn:
 # =============================================================================
 
 if __name__ == "__main__":
-    main()
+    """
+    Script entry point for direct execution.
+
+    Sets working directory and runs the main async function.
+    Handles KeyboardInterrupt gracefully for clean shutdown.
+    """
+    project_root = Path(__file__).parent
+    os.chdir(project_root)
+
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n✋ Bot stopped by user")
+        logger.tree("✋ Application Terminated", [
+            ("Terminated By", "User"),
+            ("Method", "Keyboard interrupt"),
+        ])
+    except SystemExit:
+        raise
+    except Exception as e:
+        logger.error("💥 Unhandled Exception in Main", [
+            ("Error Type", type(e).__name__),
+            ("Error", str(e)[:100]),
+        ])
+        print(f"\n❌ Critical Error: {e}")
+        sys.exit(1)
