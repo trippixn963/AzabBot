@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Optional
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -248,6 +249,7 @@ class MuteScheduler:
                 color=EmbedColors.SUCCESS,
                 timestamp=datetime.now(NY_TZ),
             )
+            set_footer(dm_embed)
             await member.send(embed=dm_embed)
         except (discord.Forbidden, discord.HTTPException):
             pass

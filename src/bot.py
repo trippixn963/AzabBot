@@ -199,6 +199,10 @@ class AzabBot(commands.Bot):
                     ("Error", str(e)),
                 ])
 
+        # Register persistent views for log buttons
+        from src.services.server_logs.service import setup_log_views
+        setup_log_views(self)
+
         # Sync commands globally
         try:
             synced = await self.tree.sync()
@@ -550,9 +554,7 @@ class AzabBot(commands.Bot):
             if getattr(message, 'poll', None) is None:
                 try:
                     await message.delete()
-                    logger.debug("Deleted Non-Poll Message", [
-                        ("Author", str(message.author)),
-                    ])
+                    logger.debug(f"Deleted Non-Poll Message by {message.author}")
                 except discord.Forbidden:
                     pass
             return
@@ -1061,23 +1063,109 @@ class AzabBot(commands.Bot):
     # =========================================================================
 
     async def on_member_join(self, member: discord.Member) -> None:
-        """Log member joins with invite tracking and raid detection."""
+        """Log member joins with invite tracking, raid detection, and mute evasion."""
+        # -----------------------------------------------------------------
+        # Logging Service
+        # -----------------------------------------------------------------
         if self.logging_service and self.logging_service.enabled:
-            # Find which invite was used
             invite_info = await self._find_used_invite(member.guild)
             invite_code = invite_info[0] if invite_info else None
             inviter = invite_info[1] if invite_info else None
             await self.logging_service.log_member_join(member, invite_code, inviter)
 
-            # -----------------------------------------------------------------
             # Raid Detection
-            # -----------------------------------------------------------------
             await self._check_raid_detection(member)
 
+        # -----------------------------------------------------------------
+        # Mute Evasion Detection
+        # -----------------------------------------------------------------
+        await self._check_mute_evasion(member)
+
+    async def _check_mute_evasion(self, member: discord.Member) -> None:
+        """
+        Check if rejoining member has an active mute and re-apply it.
+
+        Args:
+            member: The member who just joined.
+        """
+        from src.core.database import get_db
+        from src.core.config import get_config
+        from src.core.logger import logger
+
+        db = get_db()
+        config = get_config()
+
+        # Check if user has an active mute
+        active_mute = db.get_active_mute(member.id, member.guild.id)
+        if not active_mute:
+            return
+
+        # Re-apply muted role
+        muted_role = member.guild.get_role(config.muted_role_id)
+        if not muted_role:
+            return
+
+        try:
+            await member.add_roles(muted_role, reason="Mute evasion: User rejoined with active mute")
+
+            logger.tree("MUTE EVASION DETECTED", [
+                ("User", f"{member} ({member.id})"),
+                ("Action", "Re-applied muted role"),
+            ], emoji="⚠️")
+
+            # Log to case and ping only the moderator from the current active mute
+            if self.case_log_service:
+                mod_id = active_mute["moderator_id"]
+                await self.case_log_service.log_mute_evasion_return(member, [mod_id])
+
+        except Exception as e:
+            logger.error("Mute Evasion Re-apply Failed", [
+                ("User", str(member)),
+                ("Error", str(e)[:50]),
+            ])
+
     async def on_member_remove(self, member: discord.Member) -> None:
-        """Log member leaves."""
+        """Log member leaves and track muted users leaving."""
+        # -----------------------------------------------------------------
+        # Logging Service
+        # -----------------------------------------------------------------
         if self.logging_service and self.logging_service.enabled:
             await self.logging_service.log_member_leave(member)
+
+        # -----------------------------------------------------------------
+        # Track Muted User Leaving
+        # -----------------------------------------------------------------
+        await self._check_muted_member_left(member)
+
+    async def _check_muted_member_left(self, member: discord.Member) -> None:
+        """
+        Check if leaving member has an active mute and log it.
+
+        Args:
+            member: The member who just left.
+        """
+        from src.core.database import get_db
+        from src.core.logger import logger
+
+        db = get_db()
+
+        # Check if user has an active mute
+        active_mute = db.get_active_mute(member.id, member.guild.id)
+        if not active_mute:
+            return
+
+        logger.tree("MUTED USER LEFT", [
+            ("User", f"{member} ({member.id})"),
+            ("Status", "Left with active mute"),
+        ], emoji="🚪")
+
+        # Log to case forum
+        if self.case_log_service:
+            await self.case_log_service.log_member_left_muted(
+                user_id=member.id,
+                display_name=member.display_name,
+                muted_at=active_mute["muted_at"],
+            )
 
     async def on_user_update(self, before: discord.User, after: discord.User) -> None:
         """Log user avatar and username changes."""
@@ -1774,8 +1862,9 @@ class AzabBot(commands.Bot):
                     channel_name=channel_name,
                 )
 
-            # AutoMod rule create
-            elif entry.action == discord.AuditLogAction.auto_moderation_rule_create:
+            # AutoMod rule create (discord.py 2.1+)
+            elif hasattr(discord.AuditLogAction, 'auto_moderation_rule_create') and \
+                    entry.action == discord.AuditLogAction.auto_moderation_rule_create:
                 rule_name = getattr(entry.target, 'name', 'Unknown')
                 trigger_type = str(getattr(entry.target, 'trigger_type', 'Unknown'))
                 await self.mod_tracker.log_automod_rule_create(
@@ -1784,8 +1873,9 @@ class AzabBot(commands.Bot):
                     trigger_type=trigger_type,
                 )
 
-            # AutoMod rule update
-            elif entry.action == discord.AuditLogAction.auto_moderation_rule_update:
+            # AutoMod rule update (discord.py 2.1+)
+            elif hasattr(discord.AuditLogAction, 'auto_moderation_rule_update') and \
+                    entry.action == discord.AuditLogAction.auto_moderation_rule_update:
                 rule_name = getattr(entry.target, 'name', 'Unknown')
                 changes = "Settings updated"
                 await self.mod_tracker.log_automod_rule_update(
@@ -1794,8 +1884,9 @@ class AzabBot(commands.Bot):
                     changes=changes,
                 )
 
-            # AutoMod rule delete
-            elif entry.action == discord.AuditLogAction.auto_moderation_rule_delete:
+            # AutoMod rule delete (discord.py 2.1+)
+            elif hasattr(discord.AuditLogAction, 'auto_moderation_rule_delete') and \
+                    entry.action == discord.AuditLogAction.auto_moderation_rule_delete:
                 rule_name = getattr(entry.before, 'name', 'Unknown')
                 await self.mod_tracker.log_automod_rule_delete(
                     mod_id=mod_id,

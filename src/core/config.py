@@ -99,6 +99,12 @@ class Config:
     case_log_forum_id: Optional[int] = None
 
     # -------------------------------------------------------------------------
+    # Optional: Roles
+    # -------------------------------------------------------------------------
+
+    management_role_id: Optional[int] = None
+
+    # -------------------------------------------------------------------------
     # Optional: Mod Tracker
     # -------------------------------------------------------------------------
 
@@ -340,6 +346,7 @@ def load_config() -> Config:
     polls_only_channel_id = _parse_int_optional(os.getenv("POLLS_ONLY_CHANNEL_ID"))
     permanent_polls_channel_id = _parse_int_optional(os.getenv("PERMANENT_POLLS_CHANNEL_ID"))
     case_log_forum_id = _parse_int_optional(os.getenv("CASE_LOG_FORUM_ID"))
+    management_role_id = _parse_int_optional(os.getenv("MANAGEMENT_ROLE_ID"))
     mod_server_id = _parse_int_optional(os.getenv("MOD_SERVER_ID"))
     mod_tracker_forum_id = _parse_int_optional(os.getenv("MOD_TRACKER_FORUM_ID"))
     mod_role_id = _parse_int_optional(os.getenv("MOD_ROLE_ID"))
@@ -362,6 +369,7 @@ def load_config() -> Config:
         polls_only_channel_id=polls_only_channel_id,
         permanent_polls_channel_id=permanent_polls_channel_id,
         case_log_forum_id=case_log_forum_id,
+        management_role_id=management_role_id,
         mod_server_id=mod_server_id,
         mod_tracker_forum_id=mod_tracker_forum_id,
         mod_role_id=mod_role_id,

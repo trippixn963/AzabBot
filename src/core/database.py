@@ -21,6 +21,8 @@ import sqlite3
 import threading
 import asyncio
 import time
+import secrets
+import string
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Tuple, Any, Set, Dict
@@ -345,11 +347,12 @@ class DatabaseManager:
         # -----------------------------------------------------------------
         # Case Logs Table
         # DESIGN: Tracks unique case threads per user in mods forum
+        # case_id is a 4-character alphanumeric code (e.g., "A7X2")
         # -----------------------------------------------------------------
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS case_logs (
                 user_id INTEGER PRIMARY KEY,
-                case_id INTEGER UNIQUE NOT NULL,
+                case_id TEXT UNIQUE NOT NULL,
                 thread_id INTEGER NOT NULL,
                 mute_count INTEGER DEFAULT 1,
                 created_at REAL NOT NULL,
@@ -359,21 +362,6 @@ class DatabaseManager:
         """)
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_case_logs_case_id ON case_logs(case_id)"
-        )
-
-        # -----------------------------------------------------------------
-        # Case Counter Table
-        # DESIGN: Auto-incrementing case ID counter
-        # -----------------------------------------------------------------
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS case_counter (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                next_case_id INTEGER DEFAULT 1
-            )
-        """)
-        # Initialize counter if not exists
-        cursor.execute(
-            "INSERT OR IGNORE INTO case_counter (id, next_case_id) VALUES (1, 1)"
         )
 
         # -----------------------------------------------------------------
@@ -412,6 +400,23 @@ class DatabaseManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_nickname_time ON nickname_history(changed_at)"
         )
+
+        # -----------------------------------------------------------------
+        # Member Activity Table
+        # DESIGN: Tracks join/leave counts for members
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS member_activity (
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                join_count INTEGER DEFAULT 0,
+                leave_count INTEGER DEFAULT 0,
+                first_joined_at REAL,
+                last_joined_at REAL,
+                last_left_at REAL,
+                PRIMARY KEY (user_id, guild_id)
+            )
+        """)
 
         conn.commit()
 
@@ -466,9 +471,9 @@ class DatabaseManager:
             active: True to enable, False to disable
         """
         self.set_bot_state("is_active", active)
-        logger.info("Bot State Changed", [
+        logger.tree("Bot State Changed", [
             ("Active", str(active)),
-        ])
+        ], emoji="⚙️")
 
     # =========================================================================
     # Ignored Users Operations
@@ -485,16 +490,16 @@ class DatabaseManager:
             "INSERT OR IGNORE INTO ignored_users (user_id, added_at) VALUES (?, ?)",
             (user_id, time.time())
         )
-        logger.info("User Added to Ignore List", [
+        logger.tree("User Added to Ignore List", [
             ("User ID", str(user_id)),
-        ])
+        ], emoji="🚫")
 
     def remove_ignored_user(self, user_id: int) -> None:
         """Remove a user from ignored list."""
         self.execute("DELETE FROM ignored_users WHERE user_id = ?", (user_id,))
-        logger.info("User Removed from Ignore List", [
+        logger.tree("User Removed from Ignore List", [
             ("User ID", str(user_id)),
-        ])
+        ], emoji="✅")
 
     def is_user_ignored(self, user_id: int) -> bool:
         """Check if a user is ignored."""
@@ -615,9 +620,9 @@ class DatabaseManager:
                 (user_id,)
             )
 
-            logger.info("Unmute Recorded", [
+            logger.tree("Unmute Recorded", [
                 ("User ID", str(user_id)),
-            ])
+            ], emoji="🔓")
 
         await asyncio.to_thread(_record)
 
@@ -973,29 +978,55 @@ class DatabaseManager:
         )
         return row["count"] if row else 0
 
+    def get_mute_moderator_ids(self, user_id: int, guild_id: int) -> List[int]:
+        """
+        Get all unique moderator IDs who muted/extended a user.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            List of unique moderator IDs.
+        """
+        rows = self.fetchall(
+            """SELECT DISTINCT moderator_id FROM mute_history
+               WHERE user_id = ? AND guild_id = ? AND action = 'mute'
+               ORDER BY timestamp DESC""",
+            (user_id, guild_id)
+        )
+        return [row["moderator_id"] for row in rows]
+
     # =========================================================================
     # Case Log Operations
     # =========================================================================
 
-    def get_next_case_id(self) -> int:
+    def get_next_case_id(self) -> str:
         """
-        Get and increment the next case ID.
+        Generate a unique 4-character alphanumeric case ID.
 
         DESIGN:
-            Atomic increment ensures unique case IDs across all users.
-            Returns the ID before incrementing.
+            Uses uppercase letters and digits for readability.
+            Checks database to ensure uniqueness before returning.
+            With 36^4 = 1,679,616 possible combinations, collisions are rare.
 
         Returns:
-            Next available case ID.
+            Unique 4-character case ID (e.g., "A7X2", "K3M9").
         """
-        row = self.fetchone("SELECT next_case_id FROM case_counter WHERE id = 1")
-        next_id = row["next_case_id"] if row else 1
+        chars = string.ascii_uppercase + string.digits  # A-Z, 0-9
 
-        self.execute(
-            "UPDATE case_counter SET next_case_id = next_case_id + 1 WHERE id = 1"
-        )
+        while True:
+            # Generate random 4-character code
+            case_id = ''.join(secrets.choice(chars) for _ in range(4))
 
-        return next_id
+            # Check if it already exists
+            row = self.fetchone(
+                "SELECT 1 FROM case_logs WHERE case_id = ?",
+                (case_id,)
+            )
+
+            if not row:
+                return case_id
 
     def get_case_log(self, user_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -1018,7 +1049,7 @@ class DatabaseManager:
     def create_case_log(
         self,
         user_id: int,
-        case_id: int,
+        case_id: str,
         thread_id: int,
     ) -> None:
         """
@@ -1026,7 +1057,7 @@ class DatabaseManager:
 
         Args:
             user_id: Discord user ID.
-            case_id: Unique case ID.
+            case_id: Unique 4-character alphanumeric case ID.
             thread_id: Forum thread ID for this case.
         """
         now = time.time()
@@ -1039,7 +1070,7 @@ class DatabaseManager:
 
         logger.tree("Case Log Created", [
             ("User ID", str(user_id)),
-            ("Case ID", f"{case_id:04d}"),
+            ("Case ID", case_id),
             ("Thread ID", str(thread_id)),
         ], emoji="📋")
 
@@ -1281,6 +1312,84 @@ class DatabaseManager:
             (user_id, guild_id, user_id, guild_id)
         )
         return [row["old_nickname"] or row["new_nickname"] for row in rows if row[0]]
+
+    # =========================================================================
+    # Member Activity Operations
+    # =========================================================================
+
+    def record_member_join(self, user_id: int, guild_id: int) -> int:
+        """
+        Record a member join and return their join count.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            The member's total join count (including this one).
+        """
+        now = time.time()
+        # Insert or update the member activity record
+        self.execute(
+            """INSERT INTO member_activity (user_id, guild_id, join_count, first_joined_at, last_joined_at)
+               VALUES (?, ?, 1, ?, ?)
+               ON CONFLICT(user_id, guild_id) DO UPDATE SET
+                   join_count = join_count + 1,
+                   last_joined_at = ?""",
+            (user_id, guild_id, now, now, now)
+        )
+        # Get the updated count
+        row = self.fetchone(
+            "SELECT join_count FROM member_activity WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        return row["join_count"] if row else 1
+
+    def record_member_leave(self, user_id: int, guild_id: int) -> int:
+        """
+        Record a member leave and return their leave count.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            The member's total leave count (including this one).
+        """
+        now = time.time()
+        # Insert or update the member activity record
+        self.execute(
+            """INSERT INTO member_activity (user_id, guild_id, leave_count, last_left_at)
+               VALUES (?, ?, 1, ?)
+               ON CONFLICT(user_id, guild_id) DO UPDATE SET
+                   leave_count = leave_count + 1,
+                   last_left_at = ?""",
+            (user_id, guild_id, now, now)
+        )
+        # Get the updated count
+        row = self.fetchone(
+            "SELECT leave_count FROM member_activity WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        return row["leave_count"] if row else 1
+
+    def get_member_activity(self, user_id: int, guild_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a member's join/leave activity.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Dict with join_count, leave_count, first_joined_at, last_joined_at, last_left_at
+            or None if no record exists.
+        """
+        row = self.fetchone(
+            "SELECT * FROM member_activity WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        return dict(row) if row else None
 
 
 # =============================================================================

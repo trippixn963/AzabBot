@@ -1,34 +1,46 @@
 """
-Azab Discord Bot - Logger Module
-=================================
+Azab Discord Bot - Logger
+==========================
 
-Custom tree-style logging with EST timezone and daily rotation.
+Custom logging system with tree-style formatting and EST timezone support.
+Provides structured logging for Discord bot events with visual formatting
+and file output for debugging and monitoring.
 
-DESIGN:
-    This logger provides structured, hierarchical output that's easy to scan
-    visually. Tree-style formatting groups related information together,
-    while EST timestamps ensure consistency with the target user base.
+Features:
+- Unique run ID generation for tracking bot sessions
+- EST/EDT timezone timestamp formatting (auto-adjusts)
+- Tree-style log formatting for structured data
+- Nested tree support for hierarchical data
+- Console and file output simultaneously
+- Emoji-enhanced log levels for visual clarity
+- Daily log folders with separate log and error files
+- Automatic cleanup of old logs (7+ days)
+- Smart spacing between tree logs
 
-    Key features:
-    - Tree-style formatting for structured data visualization
-    - EST timezone timestamps (auto EST/EDT handling)
-    - Daily log rotation in dated folders
-    - 7-day log retention with automatic cleanup
-    - Session tracking with unique run IDs
-    - Discord webhook integration for error alerts
+Log Structure:
+    logs/
+    ├── 2025-12-06/
+    │   ├── Azab-2025-12-06.log
+    │   └── Azab-Errors-2025-12-06.log
+    ├── 2025-12-07/
+    │   ├── Azab-2025-12-07.log
+    │   └── Azab-Errors-2025-12-07.log
+    └── ...
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
 import os
+import re
+import shutil
 import uuid
-import aiohttp
+import traceback
 import asyncio
-from datetime import datetime
+import aiohttp
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Tuple, Optional
-
+from typing import List, Tuple, Optional, Any, Dict
 from zoneinfo import ZoneInfo
 
 
@@ -36,423 +48,655 @@ from zoneinfo import ZoneInfo
 # Constants
 # =============================================================================
 
-LOGS_DIR = Path("logs")
-"""Directory for all log files, organized by date."""
-
+# Log retention period in days
 LOG_RETENTION_DAYS = 7
-"""Number of days to retain log directories before cleanup."""
 
-NY_TZ = ZoneInfo("America/New_York")
-"""Eastern timezone for consistent timestamps."""
+# Error webhook colors
+COLOR_ERROR = 0xFF0000    # Red
+COLOR_WARNING = 0xFFAA00  # Orange
+COLOR_CRITICAL = 0x8B0000 # Dark red
+
+# Regex to match emojis
+EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # emoticons
+    "\U0001F300-\U0001F5FF"  # symbols & pictographs
+    "\U0001F680-\U0001F6FF"  # transport & map symbols
+    "\U0001F1E0-\U0001F1FF"  # flags
+    "\U00002702-\U000027B0"  # dingbats
+    "\U0001F900-\U0001F9FF"  # supplemental symbols
+    "\U00002600-\U000026FF"  # misc symbols
+    "\U0001FA00-\U0001FA6F"  # chess symbols
+    "\U0001FA70-\U0001FAFF"  # symbols extended
+    "\U00002300-\U000023FF"  # misc technical
+    "]+",
+    flags=re.UNICODE
+)
 
 
 # =============================================================================
-# Tree Logger Class
+# Tree Symbols
 # =============================================================================
 
-class TreeLogger:
-    """
-    Custom logger with tree-style formatting and EST timezone support.
+class TreeSymbols:
+    """Box-drawing characters for tree formatting."""
+    BRANCH = "├─"      # Middle item connector
+    LAST = "└─"        # Last item connector
+    PIPE = "│ "        # Vertical continuation
+    SPACE = "  "       # Empty space for alignment
+    HEADER = "┌─"      # Tree header
+    FOOTER = "└─"      # Tree footer
 
-    DESIGN:
-        Uses tree-style output (├─ └─) for visual hierarchy.
-        All timestamps in Eastern time for consistency.
-        Separate error log file for quick troubleshooting.
-        Optional webhook notifications for critical errors.
 
-    Attributes:
-        run_id: Unique identifier for this bot session.
-        log_file: Path to the main log file.
-        error_file: Path to the error-only log file.
-    """
+# =============================================================================
+# MiniTreeLogger
+# =============================================================================
+
+class MiniTreeLogger:
+    """Custom logger with tree-style formatting and EST timezone support."""
 
     # =========================================================================
     # Initialization
     # =========================================================================
 
     def __init__(self) -> None:
-        """
-        Initialize logger with run ID and daily log file.
-
-        Creates dated log directory, initializes log files,
-        cleans up old logs, and writes session header.
-        """
+        """Initialize the logger with unique run ID and daily log folder rotation."""
         self.run_id: str = str(uuid.uuid4())[:8]
-        self._webhook_url: Optional[str] = None
-        self._bot_name: str = "Azab"
 
-        # Create dated log directory
-        today = datetime.now(NY_TZ).strftime("%Y-%m-%d")
-        self.log_dir = LOGS_DIR / today
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+        # Timezone for date calculations
+        self._timezone = ZoneInfo("America/New_York")
 
-        # Log files
-        self.log_file = self.log_dir / f"Azab-{today}.log"
-        self.error_file = self.log_dir / f"Azab-Errors-{today}.log"
+        # Track last log type for spacing between trees
+        self._last_was_tree: bool = False
 
-        # Cleanup old logs
+        # Base logs directory
+        self.logs_base_dir = Path(__file__).parent.parent.parent / "logs"
+        self.logs_base_dir.mkdir(exist_ok=True)
+
+        # Get current date in EST timezone
+        self.current_date = datetime.now(self._timezone).strftime("%Y-%m-%d")
+
+        # Create daily folder (e.g., logs/2025-12-06/)
+        self.log_dir = self.logs_base_dir / self.current_date
+        self.log_dir.mkdir(exist_ok=True)
+
+        # Create log files inside daily folder
+        self.log_file: Path = self.log_dir / f"Azab-{self.current_date}.log"
+        self.error_file: Path = self.log_dir / f"Azab-Errors-{self.current_date}.log"
+
+        # Clean up old log folders (older than 7 days)
         self._cleanup_old_logs()
 
         # Write session header
         self._write_session_header()
 
-    def set_webhook(self, url: Optional[str]) -> None:
-        """
-        Set webhook URL for error notifications.
-
-        Args:
-            url: Discord webhook URL for error alerts.
-        """
-        self._webhook_url = url
-
     # =========================================================================
-    # Log Cleanup
+    # Private Methods - Setup
     # =========================================================================
 
     def _cleanup_old_logs(self) -> None:
+        """Clean up log folders older than retention period (7 days).
+
+        OPTIMIZATION: Uses glob pattern matching (????-??-??) to only
+        find date-formatted folders, avoiding iteration over non-date items.
+        Then calculates cutoff date once and compares directly.
         """
-        Remove log directories older than retention period.
+        try:
+            now = datetime.now(self._timezone)
+            cutoff_date = now - timedelta(days=LOG_RETENTION_DAYS)
+            deleted_count = 0
 
-        DESIGN:
-            Runs on startup to prevent unbounded log growth.
-            Only removes directories matching date format YYYY-MM-DD.
-            Silently skips invalid directory names.
-        """
-        if not LOGS_DIR.exists():
-            return
+            # Use glob pattern to only match date-formatted folders (YYYY-MM-DD)
+            for folder in self.logs_base_dir.glob("????-??-??"):
+                if not folder.is_dir():
+                    continue
 
-        now = datetime.now()
-        deleted = 0
-
-        for item in LOGS_DIR.iterdir():
-            if item.is_dir() and item.name != "__pycache__":
                 try:
-                    dir_date = datetime.strptime(item.name, "%Y-%m-%d")
-                    age_days = (now - dir_date).days
-                    if age_days > LOG_RETENTION_DAYS:
-                        for f in item.iterdir():
-                            f.unlink()
-                        item.rmdir()
-                        deleted += 1
+                    folder_date = datetime.strptime(folder.name, "%Y-%m-%d")
+                    folder_date = folder_date.replace(tzinfo=self._timezone)
+
+                    # Direct date comparison is cleaner than days calculation
+                    if folder_date < cutoff_date:
+                        shutil.rmtree(folder)
+                        deleted_count += 1
                 except ValueError:
-                    pass  # Skip non-date directories
+                    # Folder name matched pattern but isn't valid date
+                    continue
 
-        if deleted > 0:
-            print(f"[LOG CLEANUP] Removed {deleted} old log directories")
+            if deleted_count > 0:
+                print(f"[LOG CLEANUP] Deleted {deleted_count} old log folders (>{LOG_RETENTION_DAYS} days)")
+        except Exception as e:
+            print(f"[LOG CLEANUP ERROR] {type(e).__name__}: {e}")
 
-    # =========================================================================
-    # Session Header
-    # =========================================================================
+    def _check_date_rotation(self) -> None:
+        """Check if date has changed and rotate to new log folder if needed."""
+        current_date = datetime.now(self._timezone).strftime("%Y-%m-%d")
+
+        if current_date != self.current_date:
+            # Date has changed - rotate to new folder
+            self.current_date = current_date
+            self.log_dir = self.logs_base_dir / self.current_date
+            self.log_dir.mkdir(exist_ok=True)
+            self.log_file = self.log_dir / f"Azab-{self.current_date}.log"
+            self.error_file = self.log_dir / f"Azab-Errors-{self.current_date}.log"
+
+            # Write continuation header to new log files
+            header = (
+                f"\n{'='*60}\n"
+                f"LOG ROTATION - Continuing session {self.run_id}\n"
+                f"{self._get_timestamp()}\n"
+                f"{'='*60}\n\n"
+            )
+            try:
+                with open(self.log_file, "a", encoding="utf-8") as f:
+                    f.write(header)
+                with open(self.error_file, "a", encoding="utf-8") as f:
+                    f.write(header)
+            except (OSError, IOError):
+                pass
 
     def _write_session_header(self) -> None:
-        """
-        Write session start marker to log file.
+        """Write session header to both log file and error log file."""
+        header = (
+            f"\n{'='*60}\n"
+            f"NEW SESSION - RUN ID: {self.run_id}\n"
+            f"{self._get_timestamp()}\n"
+            f"{'='*60}\n\n"
+        )
+        try:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(header)
+            with open(self.error_file, "a", encoding="utf-8") as f:
+                f.write(header)
+        except (OSError, IOError):
+            pass
 
-        DESIGN:
-            Clear visual separator between bot restarts.
-            Includes run ID for correlating logs to specific sessions.
-        """
-        header = f"""
-============================================================
-NEW SESSION - RUN ID: {self.run_id}
-[{datetime.now(NY_TZ).strftime("%I:%M:%S %p %Z")}]
-============================================================
-"""
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write(header)
+    def _send_error_webhook(
+        self,
+        title: str,
+        items: List[Tuple[str, Any]],
+        color: int = COLOR_ERROR,
+        emoji: str = "❌"
+    ) -> None:
+        """Send error to Discord webhook asynchronously."""
+        error_webhook_url = os.getenv("ERROR_WEBHOOK_URL", "")
+        if not error_webhook_url:
+            return
+
+        try:
+            description = "\n".join([f"**{key}:** `{value}`" for key, value in items])
+
+            embed = {
+                "title": f"{emoji} {title}",
+                "description": description,
+                "color": color,
+                "timestamp": datetime.now(self._timezone).isoformat(),
+                "footer": {"text": f"Run ID: {self.run_id}"}
+            }
+
+            payload = {"embeds": [embed]}
+
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._async_send_webhook(payload, error_webhook_url))
+            except RuntimeError:
+                pass
+        except Exception:
+            pass
+
+    async def _async_send_webhook(self, payload: dict, webhook_url: str) -> None:
+        """Send webhook payload asynchronously."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    webhook_url,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    pass
+        except Exception:
+            pass
 
     # =========================================================================
-    # Core Logging
+    # Private Methods - Formatting
     # =========================================================================
 
     def _get_timestamp(self) -> str:
-        """
-        Get current timestamp in Eastern timezone.
+        """Get current timestamp in Eastern timezone (auto EST/EDT)."""
+        try:
+            current_time = datetime.now(self._timezone)
+            tz_name = current_time.strftime("%Z")
+            return current_time.strftime(f"[%I:%M:%S %p {tz_name}]")
+        except Exception:
+            return datetime.now().strftime("[%I:%M:%S %p]")
 
-        Returns:
-            Formatted timestamp string like "[02:30:45 PM EST]".
-        """
-        return datetime.now(NY_TZ).strftime("[%I:%M:%S %p %Z]")
+    def _strip_emojis(self, text: str) -> str:
+        """Remove emojis from text to avoid duplicate emojis in output."""
+        return EMOJI_PATTERN.sub("", text).strip()
 
-    def _write(
-        self,
-        message: str,
-        emoji: str = "",
-        include_timestamp: bool = True,
-        is_error: bool = False,
-    ) -> None:
-        """
-        Write log message to console and file.
+    def _write(self, message: str, emoji: str = "", include_timestamp: bool = True) -> None:
+        """Write log message to both console and file."""
+        self._check_date_rotation()
 
-        DESIGN:
-            All logs go to console for immediate visibility.
-            Main log captures everything.
-            Error log only captures errors for quick troubleshooting.
+        clean_message = self._strip_emojis(message)
 
-        Args:
-            message: Log message content.
-            emoji: Optional emoji prefix.
-            include_timestamp: Whether to prepend timestamp.
-            is_error: Whether to also write to error log.
-        """
         if include_timestamp:
             timestamp = self._get_timestamp()
-            full_message = f"{timestamp} {emoji} {message}" if emoji else f"{timestamp} {message}"
+            full_message = f"{timestamp} {emoji} {clean_message}" if emoji else f"{timestamp} {clean_message}"
         else:
-            full_message = f"{emoji} {message}" if emoji else message
+            full_message = f"{emoji} {clean_message}" if emoji else clean_message
 
         print(full_message)
 
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write(f"{full_message}\n")
+        try:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(f"{full_message}\n")
+        except (OSError, IOError):
+            pass
 
-        if is_error:
+    def _write_raw(self, message: str, also_to_error: bool = False) -> None:
+        """Write raw message without timestamp (for tree branches)."""
+        print(message)
+        try:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(f"{message}\n")
+            if also_to_error:
+                with open(self.error_file, "a", encoding="utf-8") as f:
+                    f.write(f"{message}\n")
+        except (OSError, IOError):
+            pass
+
+    def _write_error(self, message: str, emoji: str = "", include_timestamp: bool = True) -> None:
+        """Write error message to both main log and error log file."""
+        self._check_date_rotation()
+
+        clean_message = self._strip_emojis(message)
+
+        if include_timestamp:
+            timestamp = self._get_timestamp()
+            full_message = f"{timestamp} {emoji} {clean_message}" if emoji else f"{timestamp} {clean_message}"
+        else:
+            full_message = f"{emoji} {clean_message}" if emoji else clean_message
+
+        print(full_message)
+
+        try:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(f"{full_message}\n")
             with open(self.error_file, "a", encoding="utf-8") as f:
                 f.write(f"{full_message}\n")
+        except (OSError, IOError):
+            pass
+
+    def _tree_error(
+        self,
+        title: str,
+        items: List[Tuple[str, Any]],
+        emoji: str = "❌",
+        color: int = COLOR_ERROR
+    ) -> None:
+        """Log structured error data in tree format to both log files and webhook."""
+        if not self._last_was_tree:
+            self._write_raw("", also_to_error=True)
+
+        self._write_error(title, emoji)
+
+        for i, (key, value) in enumerate(items):
+            is_last = i == len(items) - 1
+            prefix = TreeSymbols.LAST if is_last else TreeSymbols.BRANCH
+            self._write_raw(f"  {prefix} {key}: {value}", also_to_error=True)
+
+        self._last_was_tree = True
+        self._send_error_webhook(title, items, color, emoji)
 
     # =========================================================================
-    # Tree Formatting
+    # Public Methods - Log Levels
+    # =========================================================================
+
+    def info(self, msg: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
+        """Log an informational message."""
+        if details:
+            self.tree(msg, details, emoji="ℹ️")
+        else:
+            self._write(msg, "ℹ️")
+            self._last_was_tree = False
+
+    def success(self, msg: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
+        """Log a success message."""
+        if details:
+            self.tree(msg, details, emoji="✅")
+        else:
+            self._write(msg, "✅")
+            self._last_was_tree = False
+
+    def error(self, msg: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
+        """Log an error message (also writes to error log and webhook)."""
+        if details:
+            self._tree_error(msg, details, emoji="❌", color=COLOR_ERROR)
+        else:
+            self._write_error(msg, "❌")
+            self._last_was_tree = False
+            self._send_error_webhook(msg, [("Level", "Error")], COLOR_ERROR, "❌")
+
+    def warning(self, msg: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
+        """Log a warning message (also writes to error log and webhook)."""
+        if details:
+            self._tree_error(msg, details, emoji="⚠️", color=COLOR_WARNING)
+        else:
+            self._write_error(msg, "⚠️")
+            self._last_was_tree = False
+            self._send_error_webhook(msg, [("Level", "Warning")], COLOR_WARNING, "⚠️")
+
+    def debug(self, msg: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
+        """Log a debug message (only if DEBUG env var is set)."""
+        if os.getenv("DEBUG", "").lower() in ("1", "true", "yes"):
+            if details:
+                self.tree(msg, details, emoji="🔍")
+            else:
+                self._write(msg, "🔍")
+                self._last_was_tree = False
+
+    def critical(self, msg: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
+        """Log a critical/fatal error message (also writes to error log and webhook)."""
+        if details:
+            self._tree_error(msg, details, emoji="🚨", color=COLOR_CRITICAL)
+        else:
+            self._write_error(msg, "🚨")
+            self._last_was_tree = False
+            self._send_error_webhook(msg, [("Level", "Critical")], COLOR_CRITICAL, "🚨")
+
+    def exception(self, msg: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
+        """Log an exception with full traceback (also writes to error log and webhook)."""
+        if details:
+            self._tree_error(msg, details, emoji="💥", color=COLOR_CRITICAL)
+        else:
+            self._write_error(msg, "💥")
+            self._send_error_webhook(msg, [("Level", "Exception")], COLOR_CRITICAL, "💥")
+        try:
+            tb = traceback.format_exc()
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(tb)
+                f.write("\n")
+            with open(self.error_file, "a", encoding="utf-8") as f:
+                f.write(tb)
+                f.write("\n")
+        except (OSError, IOError):
+            pass
+
+    # =========================================================================
+    # Public Methods - Tree Formatting
     # =========================================================================
 
     def tree(
         self,
         title: str,
-        items: List[Tuple[str, str]],
-        emoji: str = "📦",
+        items: List[Tuple[str, Any]],
+        emoji: str = "📦"
     ) -> None:
         """
         Log structured data in tree format.
 
-        DESIGN:
-            Visual hierarchy makes logs easy to scan.
-            Title on first line, items indented with tree connectors.
-            Blank lines before/after for visual separation.
+        Example output:
+
+            [12:00:00 PM EST] 📦 Bot Ready
+              ├─ Bot ID: 123456789
+              ├─ Guilds: 5
+              └─ Latency: 50ms
 
         Args:
-            title: Main heading for the tree.
-            items: List of (key, value) tuples to display.
-            emoji: Emoji prefix for the title.
-
-        Example output:
-            [02:30:45 PM EST] 📦 Bot Started
-              ├─ Name: Azab
-              ├─ Guilds: 5
-              └─ Status: Online
+            title: Tree title/header
+            items: List of (key, value) tuples
+            emoji: Emoji prefix for title
         """
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write("\n")
+        if not self._last_was_tree:
+            self._write_raw("")
 
-        self._write(title, emoji=emoji)
+        self._write(title, emoji)
 
         for i, (key, value) in enumerate(items):
-            prefix = "└─" if i == len(items) - 1 else "├─"
-            self._write(f"  {prefix} {key}: {value}", include_timestamp=False)
+            is_last = i == len(items) - 1
+            prefix = TreeSymbols.LAST if is_last else TreeSymbols.BRANCH
+            self._write_raw(f"  {prefix} {key}: {value}")
 
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write("\n")
+        self._write_raw("")
+        self._last_was_tree = True
 
     def tree_nested(
         self,
         title: str,
-        sections: List[Tuple[str, List[Tuple[str, str]]]],
+        data: Dict[str, Any],
         emoji: str = "📦",
+        indent: int = 0
     ) -> None:
         """
-        Log nested tree structure with sections.
-
-        DESIGN:
-            Two-level hierarchy for complex data.
-            Outer level for categories, inner level for details.
-
-        Args:
-            title: Main heading for the tree.
-            sections: List of (section_name, items) tuples.
-            emoji: Emoji prefix for the title.
+        Log nested/hierarchical data in tree format.
 
         Example output:
-            [02:30:45 PM EST] 📦 Configuration
+            [12:00:00 PM EST] 📦 Service Status
               ├─ Discord
-              │  ├─ Token: ****
-              │  └─ Guilds: 5
-              └─ AI
-                 ├─ Model: gpt-4o-mini
-                 └─ Status: Online
-        """
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write("\n")
-
-        self._write(title, emoji=emoji)
-
-        for i, (section_name, items) in enumerate(sections):
-            is_last_section = i == len(sections) - 1
-            section_prefix = "└─" if is_last_section else "├─"
-            self._write(f"  {section_prefix} {section_name}", include_timestamp=False)
-
-            for j, (key, value) in enumerate(items):
-                is_last_item = j == len(items) - 1
-                connector = "   " if is_last_section else "│  "
-                item_prefix = "└─" if is_last_item else "├─"
-                self._write(
-                    f"  {connector} {item_prefix} {key}: {value}",
-                    include_timestamp=False,
-                )
-
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write("\n")
-
-    # =========================================================================
-    # Log Levels
-    # =========================================================================
-
-    def debug(self, msg: str) -> None:
-        """
-        Log debug message (only if DEBUG env var set).
+              │   ├─ Connected: True
+              │   └─ Guilds: 2
+              └─ Database
+                  ├─ Path: /data/azab.db
+                  └─ Status: OK
 
         Args:
-            msg: Debug message content.
+            title: Tree title/header
+            data: Nested dictionary
+            emoji: Emoji prefix for title
+            indent: Current indentation level
         """
-        if os.getenv("DEBUG"):
-            self._write(msg, "🔍")
+        if indent == 0:
+            if not self._last_was_tree:
+                self._write_raw("")
+            self._write(title, emoji)
 
-    def info(self, msg: str) -> None:
-        """
-        Log informational message.
+        items = list(data.items())
+        for i, (key, value) in enumerate(items):
+            is_last = i == len(items) - 1
+            prefix = TreeSymbols.LAST if is_last else TreeSymbols.BRANCH
+            indent_str = "  " * (indent + 1)
 
-        Args:
-            msg: Info message content.
-        """
-        self._write(msg, "ℹ️")
+            if isinstance(value, dict):
+                self._write_raw(f"{indent_str}{prefix} {key}")
+                self._render_nested(value, indent + 1, is_last)
+            else:
+                self._write_raw(f"{indent_str}{prefix} {key}: {value}")
 
-    def success(self, msg: str) -> None:
-        """
-        Log success message.
+        if indent == 0:
+            self._last_was_tree = True
 
-        Args:
-            msg: Success message content.
-        """
-        self._write(msg, "✅")
+    def _render_nested(self, data: Dict[str, Any], indent: int, parent_is_last: bool) -> None:
+        """Recursively render nested tree data."""
+        items = list(data.items())
+        for i, (key, value) in enumerate(items):
+            is_last = i == len(items) - 1
+            prefix = TreeSymbols.LAST if is_last else TreeSymbols.BRANCH
+            indent_str = "  " * indent
 
-    def warning(self, msg: str) -> None:
-        """
-        Log warning message.
+            if isinstance(value, dict):
+                self._write_raw(f"{indent_str}  {prefix} {key}")
+                self._render_nested(value, indent + 1, is_last)
+            else:
+                self._write_raw(f"{indent_str}  {prefix} {key}: {value}")
 
-        Args:
-            msg: Warning message content.
-        """
-        self._write(msg, "⚠️")
-
-    def error(
-        self,
-        msg: str,
-        details: Optional[List[Tuple[str, str]]] = None,
-    ) -> None:
-        """
-        Log error message with optional structured details.
-
-        DESIGN:
-            Errors with details use tree format for visibility.
-            Automatically sends to webhook if configured.
-            Always written to both main and error log files.
-
-        Args:
-            msg: Error message or title.
-            details: Optional list of (key, value) detail tuples.
-        """
-        if details:
-            self._write("", is_error=True)  # Blank line before
-            self._write(msg, "❌", is_error=True)
-            for i, (key, value) in enumerate(details):
-                prefix = "└─" if i == len(details) - 1 else "├─"
-                self._write(
-                    f"  {prefix} {key}: {value}",
-                    include_timestamp=False,
-                    is_error=True,
-                )
-            self._write("", include_timestamp=False, is_error=True)  # Blank line after
-
-            # Send to webhook
-            if self._webhook_url:
-                asyncio.create_task(self._send_webhook_error(msg, details))
-        else:
-            self._write(msg, "❌", is_error=True)
-
-    def critical(self, msg: str) -> None:
-        """
-        Log critical error message.
-
-        Args:
-            msg: Critical error message content.
-        """
-        self._write(msg, "🚨", is_error=True)
-
-    # =========================================================================
-    # Webhook Integration
-    # =========================================================================
-
-    async def _send_webhook_error(
+    def tree_list(
         self,
         title: str,
-        details: List[Tuple[str, str]],
+        items: List[str],
+        emoji: str = "📋"
     ) -> None:
         """
-        Send error notification to Discord webhook.
+        Log a simple list in tree format.
 
-        DESIGN:
-            Non-blocking async operation to avoid log delays.
-            Includes run ID for session correlation.
-            Gracefully handles webhook failures.
+        Example output:
+            [12:00:00 PM EST] 📋 Active Services
+              ├─ AI Service
+              ├─ Mod Tracker
+              └─ Health Server
 
         Args:
-            title: Error title for the embed.
-            details: List of (key, value) detail tuples.
+            title: Tree title/header
+            items: List of string items
+            emoji: Emoji prefix for title
         """
-        if not self._webhook_url:
-            return
+        if not self._last_was_tree:
+            self._write_raw("")
 
-        try:
-            description = "\n".join([f"**{k}:** {v}" for k, v in details])
-            payload = {
-                "embeds": [{
-                    "title": f"❌ {title}",
-                    "description": description,
-                    "color": 0xFF0000,
-                    "timestamp": datetime.now(NY_TZ).isoformat(),
-                    "footer": {"text": f"Run ID: {self.run_id}"},
-                }]
-            }
+        self._write(title, emoji)
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self._webhook_url,
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
-                    if resp.status != 204:
-                        print(f"Webhook error: {resp.status}")
+        for i, item in enumerate(items):
+            is_last = i == len(items) - 1
+            prefix = TreeSymbols.LAST if is_last else TreeSymbols.BRANCH
+            self._write_raw(f"  {prefix} {item}")
 
-        except Exception as e:
-            print(f"Failed to send webhook: {e}")
+        self._last_was_tree = True
 
+    def tree_section(
+        self,
+        title: str,
+        sections: Dict[str, List[Tuple[str, Any]]],
+        emoji: str = "📊"
+    ) -> None:
+        """
+        Log multiple sections in tree format.
 
-# =============================================================================
-# Global Instance
-# =============================================================================
+        Example output:
+            [12:00:00 PM EST] 📊 Bot Stats
+              ├─ Services
+              │   ├─ AI: Online
+              │   └─ Mod Tracker: Enabled
+              └─ System
+                  ├─ Uptime: 2h
+                  └─ Memory: 50MB
 
-logger = TreeLogger()
-"""
-Global logger instance for use throughout the application.
+        Args:
+            title: Tree title/header
+            sections: Dict of section_name -> [(key, value), ...]
+            emoji: Emoji prefix for title
+        """
+        if not self._last_was_tree:
+            self._write_raw("")
 
-DESIGN:
-    Single instance created at module import time.
-    All modules import and use this same instance.
-"""
+        self._write(title, emoji)
+
+        section_names = list(sections.keys())
+        for si, section_name in enumerate(section_names):
+            section_is_last = si == len(section_names) - 1
+            section_prefix = TreeSymbols.LAST if section_is_last else TreeSymbols.BRANCH
+            self._write_raw(f"  {section_prefix} {section_name}")
+
+            items = sections[section_name]
+            for ii, (key, value) in enumerate(items):
+                item_is_last = ii == len(items) - 1
+                item_prefix = TreeSymbols.LAST if item_is_last else TreeSymbols.BRANCH
+                continuation = TreeSymbols.SPACE if section_is_last else TreeSymbols.PIPE
+                self._write_raw(f"  {continuation} {item_prefix} {key}: {value}")
+
+        self._last_was_tree = True
+
+    def error_tree(
+        self,
+        title: str,
+        error: Exception,
+        context: Optional[List[Tuple[str, Any]]] = None
+    ) -> None:
+        """
+        Log an error with context in tree format.
+
+        Example output:
+            [12:00:00 PM EST] ❌ Database Error
+              ├─ Type: ConnectionError
+              ├─ Message: Failed to connect
+              ├─ User ID: 123456
+              └─ Action: record_mute
+
+        Args:
+            title: Error title/description
+            error: The exception that occurred
+            context: Additional context as (key, value) tuples
+        """
+        items: List[Tuple[str, Any]] = [
+            ("Type", type(error).__name__),
+            ("Message", str(error)),
+        ]
+
+        if context:
+            items.extend(context)
+
+        self._tree_error(title, items, emoji="❌")
+
+    def startup_tree(
+        self,
+        bot_name: str,
+        bot_id: int,
+        guilds: int,
+        latency: float,
+        extra: Optional[List[Tuple[str, Any]]] = None
+    ) -> None:
+        """
+        Log bot startup information in tree format.
+
+        Args:
+            bot_name: Name of the bot
+            bot_id: Discord bot ID
+            guilds: Number of guilds
+            latency: WebSocket latency in ms
+            extra: Additional startup info
+        """
+        items: List[Tuple[str, Any]] = [
+            ("Bot ID", bot_id),
+            ("Guilds", guilds),
+            ("Latency", f"{latency:.0f}ms"),
+            ("Run ID", self.run_id),
+        ]
+
+        if extra:
+            items.extend(extra)
+
+        self.tree(f"Bot Ready: {bot_name}", items, emoji="🤖")
+
+    def mute_tree(
+        self,
+        action: str,
+        user: str,
+        moderator: str,
+        duration: str,
+        extra: Optional[List[Tuple[str, Any]]] = None
+    ) -> None:
+        """
+        Log mute events in a standardized tree format.
+
+        Example output:
+            [12:00:00 PM EST] 🔇 User Muted
+              ├─ User: @someone
+              ├─ Moderator: @mod
+              ├─ Duration: 1h
+              └─ Reason: Spam
+
+        Args:
+            action: What happened (User Muted, User Unmuted, etc.)
+            user: Target user
+            moderator: Mod who performed action
+            duration: Mute duration
+            extra: Additional context
+        """
+        items: List[Tuple[str, Any]] = [
+            ("User", user),
+            ("Moderator", moderator),
+            ("Duration", duration),
+        ]
+
+        if extra:
+            items.extend(extra)
+
+        self.tree(action, items, emoji="🔇")
 
 
 # =============================================================================
 # Module Export
 # =============================================================================
 
-__all__ = [
-    "logger",
-    "TreeLogger",
-]
+logger = MiniTreeLogger()
+
+__all__ = ["logger", "MiniTreeLogger", "TreeSymbols"]

@@ -22,6 +22,7 @@ from typing import Optional, Dict, Any, List, TYPE_CHECKING
 
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ, EmbedColors
+from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -160,10 +161,10 @@ class PrisonHandler:
             # Get prisoner stats for personalized message
             prisoner_stats = await self.bot.db.get_prisoner_stats(member.id)
 
-            # Generate AI welcome message
-            response = await self._generate_welcome_message(
-                member, mute_reason, prisoner_stats
-            )
+            # AI welcome message - DISABLED
+            # response = await self._generate_welcome_message(
+            #     member, mute_reason, prisoner_stats
+            # )
 
             # Create welcome embed
             embed = discord.Embed(
@@ -191,9 +192,9 @@ class PrisonHandler:
             embed.set_thumbnail(
                 url=member.avatar.url if member.avatar else member.default_avatar.url
             )
-            embed.set_footer(text=f"Developed By: {self.config.developer_name}")
+            set_footer(embed)
 
-            await prison_channel.send(f"{member.mention} {response}", embed=embed)
+            await prison_channel.send(member.mention, embed=embed)
 
             # Update presence
             if self.bot.presence_handler:
@@ -235,13 +236,12 @@ class PrisonHandler:
 
     async def handle_prisoner_release(self, member: discord.Member) -> None:
         """
-        Handle prisoner release with farewell message.
+        Handle prisoner release cleanup (no automated message).
 
-        DESIGN: Multi-step process:
-        1. Generate AI release message
-        2. Post to general channel
-        3. Update database
-        4. Schedule message cleanup
+        DESIGN: Only handles cleanup - /unmute command sends its own embed.
+        1. Update database
+        2. Cleanup tracking data
+        3. Schedule message cleanup
         """
         try:
             logger.tree("Processing Prisoner Release", [
@@ -249,52 +249,7 @@ class PrisonHandler:
                 ("User ID", str(member.id)),
             ], emoji="🔓")
 
-            general_channel = self.bot.get_channel(self.config.general_channel_id)
-            if not general_channel:
-                logger.error("General Channel Not Found", [
-                    ("Channel ID", str(self.config.general_channel_id)),
-                ])
-                return
-
-            mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(
-                member.name.lower()
-            )
-
-            prisoner_stats = await self.bot.db.get_prisoner_stats(member.id)
             current_duration = await self.bot.db.get_current_mute_duration(member.id)
-
-            # Generate AI release message
-            response = await self._generate_release_message(member, mute_reason)
-
-            # Create release embed
-            embed = discord.Embed(
-                title="PRISONER RELEASED",
-                description=f"{member.mention}",
-                color=EmbedColors.RELEASE,
-            )
-
-            if mute_reason:
-                embed.add_field(
-                    name="Released From",
-                    value=mute_reason[:self.config.mute_reason_max_length],
-                    inline=False,
-                )
-
-            if prisoner_stats["total_mutes"] > 0:
-                embed.add_field(
-                    name="Total Visits",
-                    value=str(prisoner_stats["total_mutes"]),
-                    inline=True,
-                )
-                time_served = format_duration(current_duration) if current_duration > 0 else "< 1 minute"
-                embed.add_field(name="Time Served", value=time_served, inline=True)
-
-            embed.set_thumbnail(
-                url=member.avatar.url if member.avatar else member.default_avatar.url
-            )
-            embed.set_footer(text=f"Developed By: {self.config.developer_name}")
-
-            await general_channel.send(f"{member.mention} {response}", embed=embed)
 
             # Update presence
             if self.bot.presence_handler:
@@ -368,11 +323,11 @@ class PrisonHandler:
                         timedelta(minutes=timeout_minutes),
                         reason=f"Prisoner VC violation #{kick_count}"
                     )
-                    logger.info("Timeout Applied", [
+                    logger.tree("Timeout Applied", [
                         ("User", str(member)),
                         ("Duration", f"{timeout_minutes}min"),
                         ("Offense #", str(kick_count)),
-                    ])
+                    ], emoji="⏱️")
                 except discord.Forbidden:
                     pass
 
@@ -401,9 +356,7 @@ class PrisonHandler:
             ], emoji="🔇")
 
         except discord.Forbidden:
-            logger.warning("VC Kick Failed (Permissions)", [
-                ("User", str(member)),
-            ])
+            logger.warning(f"VC Kick Failed (Permissions): {member}")
 
     # =========================================================================
     # Helper Methods
@@ -442,12 +395,12 @@ class PrisonHandler:
             embed.set_thumbnail(
                 url=member.avatar.url if member.avatar else member.default_avatar.url
             )
-            embed.set_footer(text=f"Developed By: {self.config.developer_name}")
+            set_footer(embed)
 
             await channel.send(f"{member.mention} {mute_announcement}", embed=embed)
 
         except Exception as e:
-            logger.warning("Mute Notification Failed", [("Error", str(e))])
+            logger.warning(f"Mute Notification Failed: {e}")
 
     async def _scan_logs_for_reason(
         self,
@@ -462,7 +415,7 @@ class PrisonHandler:
                     if member.id in self.mute_reasons or member.name.lower() in self.mute_reasons:
                         break
         except Exception as e:
-            logger.warning("Log Scan Failed", [("Error", str(e))])
+            logger.warning(f"Log Scan Failed: {e}")
 
     async def _generate_welcome_message(
         self,

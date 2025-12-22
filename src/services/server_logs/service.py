@@ -12,18 +12,78 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional, Dict, List, Tuple, Union
 import asyncio
 import io
+import re
 
 import aiohttp
 import discord
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
+from src.core.database import get_db
 
 # Import from local package
 from .categories import LogCategory, THREAD_DESCRIPTIONS
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
+
+
+# =============================================================================
+# UI Constants
+# =============================================================================
+
+USERID_EMOJI = "<:userid:1452512424354643969>"
+
+
+# =============================================================================
+# Persistent Views
+# =============================================================================
+
+class UserIdButton(discord.ui.DynamicItem[discord.ui.Button], template=r"log_userid:(?P<user_id>\d+)"):
+    """Button that shows a user's ID in a copyable format."""
+
+    def __init__(self, user_id: int):
+        super().__init__(
+            discord.ui.Button(
+                label="UserID",
+                style=discord.ButtonStyle.secondary,
+                emoji=USERID_EMOJI,
+                custom_id=f"log_userid:{user_id}",
+            )
+        )
+        self.user_id = user_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match: re.Match[str],
+    ) -> "UserIdButton":
+        """Reconstruct the button from the custom_id regex match."""
+        user_id = int(match.group("user_id"))
+        return cls(user_id)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Send user ID as plain text (not embed) for mobile copy support."""
+        await interaction.response.send_message(
+            f"`{self.user_id}`",
+            ephemeral=True,
+        )
+
+
+class LogView(discord.ui.View):
+    """Persistent view for log embeds with UserID button."""
+
+    def __init__(self, user_id: int):
+        super().__init__(timeout=None)
+        self.add_item(UserIdButton(user_id))
+
+
+def setup_log_views(bot: "AzabBot") -> None:
+    """Register persistent views for log buttons. Call this on bot startup."""
+    # Add a dynamic view that handles all log_userid:* patterns
+    bot.add_dynamic_items(UserIdButton)
 
 
 # =============================================================================
@@ -53,6 +113,8 @@ class LoggingService:
         self._forum: Optional[discord.ForumChannel] = None
         self._threads: Dict[LogCategory, discord.Thread] = {}
         self._initialized = False
+        # Cache to track join log messages for later editing (user_id -> message_id)
+        self._join_messages: Dict[int, int] = {}
 
         logger.tree("Logging Service Created", [
             ("Enabled", str(self.enabled)),
@@ -221,6 +283,49 @@ class LoggingService:
             reason = reason[:497] + "..."
         return f"```{reason}```"
 
+    def _format_duration_precise(self, seconds: int) -> str:
+        """
+        Format duration with precision (seconds, minutes, hours, days, etc).
+
+        Args:
+            seconds: Duration in seconds.
+
+        Returns:
+            Human-readable duration string.
+        """
+        if seconds < 60:
+            return f"{seconds} second{'s' if seconds != 1 else ''}"
+        elif seconds < 3600:
+            minutes = seconds // 60
+            secs = seconds % 60
+            if secs > 0:
+                return f"{minutes}m {secs}s"
+            return f"{minutes} minute{'s' if minutes != 1 else ''}"
+        elif seconds < 86400:
+            hours = seconds // 3600
+            minutes = (seconds % 3600) // 60
+            if minutes > 0:
+                return f"{hours}h {minutes}m"
+            return f"{hours} hour{'s' if hours != 1 else ''}"
+        elif seconds < 2592000:  # Less than 30 days
+            days = seconds // 86400
+            hours = (seconds % 86400) // 3600
+            if hours > 0:
+                return f"{days}d {hours}h"
+            return f"{days} day{'s' if days != 1 else ''}"
+        elif seconds < 31536000:  # Less than 365 days
+            months = seconds // 2592000
+            days = (seconds % 2592000) // 86400
+            if days > 0:
+                return f"{months}mo {days}d"
+            return f"{months} month{'s' if months != 1 else ''}"
+        else:
+            years = seconds // 31536000
+            remaining_days = (seconds % 31536000) // 86400
+            if remaining_days > 0:
+                return f"{years}y {remaining_days}d"
+            return f"{years} year{'s' if years != 1 else ''}"
+
     def _set_user_thumbnail(self, embed: discord.Embed, user: Union[discord.User, discord.Member]) -> None:
         """Set user avatar as thumbnail if available."""
         try:
@@ -234,20 +339,23 @@ class LoggingService:
         category: LogCategory,
         embed: discord.Embed,
         files: Optional[List[discord.File]] = None,
-    ) -> bool:
-        """Send a log to the appropriate thread."""
+        user_id: Optional[int] = None,
+    ) -> Optional[discord.Message]:
+        """Send a log to the appropriate thread. Returns the message if successful."""
         if not self._initialized or category not in self._threads:
-            return False
+            return None
 
         try:
             thread = self._threads[category]
-            await thread.send(embed=embed, files=files or [])
-            return True
+            # Create view with UserID button if user_id is provided
+            view = LogView(user_id) if user_id else None
+            message = await thread.send(embed=embed, files=files or [], view=view)
+            return message
         except discord.Forbidden:
-            return False
+            return None
         except Exception as e:
             logger.debug(f"Logging Service: Send failed: {e}")
-            return False
+            return None
 
     # =========================================================================
     # Bans & Kicks
@@ -270,7 +378,7 @@ class LoggingService:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.BANS_KICKS, embed)
+        await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id)
 
     async def log_unban(
         self,
@@ -289,7 +397,7 @@ class LoggingService:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.BANS_KICKS, embed)
+        await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id)
 
     async def log_kick(
         self,
@@ -308,7 +416,7 @@ class LoggingService:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.BANS_KICKS, embed)
+        await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id)
 
     # =========================================================================
     # Mutes & Timeouts
@@ -348,7 +456,7 @@ class LoggingService:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed)
+        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
 
     async def log_timeout_remove(
         self,
@@ -365,7 +473,7 @@ class LoggingService:
             embed.add_field(name="Moderator", value=moderator.mention, inline=True)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed)
+        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
 
     async def log_mute(
         self,
@@ -384,7 +492,7 @@ class LoggingService:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed)
+        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
 
     async def log_unmute(
         self,
@@ -401,7 +509,7 @@ class LoggingService:
             embed.add_field(name="Moderator", value=moderator.mention, inline=True)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed)
+        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
 
     # =========================================================================
     # Message Logs
@@ -439,7 +547,7 @@ class LoggingService:
             for filename, data in attachments[:5]:  # Max 5 files
                 files.append(discord.File(io.BytesIO(data), filename=filename))
 
-        await self._send_log(LogCategory.MESSAGES, embed, files)
+        await self._send_log(LogCategory.MESSAGES, embed, files, user_id=message.author.id)
 
     async def log_message_edit(
         self,
@@ -471,7 +579,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, after.author)
 
-        await self._send_log(LogCategory.MESSAGES, embed)
+        await self._send_log(LogCategory.MESSAGES, embed, user_id=after.author.id)
 
     async def log_bulk_delete(
         self,
@@ -505,6 +613,10 @@ class LoggingService:
         if not self._should_log(member.guild.id):
             return
 
+        # Record join and get count
+        db = get_db()
+        join_count = db.record_member_join(member.id, member.guild.id)
+
         embed = self._create_embed("📥 Member Joined", EmbedColors.SUCCESS, category="Join", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
 
@@ -517,9 +629,16 @@ class LoggingService:
         if inviter:
             embed.add_field(name="Invited By", value=inviter.mention, inline=True)
 
+        # Join counter
+        if join_count > 1:
+            embed.add_field(name="Join #", value=f"```{join_count}```", inline=True)
+
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.JOINS, embed)
+        message = await self._send_log(LogCategory.JOINS, embed, user_id=member.id)
+        # Store message ID for later editing when member verifies
+        if message:
+            self._join_messages[member.id] = message.id
 
     # =========================================================================
     # Member Leaves
@@ -530,8 +649,15 @@ class LoggingService:
         member: discord.Member,
     ) -> None:
         """Log a member leave with detailed info."""
+        # Clean up join message cache
+        self._join_messages.pop(member.id, None)
+
         if not self._should_log(member.guild.id):
             return
+
+        # Record leave and get count
+        db = get_db()
+        leave_count = db.record_member_leave(member.id, member.guild.id)
 
         embed = self._create_embed("📤 Member Left", EmbedColors.ERROR, category="Leave", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
@@ -545,24 +671,15 @@ class LoggingService:
             joined = int(member.joined_at.timestamp())
             embed.add_field(name="Joined Server", value=f"<t:{joined}:R>", inline=True)
 
-            # Calculate duration - simple subtraction
+            # Calculate duration with precise formatting
             total_seconds = int(datetime.now().timestamp() - member.joined_at.timestamp())
             total_seconds = max(0, total_seconds)  # Safety: ensure positive
-
-            days = total_seconds // 86400
-            hours = (total_seconds % 86400) // 3600
-
-            if days >= 365:
-                years = days // 365
-                remaining_days = days % 365
-                duration_str = f"{years}y {remaining_days}d"
-            elif days >= 30:
-                months = days // 30
-                remaining_days = days % 30
-                duration_str = f"{months}mo {remaining_days}d"
-            else:
-                duration_str = f"{days}d {hours}h"
+            duration_str = self._format_duration_precise(total_seconds)
             embed.add_field(name="Time in Server", value=f"`{duration_str}`", inline=True)
+
+        # Leave counter
+        if leave_count > 1:
+            embed.add_field(name="Leave #", value=f"```{leave_count}```", inline=True)
 
         # Role list with count
         roles = [r for r in member.roles if r.name != "@everyone"]
@@ -576,7 +693,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.LEAVES, embed)
+        await self._send_log(LogCategory.LEAVES, embed, user_id=member.id)
 
     # =========================================================================
     # Role Changes
@@ -599,7 +716,7 @@ class LoggingService:
             embed.add_field(name="By", value=moderator.mention, inline=True)
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.ROLE_CHANGES, embed)
+        await self._send_log(LogCategory.ROLE_CHANGES, embed, user_id=member.id)
 
     async def log_role_remove(
         self,
@@ -618,7 +735,7 @@ class LoggingService:
             embed.add_field(name="By", value=moderator.mention, inline=True)
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.ROLE_CHANGES, embed)
+        await self._send_log(LogCategory.ROLE_CHANGES, embed, user_id=member.id)
 
     # =========================================================================
     # Name Changes
@@ -640,7 +757,7 @@ class LoggingService:
         embed.add_field(name="After", value=f"`{after}`" if after else "*(none)*", inline=True)
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.NAME_CHANGES, embed)
+        await self._send_log(LogCategory.NAME_CHANGES, embed, user_id=member.id)
 
     async def log_username_change(
         self,
@@ -658,7 +775,7 @@ class LoggingService:
         embed.add_field(name="After", value=f"`{after}`", inline=True)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.NAME_CHANGES, embed)
+        await self._send_log(LogCategory.NAME_CHANGES, embed, user_id=user.id)
 
     # =========================================================================
     # Avatar Changes
@@ -696,7 +813,7 @@ class LoggingService:
             embed.set_image(url=after_url)
             embed.add_field(name="New", value="See image below ↓", inline=True)
 
-        await self._send_log(LogCategory.AVATAR_CHANGES, embed, files)
+        await self._send_log(LogCategory.AVATAR_CHANGES, embed, files, user_id=user.id)
 
     # =========================================================================
     # Voice Activity
@@ -720,7 +837,7 @@ class LoggingService:
         embed.add_field(name="Channel", value=f"🔊 {channel.name}", inline=True)
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.VOICE, embed)
+        await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
 
     async def log_voice_leave(
         self,
@@ -740,7 +857,7 @@ class LoggingService:
         embed.add_field(name="Channel", value=f"🔊 {channel.name}", inline=True)
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.VOICE, embed)
+        await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
 
     async def log_voice_move(
         self,
@@ -762,7 +879,7 @@ class LoggingService:
         embed.add_field(name="To", value=f"🔊 {after.name}", inline=True)
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.VOICE, embed)
+        await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
 
     async def log_voice_mute(
         self,
@@ -784,7 +901,7 @@ class LoggingService:
             embed.add_field(name="By", value=moderator.mention, inline=True)
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.VOICE, embed)
+        await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
 
     async def log_voice_deafen(
         self,
@@ -806,7 +923,7 @@ class LoggingService:
             embed.add_field(name="By", value=moderator.mention, inline=True)
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.VOICE, embed)
+        await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
 
     # =========================================================================
     # Channel Changes
@@ -1113,7 +1230,7 @@ class LoggingService:
             embed.add_field(name="By", value=moderator.mention, inline=True)
         self._set_user_thumbnail(embed, bot)
 
-        await self._send_log(LogCategory.BOTS_INTEGRATIONS, embed)
+        await self._send_log(LogCategory.BOTS_INTEGRATIONS, embed, user_id=bot.id)
 
     async def log_bot_remove(
         self,
@@ -1130,7 +1247,7 @@ class LoggingService:
         if moderator:
             embed.add_field(name="By", value=moderator.mention, inline=True)
 
-        await self._send_log(LogCategory.BOTS_INTEGRATIONS, embed)
+        await self._send_log(LogCategory.BOTS_INTEGRATIONS, embed, user_id=bot_id)
 
     async def log_integration_add(
         self,
@@ -1303,7 +1420,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.AUTOMOD, embed)
+        await self._send_log(LogCategory.AUTOMOD, embed, user_id=user.id)
 
     async def log_automod_block(
         self,
@@ -1333,7 +1450,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.AUTOMOD, embed)
+        await self._send_log(LogCategory.AUTOMOD, embed, user_id=user.id)
 
     # =========================================================================
     # Scheduled Events
@@ -1466,7 +1583,7 @@ class LoggingService:
             tags = ", ".join([f"`{tag.name}`" for tag in thread.applied_tags[:5]])
             embed.add_field(name="Tags", value=tags, inline=False)
 
-        await self._send_log(LogCategory.THREADS, embed)
+        await self._send_log(LogCategory.THREADS, embed, user_id=user_id)
 
     # =========================================================================
     # Reactions
@@ -1495,7 +1612,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.REACTIONS, embed)
+        await self._send_log(LogCategory.REACTIONS, embed, user_id=user.id)
 
     async def log_reaction_remove(
         self,
@@ -1514,7 +1631,7 @@ class LoggingService:
         embed.add_field(name="Message", value=f"[Jump]({message.jump_url})", inline=True)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.REACTIONS, embed)
+        await self._send_log(LogCategory.REACTIONS, embed, user_id=user.id)
 
     async def log_reaction_clear(
         self,
@@ -1614,7 +1731,7 @@ class LoggingService:
         embed.add_field(name="Stage", value=self._format_channel(channel), inline=True)
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.STAGE, embed)
+        await self._send_log(LogCategory.STAGE, embed, user_id=member.id)
 
     # =========================================================================
     # Message Pin/Unpin
@@ -1649,7 +1766,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, message.author)
 
-        await self._send_log(LogCategory.MESSAGES, embed)
+        await self._send_log(LogCategory.MESSAGES, embed, user_id=message.author.id)
 
     # =========================================================================
     # Server Boosts
@@ -1681,7 +1798,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.BOOSTS, embed)
+        await self._send_log(LogCategory.BOOSTS, embed, user_id=member.id)
 
     async def log_unboost(
         self,
@@ -1709,7 +1826,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.BOOSTS, embed)
+        await self._send_log(LogCategory.BOOSTS, embed, user_id=member.id)
 
     # =========================================================================
     # Invite Activity
@@ -1813,7 +1930,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.VOICE, embed)
+        await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
 
     async def log_server_voice_deafen(
         self,
@@ -1839,7 +1956,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.VOICE, embed)
+        await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
 
     # =========================================================================
     # Member Verification (Membership Screening)
@@ -1849,25 +1966,28 @@ class LoggingService:
         self,
         member: discord.Member,
     ) -> None:
-        """Log a member passing membership screening."""
-        if not self.enabled:
+        """Edit the original join embed to add [Verified] when member passes screening."""
+        if not self._initialized or LogCategory.JOINS not in self._threads:
             return
 
-        embed = self._create_embed("✅ Member Verified", EmbedColors.SUCCESS, category="Verification", user_id=member.id)
-        embed.add_field(name="User", value=self._format_user_field(member), inline=True)
+        # Check if we have the original join message cached
+        message_id = self._join_messages.pop(member.id, None)
+        if not message_id:
+            return
 
-        # Account age
-        created = int(member.created_at.timestamp())
-        embed.add_field(name="Account Created", value=f"<t:{created}:R>", inline=True)
+        try:
+            thread = self._threads[LogCategory.JOINS]
+            message = await thread.fetch_message(message_id)
 
-        # Time since join
-        if member.joined_at:
-            joined = int(member.joined_at.timestamp())
-            embed.add_field(name="Joined", value=f"<t:{joined}:R>", inline=True)
-
-        self._set_user_thumbnail(embed, member)
-
-        await self._send_log(LogCategory.JOINS, embed)
+            if message.embeds:
+                embed = message.embeds[0]
+                # Update title to add [Verified]
+                embed.title = "📥 Member Joined [Verified] ✅"
+                await message.edit(embed=embed)
+        except discord.NotFound:
+            pass  # Message was deleted
+        except Exception as e:
+            logger.debug(f"Logging Service: Failed to edit join message: {e}")
 
     # =========================================================================
     # Nickname Force Change (by mod)
@@ -1894,7 +2014,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, target)
 
-        await self._send_log(LogCategory.NAME_CHANGES, embed)
+        await self._send_log(LogCategory.NAME_CHANGES, embed, user_id=target.id)
 
     # =========================================================================
     # Voice Disconnect (by mod)
@@ -1918,7 +2038,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, target)
 
-        await self._send_log(LogCategory.VOICE, embed)
+        await self._send_log(LogCategory.VOICE, embed, user_id=target.id)
 
     # =========================================================================
     # Mod Message Delete
@@ -1991,7 +2111,7 @@ class LoggingService:
             for filename, data in attachments[:5]:
                 files.append(discord.File(io.BytesIO(data), filename=filename))
 
-        await self._send_log(LogCategory.MESSAGES, embed, files)
+        await self._send_log(LogCategory.MESSAGES, embed, files, user_id=author.id)
 
     # =========================================================================
     # Slowmode Changes
@@ -2229,4 +2349,4 @@ class LoggingService:
 # Module Export
 # =============================================================================
 
-__all__ = ["LoggingService", "LogCategory"]
+__all__ = ["LoggingService", "LogCategory", "LogView", "UserIdButton", "setup_log_views"]

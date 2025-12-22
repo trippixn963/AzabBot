@@ -24,8 +24,8 @@ if TYPE_CHECKING:
 # Constants
 # =============================================================================
 
-FOOTER_TEXT = "discord.gg/syria"
-"""Footer text displayed on all embeds."""
+FOOTER_TEXT = "trippixn.com/azab"
+"""Footer text displayed on all user-facing embeds."""
 
 
 # =============================================================================
@@ -123,9 +123,7 @@ async def refresh_avatar() -> None:
     """
     global _cached_avatar_url
     if not _bot_ref:
-        logger.warning("Footer Avatar Refresh Skipped", [
-            ("Reason", "Bot reference not set"),
-        ])
+        logger.warning("Footer Avatar Refresh Skipped: Bot reference not set")
         return
 
     old_url = _cached_avatar_url

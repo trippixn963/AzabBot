@@ -1524,6 +1524,72 @@ class ModTrackerService:
                 ("Target", target.display_name),
             ], emoji="🔊")
 
+    async def log_management_mute_attempt(
+        self,
+        mod: discord.Member,
+        target: discord.Member,
+    ) -> None:
+        """
+        Secret log when a management member tries to mute another management member.
+
+        DESIGN:
+            This is a silent alert - the mod doesn't know they're being tracked.
+            Only logs to their thread and pings developer.
+        """
+        if not self.enabled:
+            return
+
+        tracked = self.db.get_tracked_mod(mod.id)
+        if not tracked:
+            return
+
+        embed = self._create_embed(
+            title="🚨 Management Violation Attempt",
+            color=0xFF0000,  # Red
+            mod_avatar_url=mod.display_avatar.url,
+        )
+        self._add_mod_field(embed, mod)
+
+        embed.add_field(
+            name="Attempted Target",
+            value=f"{target.mention}\n`{target.name}` ({target.id})",
+            inline=True,
+        )
+        embed.add_field(
+            name="Violation",
+            value="Attempted to mute another management member",
+            inline=False,
+        )
+
+        now = datetime.now(NY_TZ)
+        embed.add_field(
+            name="Time",
+            value=f"<t:{int(now.timestamp())}:F>",
+            inline=True,
+        )
+
+        # Add target's avatar as image
+        embed.set_image(url=target.display_avatar.url)
+
+        thread = await self._get_mod_thread(tracked["thread_id"])
+        if thread:
+            try:
+                if thread.archived:
+                    await thread.edit(archived=False)
+
+                # Send embed first
+                await thread.send(embed=embed)
+
+                # Ping developer separately (silent alert)
+                developer_ping = f"<@{self.config.developer_id}>"
+                await thread.send(developer_ping)
+
+            except Exception as e:
+                logger.error("Mod Tracker: Failed To Log Management Violation", [
+                    ("Mod", mod.display_name),
+                    ("Error", str(e)[:50]),
+                ])
+
     # =========================================================================
     # Mod Action Logging (Timeout/Kick/Ban)
     # =========================================================================

@@ -32,9 +32,202 @@ import re
 from src.core.logger import logger
 from src.core.config import get_config, is_developer, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
+
+
+# =============================================================================
+# UI Constants
+# =============================================================================
+
+CASE_EMOJI = "<:case:1452426909077213255>"
+"""Custom emoji for case button."""
+
+INFO_EMOJI = "<:info:1452510787817046197>"
+"""Custom emoji for info button."""
+
+
+# =============================================================================
+# View Classes
+# =============================================================================
+
+class MuteInfoButton(discord.ui.Button):
+    """Info button that shows user details when clicked."""
+
+    def __init__(self, user_id: int, guild_id: int):
+        super().__init__(
+            label="Info",
+            style=discord.ButtonStyle.secondary,
+            emoji=INFO_EMOJI,
+            custom_id=f"mute_info:{user_id}:{guild_id}",
+        )
+        self.target_user_id = user_id
+        self.target_guild_id = guild_id
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Show user info embed when clicked."""
+        db = get_db()
+
+        # Get member from guild
+        guild = interaction.client.get_guild(self.target_guild_id)
+        if not guild:
+            await interaction.response.send_message(
+                "Could not find guild.",
+                ephemeral=True,
+            )
+            return
+
+        member = guild.get_member(self.target_user_id)
+
+        # Build info embed
+        embed = discord.Embed(
+            title="📋 User Info",
+            color=EmbedColors.INFO,
+        )
+
+        if member:
+            embed.set_thumbnail(url=member.display_avatar.url)
+            embed.add_field(name="Username", value=f"`{member.name}`", inline=True)
+            embed.add_field(name="Display Name", value=f"`{member.display_name}`", inline=True)
+            embed.add_field(name="User ID", value=f"`{member.id}`", inline=True)
+
+            # Discord account creation
+            embed.add_field(
+                name="Discord Joined",
+                value=f"<t:{int(member.created_at.timestamp())}:R>",
+                inline=True,
+            )
+
+            # Server join date
+            if member.joined_at:
+                embed.add_field(
+                    name="Server Joined",
+                    value=f"<t:{int(member.joined_at.timestamp())}:R>",
+                    inline=True,
+                )
+
+            # Account age
+            from datetime import datetime
+            now = datetime.now(NY_TZ)
+            created_at = member.created_at.replace(tzinfo=NY_TZ) if member.created_at.tzinfo is None else member.created_at
+            age_days = (now - created_at).days
+            if age_days < 30:
+                age_str = f"{age_days} days"
+            elif age_days < 365:
+                age_str = f"{age_days // 30} months"
+            else:
+                age_str = f"{age_days // 365} years, {(age_days % 365) // 30} months"
+            embed.add_field(name="Account Age", value=f"`{age_str}`", inline=True)
+        else:
+            # User left the server
+            try:
+                user = await interaction.client.fetch_user(self.target_user_id)
+                embed.set_thumbnail(url=user.display_avatar.url)
+                embed.add_field(name="Username", value=f"`{user.name}`", inline=True)
+                embed.add_field(name="User ID", value=f"`{user.id}`", inline=True)
+                embed.add_field(name="Status", value="⚠️ Left Server", inline=True)
+            except Exception:
+                embed.add_field(name="User ID", value=f"`{self.target_user_id}`", inline=True)
+                embed.add_field(name="Status", value="⚠️ User Not Found", inline=True)
+
+        # Mute count
+        mute_count = db.get_user_mute_count(self.target_user_id, self.target_guild_id)
+        embed.add_field(
+            name="Total Mutes",
+            value=f"`{mute_count}`" if mute_count > 0 else "`0`",
+            inline=True,
+        )
+
+        # Warning for repeat offenders
+        if mute_count >= 3:
+            embed.add_field(
+                name="⚠️ Warning",
+                value=f"Repeat offender with {mute_count} mutes",
+                inline=False,
+            )
+
+        set_footer(embed)
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class CaseButtonView(discord.ui.View):
+    """View with Case and Info buttons."""
+
+    def __init__(self, guild_id: int, thread_id: int, user_id: int):
+        super().__init__(timeout=None)
+
+        # Case link button
+        url = f"https://discord.com/channels/{guild_id}/{thread_id}"
+        self.add_item(discord.ui.Button(
+            label="Case",
+            url=url,
+            style=discord.ButtonStyle.link,
+            emoji=CASE_EMOJI,
+        ))
+
+        # Info button
+        self.add_item(MuteInfoButton(user_id, guild_id))
+
+
+class MuteModal(discord.ui.Modal, title="Mute User"):
+    """Modal for muting a user from context menu."""
+
+    duration_input = discord.ui.TextInput(
+        label="Duration",
+        placeholder="e.g., 10m, 1h, 1d, permanent",
+        required=False,
+        max_length=50,
+    )
+
+    reason_input = discord.ui.TextInput(
+        label="Reason",
+        placeholder="Reason for the mute",
+        required=False,
+        max_length=500,
+        style=discord.TextStyle.paragraph,
+    )
+
+    def __init__(
+        self,
+        bot: "AzabBot",
+        target_user: discord.Member,
+        evidence: str,
+        cog: "MuteCog",
+    ):
+        super().__init__()
+        self.bot = bot
+        self.target_user = target_user
+        self.evidence = evidence
+        self.cog = cog
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        """Handle modal submission."""
+        duration = self.duration_input.value or None
+        reason = self.reason_input.value or None
+
+        # Defer the response
+        await interaction.response.defer(ephemeral=False)
+
+        # Get the target as a Member
+        user = interaction.guild.get_member(self.target_user.id)
+        if not user:
+            await interaction.followup.send(
+                "User not found in this server.",
+                ephemeral=True,
+            )
+            return
+
+        # Use shared mute logic from cog
+        await self.cog.execute_mute(
+            interaction=interaction,
+            user=user,
+            duration=duration,
+            reason=reason,
+            evidence=self.evidence,
+        )
 
 
 # =============================================================================
@@ -84,6 +277,7 @@ def parse_duration(duration_str: str) -> Optional[int]:
         - "1h", "6h" for hours
         - "1d", "7d" for days
         - "1w" for weeks
+        - "1y", "99y" for years
         - Combined like "1d12h30m"
         - "permanent" or "perm" for None (no expiry)
 
@@ -102,28 +296,30 @@ def parse_duration(duration_str: str) -> Optional[int]:
     if duration_str in ("permanent", "perm", "forever", "indefinite"):
         return None
 
-    # Parse combined format like "1d12h30m"
-    pattern = r"(?:(\d+)w)?(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?"
+    # Parse combined format like "1y2w3d12h30m"
+    pattern = r"(?:(\d+)y)?(?:(\d+)w)?(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?"
     match = re.fullmatch(pattern, duration_str)
 
     if not match or not any(match.groups()):
-        # Try single unit format
-        single_match = re.match(r"^(\d+)\s*(w|d|h|m|s)?$", duration_str)
+        # Try single unit format (including years)
+        single_match = re.match(r"^(\d+)\s*(y|w|d|h|m|s)?$", duration_str)
         if single_match:
             value = int(single_match.group(1))
             unit = single_match.group(2) or "m"  # Default to minutes
 
-            multipliers = {"w": 604800, "d": 86400, "h": 3600, "m": 60, "s": 1}
+            multipliers = {"y": 31536000, "w": 604800, "d": 86400, "h": 3600, "m": 60, "s": 1}
             return value * multipliers.get(unit, 60)
         return None
 
-    weeks = int(match.group(1) or 0)
-    days = int(match.group(2) or 0)
-    hours = int(match.group(3) or 0)
-    minutes = int(match.group(4) or 0)
-    seconds = int(match.group(5) or 0)
+    years = int(match.group(1) or 0)
+    weeks = int(match.group(2) or 0)
+    days = int(match.group(3) or 0)
+    hours = int(match.group(4) or 0)
+    minutes = int(match.group(5) or 0)
+    seconds = int(match.group(6) or 0)
 
     total_seconds = (
+        years * 31536000 +
         weeks * 604800 +
         days * 86400 +
         hours * 3600 +
@@ -142,16 +338,19 @@ def format_duration(seconds: Optional[int]) -> str:
         seconds: Duration in seconds, or None for permanent.
 
     Returns:
-        Formatted string like "1d 2h 30m" or "Permanent".
+        Formatted string like "1y 2d 3h" or "Permanent".
     """
     if seconds is None:
         return "Permanent"
 
     parts = []
-    days, remainder = divmod(seconds, 86400)
+    years, remainder = divmod(seconds, 31536000)
+    days, remainder = divmod(remainder, 86400)
     hours, remainder = divmod(remainder, 3600)
     minutes, secs = divmod(remainder, 60)
 
+    if years > 0:
+        parts.append(f"{years}y")
     if days > 0:
         parts.append(f"{days}d")
     if hours > 0:
@@ -249,22 +448,28 @@ class MuteCog(commands.Cog):
             List of duration choices.
         """
         choices = []
+        current_lower = current.lower().strip()
 
-        # Filter based on current input
-        current_lower = current.lower()
-
-        for label, value in DURATION_CHOICES:
-            if current_lower in label.lower() or current_lower in value.lower():
-                choices.append(app_commands.Choice(name=label, value=value))
-
-        # If user typed a custom value, validate and include it
-        if current and not choices:
+        # Always add user's custom input first if it's a valid duration
+        if current:
             parsed = parse_duration(current)
             if parsed is not None:
                 formatted = format_duration(parsed)
-                choices.append(app_commands.Choice(name=f"Custom: {formatted}", value=current))
-            elif current.lower() in ("perm", "permanent"):
+                choices.append(app_commands.Choice(name=f"{formatted}", value=current))
+            elif current_lower in ("perm", "permanent", "forever"):
                 choices.append(app_commands.Choice(name="Permanent", value="permanent"))
+
+        # Add matching preset choices
+        for label, value in DURATION_CHOICES:
+            # Skip if we already added this exact value as custom
+            if current_lower == value.lower():
+                continue
+            if current_lower in label.lower() or current_lower in value.lower():
+                choices.append(app_commands.Choice(name=label, value=value))
+
+        # If no input, show all choices
+        if not current:
+            choices = [app_commands.Choice(name=label, value=value) for label, value in DURATION_CHOICES]
 
         return choices[:25]  # Discord limit
 
@@ -297,69 +502,43 @@ class MuteCog(commands.Cog):
         return choices[:25]
 
     # =========================================================================
-    # Mute Command
+    # Shared Mute Logic
     # =========================================================================
 
-    @app_commands.command(name="mute", description="Mute a user by assigning the muted role")
-    @app_commands.describe(
-        user="The user to mute",
-        duration="How long to mute (e.g., 10m, 1h, 1d, permanent)",
-        reason="Reason for the mute",
-    )
-    @app_commands.autocomplete(duration=duration_autocomplete, reason=reason_autocomplete)
-    async def mute(
+    async def execute_mute(
         self,
         interaction: discord.Interaction,
         user: discord.Member,
         duration: Optional[str] = None,
         reason: Optional[str] = None,
+        evidence: Optional[str] = None,
     ) -> None:
         """
-        Mute a user by assigning the muted role.
-
-        DESIGN:
-            Validates permissions and target before muting.
-            Stores mute in database for persistence.
-            Sends DM to user (silently fails if blocked).
-            Posts to mod log channel.
+        Execute mute logic (shared by /mute command and context menu).
 
         Args:
-            interaction: Discord interaction context.
+            interaction: Discord interaction (must be deferred).
             user: Member to mute.
             duration: Optional duration string.
             reason: Optional reason for mute.
+            evidence: Optional evidence link/description.
         """
-        await interaction.response.defer(ephemeral=True)
-
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         # Validation
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
 
-        # Can't mute yourself
         if user.id == interaction.user.id:
-            await interaction.followup.send(
-                "You cannot mute yourself.",
-                ephemeral=True,
-            )
+            await interaction.followup.send("You cannot mute yourself.", ephemeral=True)
             return
 
-        # Can't mute the bot
         if user.id == self.bot.user.id:
-            await interaction.followup.send(
-                "I cannot mute myself.",
-                ephemeral=True,
-            )
+            await interaction.followup.send("I cannot mute myself.", ephemeral=True)
             return
 
-        # Can't mute bots
         if user.bot:
-            await interaction.followup.send(
-                "I cannot mute bots.",
-                ephemeral=True,
-            )
+            await interaction.followup.send("I cannot mute bots.", ephemeral=True)
             return
 
-        # Check role hierarchy
         if isinstance(interaction.user, discord.Member):
             if user.top_role >= interaction.user.top_role and not is_developer(interaction.user.id):
                 await interaction.followup.send(
@@ -368,11 +547,33 @@ class MuteCog(commands.Cog):
                 )
                 return
 
-        # Check if bot can assign the role
+        # Check management protection
+        if self.config.management_role_id and isinstance(interaction.user, discord.Member):
+            management_role = interaction.guild.get_role(self.config.management_role_id)
+            if management_role:
+                user_has_management = management_role in user.roles
+                mod_has_management = management_role in interaction.user.roles
+                if user_has_management and mod_has_management and not is_developer(interaction.user.id):
+                    # Secret log to mod tracker
+                    if self.bot.mod_tracker:
+                        await self.bot.mod_tracker.log_management_mute_attempt(
+                            mod=interaction.user,
+                            target=user,
+                        )
+
+                    warning_embed = discord.Embed(
+                        title="⚠️ Action Blocked",
+                        description="Management members cannot mute each other.",
+                        color=EmbedColors.WARNING,
+                    )
+                    set_footer(warning_embed)
+                    await interaction.followup.send(embed=warning_embed, ephemeral=True)
+                    return
+
         muted_role = interaction.guild.get_role(self.config.muted_role_id)
         if not muted_role:
             await interaction.followup.send(
-                f"Muted role not found (ID: {self.config.muted_role_id}). Please check configuration.",
+                f"Muted role not found (ID: {self.config.muted_role_id}).",
                 ephemeral=True,
             )
             return
@@ -384,30 +585,18 @@ class MuteCog(commands.Cog):
             )
             return
 
-        # Check if already muted
-        if muted_role in user.roles:
-            await interaction.followup.send(
-                f"**{user.display_name}** is already muted.",
-                ephemeral=True,
-            )
-            return
+        # ---------------------------------------------------------------------
+        # Apply Mute
+        # ---------------------------------------------------------------------
 
-        # -------------------------------------------------------------------------
-        # Parse Duration
-        # -------------------------------------------------------------------------
-
+        is_extension = muted_role in user.roles
         duration_seconds = parse_duration(duration) if duration else None
         duration_display = format_duration(duration_seconds)
 
-        # -------------------------------------------------------------------------
-        # Apply Mute
-        # -------------------------------------------------------------------------
-
         try:
-            # Add muted role
-            await user.add_roles(muted_role, reason=f"Muted by {interaction.user}: {reason or 'No reason'}")
+            if not is_extension:
+                await user.add_roles(muted_role, reason=f"Muted by {interaction.user}: {reason or 'No reason'}")
 
-            # Store in database
             self.db.add_mute(
                 user_id=user.id,
                 guild_id=interaction.guild.id,
@@ -416,72 +605,93 @@ class MuteCog(commands.Cog):
                 duration_seconds=duration_seconds,
             )
 
-            logger.tree("USER MUTED", [
-                ("User", str(user)),
-                ("User ID", str(user.id)),
+            action = "EXTENDED" if is_extension else "MUTED"
+            logger.tree(f"USER {action}", [
+                ("User", f"{user} ({user.id})"),
                 ("Moderator", str(interaction.user)),
                 ("Duration", duration_display),
                 ("Reason", (reason or "None")[:50]),
             ], emoji="🔇")
 
         except discord.Forbidden:
-            await interaction.followup.send(
-                "I don't have permission to mute this user.",
-                ephemeral=True,
-            )
+            await interaction.followup.send("I don't have permission to mute this user.", ephemeral=True)
             return
         except discord.HTTPException as e:
-            await interaction.followup.send(
-                f"Failed to mute user: {e}",
-                ephemeral=True,
-            )
+            await interaction.followup.send(f"Failed to mute user: {e}", ephemeral=True)
             return
 
-        # -------------------------------------------------------------------------
-        # Build Response Embed
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
+        # Prepare Case
+        # ---------------------------------------------------------------------
 
-        embed = discord.Embed(
-            title="User Muted",
-            color=EmbedColors.ERROR,
-            timestamp=datetime.now(NY_TZ),
-        )
+        case_info = None
+        if self.bot.case_log_service:
+            case_info = await self.bot.case_log_service.prepare_case(user)
 
-        embed.add_field(name="User", value=f"{user.mention} ({user.id})", inline=False)
-        embed.add_field(name="Duration", value=duration_display, inline=True)
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+        # ---------------------------------------------------------------------
+        # Build & Send Embed
+        # ---------------------------------------------------------------------
+
+        embed_title = "🔇 Mute Extended" if is_extension else "🔇 User Muted"
+        embed = discord.Embed(title=embed_title, color=EmbedColors.ERROR)
+        embed.add_field(name="User", value=f"`{user.name}` ({user.mention})", inline=False)
+        embed.add_field(name="Duration", value=f"`{duration_display}`", inline=True)
+        embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
+
+        if case_info:
+            embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
+        if evidence:
+            embed.add_field(name="Evidence", value=evidence, inline=False)
 
         embed.set_thumbnail(url=user.display_avatar.url)
-        embed.set_footer(text=f"Mute #{self.db.get_user_mute_count(user.id, interaction.guild.id)}")
+        set_footer(embed)
 
-        await interaction.followup.send(embed=embed)
+        if case_info:
+            view = CaseButtonView(interaction.guild.id, case_info["thread_id"], user.id)
+            sent_message = await interaction.followup.send(embed=embed, view=view, wait=True)
+        else:
+            sent_message = await interaction.followup.send(embed=embed, wait=True)
 
-        # -------------------------------------------------------------------------
-        # DM User (Silent Fail)
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
+        # Log to Case Forum
+        # ---------------------------------------------------------------------
+
+        if self.bot.case_log_service and case_info and sent_message:
+            await self.bot.case_log_service.log_mute(
+                user=user,
+                moderator=interaction.user,
+                duration=duration_display,
+                reason=reason,
+                source_message_url=sent_message.jump_url,
+                is_extension=is_extension,
+                evidence=evidence,
+            )
+
+        # ---------------------------------------------------------------------
+        # DM User
+        # ---------------------------------------------------------------------
 
         try:
-            dm_embed = discord.Embed(
-                title="You have been muted",
-                color=EmbedColors.ERROR,
-                timestamp=datetime.now(NY_TZ),
-            )
-            dm_embed.add_field(name="Server", value=f"{interaction.guild.name}", inline=False)
-            dm_embed.add_field(name="Duration", value=duration_display, inline=True)
-            dm_embed.add_field(name="Moderator", value=f"{interaction.user.display_name}", inline=True)
-            dm_embed.add_field(name="Reason", value=reason or "No reason provided", inline=False)
+            dm_title = "Your mute has been extended" if is_extension else "You have been muted"
+            dm_embed = discord.Embed(title=dm_title, color=EmbedColors.ERROR)
+            dm_embed.add_field(name="Server", value=f"`{interaction.guild.name}`", inline=False)
+            dm_embed.add_field(name="Duration", value=f"`{duration_display}`", inline=True)
+            dm_embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
+            dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
+            if evidence:
+                dm_embed.add_field(name="Evidence", value=evidence, inline=False)
             dm_embed.set_thumbnail(url=user.display_avatar.url)
-
+            set_footer(dm_embed)
             await user.send(embed=dm_embed)
         except (discord.Forbidden, discord.HTTPException):
-            pass  # User has DMs disabled
+            pass
 
-        # -------------------------------------------------------------------------
-        # Post to Mod Log
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
+        # Mod Log & Tracker
+        # ---------------------------------------------------------------------
 
         await self._post_mod_log(
-            action="Mute",
+            action="Mute Extended" if is_extension else "Mute",
             user=user,
             moderator=interaction.user,
             reason=reason,
@@ -489,27 +699,255 @@ class MuteCog(commands.Cog):
             color=EmbedColors.ERROR,
         )
 
-        # -------------------------------------------------------------------------
-        # Log to Case Forum
-        # -------------------------------------------------------------------------
-
-        if self.bot.case_log_service:
-            await self.bot.case_log_service.log_mute(
-                user=user,
-                moderator=interaction.user,
-                duration=duration_display,
-                reason=reason,
-            )
-
-        # -------------------------------------------------------------------------
-        # Log to Mod Tracker
-        # -------------------------------------------------------------------------
-
         if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(interaction.user.id):
             await self.bot.mod_tracker.log_mute(
                 mod=interaction.user,
                 target=user,
                 duration=duration_display,
+                reason=reason,
+            )
+
+    # =========================================================================
+    # Mute Command
+    # =========================================================================
+
+    @app_commands.command(name="mute", description="Mute a user by assigning the muted role")
+    @app_commands.describe(
+        user="The user to mute",
+        duration="How long to mute (e.g., 10m, 1h, 1d, permanent)",
+        reason="Reason for the mute",
+        evidence="Link or description of evidence (auto-filled if using context menu)",
+    )
+    @app_commands.autocomplete(duration=duration_autocomplete, reason=reason_autocomplete)
+    async def mute(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member,
+        duration: Optional[str] = None,
+        reason: Optional[str] = None,
+        evidence: Optional[str] = None,
+    ) -> None:
+        """Mute a user by assigning the muted role."""
+        await interaction.response.defer(ephemeral=False)
+        await self.execute_mute(interaction, user, duration, reason, evidence)
+
+    # =========================================================================
+    # Mute Context Menu (Right-click message)
+    # =========================================================================
+
+    async def _mute_from_message(
+        self,
+        interaction: discord.Interaction,
+        message: discord.Message,
+    ) -> None:
+        """
+        Mute the author of a message (context menu handler).
+
+        DESIGN:
+            Opens a modal for duration/reason input.
+            Evidence is auto-filled with the message link.
+
+        Args:
+            interaction: Discord interaction context.
+            message: The message whose author to mute.
+        """
+        # Can't mute bots
+        if message.author.bot:
+            await interaction.response.send_message(
+                "I cannot mute bots.",
+                ephemeral=True,
+            )
+            return
+
+        # Build evidence from the message
+        evidence = message.jump_url
+
+        # Show modal for duration and reason
+        modal = MuteModal(
+            bot=self.bot,
+            target_user=message.author,
+            evidence=evidence,
+            cog=self,
+        )
+        await interaction.response.send_modal(modal)
+
+    # =========================================================================
+    # Unmute Context Menu (Right-click message)
+    # =========================================================================
+
+    async def _unmute_from_message(
+        self,
+        interaction: discord.Interaction,
+        message: discord.Message,
+    ) -> None:
+        """
+        Unmute the author of a message (context menu handler).
+
+        Args:
+            interaction: Discord interaction context.
+            message: The message whose author to unmute.
+        """
+        if message.author.bot:
+            await interaction.response.send_message(
+                "I cannot unmute bots.",
+                ephemeral=True,
+            )
+            return
+
+        # Get member from guild
+        user = interaction.guild.get_member(message.author.id)
+        if not user:
+            await interaction.response.send_message(
+                "User not found in this server.",
+                ephemeral=True,
+            )
+            return
+
+        # Check if user is muted
+        muted_role = interaction.guild.get_role(self.config.muted_role_id)
+        if not muted_role or muted_role not in user.roles:
+            await interaction.response.send_message(
+                f"**{user.display_name}** is not muted.",
+                ephemeral=True,
+            )
+            return
+
+        # Defer and execute unmute
+        await interaction.response.defer(ephemeral=False)
+        await self.execute_unmute(interaction, user, reason=None)
+
+    # =========================================================================
+    # Shared Unmute Logic
+    # =========================================================================
+
+    async def execute_unmute(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member,
+        reason: Optional[str] = None,
+    ) -> None:
+        """
+        Execute unmute logic (shared by /unmute command and context menu).
+
+        Args:
+            interaction: Discord interaction (must be deferred).
+            user: Member to unmute.
+            reason: Optional reason for unmute.
+        """
+        muted_role = interaction.guild.get_role(self.config.muted_role_id)
+        if not muted_role:
+            await interaction.followup.send(
+                f"Muted role not found (ID: {self.config.muted_role_id}).",
+                ephemeral=True,
+            )
+            return
+
+        if muted_role not in user.roles:
+            await interaction.followup.send(
+                f"**{user.display_name}** is not muted.",
+                ephemeral=True,
+            )
+            return
+
+        # ---------------------------------------------------------------------
+        # Remove Mute
+        # ---------------------------------------------------------------------
+
+        try:
+            await user.remove_roles(muted_role, reason=f"Unmuted by {interaction.user}: {reason or 'No reason'}")
+
+            self.db.remove_mute(
+                user_id=user.id,
+                guild_id=interaction.guild.id,
+                moderator_id=interaction.user.id,
+                reason=reason,
+            )
+
+            logger.tree("USER UNMUTED", [
+                ("User", f"{user} ({user.id})"),
+                ("Moderator", str(interaction.user)),
+                ("Reason", (reason or "None")[:50]),
+            ], emoji="🔊")
+
+        except discord.Forbidden:
+            await interaction.followup.send("I don't have permission to unmute this user.", ephemeral=True)
+            return
+        except discord.HTTPException as e:
+            await interaction.followup.send(f"Failed to unmute user: {e}", ephemeral=True)
+            return
+
+        # ---------------------------------------------------------------------
+        # Get Case Info
+        # ---------------------------------------------------------------------
+
+        case_info = None
+        if self.bot.case_log_service:
+            case_info = self.bot.case_log_service.get_case_info(user.id)
+
+        # ---------------------------------------------------------------------
+        # Build & Send Embed
+        # ---------------------------------------------------------------------
+
+        embed = discord.Embed(title="🔊 User Unmuted", color=EmbedColors.SUCCESS)
+        embed.add_field(name="User", value=f"`{user.name}` ({user.mention})", inline=False)
+        embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
+
+        if case_info:
+            embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
+
+        embed.set_thumbnail(url=user.display_avatar.url)
+        set_footer(embed)
+
+        if case_info:
+            view = CaseButtonView(interaction.guild.id, case_info["thread_id"], user.id)
+            sent_message = await interaction.followup.send(embed=embed, view=view, wait=True)
+        else:
+            sent_message = await interaction.followup.send(embed=embed, wait=True)
+
+        # ---------------------------------------------------------------------
+        # Log to Case Forum
+        # ---------------------------------------------------------------------
+
+        if self.bot.case_log_service and case_info and sent_message:
+            await self.bot.case_log_service.log_unmute(
+                user_id=user.id,
+                moderator=interaction.user,
+                display_name=user.display_name,
+                reason=reason,
+                source_message_url=sent_message.jump_url,
+            )
+
+        # ---------------------------------------------------------------------
+        # DM User
+        # ---------------------------------------------------------------------
+
+        try:
+            dm_embed = discord.Embed(title="You have been unmuted", color=EmbedColors.SUCCESS)
+            dm_embed.add_field(name="Server", value=f"`{interaction.guild.name}`", inline=False)
+            dm_embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
+            dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
+            dm_embed.set_thumbnail(url=user.display_avatar.url)
+            set_footer(dm_embed)
+            await user.send(embed=dm_embed)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+        # ---------------------------------------------------------------------
+        # Mod Log & Tracker
+        # ---------------------------------------------------------------------
+
+        await self._post_mod_log(
+            action="Unmute",
+            user=user,
+            moderator=interaction.user,
+            reason=reason,
+            color=EmbedColors.SUCCESS,
+        )
+
+        if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(interaction.user.id):
+            await self.bot.mod_tracker.log_unmute(
+                mod=interaction.user,
+                target=user,
                 reason=reason,
             )
 
@@ -529,142 +967,9 @@ class MuteCog(commands.Cog):
         user: discord.Member,
         reason: Optional[str] = None,
     ) -> None:
-        """
-        Unmute a user by removing the muted role.
-
-        Args:
-            interaction: Discord interaction context.
-            user: Member to unmute.
-            reason: Optional reason for unmute.
-        """
-        await interaction.response.defer(ephemeral=True)
-
-        # -------------------------------------------------------------------------
-        # Validation
-        # -------------------------------------------------------------------------
-
-        muted_role = interaction.guild.get_role(self.config.muted_role_id)
-        if not muted_role:
-            await interaction.followup.send(
-                f"Muted role not found (ID: {self.config.muted_role_id}). Please check configuration.",
-                ephemeral=True,
-            )
-            return
-
-        # Check if user is muted
-        if muted_role not in user.roles:
-            await interaction.followup.send(
-                f"**{user.display_name}** is not muted.",
-                ephemeral=True,
-            )
-            return
-
-        # -------------------------------------------------------------------------
-        # Remove Mute
-        # -------------------------------------------------------------------------
-
-        try:
-            # Remove muted role
-            await user.remove_roles(muted_role, reason=f"Unmuted by {interaction.user}: {reason or 'No reason'}")
-
-            # Update database
-            self.db.remove_mute(
-                user_id=user.id,
-                guild_id=interaction.guild.id,
-                moderator_id=interaction.user.id,
-                reason=reason,
-            )
-
-            logger.tree("USER UNMUTED", [
-                ("User", str(user)),
-                ("User ID", str(user.id)),
-                ("Moderator", str(interaction.user)),
-                ("Reason", (reason or "None")[:50]),
-            ], emoji="🔊")
-
-        except discord.Forbidden:
-            await interaction.followup.send(
-                "I don't have permission to unmute this user.",
-                ephemeral=True,
-            )
-            return
-        except discord.HTTPException as e:
-            await interaction.followup.send(
-                f"Failed to unmute user: {e}",
-                ephemeral=True,
-            )
-            return
-
-        # -------------------------------------------------------------------------
-        # Build Response Embed
-        # -------------------------------------------------------------------------
-
-        embed = discord.Embed(
-            title="User Unmuted",
-            color=EmbedColors.SUCCESS,
-            timestamp=datetime.now(NY_TZ),
-        )
-
-        embed.add_field(name="User", value=f"{user.mention} ({user.id})", inline=False)
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
-
-        embed.set_thumbnail(url=user.display_avatar.url)
-
-        await interaction.followup.send(embed=embed)
-
-        # -------------------------------------------------------------------------
-        # DM User (Silent Fail)
-        # -------------------------------------------------------------------------
-
-        try:
-            dm_embed = discord.Embed(
-                title="You have been unmuted",
-                color=EmbedColors.SUCCESS,
-                timestamp=datetime.now(NY_TZ),
-            )
-            dm_embed.add_field(name="Server", value=f"{interaction.guild.name}", inline=False)
-            dm_embed.add_field(name="Moderator", value=f"{interaction.user.display_name}", inline=True)
-            dm_embed.add_field(name="Reason", value=reason or "No reason provided", inline=False)
-            dm_embed.set_thumbnail(url=user.display_avatar.url)
-
-            await user.send(embed=dm_embed)
-        except (discord.Forbidden, discord.HTTPException):
-            pass
-
-        # -------------------------------------------------------------------------
-        # Post to Mod Log
-        # -------------------------------------------------------------------------
-
-        await self._post_mod_log(
-            action="Unmute",
-            user=user,
-            moderator=interaction.user,
-            reason=reason,
-            color=EmbedColors.SUCCESS,
-        )
-
-        # -------------------------------------------------------------------------
-        # Log to Case Forum
-        # -------------------------------------------------------------------------
-
-        if self.bot.case_log_service:
-            await self.bot.case_log_service.log_unmute(
-                user_id=user.id,
-                moderator=interaction.user,
-                display_name=user.display_name,
-                reason=reason,
-            )
-
-        # -------------------------------------------------------------------------
-        # Log to Mod Tracker
-        # -------------------------------------------------------------------------
-
-        if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(interaction.user.id):
-            await self.bot.mod_tracker.log_unmute(
-                mod=interaction.user,
-                target=user,
-                reason=reason,
-            )
+        """Unmute a user by removing the muted role."""
+        await interaction.response.defer(ephemeral=False)
+        await self.execute_unmute(interaction, user, reason)
 
     # =========================================================================
     # Helper Methods
@@ -725,17 +1030,56 @@ class MuteCog(commands.Cog):
 
 
 # =============================================================================
+# Context Menu Command
+# =============================================================================
+
+@app_commands.context_menu(name="Mute Author")
+async def mute_author_context(interaction: discord.Interaction, message: discord.Message) -> None:
+    """
+    Context menu command to mute the author of a message.
+
+    DESIGN:
+        Right-click a message -> Apps -> Mute Author
+        Opens modal with duration/reason, auto-fills evidence with message link.
+    """
+    cog = interaction.client.get_cog("MuteCog")
+    if cog:
+        await cog._mute_from_message(interaction, message)
+    else:
+        await interaction.response.send_message(
+            "Mute command not available.",
+            ephemeral=True,
+        )
+
+
+@app_commands.context_menu(name="Unmute Author")
+async def unmute_author_context(interaction: discord.Interaction, message: discord.Message) -> None:
+    """
+    Context menu command to unmute the author of a message.
+
+    DESIGN:
+        Right-click a message -> Apps -> Unmute Author
+        Immediately unmutes if user is muted.
+    """
+    cog = interaction.client.get_cog("MuteCog")
+    if cog:
+        await cog._unmute_from_message(interaction, message)
+    else:
+        await interaction.response.send_message(
+            "Unmute command not available.",
+            ephemeral=True,
+        )
+
+
+# =============================================================================
 # Cog Setup
 # =============================================================================
 
 async def setup(bot: "AzabBot") -> None:
-    """
-    Load the mute cog.
-
-    Args:
-        bot: Main bot instance.
-    """
+    """Load the mute cog and context menus."""
     await bot.add_cog(MuteCog(bot))
+    bot.tree.add_command(mute_author_context)
+    bot.tree.add_command(unmute_author_context)
 
 
 # =============================================================================

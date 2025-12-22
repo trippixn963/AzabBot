@@ -65,9 +65,7 @@ def _handle_task_exception(task: asyncio.Task) -> None:
     """Handle exceptions from background asyncio tasks."""
     try:
         if not task.cancelled() and task.exception():
-            logger.debug("Background Webhook Task Failed", [
-                ("Error", str(task.exception())),
-            ])
+            logger.debug(f"Background Webhook Task Failed: {task.exception()}")
     except asyncio.InvalidStateError:
         pass  # Task not yet done
 
@@ -134,9 +132,9 @@ class WebhookAlertService:
                 ("Latency Threshold", f"{LATENCY_THRESHOLD_MS}ms"),
             ], emoji="🔔")
         else:
-            logger.info("Webhook Alerts Disabled", [
+            logger.tree("Webhook Alerts Disabled", [
                 ("Reason", "ALERT_WEBHOOK_URL not set"),
-            ])
+            ], emoji="🔕")
 
     def set_bot(self, bot: "AzabBot") -> None:
         """Set bot reference for avatar and uptime."""
@@ -206,7 +204,7 @@ class WebhookAlertService:
     ) -> bool:
         """Send embed to webhook with retry and exponential backoff."""
         if not self.enabled or not self.webhook_url:
-            logger.debug("Webhook Skipped", [("Reason", "Not enabled")])
+            logger.debug("Webhook Skipped: Not enabled")
             return False
 
         # Choose webhook URL (guaranteed non-None from check above)
@@ -234,47 +232,31 @@ class WebhookAlertService:
                         timeout=aiohttp.ClientTimeout(total=10)
                     ) as response:
                         if response.status == 204:
-                            logger.info("Webhook Sent", [
+                            logger.tree("Webhook Sent", [
                                 ("Title", embed.get("title", "Unknown")),
                                 ("Attempt", str(attempt + 1)),
-                            ])
+                            ], emoji="📤")
                             return True
                         elif response.status == 429:
                             # Rate limited, wait and retry
                             retry_after = float(response.headers.get("Retry-After", 5))
-                            logger.warning("Webhook Rate Limited", [
-                                ("Retry After", f"{retry_after}s"),
-                            ])
+                            logger.warning(f"Webhook Rate Limited: Retry after {retry_after}s")
                             await asyncio.sleep(retry_after)
                             continue
                         else:
-                            logger.warning("Webhook Failed", [
-                                ("Status", str(response.status)),
-                                ("Title", embed.get("title", "Unknown")),
-                                ("Attempt", str(attempt + 1)),
-                            ])
+                            logger.warning(f"Webhook Failed: Status {response.status}, {embed.get('title', 'Unknown')}, attempt {attempt + 1}")
 
             except asyncio.TimeoutError:
-                logger.warning("Webhook Timeout", [
-                    ("Attempt", str(attempt + 1)),
-                    ("Title", embed.get("title", "Unknown")),
-                ])
+                logger.warning(f"Webhook Timeout: {embed.get('title', 'Unknown')}, attempt {attempt + 1}")
             except Exception as e:
-                logger.warning("Webhook Error", [
-                    ("Error", str(e)),
-                    ("Title", embed.get("title", "Unknown")),
-                    ("Attempt", str(attempt + 1)),
-                ])
+                logger.warning(f"Webhook Error: {e}, {embed.get('title', 'Unknown')}, attempt {attempt + 1}")
 
             # Exponential backoff before retry
             if attempt < MAX_RETRIES - 1:
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 await asyncio.sleep(delay)
 
-        logger.warning("Webhook Failed After Retries", [
-            ("Title", embed.get("title", "Unknown")),
-            ("Attempts", str(MAX_RETRIES)),
-        ])
+        logger.warning(f"Webhook Failed After {MAX_RETRIES} Retries: {embed.get('title', 'Unknown')}")
         return False
 
     def _get_bot_stats(self) -> dict:
@@ -294,9 +276,7 @@ class WebhookAlertService:
                 if hasattr(scheduler, 'get_active_count'):
                     stats["active_mutes"] = scheduler.get_active_count()
         except Exception as e:
-            logger.debug("Failed to get bot stats", [
-                ("Error", str(e)),
-            ])
+            logger.debug(f"Failed to get bot stats: {e}")
 
         return stats
 
@@ -366,9 +346,9 @@ class WebhookAlertService:
 
     async def send_status_alert(self, status: str = "Online") -> None:
         """Send hourly status alert with health info."""
-        logger.info("Sending Hourly Status Alert", [
+        logger.tree("Sending Hourly Status Alert", [
             ("Status", status),
-        ])
+        ], emoji="📊")
         color = COLOR_ONLINE if status == "Online" else COLOR_OFFLINE
         embed = self._create_status_embed(status, color, include_health=True)
         _create_background_task(self._send_webhook(embed))
@@ -379,16 +359,10 @@ class WebhookAlertService:
         if self._last_error_time:
             elapsed = (now - self._last_error_time).total_seconds()
             if elapsed < ERROR_THROTTLE_SECONDS:
-                logger.debug("Error Alert Skipped (Cooldown)", [
-                    ("Error Type", error_type),
-                    ("Remaining", f"{int(ERROR_THROTTLE_SECONDS - elapsed)}s"),
-                ])
+                logger.debug(f"Error Alert Skipped (Cooldown): {error_type}, {int(ERROR_THROTTLE_SECONDS - elapsed)}s remaining")
                 return
 
-        logger.warning("Sending Error Alert", [
-            ("Error Type", error_type),
-            ("Message", error_message[:50]),
-        ])
+        logger.warning(f"Sending Error Alert: {error_type} - {error_message[:50]}")
         self._last_error_time = now
 
         embed = self._create_status_embed("Error", COLOR_OFFLINE)
@@ -398,9 +372,9 @@ class WebhookAlertService:
 
     async def send_shutdown_alert(self) -> None:
         """Send shutdown alert (awaited)."""
-        logger.info("Sending Shutdown Alert", [
+        logger.tree("Sending Shutdown Alert", [
             ("Uptime", self._get_uptime()),
-        ])
+        ], emoji="🔴")
         embed = self._create_status_embed("Offline", COLOR_OFFLINE)
         embed["description"] = f"**Uptime:** {self._get_uptime()}\n\nBot is shutting down."
         await self._send_webhook(embed)
@@ -411,16 +385,10 @@ class WebhookAlertService:
         if self._last_latency_alert_time:
             elapsed = (now - self._last_latency_alert_time).total_seconds()
             if elapsed < LATENCY_THROTTLE_SECONDS:
-                logger.debug("Latency Alert Skipped (Cooldown)", [
-                    ("Latency", f"{latency_ms}ms"),
-                    ("Remaining", f"{int(LATENCY_THROTTLE_SECONDS - elapsed)}s"),
-                ])
+                logger.debug(f"Latency Alert Skipped (Cooldown): {latency_ms}ms, {int(LATENCY_THROTTLE_SECONDS - elapsed)}s remaining")
                 return
 
-        logger.warning("Sending Latency Alert", [
-            ("Latency", f"{latency_ms}ms"),
-            ("Threshold", f"{LATENCY_THRESHOLD_MS}ms"),
-        ])
+        logger.warning(f"Sending Latency Alert: {latency_ms}ms (threshold: {LATENCY_THRESHOLD_MS}ms)")
         self._last_latency_alert_time = now
 
         embed = self._create_status_embed("High Latency", COLOR_WARNING)
@@ -439,9 +407,9 @@ class WebhookAlertService:
         Args:
             recovery_type: Type of recovery (e.g., "Latency")
         """
-        logger.info("Sending Recovery Alert", [
+        logger.tree("Sending Recovery Alert", [
             ("Type", recovery_type),
-        ])
+        ], emoji="💚")
 
         embed = self._create_status_embed("Recovered", COLOR_ONLINE)
         embed["description"] = (
@@ -460,19 +428,16 @@ class WebhookAlertService:
         is_high = latency_ms > LATENCY_THRESHOLD_MS
 
         if is_high:
-            logger.warning("High Latency Detected", [
-                ("Latency", f"{latency_ms}ms"),
-                ("Threshold", f"{LATENCY_THRESHOLD_MS}ms"),
-            ])
+            logger.warning(f"High Latency Detected: {latency_ms}ms (threshold: {LATENCY_THRESHOLD_MS}ms)")
             self._latency_degraded = True
             asyncio.create_task(self.send_latency_alert(latency_ms))
 
         # Detect recovery: was degraded and now normal
         elif self._latency_degraded and not is_high:
-            logger.info("Latency Recovery Detected", [
+            logger.tree("Latency Recovery Detected", [
                 ("Latency", f"{latency_ms}ms"),
                 ("Threshold", f"{LATENCY_THRESHOLD_MS}ms"),
-            ])
+            ], emoji="💚")
             self._latency_degraded = False
             asyncio.create_task(self.send_recovery_alert("Latency"))
 
@@ -487,9 +452,7 @@ class WebhookAlertService:
 
         # Prevent duplicate task creation
         if self._hourly_task and not self._hourly_task.done():
-            logger.debug("Hourly Alerts Already Running", [
-                ("Action", "Skipping duplicate start"),
-            ])
+            logger.debug("Hourly Alerts Already Running: Skipping duplicate start")
             return
 
         async def hourly_loop():
@@ -507,10 +470,7 @@ class WebhookAlertService:
                     if wait_seconds < 0:
                         wait_seconds += 3600
 
-                    logger.debug("Hourly Alert Scheduled", [
-                        ("Next", next_hour.strftime('%I:%M %p NY')),
-                        ("Wait", f"{int(wait_seconds)}s"),
-                    ])
+                    logger.debug(f"Hourly Alert Scheduled: Next at {next_hour.strftime('%I:%M %p NY')}, wait {int(wait_seconds)}s")
 
                     await asyncio.sleep(wait_seconds)
 
@@ -523,7 +483,7 @@ class WebhookAlertService:
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
-                    logger.debug("Hourly Alert Error", [("Error", str(e))])
+                    logger.debug(f"Hourly Alert Error: {e}")
                     await asyncio.sleep(STATUS_CHECK_INTERVAL)
 
         self._hourly_task = asyncio.create_task(hourly_loop())
