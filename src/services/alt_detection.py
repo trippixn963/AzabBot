@@ -146,15 +146,23 @@ class AltDetectionService:
             List of detected potential alts with confidence scores.
         """
         if not self.enabled:
+            logger.debug("Alt detection skipped (disabled)")
             return []
 
         try:
+            logger.tree("Alt Detection Started", [
+                ("Banned User", f"{banned_user} ({banned_user.id})"),
+                ("Guild", guild.name),
+                ("Case Thread", str(case_thread_id)),
+            ], emoji="🔍")
+
             # Get banned user's data for comparison
             banned_data = await self._gather_user_data(banned_user, guild)
 
             # Scan guild members
             potential_alts = []
             member_count = 0
+            high_conf_count = 0
 
             for member in guild.members:
                 if member.id == banned_user.id:
@@ -176,6 +184,15 @@ class AltDetectionService:
                 if result and result['total_score'] >= CONFIDENCE_THRESHOLDS['LOW']:
                     potential_alts.append(result)
 
+                    # Log high confidence matches immediately
+                    if result['confidence'] == 'HIGH':
+                        high_conf_count += 1
+                        logger.tree("High Confidence Alt Found", [
+                            ("User", f"{result['username']} ({result['user_id']})"),
+                            ("Score", str(result['total_score'])),
+                            ("Signals", ", ".join(result['signals'].keys())),
+                        ], emoji="🔴")
+
             # Sort by score (highest first)
             potential_alts.sort(key=lambda x: x['total_score'], reverse=True)
 
@@ -188,11 +205,18 @@ class AltDetectionService:
                     potential_alts=potential_alts,
                 )
 
+            # Count by confidence level
+            medium_conf_count = len([a for a in potential_alts if a['confidence'] == 'MEDIUM'])
+            low_conf_count = len([a for a in potential_alts if a['confidence'] == 'LOW'])
+
             logger.tree("Alt Detection Complete", [
                 ("Banned User", f"{banned_user} ({banned_user.id})"),
                 ("Members Scanned", str(member_count)),
-                ("Potential Alts Found", str(len(potential_alts))),
-            ], emoji="🔍")
+                ("High Confidence", str(high_conf_count)),
+                ("Medium Confidence", str(medium_conf_count)),
+                ("Low Confidence", str(low_conf_count)),
+                ("Total Flagged", str(len(potential_alts))),
+            ], emoji="✅")
 
             return potential_alts
 
@@ -549,9 +573,12 @@ class AltDetectionService:
                 signals=alt['signals'],
             )
 
+        logger.debug(f"Saved {len(potential_alts)} alt links to database")
+
         # Get case thread
         thread = await safe_fetch_channel(self.bot, case_thread_id)
         if not thread:
+            logger.warning(f"Alt Detection: Could not find case thread {case_thread_id}")
             return
 
         # Build alert embed
@@ -562,6 +589,11 @@ class AltDetectionService:
 
         # Send to case thread
         await safe_send(thread, content=owner_ping, embed=embed)
+
+        logger.tree("Alt Alert Posted", [
+            ("Thread", thread.name if hasattr(thread, 'name') else str(case_thread_id)),
+            ("Alts Reported", str(len(potential_alts))),
+        ], emoji="📨")
 
     def _build_alt_alert_embed(
         self,
