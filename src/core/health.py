@@ -52,16 +52,17 @@ class HealthCheckServer:
     # Initialization
     # =========================================================================
 
-    def __init__(self, bot: "AzabBot", port: int = 8080) -> None:
+    def __init__(self, bot: "AzabBot", port: int = None) -> None:
         """
         Initialize the health check server.
 
         Args:
             bot: Main bot instance for status queries.
-            port: Port to listen on (default 8080).
+            port: Port to listen on (default from HEALTH_PORT env or 8080).
         """
+        import os
         self.bot = bot
-        self.port = port
+        self.port = port or int(os.getenv("HEALTH_PORT", "8080"))
         self.app = web.Application()
         self.runner: web.AppRunner = None
 
