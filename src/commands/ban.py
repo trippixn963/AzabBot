@@ -395,6 +395,7 @@ class BanCog(commands.Cog):
         user="The user to ban",
         reason="Reason for the ban",
         evidence="Message link or description of evidence",
+        attachment="Screenshot or video evidence",
     )
     @app_commands.autocomplete(reason=reason_autocomplete)
     async def ban(
@@ -403,8 +404,17 @@ class BanCog(commands.Cog):
         user: discord.Member,
         reason: Optional[str] = None,
         evidence: Optional[str] = None,
+        attachment: Optional[discord.Attachment] = None,
     ) -> None:
         """Ban a user from the server."""
+        # Combine evidence sources
+        if attachment:
+            attachment_info = f"[{attachment.filename}]({attachment.url})"
+            if evidence:
+                evidence = f"{evidence}\n{attachment_info}"
+            else:
+                evidence = attachment_info
+
         await self.execute_ban(
             interaction=interaction,
             user=user,
@@ -421,6 +431,7 @@ class BanCog(commands.Cog):
     @app_commands.describe(
         user="The user to softban",
         reason="Reason for the softban",
+        attachment="Screenshot or video evidence",
     )
     @app_commands.autocomplete(reason=reason_autocomplete)
     async def softban(
@@ -428,12 +439,19 @@ class BanCog(commands.Cog):
         interaction: discord.Interaction,
         user: discord.Member,
         reason: Optional[str] = None,
+        attachment: Optional[discord.Attachment] = None,
     ) -> None:
         """Softban a user (ban + immediate unban to purge messages)."""
+        # Build evidence from attachment
+        evidence = None
+        if attachment:
+            evidence = f"[{attachment.filename}]({attachment.url})"
+
         await self.execute_ban(
             interaction=interaction,
             user=user,
             reason=reason,
+            evidence=evidence,
             is_softban=True,
         )
 
