@@ -995,6 +995,7 @@ class CaseLogService:
         moderator_id: int,
         until: datetime,
         reason: Optional[str] = None,
+        evidence: Optional[str] = None,
     ) -> Optional[dict]:
         """
         Log a timeout action to the user's case thread.
@@ -1004,6 +1005,7 @@ class CaseLogService:
             moderator_id: ID of the moderator who issued the timeout.
             until: When the timeout expires.
             reason: Optional reason for the timeout.
+            evidence: Optional evidence URL.
 
         Returns:
             Dict with case_id and thread_id, or None if disabled/failed.
@@ -1020,7 +1022,7 @@ class CaseLogService:
                 logger.warning(f"log_timeout: Thread {case['thread_id']} not found")
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
-            # Get moderator name
+            # Get moderator
             guild = user.guild
             moderator = guild.get_member(moderator_id)
             mod_name = moderator.display_name if moderator else f"Mod ({moderator_id})"
@@ -1042,8 +1044,24 @@ class CaseLogService:
             else:
                 mute_count = self.db.increment_mute_count(user.id)
 
+            # If evidence provided, send it as a separate message first to preserve it
+            evidence_message_url = None
+            if evidence and _has_valid_media_evidence(evidence):
+                try:
+                    evidence_msg = await safe_send(case_thread, f"📎 **Evidence:**\n{evidence}")
+                    if evidence_msg:
+                        evidence_message_url = evidence_msg.jump_url
+                        logger.tree("Evidence Stored", [
+                            ("User", f"{user.display_name} ({user.id})"),
+                            ("Action", "Timeout"),
+                            ("Thread", str(case_thread.id)),
+                            ("Message ID", str(evidence_msg.id)),
+                        ], emoji="📎")
+                except Exception as e:
+                    logger.error(f"Evidence storage failed for timeout: {e}")
+
             # Build and send timeout embed
-            embed = self._build_timeout_embed(user, mod_name, duration, until, reason, mute_count, moderator)
+            embed = self._build_timeout_embed(user, mod_name, duration, until, reason, mute_count, moderator, evidence_message_url)
             view = CaseLogView(
                 user_id=user.id,
                 guild_id=user.guild.id,
@@ -1051,7 +1069,27 @@ class CaseLogService:
                 case_thread_id=case["thread_id"],
                 is_mute_embed=True,  # Include Extend and Unmute buttons
             )
-            await safe_send(case_thread, embed=embed, view=view)
+            embed_message = await safe_send(case_thread, embed=embed, view=view)
+
+            # If no valid media evidence provided, ping moderator for attachment
+            if moderator and not _has_valid_media_evidence(evidence):
+                warning_message = await safe_send(
+                    case_thread,
+                    f"⚠️ {moderator.mention} No screenshot/video evidence was provided for this timeout.\n\n"
+                    f"**Reply to this message** with an attachment (screenshot/video).\n\n"
+                    f"You have **1 hour** or the owner will be notified.\n"
+                    f"_Only replies from you will be accepted._"
+                )
+                # Track pending evidence in database (only if warning sent)
+                if warning_message and embed_message:
+                    self.db.create_pending_reason(
+                        thread_id=case_thread.id,
+                        warning_message_id=warning_message.id,
+                        embed_message_id=embed_message.id,
+                        moderator_id=moderator_id,
+                        target_user_id=user.id,
+                        action_type="timeout",
+                    )
 
             logger.tree("Case Log: Timeout Logged", [
                 ("User", f"{user.display_name} ({user.id})"),
@@ -2014,6 +2052,7 @@ class CaseLogService:
         reason: Optional[str] = None,
         mute_count: int = 1,
         moderator: Optional[discord.Member] = None,
+        evidence_url: Optional[str] = None,
     ) -> discord.Embed:
         """
         Build a timeout action embed.
@@ -2026,6 +2065,7 @@ class CaseLogService:
             reason: Optional reason for the timeout.
             mute_count: The mute number for this user.
             moderator: Optional moderator member object for author icon.
+            evidence_url: Optional URL to evidence message.
 
         Returns:
             Discord Embed for the timeout action.
@@ -2062,6 +2102,9 @@ class CaseLogService:
 
         if reason:
             embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
+
+        if evidence_url:
+            embed.add_field(name="Evidence", value=f"[View Evidence]({evidence_url})", inline=False)
 
         set_footer(embed)
         return embed
@@ -2254,9 +2297,9 @@ class CaseLogService:
                     attachment_url = att.url
                     break
 
-        # For mute/ban: require attachment (text is optional)
+        # For mute/timeout/ban: require attachment (text is optional)
         # For unmute/unban: require text only
-        if action_type in ("mute", "extension", "ban"):
+        if action_type in ("mute", "extension", "ban", "timeout"):
             if not attachment_url:
                 # No attachment provided - send reminder and don't process
                 try:
@@ -2329,7 +2372,7 @@ class CaseLogService:
                     user_id=pending["target_user_id"],
                     guild_id=thread.guild.id if thread.guild else None,
                     case_thread_id=thread.id,
-                    is_mute_embed=(action_type in ("mute", "extension")),
+                    is_mute_embed=(action_type in ("mute", "extension", "timeout")),
                 )
 
             if view:
