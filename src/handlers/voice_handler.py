@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from src.core.config import get_config
+from src.core.database import get_db
 from src.core.logger import logger
 
 if TYPE_CHECKING:
@@ -36,6 +37,7 @@ class VoiceHandler:
         """Initialize the voice handler."""
         self.bot = bot
         self.config = get_config()
+        self.db = get_db()
 
     async def handle_voice_state_update(
         self,
@@ -51,11 +53,68 @@ class VoiceHandler:
             before: Previous voice state.
             after: New voice state.
         """
+        # Track voice activity to database for verification
+        self._save_voice_activity(member, before, after)
+
         # Check muted user VC restriction first
         await self._enforce_muted_vc_restriction(member, before, after)
 
         # Server logging service
         await self._log_voice_to_server_logs(member, before, after)
+
+    def _save_voice_activity(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        """
+        Save voice activity to database for later verification.
+
+        Args:
+            member: The member whose voice state changed.
+            before: Previous voice state.
+            after: New voice state.
+        """
+        try:
+            # Joined a voice channel
+            if before.channel is None and after.channel is not None:
+                self.db.save_voice_activity(
+                    user_id=member.id,
+                    guild_id=member.guild.id,
+                    channel_id=after.channel.id,
+                    channel_name=after.channel.name,
+                    action="join",
+                )
+
+            # Left a voice channel
+            elif before.channel is not None and after.channel is None:
+                self.db.save_voice_activity(
+                    user_id=member.id,
+                    guild_id=member.guild.id,
+                    channel_id=before.channel.id,
+                    channel_name=before.channel.name,
+                    action="leave",
+                )
+
+            # Moved between voice channels (log both leave and join)
+            elif before.channel != after.channel and before.channel and after.channel:
+                self.db.save_voice_activity(
+                    user_id=member.id,
+                    guild_id=member.guild.id,
+                    channel_id=before.channel.id,
+                    channel_name=before.channel.name,
+                    action="leave",
+                )
+                self.db.save_voice_activity(
+                    user_id=member.id,
+                    guild_id=member.guild.id,
+                    channel_id=after.channel.id,
+                    channel_name=after.channel.name,
+                    action="join",
+                )
+        except Exception as e:
+            logger.debug(f"Failed to save voice activity: {e}")
 
     async def _enforce_muted_vc_restriction(
         self,

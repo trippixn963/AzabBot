@@ -2370,13 +2370,77 @@ class CaseLogService:
                 except Exception as e:
                     logger.error(f"Evidence reply storage failed: {e}")
             elif is_voice_chat:
-                # Voice chat incident - no evidence possible
-                embed.add_field(name="Evidence", value="`🎙️ Voice Chat Incident`", inline=False)
-                logger.tree("Voice Chat Evidence", [
-                    ("Target", f"{pending['target_user_id']}"),
-                    ("Action", action_type.capitalize()),
-                    ("Moderator", f"{message.author} ({message.author.id})"),
-                ], emoji="🎙️")
+                # Voice chat incident - query and display VC activity for verification
+                target_user_id = pending["target_user_id"]
+                guild_id = thread.guild.id if thread.guild else None
+
+                # Get recent voice activity for the target user
+                vc_activity = []
+                if guild_id:
+                    vc_activity = self.db.get_recent_voice_activity(
+                        user_id=target_user_id,
+                        guild_id=guild_id,
+                        limit=10,
+                        max_age_seconds=3600,  # Last hour
+                    )
+
+                if vc_activity:
+                    # Build verification message showing VC activity
+                    vc_lines = []
+                    for activity in vc_activity:
+                        action_emoji = "📥" if activity["action"] == "join" else "📤"
+                        timestamp = int(activity["timestamp"])
+                        vc_lines.append(
+                            f"{action_emoji} `{activity['channel_name']}` <t:{timestamp}:T>"
+                        )
+
+                    vc_summary = "\n".join(vc_lines[:5])  # Show last 5 events
+                    embed.add_field(
+                        name="Evidence",
+                        value=f"`🎙️ Voice Chat Incident`\n\n**VC Activity (Last Hour):**\n{vc_summary}",
+                        inline=False,
+                    )
+
+                    # Also send a separate verification message in the thread
+                    verification_msg = (
+                        f"🎙️ **Voice Chat Verification**\n\n"
+                        f"Moderator claimed this incident happened in voice chat.\n"
+                        f"Here is <@{target_user_id}>'s recent VC activity:\n\n"
+                    )
+                    for activity in vc_activity:
+                        action_emoji = "📥 Joined" if activity["action"] == "join" else "📤 Left"
+                        timestamp = int(activity["timestamp"])
+                        verification_msg += f"{action_emoji} `{activity['channel_name']}` at <t:{timestamp}:T>\n"
+
+                    await safe_send(thread, verification_msg)
+
+                    logger.tree("Voice Chat Evidence Verified", [
+                        ("Target", f"{target_user_id}"),
+                        ("Action", action_type.capitalize()),
+                        ("Moderator", f"{message.author} ({message.author.id})"),
+                        ("VC Events", str(len(vc_activity))),
+                    ], emoji="🎙️")
+                else:
+                    # No VC activity found - still accept but note it
+                    embed.add_field(
+                        name="Evidence",
+                        value="`🎙️ Voice Chat Incident`\n⚠️ _No recent VC activity found for verification_",
+                        inline=False,
+                    )
+
+                    await safe_send(
+                        thread,
+                        f"⚠️ **Voice Chat Verification Failed**\n\n"
+                        f"Moderator claimed this incident happened in voice chat, "
+                        f"but no recent VC activity was found for <@{target_user_id}>.\n\n"
+                        f"_This may indicate the user was not in VC, or the action was delayed._"
+                    )
+
+                    logger.tree("Voice Chat Evidence - No VC Activity", [
+                        ("Target", f"{target_user_id}"),
+                        ("Action", action_type.capitalize()),
+                        ("Moderator", f"{message.author} ({message.author.id})"),
+                    ], emoji="⚠️")
 
             # Preserve the view (buttons) when editing
             view = None

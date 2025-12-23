@@ -742,6 +742,28 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_warnings_time ON warnings(created_at)"
         )
 
+        # -----------------------------------------------------------------
+        # Voice Activity Table
+        # DESIGN: Tracks voice channel joins/leaves for verification
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS voice_activity (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                channel_name TEXT NOT NULL,
+                action TEXT NOT NULL,
+                timestamp REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_voice_activity_user ON voice_activity(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_voice_activity_time ON voice_activity(timestamp)"
+        )
+
         conn.commit()
 
     # =========================================================================
@@ -2844,6 +2866,91 @@ class DatabaseManager:
             (user_id,)
         )
         return row is not None
+
+    # =========================================================================
+    # Voice Activity Operations
+    # =========================================================================
+
+    def save_voice_activity(
+        self,
+        user_id: int,
+        guild_id: int,
+        channel_id: int,
+        channel_name: str,
+        action: str,
+    ) -> None:
+        """
+        Save a voice activity event (join/leave).
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Discord guild ID.
+            channel_id: Voice channel ID.
+            channel_name: Voice channel name.
+            action: 'join' or 'leave'.
+        """
+        from datetime import datetime
+        from src.core.config import NY_TZ
+
+        self.execute(
+            """INSERT INTO voice_activity
+               (user_id, guild_id, channel_id, channel_name, action, timestamp)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, guild_id, channel_id, channel_name, action, datetime.now(NY_TZ).timestamp())
+        )
+
+    def get_recent_voice_activity(
+        self,
+        user_id: int,
+        guild_id: int,
+        limit: int = 10,
+        max_age_seconds: int = 3600,
+    ) -> list:
+        """
+        Get recent voice activity for a user.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Discord guild ID.
+            limit: Max records to return.
+            max_age_seconds: Only return activity within this time window.
+
+        Returns:
+            List of voice activity records (newest first).
+        """
+        from datetime import datetime
+        from src.core.config import NY_TZ
+
+        cutoff = datetime.now(NY_TZ).timestamp() - max_age_seconds
+        rows = self.fetchall(
+            """SELECT channel_id, channel_name, action, timestamp
+               FROM voice_activity
+               WHERE user_id = ? AND guild_id = ? AND timestamp > ?
+               ORDER BY timestamp DESC
+               LIMIT ?""",
+            (user_id, guild_id, cutoff, limit)
+        )
+        return [dict(row) for row in rows] if rows else []
+
+    def cleanup_old_voice_activity(self, max_age_seconds: int = 86400) -> int:
+        """
+        Clean up old voice activity records.
+
+        Args:
+            max_age_seconds: Delete records older than this (default 24h).
+
+        Returns:
+            Number of records deleted.
+        """
+        from datetime import datetime
+        from src.core.config import NY_TZ
+
+        cutoff = datetime.now(NY_TZ).timestamp() - max_age_seconds
+        cursor = self.execute(
+            "DELETE FROM voice_activity WHERE timestamp < ?",
+            (cutoff,)
+        )
+        return cursor.rowcount if cursor else 0
 
 
 # =============================================================================
