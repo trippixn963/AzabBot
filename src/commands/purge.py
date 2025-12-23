@@ -248,8 +248,8 @@ class PurgeCog(commands.Cog):
 
         set_footer(embed)
 
-        # Send response (auto-deletes after 10 seconds)
-        await interaction.followup.send(embed=embed, delete_after=10)
+        # Send response (ephemeral - only visible to moderator)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
         # Log the purge action
         logger.tree("MESSAGES PURGED", [
