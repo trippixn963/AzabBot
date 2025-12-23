@@ -130,6 +130,15 @@ class MemberEvents(commands.Cog):
                     changed_by=None,
                 )
 
+                # Save old nickname to username history (if it existed)
+                if before.nick:
+                    db = get_db()
+                    db.save_username_change(
+                        user_id=after.id,
+                        display_name=before.nick,
+                        guild_id=after.guild.id,
+                    )
+
             if before.premium_since is None and after.premium_since is not None:
                 await self.bot.logging_service.log_boost(after)
             elif before.premium_since is not None and after.premium_since is None:
@@ -233,6 +242,14 @@ class MemberEvents(commands.Cog):
     @commands.Cog.listener()
     async def on_user_update(self, before: discord.User, after: discord.User) -> None:
         """Log user avatar and username changes."""
+        # Track username changes to history (always, even if logging disabled)
+        if before.name != after.name:
+            db = get_db()
+            db.save_username_change(
+                user_id=after.id,
+                username=before.name,  # Save the OLD username
+            )
+
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
             return
 

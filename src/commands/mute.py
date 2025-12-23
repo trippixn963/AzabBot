@@ -596,7 +596,7 @@ class MuteCog(commands.Cog):
     @app_commands.describe(
         user="The user to mute",
         duration="How long to mute (e.g., 10m, 1h, 1d, permanent)",
-        reason="Reason for the mute",
+        reason="Reason for the mute (required)",
         evidence="Message link or description of evidence",
     )
     @app_commands.autocomplete(duration=duration_autocomplete, reason=reason_autocomplete)
@@ -605,7 +605,7 @@ class MuteCog(commands.Cog):
         interaction: discord.Interaction,
         user: discord.Member,
         duration: str,
-        reason: Optional[str] = None,
+        reason: str,
         evidence: Optional[str] = None,
     ) -> None:
         """Mute a user by assigning the muted role."""

@@ -21,16 +21,56 @@ Server: discord.gg/syria
 """
 
 import asyncio
+import re
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, Dict, Tuple
 
 import discord
 
+
+def _has_valid_media_evidence(evidence: Optional[str]) -> bool:
+    """
+    Check if evidence contains a valid media attachment URL.
+
+    Valid sources:
+    - Discord CDN (cdn.discordapp.com, media.discordapp.net)
+    - Direct image/video links (.png, .jpg, .gif, .mp4, .webm, etc.)
+
+    Args:
+        evidence: The evidence string to check.
+
+    Returns:
+        True if evidence contains valid media, False otherwise.
+    """
+    if not evidence:
+        return False
+
+    # Check for Discord CDN URLs
+    discord_cdn_pattern = r'(cdn\.discordapp\.com|media\.discordapp\.net)/attachments/'
+    if re.search(discord_cdn_pattern, evidence):
+        return True
+
+    # Check for direct media file extensions
+    media_extensions = r'\.(png|jpg|jpeg|gif|webp|mp4|webm|mov|avi)(\?|$|\s)'
+    if re.search(media_extensions, evidence, re.IGNORECASE):
+        return True
+
+    return False
+
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
-from src.utils.views import CASE_EMOJI, MESSAGE_EMOJI, DownloadButton, InfoButton
+from src.utils.views import (
+    CASE_EMOJI,
+    MESSAGE_EMOJI,
+    DownloadButton,
+    InfoButton,
+    HistoryButton,
+    ExtendButton,
+    UnmuteButton,
+    NotesButton,
+)
 from src.utils.retry import (
     retry_async,
     safe_fetch_channel,
@@ -57,6 +97,7 @@ class CaseLogView(discord.ui.View):
         guild_id: int,
         message_url: Optional[str] = None,
         case_thread_id: Optional[int] = None,
+        is_mute_embed: bool = False,
     ):
         super().__init__(timeout=None)
 
@@ -84,6 +125,20 @@ class CaseLogView(discord.ui.View):
 
         # Button 4: Download PFP (persistent button)
         self.add_item(DownloadButton(user_id))
+
+        # Button 5: History button (persistent) - always show
+        self.add_item(HistoryButton(user_id, guild_id))
+
+        # Button 6: Notes button (persistent) - always show
+        self.add_item(NotesButton(user_id, guild_id))
+
+        # Mute-specific buttons (only for active mute embeds)
+        if is_mute_embed:
+            # Button 7: Extend button (persistent)
+            self.add_item(ExtendButton(user_id, guild_id))
+
+            # Button 8: Unmute button (persistent)
+            self.add_item(UnmuteButton(user_id, guild_id))
 
 
 # =============================================================================
@@ -464,25 +519,24 @@ class CaseLogService:
                 guild_id=user.guild.id,
                 message_url=source_message_url,
                 case_thread_id=case["thread_id"],
+                is_mute_embed=True,  # Include Extend and Unmute buttons
             )
             embed_message = await safe_send(case_thread, embed=embed, view=view)
             if not embed_message:
                 logger.warning(f"log_mute: Failed to send embed to thread {case_thread.id}")
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
-            # If no reason provided, ping moderator and track pending reason
-            if not reason:
+            # If no valid media evidence provided, ping moderator for attachment
+            if not _has_valid_media_evidence(evidence):
                 action_type = "extension" if is_extension else "mute"
                 warning_message = await safe_send(
                     case_thread,
-                    f"⚠️ {moderator.mention} No reason was provided for this {action_type}.\n\n"
-                    f"**Reply to this message** with:\n"
-                    f"• A reason **and** an attachment (screenshot/video), OR\n"
-                    f"• Just an attachment\n\n"
+                    f"⚠️ {moderator.mention} No screenshot/video evidence was provided for this {action_type}.\n\n"
+                    f"**Reply to this message** with an attachment (screenshot/video).\n\n"
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
-                # Track pending reason in database (only if warning sent)
+                # Track pending evidence in database (only if warning sent)
                 if warning_message:
                     self.db.create_pending_reason(
                         thread_id=case_thread.id,
@@ -537,6 +591,200 @@ class CaseLogService:
             ])
             import traceback
             return None
+
+    # =========================================================================
+    # Warning Logging
+    # =========================================================================
+
+    async def log_warn(
+        self,
+        user: discord.Member,
+        moderator: discord.Member,
+        reason: Optional[str] = None,
+        evidence: Optional[str] = None,
+        active_warns: int = 1,
+        total_warns: int = 1,
+        source_message_url: Optional[str] = None,
+    ) -> Optional[dict]:
+        """
+        Log a warning action to the user's case thread.
+
+        Args:
+            user: The user being warned.
+            moderator: The moderator who issued the warning.
+            reason: Optional reason for the warning.
+            evidence: Optional evidence link or description.
+            active_warns: Active (non-expired) warning count.
+            total_warns: Total warning count (all time).
+            source_message_url: Optional URL to the warn message in server.
+
+        Returns:
+            Dict with case_id and thread_id, or None if disabled/failed.
+        """
+        if not self.enabled:
+            return None
+
+        try:
+            case = await self._get_or_create_case(user)
+
+            case_thread = await self._get_case_thread(case["thread_id"])
+
+            if not case_thread:
+                logger.warning(f"log_warn: Thread {case['thread_id']} not found, returning early")
+                return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+
+            # Increment warn count in case_logs
+            if not case.get("just_created"):
+                self.db.increment_warn_count(user.id, moderator.id)
+
+            # Build and send warn embed
+            embed = self._build_warn_embed(user, moderator, reason, active_warns, total_warns, evidence)
+            view = CaseLogView(
+                user_id=user.id,
+                guild_id=user.guild.id,
+                message_url=source_message_url,
+                case_thread_id=case["thread_id"],
+                is_mute_embed=False,
+            )
+            embed_message = await safe_send(case_thread, embed=embed, view=view)
+            if not embed_message:
+                logger.warning(f"log_warn: Failed to send embed to thread {case_thread.id}")
+                return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+
+            # If no valid media evidence provided, ping moderator for attachment
+            if not _has_valid_media_evidence(evidence):
+                warning_message = await safe_send(
+                    case_thread,
+                    f"⚠️ {moderator.mention} No screenshot/video evidence was provided for this warning.\n\n"
+                    f"**Reply to this message** with an attachment (screenshot/video).\n\n"
+                    f"You have **1 hour** or the owner will be notified.\n"
+                    f"_Only replies from you will be accepted._"
+                )
+                if warning_message:
+                    self.db.create_pending_reason(
+                        thread_id=case_thread.id,
+                        warning_message_id=warning_message.id,
+                        embed_message_id=embed_message.id,
+                        moderator_id=moderator.id,
+                        target_user_id=user.id,
+                        action_type="warn",
+                    )
+
+            # Repeat offender alert at 3+ active warnings
+            if active_warns >= 3:
+                alert_embed = discord.Embed(
+                    title="⚠️ Repeat Offender Alert",
+                    color=EmbedColors.WARNING,
+                    description=f"**{user.display_name}** has **{active_warns} active warnings**.\n\nConsider a mute or ban for this user.",
+                    timestamp=datetime.now(NY_TZ),
+                )
+                alert_embed.set_footer(text=f"Alert • ID: {user.id}")
+                await safe_send(case_thread, embed=alert_embed)
+
+            if case.get("just_created"):
+                log_type = "New Case Created With Warning"
+            else:
+                log_type = "Warning Logged"
+
+            logger.tree(f"Case Log: {log_type}", [
+                ("User", f"{user.display_name} ({user.id})"),
+                ("Case ID", case['case_id']),
+                ("Warned By", f"{moderator.display_name}"),
+                ("Active Warnings", str(active_warns)),
+                ("Total Warnings", str(total_warns)),
+                ("Reason", reason if reason else "Not provided"),
+            ], emoji="⚠️")
+
+            # Schedule debounced profile stats update
+            updated_case = self.db.get_case_log(user.id)
+            if updated_case:
+                self._schedule_profile_update(user.id, updated_case)
+
+            return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+
+        except Exception as e:
+            logger.error("Case Log: Failed To Log Warning", [
+                ("User ID", str(user.id)),
+                ("Error Type", type(e).__name__),
+                ("Error", str(e)[:200]),
+            ])
+            return None
+
+    def _build_warn_embed(
+        self,
+        user: discord.Member,
+        moderator: discord.Member,
+        reason: Optional[str] = None,
+        active_warns: int = 1,
+        total_warns: int = 1,
+        evidence: Optional[str] = None,
+    ) -> discord.Embed:
+        """
+        Build a warning action embed.
+
+        Args:
+            user: The user being warned.
+            moderator: The moderator who issued the warning.
+            reason: Optional reason for the warning.
+            active_warns: Active (non-expired) warning count.
+            total_warns: Total warning count (all time).
+            evidence: Optional evidence link or description.
+
+        Returns:
+            Discord Embed for the warning action.
+        """
+        if active_warns > 1:
+            title = f"⚠️ User Warned (Warning #{active_warns})"
+        else:
+            title = "⚠️ User Warned"
+
+        embed = discord.Embed(
+            title=title,
+            color=EmbedColors.WARNING,
+            timestamp=datetime.now(NY_TZ),
+        )
+        embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
+        embed.set_thumbnail(url=user.display_avatar.url)
+        embed.add_field(name="Warned By", value=f"`{moderator.display_name}`", inline=True)
+
+        # Show active vs total if there are expired warnings
+        if active_warns != total_warns:
+            embed.add_field(name="Warnings", value=f"`{active_warns}` active (`{total_warns}` total)", inline=True)
+        else:
+            embed.add_field(name="Warning #", value=f"`{active_warns}`", inline=True)
+
+        # Account Age with warning for new accounts
+        now = datetime.now(NY_TZ)
+        created_at = user.created_at.replace(tzinfo=NY_TZ) if user.created_at.tzinfo is None else user.created_at
+        account_age_days = (now - created_at).days
+        age_str = self._format_age(created_at, now)
+
+        if account_age_days < 7:
+            embed.add_field(name="Account Age", value=f"`{age_str}` ⚠️", inline=True)
+        elif account_age_days < 30:
+            embed.add_field(name="Account Age", value=f"`{age_str}` ⚡", inline=True)
+        else:
+            embed.add_field(name="Account Age", value=f"`{age_str}`", inline=True)
+
+        # Get previous mute/ban counts for context
+        mute_count = self.db.get_case_log(user.id)
+        if mute_count:
+            mc = mute_count.get("mute_count", 0) or 0
+            bc = mute_count.get("ban_count", 0) or 0
+            if mc > 0 or bc > 0:
+                embed.add_field(name="Previous Mutes", value=f"`{mc}`", inline=True)
+                embed.add_field(name="Previous Bans", value=f"`{bc}`", inline=True)
+
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
+        else:
+            embed.add_field(name="Reason", value="*Not provided*", inline=False)
+
+        if evidence:
+            embed.add_field(name="Evidence", value=evidence, inline=False)
+
+        set_footer(embed)
+        return embed
 
     # =========================================================================
     # Unmute Logging
@@ -721,12 +969,13 @@ class CaseLogService:
                 mute_count = self.db.increment_mute_count(user.id)
 
             # Build and send timeout embed
-            embed = self._build_timeout_embed(user, mod_name, duration, until, reason, mute_count)
+            embed = self._build_timeout_embed(user, mod_name, duration, until, reason, mute_count, moderator)
             view = CaseLogView(
                 user_id=user.id,
                 guild_id=user.guild.id,
                 message_url=None,
                 case_thread_id=case["thread_id"],
+                is_mute_embed=True,  # Include Extend and Unmute buttons
             )
             await safe_send(case_thread, embed=embed, view=view)
 
@@ -805,6 +1054,7 @@ class CaseLogService:
                 color=EmbedColors.ERROR,
                 timestamp=now,
             )
+            embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
             embed.set_thumbnail(url=user.display_avatar.url)
             embed.add_field(name="Banned By", value=f"`{moderator.display_name}`", inline=True)
 
@@ -849,18 +1099,16 @@ class CaseLogService:
                 logger.warning(f"log_ban: Failed to send embed to thread {case_thread.id}")
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
-            # If no reason provided, ping moderator and track pending reason
-            if not reason:
+            # If no valid media evidence provided, ping moderator for attachment
+            if not _has_valid_media_evidence(evidence):
                 warning_message = await safe_send(
                     case_thread,
-                    f"⚠️ {moderator.mention} No reason was provided for this ban.\n\n"
-                    f"**Reply to this message** with:\n"
-                    f"• A reason **and** an attachment (screenshot/video), OR\n"
-                    f"• Just an attachment\n\n"
+                    f"⚠️ {moderator.mention} No screenshot/video evidence was provided for this ban.\n\n"
+                    f"**Reply to this message** with an attachment (screenshot/video).\n\n"
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
-                # Track pending reason in database (only if warning sent)
+                # Track pending evidence in database (only if warning sent)
                 if warning_message:
                     self.db.create_pending_reason(
                         thread_id=case_thread.id,
@@ -956,6 +1204,7 @@ class CaseLogService:
                     color=EmbedColors.SUCCESS,
                     timestamp=now,
                 )
+                embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
                 embed.add_field(name="Unbanned By", value=f"`{moderator.display_name}`", inline=True)
 
                 # Time banned (how long the ban lasted)
@@ -1230,10 +1479,12 @@ class CaseLogService:
                 embed.set_thumbnail(url=member.display_avatar.url)
                 embed.set_footer(text=f"Rejoin • ID: {member.id}")
 
+                # Include Extend/Unmute since user is still muted
                 view = CaseLogView(
                     user_id=member.id,
                     guild_id=member.guild.id,
                     case_thread_id=case["thread_id"],
+                    is_mute_embed=True,  # User is still muted
                 )
                 await safe_send(case_thread, embed=embed, view=view)
 
@@ -1306,10 +1557,11 @@ class CaseLogService:
 
                 embed.set_footer(text=f"Violation • ID: {user_id}")
 
-                # Add Info and Avatar buttons
+                # Add buttons - include Extend/Unmute since user is still muted
                 view = CaseLogView(
                     user_id=user_id,
                     guild_id=case_thread.guild.id,
+                    is_mute_embed=True,  # User is still muted
                 )
                 await safe_send(case_thread, embed=embed, view=view)
 
@@ -1425,6 +1677,12 @@ class CaseLogService:
         created_at = user.created_at.replace(tzinfo=NY_TZ) if user.created_at.tzinfo is None else user.created_at
         account_age = self._format_age(created_at, now)
         user_embed.add_field(name="Account Age", value=account_age, inline=True)
+
+        # Previous names (if any)
+        previous_names = self.db.get_previous_names(user.id, limit=3)
+        if previous_names:
+            names_str = ", ".join(f"`{name}`" for name in previous_names)
+            user_embed.add_field(name="Previous Names", value=names_str, inline=False)
 
         set_footer(user_embed)
 
@@ -1552,6 +1810,12 @@ class CaseLogService:
                     inline=False,
                 )
 
+            # Previous names (if any)
+            previous_names = self.db.get_previous_names(user_id, limit=3)
+            if previous_names:
+                names_str = ", ".join(f"`{name}`" for name in previous_names)
+                embed.add_field(name="Previous Names", value=names_str, inline=False)
+
             set_footer(embed)
 
             # Edit the message with retry
@@ -1603,6 +1867,7 @@ class CaseLogService:
             color=EmbedColors.ERROR,
             timestamp=datetime.now(NY_TZ),
         )
+        embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
         embed.set_thumbnail(url=user.display_avatar.url)
         embed.add_field(name="Muted By", value=f"`{moderator.display_name}`", inline=True)
         embed.add_field(name="Duration", value=f"`{duration}`", inline=True)
@@ -1647,6 +1912,7 @@ class CaseLogService:
         until: datetime,
         reason: Optional[str] = None,
         mute_count: int = 1,
+        moderator: Optional[discord.Member] = None,
     ) -> discord.Embed:
         """
         Build a timeout action embed.
@@ -1658,6 +1924,7 @@ class CaseLogService:
             until: When the timeout expires.
             reason: Optional reason for the timeout.
             mute_count: The mute number for this user.
+            moderator: Optional moderator member object for author icon.
 
         Returns:
             Discord Embed for the timeout action.
@@ -1672,6 +1939,8 @@ class CaseLogService:
             color=EmbedColors.WARNING,
             timestamp=datetime.now(NY_TZ),
         )
+        if moderator:
+            embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
         embed.set_thumbnail(url=user.display_avatar.url)
         embed.add_field(name="Timed Out By", value=f"`{mod_name}`", inline=True)
         embed.add_field(name="Duration", value=f"`{duration}`", inline=True)
@@ -1724,6 +1993,7 @@ class CaseLogService:
             color=EmbedColors.SUCCESS,
             timestamp=datetime.now(NY_TZ),
         )
+        embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
         if user_avatar_url:
             embed.set_thumbnail(url=user_avatar_url)
         embed.add_field(name="Unmuted By", value=f"`{moderator.display_name}`", inline=True)

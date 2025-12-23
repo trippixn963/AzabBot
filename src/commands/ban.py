@@ -286,6 +286,14 @@ class BanCog(commands.Cog):
         db = get_db()
         ban_count = db.increment_ban_count(user.id, interaction.user.id, reason)
 
+        # Record to ban history for History button
+        db.add_ban(
+            user_id=user.id,
+            guild_id=interaction.guild.id,
+            moderator_id=interaction.user.id,
+            reason=reason,
+        )
+
         # -----------------------------------------------------------------
         # Logging
         # -----------------------------------------------------------------
@@ -392,7 +400,7 @@ class BanCog(commands.Cog):
     @app_commands.default_permissions(ban_members=True)
     @app_commands.describe(
         user="The user to ban",
-        reason="Reason for the ban",
+        reason="Reason for the ban (required)",
         evidence="Message link or description of evidence",
         attachment="Screenshot or video evidence",
     )
@@ -401,7 +409,7 @@ class BanCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         user: discord.Member,
-        reason: Optional[str] = None,
+        reason: str,
         evidence: Optional[str] = None,
         attachment: Optional[discord.Attachment] = None,
     ) -> None:
@@ -478,6 +486,15 @@ class BanCog(commands.Cog):
         except discord.HTTPException as e:
             await interaction.followup.send(f"Failed to unban: {e}", ephemeral=True)
             return
+
+        # Record to ban history for History button
+        db = get_db()
+        db.add_unban(
+            user_id=target_user.id,
+            guild_id=interaction.guild.id,
+            moderator_id=interaction.user.id,
+            reason=reason,
+        )
 
         # -----------------------------------------------------------------
         # Logging

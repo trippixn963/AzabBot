@@ -7,7 +7,8 @@ Service for tracking moderator activities in a separate server forum.
 Structure:
     - constants.py: Configuration constants
     - helpers.py: Data classes and utility functions
-    - service.py: Main ModTrackerService class
+    - logs.py: Logging methods mixin (extracted for maintainability)
+    - service.py: Main ModTrackerService class (inherits from logs.py mixin)
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

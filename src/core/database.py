@@ -87,6 +87,26 @@ class JoinInfoRecord(TypedDict, total=False):
     avatar_hash: Optional[str]
 
 
+class ModNoteRecord(TypedDict, total=False):
+    """Type for moderator note records."""
+    id: int
+    user_id: int
+    guild_id: int
+    moderator_id: int
+    note: str
+    created_at: float
+
+
+class UsernameHistoryRecord(TypedDict, total=False):
+    """Type for username history records."""
+    id: int
+    user_id: int
+    username: Optional[str]
+    display_name: Optional[str]
+    guild_id: Optional[int]
+    changed_at: float
+
+
 class MemberActivityRecord(TypedDict, total=False):
     """Type for member activity records."""
     user_id: int
@@ -476,6 +496,14 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE case_logs ADD COLUMN last_ban_reason TEXT")
         except sqlite3.OperationalError:
             pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE case_logs ADD COLUMN warn_count INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE case_logs ADD COLUMN last_warn_at REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
         # -----------------------------------------------------------------
         # Mod Tracker Table
@@ -625,6 +653,93 @@ class DatabaseManager:
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_user_join_avatar ON user_join_info(avatar_hash)"
+        )
+
+        # -----------------------------------------------------------------
+        # Mod Notes Table
+        # DESIGN: Stores moderator notes/comments about users
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mod_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                moderator_id INTEGER NOT NULL,
+                note TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mod_notes_user ON mod_notes(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mod_notes_time ON mod_notes(created_at)"
+        )
+
+        # -----------------------------------------------------------------
+        # Ban History Table
+        # DESIGN: Tracks all ban/unban actions for history display
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ban_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                moderator_id INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                reason TEXT,
+                timestamp REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ban_history_user ON ban_history(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ban_history_time ON ban_history(timestamp)"
+        )
+
+        # -----------------------------------------------------------------
+        # Username History Table
+        # DESIGN: Tracks username/nickname changes for user identification
+        # Keeps rolling window of last 10 changes per user
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS username_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                username TEXT,
+                display_name TEXT,
+                guild_id INTEGER,
+                changed_at REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_username_history_user ON username_history(user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_username_history_time ON username_history(changed_at)"
+        )
+
+        # -----------------------------------------------------------------
+        # Warnings Table
+        # DESIGN: Tracks warnings issued to users by moderators
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS warnings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                moderator_id INTEGER NOT NULL,
+                reason TEXT,
+                evidence TEXT,
+                created_at REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_warnings_user ON warnings(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_warnings_time ON warnings(created_at)"
         )
 
         conn.commit()
@@ -1437,6 +1552,162 @@ class DatabaseManager:
         )
         return row["ban_count"] if row and row["ban_count"] else 0
 
+    # =========================================================================
+    # Warning Operations
+    # =========================================================================
+
+    # Warnings older than this many days don't count toward active count
+    WARNING_DECAY_DAYS = 30
+
+    def add_warning(
+        self,
+        user_id: int,
+        guild_id: int,
+        moderator_id: int,
+        reason: Optional[str] = None,
+        evidence: Optional[str] = None,
+    ) -> int:
+        """
+        Add a warning to the database.
+
+        Args:
+            user_id: Discord user ID being warned.
+            guild_id: Guild where warning was issued.
+            moderator_id: Moderator who issued warning.
+            reason: Optional reason for warning.
+            evidence: Optional evidence URL/text.
+
+        Returns:
+            Row ID of the warning record.
+        """
+        now = time.time()
+
+        cursor = self.execute(
+            """INSERT INTO warnings
+               (user_id, guild_id, moderator_id, reason, evidence, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, guild_id, moderator_id, reason, evidence, now)
+        )
+
+        logger.tree("Warning Added", [
+            ("User ID", str(user_id)),
+            ("Moderator ID", str(moderator_id)),
+            ("Reason", (reason or "None")[:50]),
+        ], emoji="⚠️")
+
+        return cursor.lastrowid
+
+    def increment_warn_count(
+        self,
+        user_id: int,
+        moderator_id: Optional[int] = None,
+    ) -> int:
+        """
+        Increment warn count for a user's case.
+
+        Args:
+            user_id: Discord user ID.
+            moderator_id: Optional moderator ID who issued the warning.
+
+        Returns:
+            New warn count.
+        """
+        now = time.time()
+        self.execute(
+            """UPDATE case_logs
+               SET warn_count = COALESCE(warn_count, 0) + 1,
+                   last_warn_at = ?
+               WHERE user_id = ?""",
+            (now, user_id)
+        )
+
+        row = self.fetchone(
+            "SELECT warn_count FROM case_logs WHERE user_id = ?",
+            (user_id,)
+        )
+        return row["warn_count"] if row and row["warn_count"] else 1
+
+    def get_user_warn_count(self, user_id: int, guild_id: int) -> int:
+        """
+        Get total number of warnings for a user in a guild (all time).
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Total warning count.
+        """
+        row = self.fetchone(
+            "SELECT COUNT(*) as count FROM warnings WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        return row["count"] if row else 0
+
+    def get_active_warn_count(self, user_id: int, guild_id: int) -> int:
+        """
+        Get number of active (non-expired) warnings for a user.
+
+        Warnings older than WARNING_DECAY_DAYS are considered expired
+        and don't count toward the active total.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Active warning count.
+        """
+        decay_cutoff = time.time() - (self.WARNING_DECAY_DAYS * 86400)
+        row = self.fetchone(
+            """SELECT COUNT(*) as count FROM warnings
+               WHERE user_id = ? AND guild_id = ? AND created_at >= ?""",
+            (user_id, guild_id, decay_cutoff)
+        )
+        return row["count"] if row else 0
+
+    def get_warn_counts(self, user_id: int, guild_id: int) -> tuple:
+        """
+        Get both active and total warning counts for a user.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Tuple of (active_count, total_count).
+        """
+        total = self.get_user_warn_count(user_id, guild_id)
+        active = self.get_active_warn_count(user_id, guild_id)
+        return (active, total)
+
+    def get_user_warnings(
+        self,
+        user_id: int,
+        guild_id: int,
+        limit: int = 25,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all warnings for a user in a guild.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+            limit: Maximum number of warnings to return.
+
+        Returns:
+            List of warning records.
+        """
+        rows = self.fetchall(
+            """SELECT id, user_id, guild_id, moderator_id, reason, evidence, created_at
+               FROM warnings
+               WHERE user_id = ? AND guild_id = ?
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (user_id, guild_id, limit)
+        )
+        return [dict(row) for row in rows]
+
     def get_all_case_logs(self) -> List[Dict[str, Any]]:
         """
         Get all case logs.
@@ -2107,6 +2378,444 @@ class DatabaseManager:
             (avatar_hash, guild_id)
         )
         return [dict(row) for row in rows]
+
+
+    # =========================================================================
+    # Mod Notes Operations
+    # =========================================================================
+
+    def save_mod_note(
+        self,
+        user_id: int,
+        guild_id: int,
+        moderator_id: int,
+        note: str,
+    ) -> int:
+        """
+        Save a moderator note about a user.
+
+        Args:
+            user_id: Discord user ID the note is about.
+            guild_id: Guild ID.
+            moderator_id: Moderator who created the note.
+            note: The note text.
+
+        Returns:
+            The row ID of the inserted note.
+        """
+        now = time.time()
+        cursor = self.execute(
+            """INSERT INTO mod_notes
+               (user_id, guild_id, moderator_id, note, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (user_id, guild_id, moderator_id, note, now)
+        )
+        return cursor.lastrowid
+
+    def get_mod_notes(
+        self,
+        user_id: int,
+        guild_id: int,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get moderator notes for a user.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+            limit: Maximum records to return.
+
+        Returns:
+            List of note records, newest first.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM mod_notes
+               WHERE user_id = ? AND guild_id = ?
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (user_id, guild_id, limit)
+        )
+        return [dict(row) for row in rows]
+
+    def get_note_count(self, user_id: int, guild_id: int) -> int:
+        """
+        Get total note count for a user.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Total note count.
+        """
+        row = self.fetchone(
+            "SELECT COUNT(*) as count FROM mod_notes WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        return row["count"] if row else 0
+
+    # =========================================================================
+    # Ban History Operations
+    # =========================================================================
+
+    def add_ban(
+        self,
+        user_id: int,
+        guild_id: int,
+        moderator_id: int,
+        reason: Optional[str] = None,
+    ) -> int:
+        """
+        Add a ban record to history.
+
+        Args:
+            user_id: Discord user ID being banned.
+            guild_id: Guild ID.
+            moderator_id: Moderator who issued the ban.
+            reason: Optional reason for ban.
+
+        Returns:
+            Row ID of the ban record.
+        """
+        now = time.time()
+        cursor = self.execute(
+            """INSERT INTO ban_history
+               (user_id, guild_id, moderator_id, action, reason, timestamp)
+               VALUES (?, ?, ?, 'ban', ?, ?)""",
+            (user_id, guild_id, moderator_id, reason, now)
+        )
+        return cursor.lastrowid
+
+    def add_unban(
+        self,
+        user_id: int,
+        guild_id: int,
+        moderator_id: int,
+        reason: Optional[str] = None,
+    ) -> int:
+        """
+        Add an unban record to history.
+
+        Args:
+            user_id: Discord user ID being unbanned.
+            guild_id: Guild ID.
+            moderator_id: Moderator who issued the unban.
+            reason: Optional reason for unban.
+
+        Returns:
+            Row ID of the unban record.
+        """
+        now = time.time()
+        cursor = self.execute(
+            """INSERT INTO ban_history
+               (user_id, guild_id, moderator_id, action, reason, timestamp)
+               VALUES (?, ?, ?, 'unban', ?, ?)""",
+            (user_id, guild_id, moderator_id, reason, now)
+        )
+        return cursor.lastrowid
+
+    def get_ban_history(
+        self,
+        user_id: int,
+        guild_id: int,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get ban history for a user.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+            limit: Maximum records to return.
+
+        Returns:
+            List of ban history records, newest first.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM ban_history
+               WHERE user_id = ? AND guild_id = ?
+               ORDER BY timestamp DESC
+               LIMIT ?""",
+            (user_id, guild_id, limit)
+        )
+        return [dict(row) for row in rows]
+
+    # =========================================================================
+    # Extend Mute Operation
+    # =========================================================================
+
+    def extend_mute(
+        self,
+        user_id: int,
+        guild_id: int,
+        additional_seconds: int,
+        moderator_id: int,
+        reason: Optional[str] = None,
+    ) -> Optional[float]:
+        """
+        Extend an active mute by additional duration.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+            additional_seconds: Additional time to add.
+            moderator_id: Moderator extending the mute.
+            reason: Optional reason for extension.
+
+        Returns:
+            New expiration timestamp, or None if no active mute.
+        """
+        now = time.time()
+
+        # Get current mute
+        row = self.fetchone(
+            """SELECT id, expires_at FROM active_mutes
+               WHERE user_id = ? AND guild_id = ? AND unmuted = 0""",
+            (user_id, guild_id)
+        )
+
+        if not row:
+            return None
+
+        # Calculate new expiration
+        current_expires = row["expires_at"]
+        if current_expires is None:
+            # Permanent mute, can't extend
+            return None
+
+        new_expires = current_expires + additional_seconds
+
+        # Update the mute
+        self.execute(
+            "UPDATE active_mutes SET expires_at = ? WHERE id = ?",
+            (new_expires, row["id"])
+        )
+
+        # Log to history
+        self.execute(
+            """INSERT INTO mute_history
+               (user_id, guild_id, moderator_id, action, reason, duration_seconds, timestamp)
+               VALUES (?, ?, ?, 'extend', ?, ?, ?)""",
+            (user_id, guild_id, moderator_id, reason, additional_seconds, now)
+        )
+
+        return new_expires
+
+    # =========================================================================
+    # Combined History for Display
+    # =========================================================================
+
+    def get_combined_history(
+        self,
+        user_id: int,
+        guild_id: int,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get combined mute, ban, and note history for a user.
+
+        Returns a unified list sorted by timestamp, with type indicators.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+            limit: Maximum records to return.
+            offset: Number of records to skip (for pagination).
+
+        Returns:
+            List of history records with 'type' field indicating category.
+        """
+        # Get mute history
+        mutes = self.fetchall(
+            """SELECT id, user_id, guild_id, moderator_id, action, reason,
+                      duration_seconds, timestamp, 'mute' as type
+               FROM mute_history
+               WHERE user_id = ? AND guild_id = ?""",
+            (user_id, guild_id)
+        )
+
+        # Get ban history
+        bans = self.fetchall(
+            """SELECT id, user_id, guild_id, moderator_id, action, reason,
+                      NULL as duration_seconds, timestamp, 'ban' as type
+               FROM ban_history
+               WHERE user_id = ? AND guild_id = ?""",
+            (user_id, guild_id)
+        )
+
+        # Get warning history
+        warnings = self.fetchall(
+            """SELECT id, user_id, guild_id, moderator_id, 'warn' as action, reason,
+                      NULL as duration_seconds, created_at as timestamp, 'warn' as type
+               FROM warnings
+               WHERE user_id = ? AND guild_id = ?""",
+            (user_id, guild_id)
+        )
+
+        # Combine and sort
+        combined = [dict(row) for row in mutes] + [dict(row) for row in bans] + [dict(row) for row in warnings]
+        combined.sort(key=lambda x: x["timestamp"], reverse=True)
+
+        # Apply pagination
+        return combined[offset:offset + limit]
+
+    def get_history_count(self, user_id: int, guild_id: int) -> int:
+        """
+        Get total count of history records (mutes + bans + warnings).
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Total count.
+        """
+        mute_count = self.fetchone(
+            "SELECT COUNT(*) as count FROM mute_history WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        ban_count = self.fetchone(
+            "SELECT COUNT(*) as count FROM ban_history WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        warn_count = self.fetchone(
+            "SELECT COUNT(*) as count FROM warnings WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+
+        mc = mute_count["count"] if mute_count else 0
+        bc = ban_count["count"] if ban_count else 0
+        wc = warn_count["count"] if warn_count else 0
+        return mc + bc + wc
+
+    # =========================================================================
+    # Username History Operations
+    # =========================================================================
+
+    def save_username_change(
+        self,
+        user_id: int,
+        username: Optional[str] = None,
+        display_name: Optional[str] = None,
+        guild_id: Optional[int] = None,
+    ) -> int:
+        """
+        Save a username or nickname change to history.
+
+        Automatically maintains a rolling window of 10 entries per user.
+
+        Args:
+            user_id: Discord user ID.
+            username: Global username (if changed).
+            display_name: Server nickname (if changed).
+            guild_id: Guild ID for nickname changes (None for global).
+
+        Returns:
+            The row ID of the inserted record.
+        """
+        now = time.time()
+
+        # Insert new record
+        cursor = self.execute(
+            """INSERT INTO username_history
+               (user_id, username, display_name, guild_id, changed_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (user_id, username, display_name, guild_id, now)
+        )
+        new_id = cursor.lastrowid
+
+        # Clean up old records - keep only last 10 per user
+        self.execute(
+            """DELETE FROM username_history
+               WHERE user_id = ? AND id NOT IN (
+                   SELECT id FROM username_history
+                   WHERE user_id = ?
+                   ORDER BY changed_at DESC
+                   LIMIT 10
+               )""",
+            (user_id, user_id)
+        )
+
+        return new_id
+
+    def get_username_history(
+        self,
+        user_id: int,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get username history for a user.
+
+        Args:
+            user_id: Discord user ID.
+            limit: Maximum records to return.
+
+        Returns:
+            List of username history records, newest first.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM username_history
+               WHERE user_id = ?
+               ORDER BY changed_at DESC
+               LIMIT ?""",
+            (user_id, limit)
+        )
+        return [dict(row) for row in rows]
+
+    def get_previous_names(
+        self,
+        user_id: int,
+        limit: int = 5,
+    ) -> List[str]:
+        """
+        Get a simple list of previous usernames/nicknames for display.
+
+        Args:
+            user_id: Discord user ID.
+            limit: Maximum names to return.
+
+        Returns:
+            List of unique previous names, newest first.
+        """
+        rows = self.fetchall(
+            """SELECT username, display_name FROM username_history
+               WHERE user_id = ?
+               ORDER BY changed_at DESC
+               LIMIT ?""",
+            (user_id, limit * 2)  # Fetch more to account for duplicates
+        )
+
+        # Collect unique names
+        seen = set()
+        names = []
+        for row in rows:
+            # Prefer username, fallback to display_name
+            name = row["username"] or row["display_name"]
+            if name and name not in seen:
+                seen.add(name)
+                names.append(name)
+                if len(names) >= limit:
+                    break
+
+        return names
+
+    def has_username_history(self, user_id: int) -> bool:
+        """
+        Check if a user has any username history.
+
+        Args:
+            user_id: Discord user ID.
+
+        Returns:
+            True if history exists.
+        """
+        row = self.fetchone(
+            "SELECT 1 FROM username_history WHERE user_id = ? LIMIT 1",
+            (user_id,)
+        )
+        return row is not None
 
 
 # =============================================================================
