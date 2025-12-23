@@ -549,8 +549,15 @@ class CaseLogService:
             if duration_seconds:
                 expires_at = datetime.now(NY_TZ) + timedelta(seconds=duration_seconds)
 
+            # If evidence provided, send it as a separate message first to preserve it
+            evidence_message_url = None
+            if evidence and _has_valid_media_evidence(evidence):
+                evidence_msg = await safe_send(case_thread, f"📎 **Evidence:**\n{evidence}")
+                if evidence_msg:
+                    evidence_message_url = evidence_msg.jump_url
+
             # Build and send mute embed with jump button and download
-            embed = self._build_mute_embed(user, moderator, duration, reason, mute_count, is_extension, evidence, expires_at)
+            embed = self._build_mute_embed(user, moderator, duration, reason, mute_count, is_extension, evidence_message_url, expires_at)
             view = CaseLogView(
                 user_id=user.id,
                 guild_id=user.guild.id,
@@ -674,8 +681,15 @@ class CaseLogService:
             if not case.get("just_created"):
                 self.db.increment_warn_count(user.id, moderator.id)
 
+            # If evidence provided, send it as a separate message first to preserve it
+            evidence_message_url = None
+            if evidence and _has_valid_media_evidence(evidence):
+                evidence_msg = await safe_send(case_thread, f"📎 **Evidence:**\n{evidence}")
+                if evidence_msg:
+                    evidence_message_url = evidence_msg.jump_url
+
             # Build and send warn embed
-            embed = self._build_warn_embed(user, moderator, reason, active_warns, total_warns, evidence)
+            embed = self._build_warn_embed(user, moderator, reason, active_warns, total_warns, evidence_message_url)
             view = CaseLogView(
                 user_id=user.id,
                 guild_id=user.guild.id,
@@ -817,15 +831,9 @@ class CaseLogService:
         else:
             embed.add_field(name="Reason", value="*Not provided*", inline=False)
 
-        # Evidence: images as embedded image, videos as clickable link
+        # Evidence: link to the evidence message in the case thread
         if evidence:
-            image_exts = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
-            url_path = evidence.lower().split('?')[0]
-
-            if any(url_path.endswith(ext) for ext in image_exts):
-                embed.set_image(url=evidence)
-            else:
-                embed.add_field(name="Evidence", value=f"[View Evidence]({evidence})", inline=False)
+            embed.add_field(name="Evidence", value=f"[View Evidence]({evidence})", inline=False)
 
         set_footer(embed)
         return embed
@@ -1084,6 +1092,13 @@ class CaseLogService:
 
             now = datetime.now(NY_TZ)
 
+            # If evidence provided, send it as a separate message first to preserve it
+            evidence_message_url = None
+            if evidence and _has_valid_media_evidence(evidence):
+                evidence_msg = await safe_send(case_thread, f"📎 **Evidence:**\n{evidence}")
+                if evidence_msg:
+                    evidence_message_url = evidence_msg.jump_url
+
             # Get ban count for this user
             ban_count = self.db.get_user_ban_count(user.id, user.guild.id)
 
@@ -1127,15 +1142,9 @@ class CaseLogService:
             else:
                 embed.add_field(name="Reason", value="```No reason provided```", inline=False)
 
-            # Evidence: images as embedded image, videos as clickable link
-            if evidence:
-                image_exts = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
-                url_path = evidence.lower().split('?')[0]
-
-                if any(url_path.endswith(ext) for ext in image_exts):
-                    embed.set_image(url=evidence)
-                else:
-                    embed.add_field(name="Evidence", value=f"[View Evidence]({evidence})", inline=False)
+            # Evidence: link to the evidence message in the case thread
+            if evidence_message_url:
+                embed.add_field(name="Evidence", value=f"[View Evidence]({evidence_message_url})", inline=False)
 
             embed.set_footer(text=f"Ban • ID: {user.id}")
 
@@ -1956,15 +1965,9 @@ class CaseLogService:
         if reason:
             embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
 
-        # Evidence: images as embedded image, videos as clickable link
+        # Evidence: link to the evidence message in the case thread
         if evidence:
-            image_exts = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
-            url_path = evidence.lower().split('?')[0]
-
-            if any(url_path.endswith(ext) for ext in image_exts):
-                embed.set_image(url=evidence)
-            else:
-                embed.add_field(name="Evidence", value=f"[View Evidence]({evidence})", inline=False)
+            embed.add_field(name="Evidence", value=f"[View Evidence]({evidence})", inline=False)
 
         set_footer(embed)
         return embed
@@ -2264,18 +2267,14 @@ class CaseLogService:
                 else:
                     embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
 
-            # Add attachment as evidence (for mute/ban/warn)
-            # Images: set_image() displays at bottom, clickable/expandable
-            # Videos: clickable link (Discord auto-embeds video URLs)
+            # Send attachment as separate message first to preserve it permanently
+            # Then add link to embed
+            evidence_message_url = None
             if attachment_url:
-                image_exts = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
-                url_path = attachment_url.lower().split('?')[0]
-
-                if any(url_path.endswith(ext) for ext in image_exts):
-                    embed.set_image(url=attachment_url)
-                else:
-                    # Video or other - clickable link
-                    embed.add_field(name="Evidence", value=f"[View Evidence]({attachment_url})", inline=False)
+                evidence_msg = await safe_send(thread, f"📎 **Evidence:**\n{attachment_url}")
+                if evidence_msg:
+                    evidence_message_url = evidence_msg.jump_url
+                    embed.add_field(name="Evidence", value=f"[View Evidence]({evidence_message_url})", inline=False)
 
             # Preserve the view (buttons) when editing
             view = None
@@ -2302,7 +2301,7 @@ class CaseLogService:
             # Send confirmation message with timestamp
             timestamp = int(datetime.now(NY_TZ).timestamp())
             confirmation_parts = []
-            if attachment_url:
+            if evidence_message_url:
                 confirmation_parts.append("Evidence uploaded")
             if reason:
                 confirmation_parts.append("reason added")
@@ -2325,7 +2324,7 @@ class CaseLogService:
                 ("Moderator", f"{message.author} ({message.author.id})"),
                 ("Action", action_type),
                 ("Reason", reason[:50] if reason else "N/A"),
-                ("Has Attachment", "Yes" if attachment_url else "No"),
+                ("Evidence", "Uploaded" if evidence_message_url else "N/A"),
             ], emoji="✅")
 
             return True
