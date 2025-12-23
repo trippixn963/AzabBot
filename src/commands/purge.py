@@ -98,6 +98,7 @@ class PurgeCog(commands.Cog):
         amount: int,
         check: Optional[Callable[[discord.Message], bool]] = None,
         description: str = "messages",
+        reason: Optional[str] = None,
     ) -> None:
         """
         Execute a purge operation with the given filter.
@@ -107,6 +108,7 @@ class PurgeCog(commands.Cog):
             amount: Maximum number of messages to delete.
             check: Optional filter function for messages.
             description: Description of what's being purged for logging.
+            reason: Optional reason for the purge.
         """
         # Validate amount
         if amount < 1:
@@ -232,6 +234,9 @@ class PurgeCog(commands.Cog):
         embed.add_field(name="Type", value=f"`{description}`", inline=True)
         embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=True)
 
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
+
         if old_deleted > 0:
             embed.add_field(
                 name="Note",
@@ -260,6 +265,7 @@ class PurgeCog(commands.Cog):
             ("Old (14d+)", str(old_deleted)),
             ("Failed", str(failed_count)),
             ("Scanned", str(scanned)),
+            ("Reason", reason or "None"),
         ], emoji="🗑️")
 
         # Post to mod log
@@ -268,7 +274,19 @@ class PurgeCog(commands.Cog):
             moderator=interaction.user,
             deleted_count=total_deleted,
             description=description,
+            reason=reason,
         )
+
+        # Log to mod tracker (pings owner for review)
+        if self.bot.mod_tracker and isinstance(interaction.user, discord.Member):
+            if self.bot.mod_tracker.is_tracked(interaction.user.id):
+                await self.bot.mod_tracker.log_purge(
+                    mod=interaction.user,
+                    channel=channel,
+                    deleted_count=total_deleted,
+                    purge_type=description,
+                    reason=reason,
+                )
 
     async def _post_mod_log(
         self,
@@ -276,6 +294,7 @@ class PurgeCog(commands.Cog):
         moderator: discord.Member,
         deleted_count: int,
         description: str,
+        reason: Optional[str] = None,
     ) -> None:
         """Post purge action to mod log channel."""
         log_channel = self.bot.get_channel(self.config.logs_channel_id)
@@ -290,6 +309,10 @@ class PurgeCog(commands.Cog):
         embed.add_field(name="Channel", value=f"{channel.mention}\n`#{channel.name}`", inline=True)
         embed.add_field(name="Moderator", value=f"{moderator.mention}\n`{moderator.display_name}`", inline=True)
         embed.add_field(name="Deleted", value=f"`{deleted_count}` {description}", inline=True)
+
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
+
         set_footer(embed)
 
         try:
@@ -302,26 +325,32 @@ class PurgeCog(commands.Cog):
     # =========================================================================
 
     @purge_group.command(name="messages", description="Delete a number of recent messages")
-    @app_commands.describe(amount="Number of messages to delete (1-500)")
+    @app_commands.describe(
+        amount="Number of messages to delete (1-500)",
+        reason="Reason for the purge",
+    )
     async def purge_messages(
         self,
         interaction: discord.Interaction,
         amount: app_commands.Range[int, 1, MAX_PURGE_AMOUNT],
+        reason: Optional[str] = None,
     ) -> None:
         """Delete recent messages from the channel."""
         await interaction.response.defer(ephemeral=True)
-        await self._execute_purge(interaction, amount, description="messages")
+        await self._execute_purge(interaction, amount, description="messages", reason=reason)
 
     @purge_group.command(name="user", description="Delete messages from a specific user")
     @app_commands.describe(
         user="The user whose messages to delete",
         amount="Number of messages to scan (1-500)",
+        reason="Reason for the purge",
     )
     async def purge_user(
         self,
         interaction: discord.Interaction,
         user: discord.Member,
         amount: app_commands.Range[int, 1, MAX_PURGE_AMOUNT] = DEFAULT_PURGE_AMOUNT,
+        reason: Optional[str] = None,
     ) -> None:
         """Delete messages from a specific user."""
         await interaction.response.defer(ephemeral=True)
@@ -334,14 +363,19 @@ class PurgeCog(commands.Cog):
             amount,
             check=check,
             description=f"messages from {user.display_name}",
+            reason=reason,
         )
 
     @purge_group.command(name="bots", description="Delete messages from bots")
-    @app_commands.describe(amount="Number of messages to scan (1-500)")
+    @app_commands.describe(
+        amount="Number of messages to scan (1-500)",
+        reason="Reason for the purge",
+    )
     async def purge_bots(
         self,
         interaction: discord.Interaction,
         amount: app_commands.Range[int, 1, MAX_PURGE_AMOUNT] = DEFAULT_PURGE_AMOUNT,
+        reason: Optional[str] = None,
     ) -> None:
         """Delete messages from bots."""
         await interaction.response.defer(ephemeral=True)
@@ -354,14 +388,19 @@ class PurgeCog(commands.Cog):
             amount,
             check=check,
             description="bot messages",
+            reason=reason,
         )
 
     @purge_group.command(name="humans", description="Delete messages from humans (non-bots)")
-    @app_commands.describe(amount="Number of messages to scan (1-500)")
+    @app_commands.describe(
+        amount="Number of messages to scan (1-500)",
+        reason="Reason for the purge",
+    )
     async def purge_humans(
         self,
         interaction: discord.Interaction,
         amount: app_commands.Range[int, 1, MAX_PURGE_AMOUNT] = DEFAULT_PURGE_AMOUNT,
+        reason: Optional[str] = None,
     ) -> None:
         """Delete messages from humans (non-bots)."""
         await interaction.response.defer(ephemeral=True)
@@ -374,18 +413,21 @@ class PurgeCog(commands.Cog):
             amount,
             check=check,
             description="human messages",
+            reason=reason,
         )
 
     @purge_group.command(name="contains", description="Delete messages containing specific text")
     @app_commands.describe(
         text="Text to search for in messages",
         amount="Number of messages to scan (1-500)",
+        reason="Reason for the purge",
     )
     async def purge_contains(
         self,
         interaction: discord.Interaction,
         text: str,
         amount: app_commands.Range[int, 1, MAX_PURGE_AMOUNT] = DEFAULT_PURGE_AMOUNT,
+        reason: Optional[str] = None,
     ) -> None:
         """Delete messages containing specific text."""
         await interaction.response.defer(ephemeral=True)
@@ -399,15 +441,20 @@ class PurgeCog(commands.Cog):
             interaction,
             amount,
             check=check,
-            description=f"messages containing '{text[:20]}...' " if len(text) > 20 else f"messages containing '{text}'",
+            description=f"messages containing '{text[:20]}...'" if len(text) > 20 else f"messages containing '{text}'",
+            reason=reason,
         )
 
     @purge_group.command(name="attachments", description="Delete messages with attachments")
-    @app_commands.describe(amount="Number of messages to scan (1-500)")
+    @app_commands.describe(
+        amount="Number of messages to scan (1-500)",
+        reason="Reason for the purge",
+    )
     async def purge_attachments(
         self,
         interaction: discord.Interaction,
         amount: app_commands.Range[int, 1, MAX_PURGE_AMOUNT] = DEFAULT_PURGE_AMOUNT,
+        reason: Optional[str] = None,
     ) -> None:
         """Delete messages with attachments (images, files, etc.)."""
         await interaction.response.defer(ephemeral=True)
@@ -420,14 +467,19 @@ class PurgeCog(commands.Cog):
             amount,
             check=check,
             description="messages with attachments",
+            reason=reason,
         )
 
     @purge_group.command(name="embeds", description="Delete messages with embeds")
-    @app_commands.describe(amount="Number of messages to scan (1-500)")
+    @app_commands.describe(
+        amount="Number of messages to scan (1-500)",
+        reason="Reason for the purge",
+    )
     async def purge_embeds(
         self,
         interaction: discord.Interaction,
         amount: app_commands.Range[int, 1, MAX_PURGE_AMOUNT] = DEFAULT_PURGE_AMOUNT,
+        reason: Optional[str] = None,
     ) -> None:
         """Delete messages with embeds."""
         await interaction.response.defer(ephemeral=True)
@@ -440,14 +492,19 @@ class PurgeCog(commands.Cog):
             amount,
             check=check,
             description="messages with embeds",
+            reason=reason,
         )
 
     @purge_group.command(name="links", description="Delete messages containing links")
-    @app_commands.describe(amount="Number of messages to scan (1-500)")
+    @app_commands.describe(
+        amount="Number of messages to scan (1-500)",
+        reason="Reason for the purge",
+    )
     async def purge_links(
         self,
         interaction: discord.Interaction,
         amount: app_commands.Range[int, 1, MAX_PURGE_AMOUNT] = DEFAULT_PURGE_AMOUNT,
+        reason: Optional[str] = None,
     ) -> None:
         """Delete messages containing URLs/links."""
         await interaction.response.defer(ephemeral=True)
@@ -460,14 +517,19 @@ class PurgeCog(commands.Cog):
             amount,
             check=check,
             description="messages with links",
+            reason=reason,
         )
 
     @purge_group.command(name="reactions", description="Delete messages with reactions")
-    @app_commands.describe(amount="Number of messages to scan (1-500)")
+    @app_commands.describe(
+        amount="Number of messages to scan (1-500)",
+        reason="Reason for the purge",
+    )
     async def purge_reactions(
         self,
         interaction: discord.Interaction,
         amount: app_commands.Range[int, 1, MAX_PURGE_AMOUNT] = DEFAULT_PURGE_AMOUNT,
+        reason: Optional[str] = None,
     ) -> None:
         """Delete messages that have reactions."""
         await interaction.response.defer(ephemeral=True)
@@ -480,14 +542,19 @@ class PurgeCog(commands.Cog):
             amount,
             check=check,
             description="messages with reactions",
+            reason=reason,
         )
 
     @purge_group.command(name="mentions", description="Delete messages with mentions")
-    @app_commands.describe(amount="Number of messages to scan (1-500)")
+    @app_commands.describe(
+        amount="Number of messages to scan (1-500)",
+        reason="Reason for the purge",
+    )
     async def purge_mentions(
         self,
         interaction: discord.Interaction,
         amount: app_commands.Range[int, 1, MAX_PURGE_AMOUNT] = DEFAULT_PURGE_AMOUNT,
+        reason: Optional[str] = None,
     ) -> None:
         """Delete messages that mention users or roles."""
         await interaction.response.defer(ephemeral=True)
@@ -500,6 +567,7 @@ class PurgeCog(commands.Cog):
             amount,
             check=check,
             description="messages with mentions",
+            reason=reason,
         )
 
 

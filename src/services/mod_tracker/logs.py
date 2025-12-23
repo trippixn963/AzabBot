@@ -684,6 +684,82 @@ class ModTrackerLogsMixin:
             ],
         )
 
+    async def log_purge(
+        self,
+        mod: discord.Member,
+        channel: discord.abc.GuildChannel,
+        deleted_count: int,
+        purge_type: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        """
+        Log when mod purges messages and ping owner for review.
+
+        Args:
+            mod: The moderator who executed the purge.
+            channel: The channel where messages were purged.
+            deleted_count: Number of messages deleted.
+            purge_type: Type of purge (e.g., "messages", "bot messages", etc.)
+            reason: Optional reason for the purge.
+        """
+        if not self.enabled:
+            return
+
+        tracked = self.db.get_tracked_mod(mod.id)
+        if not tracked:
+            return
+
+        # Record action for activity tracking
+        self._record_action(mod.id, "purge")
+
+        embed = self._create_embed(
+            title="🗑️ Purged Messages",
+            color=EmbedColors.WARNING,
+        )
+        self._add_mod_field(embed, mod)
+
+        embed.add_field(
+            name="Channel",
+            value=f"{channel.mention}\n`#{channel.name}`",
+            inline=True,
+        )
+        embed.add_field(
+            name="Deleted",
+            value=f"`{deleted_count}` {purge_type}",
+            inline=True,
+        )
+
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
+        else:
+            embed.add_field(name="Reason", value="*No reason provided*", inline=False)
+
+        thread = await self._get_mod_thread(tracked["thread_id"])
+        if thread:
+            try:
+                if thread.archived:
+                    await thread.edit(archived=False)
+
+                # Send embed
+                await thread.send(embed=embed)
+
+                # Ping owner for review
+                owner_ping = f"<@{self.config.developer_id}> Purge action - please review if needed."
+                await thread.send(owner_ping)
+
+                logger.tree("Mod Tracker: Purge Logged", [
+                    ("Mod", mod.display_name),
+                    ("Channel", f"#{channel.name}"),
+                    ("Deleted", str(deleted_count)),
+                    ("Type", purge_type),
+                ], emoji="🗑️")
+
+            except Exception as e:
+                logger.error("Mod Tracker: Failed To Log Purge", [
+                    ("Mod", mod.display_name),
+                    ("Error", str(e)[:50]),
+                ])
+
     async def _log_mod_action(
         self,
         mod_id: int,
