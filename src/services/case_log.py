@@ -552,9 +552,20 @@ class CaseLogService:
             # If evidence provided, send it as a separate message first to preserve it
             evidence_message_url = None
             if evidence and _has_valid_media_evidence(evidence):
-                evidence_msg = await safe_send(case_thread, f"📎 **Evidence:**\n{evidence}")
-                if evidence_msg:
-                    evidence_message_url = evidence_msg.jump_url
+                try:
+                    evidence_msg = await safe_send(case_thread, f"📎 **Evidence:**\n{evidence}")
+                    if evidence_msg:
+                        evidence_message_url = evidence_msg.jump_url
+                        logger.tree("Evidence Stored", [
+                            ("User", f"{user.display_name} ({user.id})"),
+                            ("Action", "Mute"),
+                            ("Thread", str(case_thread.id)),
+                            ("Message ID", str(evidence_msg.id)),
+                        ], emoji="📎")
+                    else:
+                        logger.warning(f"Evidence message failed to send for mute of {user.id}")
+                except Exception as e:
+                    logger.error(f"Evidence storage failed for mute: {e}")
 
             # Build and send mute embed with jump button and download
             embed = self._build_mute_embed(user, moderator, duration, reason, mute_count, is_extension, evidence_message_url, expires_at)
@@ -684,9 +695,20 @@ class CaseLogService:
             # If evidence provided, send it as a separate message first to preserve it
             evidence_message_url = None
             if evidence and _has_valid_media_evidence(evidence):
-                evidence_msg = await safe_send(case_thread, f"📎 **Evidence:**\n{evidence}")
-                if evidence_msg:
-                    evidence_message_url = evidence_msg.jump_url
+                try:
+                    evidence_msg = await safe_send(case_thread, f"📎 **Evidence:**\n{evidence}")
+                    if evidence_msg:
+                        evidence_message_url = evidence_msg.jump_url
+                        logger.tree("Evidence Stored", [
+                            ("User", f"{user.display_name} ({user.id})"),
+                            ("Action", "Warn"),
+                            ("Thread", str(case_thread.id)),
+                            ("Message ID", str(evidence_msg.id)),
+                        ], emoji="📎")
+                    else:
+                        logger.warning(f"Evidence message failed to send for warn of {user.id}")
+                except Exception as e:
+                    logger.error(f"Evidence storage failed for warn: {e}")
 
             # Build and send warn embed
             embed = self._build_warn_embed(user, moderator, reason, active_warns, total_warns, evidence_message_url)
@@ -1095,9 +1117,20 @@ class CaseLogService:
             # If evidence provided, send it as a separate message first to preserve it
             evidence_message_url = None
             if evidence and _has_valid_media_evidence(evidence):
-                evidence_msg = await safe_send(case_thread, f"📎 **Evidence:**\n{evidence}")
-                if evidence_msg:
-                    evidence_message_url = evidence_msg.jump_url
+                try:
+                    evidence_msg = await safe_send(case_thread, f"📎 **Evidence:**\n{evidence}")
+                    if evidence_msg:
+                        evidence_message_url = evidence_msg.jump_url
+                        logger.tree("Evidence Stored", [
+                            ("User", f"{user.display_name} ({user.id})"),
+                            ("Action", "Ban"),
+                            ("Thread", str(case_thread.id)),
+                            ("Message ID", str(evidence_msg.id)),
+                        ], emoji="📎")
+                    else:
+                        logger.warning(f"Evidence message failed to send for ban of {user.id}")
+                except Exception as e:
+                    logger.error(f"Evidence storage failed for ban: {e}")
 
             # Get ban count for this user
             ban_count = self.db.get_user_ban_count(user.id, user.guild.id)
@@ -2271,10 +2304,22 @@ class CaseLogService:
             # Then add link to embed
             evidence_message_url = None
             if attachment_url:
-                evidence_msg = await safe_send(thread, f"📎 **Evidence:**\n{attachment_url}")
-                if evidence_msg:
-                    evidence_message_url = evidence_msg.jump_url
-                    embed.add_field(name="Evidence", value=f"[View Evidence]({evidence_message_url})", inline=False)
+                try:
+                    evidence_msg = await safe_send(thread, f"📎 **Evidence:**\n{attachment_url}")
+                    if evidence_msg:
+                        evidence_message_url = evidence_msg.jump_url
+                        embed.add_field(name="Evidence", value=f"[View Evidence]({evidence_message_url})", inline=False)
+                        logger.tree("Evidence Stored (Reply)", [
+                            ("Target", f"{pending['target_user_id']}"),
+                            ("Action", action_type.capitalize()),
+                            ("Moderator", f"{message.author} ({message.author.id})"),
+                            ("Thread", str(thread.id)),
+                            ("Message ID", str(evidence_msg.id)),
+                        ], emoji="📎")
+                    else:
+                        logger.warning(f"Evidence reply message failed to send in thread {thread.id}")
+                except Exception as e:
+                    logger.error(f"Evidence reply storage failed: {e}")
 
             # Preserve the view (buttons) when editing
             view = None
