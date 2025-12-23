@@ -89,7 +89,13 @@ if TYPE_CHECKING:
 # =============================================================================
 
 class CaseLogView(discord.ui.View):
-    """View with Case button (if user has case), jump-to-message, info, and download avatar buttons."""
+    """
+    View with organized button rows for case log embeds.
+
+    Row 0: Link buttons (Case, Message)
+    Row 1: Info buttons (Info, Avatar, History, Notes)
+    Row 2: Action buttons (Extend, Unmute) - mute embeds only
+    """
 
     def __init__(
         self,
@@ -101,7 +107,10 @@ class CaseLogView(discord.ui.View):
     ):
         super().__init__(timeout=None)
 
-        # Button 1: Case link (if user has an open case)
+        # =================================================================
+        # Row 0: Link buttons
+        # =================================================================
+
         if case_thread_id:
             case_url = f"https://discord.com/channels/{guild_id}/{case_thread_id}"
             self.add_item(discord.ui.Button(
@@ -109,36 +118,50 @@ class CaseLogView(discord.ui.View):
                 url=case_url,
                 style=discord.ButtonStyle.link,
                 emoji=CASE_EMOJI,
+                row=0,
             ))
 
-        # Button 2: Jump to message (if provided)
         if message_url:
             self.add_item(discord.ui.Button(
                 label="Message",
                 url=message_url,
                 style=discord.ButtonStyle.link,
                 emoji=MESSAGE_EMOJI,
+                row=0,
             ))
 
-        # Button 3: Info button (persistent)
-        self.add_item(InfoButton(user_id, guild_id))
+        # =================================================================
+        # Row 1: Info buttons
+        # =================================================================
 
-        # Button 4: Download PFP (persistent button)
-        self.add_item(DownloadButton(user_id))
+        info_btn = InfoButton(user_id, guild_id)
+        info_btn.row = 1
+        self.add_item(info_btn)
 
-        # Button 5: History button (persistent) - always show
-        self.add_item(HistoryButton(user_id, guild_id))
+        avatar_btn = DownloadButton(user_id)
+        avatar_btn.row = 1
+        self.add_item(avatar_btn)
 
-        # Button 6: Notes button (persistent) - always show
-        self.add_item(NotesButton(user_id, guild_id))
+        history_btn = HistoryButton(user_id, guild_id)
+        history_btn.row = 1
+        self.add_item(history_btn)
 
-        # Mute-specific buttons (only for active mute embeds)
+        notes_btn = NotesButton(user_id, guild_id)
+        notes_btn.row = 1
+        self.add_item(notes_btn)
+
+        # =================================================================
+        # Row 2: Action buttons (mute embeds only)
+        # =================================================================
+
         if is_mute_embed:
-            # Button 7: Extend button (persistent)
-            self.add_item(ExtendButton(user_id, guild_id))
+            extend_btn = ExtendButton(user_id, guild_id)
+            extend_btn.row = 2
+            self.add_item(extend_btn)
 
-            # Button 8: Unmute button (persistent)
-            self.add_item(UnmuteButton(user_id, guild_id))
+            unmute_btn = UnmuteButton(user_id, guild_id)
+            unmute_btn.row = 2
+            self.add_item(unmute_btn)
 
 
 # =============================================================================
@@ -219,7 +242,9 @@ class CaseLogService:
             except asyncio.CancelledError:
                 pass
 
-        logger.info("Pending Reason Scheduler Stopped")
+        logger.tree("Pending Reason Scheduler Stopped", [
+            ("Status", "Inactive"),
+        ], emoji="⏹️")
 
     async def _reason_check_loop(self) -> None:
         """Background loop to check for expired pending reasons."""
@@ -311,12 +336,24 @@ class CaseLogService:
         pending = self._pending_profile_updates.copy()
         self._pending_profile_updates.clear()
 
+        if not pending:
+            return
+
         # Process each pending update
+        success_count = 0
+        fail_count = 0
         for user_id, case in pending.items():
             try:
                 await self._update_profile_stats(user_id, case)
+                success_count += 1
             except Exception as e:
+                fail_count += 1
                 logger.warning(f"Failed to update profile stats for {user_id}: {str(e)[:50]}")
+
+        logger.tree("PROFILE STATS UPDATED", [
+            ("Processed", str(success_count)),
+            ("Failed", str(fail_count)),
+        ], emoji="📊")
 
     # =========================================================================
     # Properties
@@ -780,8 +817,15 @@ class CaseLogService:
         else:
             embed.add_field(name="Reason", value="*Not provided*", inline=False)
 
+        # Evidence: images as embedded image, videos as clickable link
         if evidence:
-            embed.add_field(name="Evidence", value=evidence, inline=False)
+            image_exts = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+            url_path = evidence.lower().split('?')[0]
+
+            if any(url_path.endswith(ext) for ext in image_exts):
+                embed.set_image(url=evidence)
+            else:
+                embed.add_field(name="Evidence", value=f"[View Evidence]({evidence})", inline=False)
 
         set_footer(embed)
         return embed
@@ -1083,8 +1127,15 @@ class CaseLogService:
             else:
                 embed.add_field(name="Reason", value="```No reason provided```", inline=False)
 
+            # Evidence: images as embedded image, videos as clickable link
             if evidence:
-                embed.add_field(name="Evidence", value=evidence, inline=False)
+                image_exts = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+                url_path = evidence.lower().split('?')[0]
+
+                if any(url_path.endswith(ext) for ext in image_exts):
+                    embed.set_image(url=evidence)
+                else:
+                    embed.add_field(name="Evidence", value=f"[View Evidence]({evidence})", inline=False)
 
             embed.set_footer(text=f"Ban • ID: {user.id}")
 
@@ -1611,6 +1662,13 @@ class CaseLogService:
             self.db.create_case_log(user.id, case_id, thread.id, duration, moderator_id)
             # Cache the thread immediately so we don't need to fetch it again
             self._thread_cache[thread.id] = (thread, datetime.now(NY_TZ))
+
+            logger.tree("CASE THREAD CREATED", [
+                ("User", f"{user} ({user.id})"),
+                ("Case ID", case_id),
+                ("Thread ID", str(thread.id)),
+            ], emoji="📂")
+
             return {
                 "user_id": user.id,
                 "case_id": case_id,
@@ -1898,8 +1956,15 @@ class CaseLogService:
         if reason:
             embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
 
+        # Evidence: images as embedded image, videos as clickable link
         if evidence:
-            embed.add_field(name="Evidence", value=evidence, inline=False)
+            image_exts = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+            url_path = evidence.lower().split('?')[0]
+
+            if any(url_path.endswith(ext) for ext in image_exts):
+                embed.set_image(url=evidence)
+            else:
+                embed.add_field(name="Evidence", value=f"[View Evidence]({evidence})", inline=False)
 
         set_footer(embed)
         return embed
@@ -2199,17 +2264,57 @@ class CaseLogService:
                 else:
                     embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
 
-            # Add attachment as image (for mute/ban)
+            # Add attachment as evidence (for mute/ban/warn)
+            # Images: set_image() displays at bottom, clickable/expandable
+            # Videos: clickable link (Discord auto-embeds video URLs)
             if attachment_url:
-                embed.set_image(url=attachment_url)
+                image_exts = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+                url_path = attachment_url.lower().split('?')[0]
 
-            await safe_edit(embed_message, embed=embed)
+                if any(url_path.endswith(ext) for ext in image_exts):
+                    embed.set_image(url=attachment_url)
+                else:
+                    # Video or other - clickable link
+                    embed.add_field(name="Evidence", value=f"[View Evidence]({attachment_url})", inline=False)
+
+            # Preserve the view (buttons) when editing
+            view = None
+            if embed_message.components:
+                # Recreate the view for this message
+                view = CaseLogView(
+                    user_id=pending["target_user_id"],
+                    guild_id=thread.guild.id if thread.guild else None,
+                    case_thread_id=thread.id,
+                    is_mute_embed=(action_type in ("mute", "extension")),
+                )
+
+            if view:
+                await safe_edit(embed_message, embed=embed, view=view)
+            else:
+                await safe_edit(embed_message, embed=embed)
 
             # Delete the warning message and mod's reply silently
             for msg_id in [pending["warning_message_id"], message.id]:
                 msg = await safe_fetch_message(thread, msg_id)
                 if msg:
                     await safe_delete(msg)
+
+            # Send confirmation message with timestamp
+            timestamp = int(datetime.now(NY_TZ).timestamp())
+            confirmation_parts = []
+            if attachment_url:
+                confirmation_parts.append("Evidence uploaded")
+            if reason:
+                confirmation_parts.append("reason added")
+            confirmation_text = " and ".join(confirmation_parts) if confirmation_parts else "Updated"
+
+            try:
+                await thread.send(
+                    f"✅ {confirmation_text} successfully at <t:{timestamp}:T>",
+                    delete_after=10,
+                )
+            except discord.HTTPException:
+                pass
 
             # Remove the pending reason from database
             self.db.delete_pending_reason(pending["id"])

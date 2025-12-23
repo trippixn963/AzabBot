@@ -74,9 +74,13 @@ class MessageEvents(commands.Cog):
             if getattr(message, 'poll', None) is None:
                 try:
                     await message.delete()
-                    logger.debug(f"Deleted Non-Poll Message by {message.author}")
+                    logger.tree("NON-POLL DELETED", [
+                        ("Author", f"{message.author} ({message.author.id})"),
+                        ("Channel", message.channel.name),
+                        ("Content", (message.content[:50] + "...") if len(message.content) > 50 else (message.content or "(empty)")),
+                    ], emoji="🗑️")
                 except discord.Forbidden:
-                    pass
+                    logger.warning(f"No permission to delete non-poll by {message.author}")
             return
 
         # -----------------------------------------------------------------
@@ -176,6 +180,21 @@ class MessageEvents(commands.Cog):
         if message.author.bot:
             return
 
+        # Tree logging for message deletions
+        content_preview = "(empty)"
+        if message.content:
+            content_preview = (message.content[:40] + "...") if len(message.content) > 40 else message.content
+
+        attachment_info = ""
+        if message.attachments:
+            attachment_info = f" +{len(message.attachments)} attachment(s)"
+
+        logger.tree("MESSAGE DELETED", [
+            ("Author", f"{message.author} ({message.author.id})"),
+            ("Channel", f"#{message.channel.name}" if hasattr(message.channel, 'name') else "DM"),
+            ("Content", content_preview + attachment_info),
+        ], emoji="🗑️")
+
         # -----------------------------------------------------------------
         # Logging Service: Message Delete
         # -----------------------------------------------------------------
@@ -218,6 +237,17 @@ class MessageEvents(commands.Cog):
 
         if before.content == after.content:
             return
+
+        # Tree logging for message edits
+        before_preview = (before.content[:30] + "...") if len(before.content) > 30 else (before.content or "(empty)")
+        after_preview = (after.content[:30] + "...") if len(after.content) > 30 else (after.content or "(empty)")
+
+        logger.tree("MESSAGE EDITED", [
+            ("Author", f"{before.author} ({before.author.id})"),
+            ("Channel", f"#{before.channel.name}" if hasattr(before.channel, 'name') else "DM"),
+            ("Before", before_preview),
+            ("After", after_preview),
+        ], emoji="✏️")
 
         # -----------------------------------------------------------------
         # Logging Service: Message Edit

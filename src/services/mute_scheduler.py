@@ -156,12 +156,19 @@ class MuteScheduler:
         if not expired_mutes:
             return
 
+        total_count = len(expired_mutes)
+
         # Process in batches of 25 concurrently
         batch_size = 25
         for i in range(0, len(expired_mutes), batch_size):
             batch = expired_mutes[i:i + batch_size]
             tasks = [self._safe_auto_unmute(mute) for mute in batch]
             await asyncio.gather(*tasks, return_exceptions=True)
+
+        logger.tree("EXPIRED MUTES PROCESSED", [
+            ("Total", str(total_count)),
+            ("Batches", str((total_count + batch_size - 1) // batch_size)),
+        ], emoji="⏰")
 
     async def _safe_auto_unmute(self, mute: dict) -> None:
         """Wrapper for _auto_unmute with error handling."""

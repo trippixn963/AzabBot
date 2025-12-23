@@ -96,29 +96,21 @@ class BanModal(discord.ui.Modal, title="Ban User"):
         max_length=500,
     )
 
-    evidence_input = discord.ui.TextInput(
-        label="Evidence",
-        placeholder="Link to evidence (message link, screenshot, etc.)",
-        style=discord.TextStyle.short,
-        required=False,
-        max_length=500,
-    )
-
-    def __init__(self, target: discord.Member, cog: "BanCog"):
+    def __init__(self, target: discord.Member, cog: "BanCog", evidence: Optional[str] = None):
         super().__init__()
         self.target = target
         self.cog = cog
+        self.evidence = evidence
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         """Process the ban when modal is submitted."""
         reason = self.reason_input.value or None
-        evidence = self.evidence_input.value or None
 
         await self.cog.execute_ban(
             interaction=interaction,
             user=self.target,
             reason=reason,
-            evidence=evidence,
+            evidence=self.evidence,
         )
 
 
@@ -133,16 +125,22 @@ class BanCog(commands.Cog):
         self.bot = bot
         self.config = get_config()
 
-        # Register context menu
-        self.ban_context_menu = app_commands.ContextMenu(
+        # Register context menus
+        self.ban_user_ctx = app_commands.ContextMenu(
             name="Ban User",
-            callback=self.ban_context_callback,
+            callback=self._ban_from_user,
         )
-        self.bot.tree.add_command(self.ban_context_menu)
+        self.ban_message_ctx = app_commands.ContextMenu(
+            name="Ban Author",
+            callback=self._ban_from_message,
+        )
+        self.bot.tree.add_command(self.ban_user_ctx)
+        self.bot.tree.add_command(self.ban_message_ctx)
 
     async def cog_unload(self) -> None:
-        """Remove context menu when cog unloads."""
-        self.bot.tree.remove_command(self.ban_context_menu.name, type=self.ban_context_menu.type)
+        """Remove context menus when cog unloads."""
+        self.bot.tree.remove_command(self.ban_user_ctx.name, type=self.ban_user_ctx.type)
+        self.bot.tree.remove_command(self.ban_message_ctx.name, type=self.ban_message_ctx.type)
 
     # =========================================================================
     # Shared Ban Execution
@@ -170,20 +168,40 @@ class BanCog(commands.Cog):
         # -----------------------------------------------------------------
 
         if user.id == interaction.user.id:
+            logger.tree("BAN BLOCKED", [
+                ("Reason", "Self-ban attempt"),
+                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+            ], emoji="🚫")
             await interaction.followup.send("You cannot ban yourself.", ephemeral=True)
             return False
 
         if user.id == self.bot.user.id:
+            logger.tree("BAN BLOCKED", [
+                ("Reason", "Bot self-ban attempt"),
+                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+            ], emoji="🚫")
             await interaction.followup.send("I cannot ban myself.", ephemeral=True)
             return False
 
         if user.bot and not is_developer(interaction.user.id):
+            logger.tree("BAN BLOCKED", [
+                ("Reason", "Target is a bot"),
+                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                ("Target", f"{user} ({user.id})"),
+            ], emoji="🚫")
             await interaction.followup.send("You cannot ban bots.", ephemeral=True)
             return False
 
         # Role hierarchy check
         if isinstance(interaction.user, discord.Member):
             if user.top_role >= interaction.user.top_role and not is_developer(interaction.user.id):
+                logger.tree("BAN BLOCKED", [
+                    ("Reason", "Role hierarchy"),
+                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                    ("Mod Role", interaction.user.top_role.name),
+                    ("Target", f"{user} ({user.id})"),
+                    ("Target Role", user.top_role.name),
+                ], emoji="🚫")
                 await interaction.followup.send(
                     "You cannot ban someone with an equal or higher role.",
                     ephemeral=True,
@@ -197,6 +215,11 @@ class BanCog(commands.Cog):
                 user_has_management = management_role in user.roles
                 mod_has_management = management_role in interaction.user.roles
                 if user_has_management and mod_has_management and not is_developer(interaction.user.id):
+                    logger.tree("BAN BLOCKED", [
+                        ("Reason", "Management protection"),
+                        ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                        ("Target", f"{user} ({user.id})"),
+                    ], emoji="🚫")
                     if self.bot.mod_tracker:
                         await self.bot.mod_tracker.log_management_mute_attempt(
                             mod=interaction.user,
@@ -213,6 +236,11 @@ class BanCog(commands.Cog):
 
         # Bot role check
         if user.top_role >= interaction.guild.me.top_role:
+            logger.tree("BAN BLOCKED", [
+                ("Reason", "Bot role too low"),
+                ("Target Role", user.top_role.name),
+                ("Bot Top Role", interaction.guild.me.top_role.name),
+            ], emoji="🚫")
             await interaction.followup.send(
                 "I cannot ban this user because their role is higher than mine.",
                 ephemeral=True,
@@ -334,8 +362,9 @@ class BanCog(commands.Cog):
             embed.add_field(name="Ban Count", value=f"`{ban_count}`", inline=True)
         if reason:
             embed.add_field(name="Reason", value=reason, inline=False)
-        if evidence:
-            embed.add_field(name="Evidence", value=evidence, inline=False)
+
+        # Note: Evidence is intentionally not shown in public embed
+        # It's only visible in DMs, case logs, and mod logs
 
         embed.set_thumbnail(url=user.display_avatar.url)
         set_footer(embed)
@@ -379,17 +408,56 @@ class BanCog(commands.Cog):
         return True
 
     # =========================================================================
-    # Context Menu Ban
+    # Context Menu Handlers
     # =========================================================================
 
     @app_commands.default_permissions(ban_members=True)
-    async def ban_context_callback(
+    async def _ban_from_user(
         self,
         interaction: discord.Interaction,
         user: discord.Member,
     ) -> None:
-        """Handle right-click ban context menu."""
-        modal = BanModal(target=user, cog=self)
+        """Ban a user directly (context menu handler)."""
+        if user.bot and not is_developer(interaction.user.id):
+            await interaction.response.send_message(
+                "You cannot ban bots.",
+                ephemeral=True,
+            )
+            return
+
+        modal = BanModal(target=user, cog=self, evidence=None)
+        await interaction.response.send_modal(modal)
+
+    @app_commands.default_permissions(ban_members=True)
+    async def _ban_from_message(
+        self,
+        interaction: discord.Interaction,
+        message: discord.Message,
+    ) -> None:
+        """Ban the author of a message (context menu handler)."""
+        if message.author.bot and not is_developer(interaction.user.id):
+            await interaction.response.send_message(
+                "You cannot ban bots.",
+                ephemeral=True,
+            )
+            return
+
+        # Get evidence from message attachment if it's an image/video
+        evidence = None
+        for attachment in message.attachments:
+            if attachment.content_type and attachment.content_type.startswith(('image/', 'video/')):
+                evidence = attachment.url
+                break
+
+        user = interaction.guild.get_member(message.author.id)
+        if not user:
+            await interaction.response.send_message(
+                "User is no longer in this server.",
+                ephemeral=True,
+            )
+            return
+
+        modal = BanModal(target=user, cog=self, evidence=evidence)
         await interaction.response.send_modal(modal)
 
     # =========================================================================
@@ -401,8 +469,7 @@ class BanCog(commands.Cog):
     @app_commands.describe(
         user="The user to ban",
         reason="Reason for the ban (required)",
-        evidence="Message link or description of evidence",
-        attachment="Screenshot or video evidence",
+        evidence="Screenshot or video evidence (image/video only)",
     )
     @app_commands.autocomplete(reason=reason_autocomplete)
     async def ban(
@@ -410,23 +477,26 @@ class BanCog(commands.Cog):
         interaction: discord.Interaction,
         user: discord.Member,
         reason: str,
-        evidence: Optional[str] = None,
-        attachment: Optional[discord.Attachment] = None,
+        evidence: Optional[discord.Attachment] = None,
     ) -> None:
         """Ban a user from the server."""
-        # Combine evidence sources
-        if attachment:
-            attachment_info = f"[{attachment.filename}]({attachment.url})"
-            if evidence:
-                evidence = f"{evidence}\n{attachment_info}"
-            else:
-                evidence = attachment_info
+        # Validate attachment is image/video if provided
+        evidence_url = None
+        if evidence:
+            valid_types = ('image/', 'video/')
+            if not evidence.content_type or not evidence.content_type.startswith(valid_types):
+                await interaction.response.send_message(
+                    "Evidence must be an image or video file.",
+                    ephemeral=True,
+                )
+                return
+            evidence_url = evidence.url
 
         await self.execute_ban(
             interaction=interaction,
             user=user,
             reason=reason,
-            evidence=evidence,
+            evidence=evidence_url,
         )
 
     # =========================================================================
@@ -438,7 +508,7 @@ class BanCog(commands.Cog):
     @app_commands.describe(
         user="The banned user to unban",
         reason="Reason for the unban",
-        evidence="Link to evidence supporting the unban",
+        evidence="Screenshot or video evidence (image/video only)",
     )
     @app_commands.autocomplete(user=banned_user_autocomplete)
     async def unban(
@@ -446,9 +516,21 @@ class BanCog(commands.Cog):
         interaction: discord.Interaction,
         user: str,
         reason: Optional[str] = None,
-        evidence: Optional[str] = None,
+        evidence: Optional[discord.Attachment] = None,
     ) -> None:
         """Unban a user from the server."""
+        # Validate attachment is image/video if provided
+        evidence_url = None
+        if evidence:
+            valid_types = ('image/', 'video/')
+            if not evidence.content_type or not evidence.content_type.startswith(valid_types):
+                await interaction.response.send_message(
+                    "Evidence must be an image or video file.",
+                    ephemeral=True,
+                )
+                return
+            evidence_url = evidence.url
+
         await interaction.response.defer()
 
         # Parse user ID
@@ -504,7 +586,7 @@ class BanCog(commands.Cog):
             ("User", f"{target_user} ({target_user.id})"),
             ("Moderator", str(interaction.user)),
             ("Reason", (reason or "None")[:50]),
-            ("Evidence", (evidence or "None")[:50]),
+            ("Evidence", (evidence_url or "None")[:50]),
         ], emoji="🔓")
 
         # Server logs
@@ -533,8 +615,9 @@ class BanCog(commands.Cog):
             embed.add_field(name="Case ID", value=f"`{case['case_id']}`", inline=True)
         if reason:
             embed.add_field(name="Reason", value=reason, inline=False)
-        if evidence:
-            embed.add_field(name="Evidence", value=evidence, inline=False)
+
+        # Note: Evidence is intentionally not shown in public embed
+        # It's only visible in case logs and mod logs
 
         embed.set_thumbnail(url=target_user.display_avatar.url)
         set_footer(embed)

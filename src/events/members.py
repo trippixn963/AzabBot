@@ -159,6 +159,20 @@ class MemberEvents(commands.Cog):
             inviter = invite_info[1] if invite_info else None
             await self.bot.logging_service.log_member_join(member, invite_code, inviter)
 
+        # Tree logging for all joins
+        account_age = "Unknown"
+        if member.created_at:
+            age_days = (discord.utils.utcnow() - member.created_at).days
+            account_age = f"{age_days} days"
+
+        logger.tree("MEMBER JOINED", [
+            ("User", f"{member} ({member.id})"),
+            ("Account Age", account_age),
+            ("Invite", invite_code or "Unknown"),
+            ("Inviter", str(inviter) if inviter else "Unknown"),
+        ], emoji="📥")
+
+        if self.bot.logging_service and self.bot.logging_service.enabled:
             await self.bot._check_raid_detection(member)
 
         # Store join info for alt detection
@@ -212,6 +226,26 @@ class MemberEvents(commands.Cog):
         self.bot.prisoner_cooldowns.pop(member.id, None)
         self.bot.prisoner_message_buffer.pop(member.id, None)
         self.bot.prisoner_pending_response.pop(member.id, None)
+
+        # Calculate membership duration
+        membership_duration = "Unknown"
+        if member.joined_at:
+            duration_days = (discord.utils.utcnow() - member.joined_at).days
+            if duration_days == 0:
+                membership_duration = "< 1 day"
+            elif duration_days == 1:
+                membership_duration = "1 day"
+            else:
+                membership_duration = f"{duration_days} days"
+
+        # Get role count (excluding @everyone)
+        role_count = len([r for r in member.roles if r.name != "@everyone"])
+
+        logger.tree("MEMBER LEFT", [
+            ("User", f"{member} ({member.id})"),
+            ("Membership", membership_duration),
+            ("Roles", str(role_count)),
+        ], emoji="📤")
 
         if self.bot.logging_service and self.bot.logging_service.enabled:
             await self.bot.logging_service.log_member_leave(member)

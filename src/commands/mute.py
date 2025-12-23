@@ -66,7 +66,7 @@ class MuteModal(discord.ui.Modal, title="Mute User"):
         self,
         bot: "AzabBot",
         target_user: discord.Member,
-        evidence: str,
+        evidence: Optional[str],
         cog: "MuteCog",
     ):
         super().__init__()
@@ -400,19 +400,39 @@ class MuteCog(commands.Cog):
         # ---------------------------------------------------------------------
 
         if user.id == interaction.user.id:
+            logger.tree("MUTE BLOCKED", [
+                ("Reason", "Self-mute attempt"),
+                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+            ], emoji="🚫")
             await interaction.followup.send("You cannot mute yourself.", ephemeral=True)
             return
 
         if user.id == self.bot.user.id:
+            logger.tree("MUTE BLOCKED", [
+                ("Reason", "Bot self-mute attempt"),
+                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+            ], emoji="🚫")
             await interaction.followup.send("I cannot mute myself.", ephemeral=True)
             return
 
         if user.bot:
+            logger.tree("MUTE BLOCKED", [
+                ("Reason", "Target is a bot"),
+                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                ("Target", f"{user} ({user.id})"),
+            ], emoji="🚫")
             await interaction.followup.send("I cannot mute bots.", ephemeral=True)
             return
 
         if isinstance(interaction.user, discord.Member):
             if user.top_role >= interaction.user.top_role and not is_developer(interaction.user.id):
+                logger.tree("MUTE BLOCKED", [
+                    ("Reason", "Role hierarchy"),
+                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                    ("Mod Role", interaction.user.top_role.name),
+                    ("Target", f"{user} ({user.id})"),
+                    ("Target Role", user.top_role.name),
+                ], emoji="🚫")
                 await interaction.followup.send(
                     "You cannot mute someone with an equal or higher role.",
                     ephemeral=True,
@@ -426,6 +446,11 @@ class MuteCog(commands.Cog):
                 user_has_management = management_role in user.roles
                 mod_has_management = management_role in interaction.user.roles
                 if user_has_management and mod_has_management and not is_developer(interaction.user.id):
+                    logger.tree("MUTE BLOCKED", [
+                        ("Reason", "Management protection"),
+                        ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                        ("Target", f"{user} ({user.id})"),
+                    ], emoji="🚫")
                     # Secret log to mod tracker
                     if self.bot.mod_tracker:
                         await self.bot.mod_tracker.log_management_mute_attempt(
@@ -444,6 +469,10 @@ class MuteCog(commands.Cog):
 
         muted_role = interaction.guild.get_role(self.config.muted_role_id)
         if not muted_role:
+            logger.tree("MUTE BLOCKED", [
+                ("Reason", "Muted role not found"),
+                ("Role ID", str(self.config.muted_role_id)),
+            ], emoji="🚫")
             await interaction.followup.send(
                 f"Muted role not found (ID: {self.config.muted_role_id}).",
                 ephemeral=True,
@@ -451,6 +480,11 @@ class MuteCog(commands.Cog):
             return
 
         if muted_role >= interaction.guild.me.top_role:
+            logger.tree("MUTE BLOCKED", [
+                ("Reason", "Bot role too low"),
+                ("Muted Role", muted_role.name),
+                ("Bot Top Role", interaction.guild.me.top_role.name),
+            ], emoji="🚫")
             await interaction.followup.send(
                 "I cannot assign the muted role because it's higher than my highest role.",
                 ephemeral=True,
@@ -512,8 +546,9 @@ class MuteCog(commands.Cog):
 
         if case_info:
             embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
-        if evidence:
-            embed.add_field(name="Evidence", value=evidence, inline=False)
+
+        # Note: Evidence is intentionally not shown in public embed
+        # It's only visible in DMs, case logs, and mod logs
 
         embed.set_thumbnail(url=user.display_avatar.url)
         set_footer(embed)
@@ -597,7 +632,7 @@ class MuteCog(commands.Cog):
         user="The user to mute",
         duration="How long to mute (e.g., 10m, 1h, 1d, permanent)",
         reason="Reason for the mute (required)",
-        evidence="Message link or description of evidence",
+        evidence="Screenshot or video evidence (image/video only)",
     )
     @app_commands.autocomplete(duration=duration_autocomplete, reason=reason_autocomplete)
     async def mute(
@@ -606,11 +641,23 @@ class MuteCog(commands.Cog):
         user: discord.Member,
         duration: str,
         reason: str,
-        evidence: Optional[str] = None,
+        evidence: Optional[discord.Attachment] = None,
     ) -> None:
         """Mute a user by assigning the muted role."""
+        # Validate attachment is image/video if provided
+        evidence_url = None
+        if evidence:
+            valid_types = ('image/', 'video/')
+            if not evidence.content_type or not evidence.content_type.startswith(valid_types):
+                await interaction.response.send_message(
+                    "Evidence must be an image or video file.",
+                    ephemeral=True,
+                )
+                return
+            evidence_url = evidence.url
+
         await interaction.response.defer(ephemeral=False)
-        await self.execute_mute(interaction, user, duration, reason, evidence)
+        await self.execute_mute(interaction, user, duration, reason, evidence_url)
 
     # =========================================================================
     # Mute Context Menu (Right-click message)
@@ -626,7 +673,7 @@ class MuteCog(commands.Cog):
 
         DESIGN:
             Opens a modal for duration/reason input.
-            Evidence is auto-filled with the message link.
+            Evidence is auto-filled from message attachment if image/video.
 
         Args:
             interaction: Discord interaction context.
@@ -640,8 +687,12 @@ class MuteCog(commands.Cog):
             )
             return
 
-        # Build evidence from the message
-        evidence = message.jump_url
+        # Get evidence from message attachment if it's an image/video
+        evidence = None
+        for attachment in message.attachments:
+            if attachment.content_type and attachment.content_type.startswith(('image/', 'video/')):
+                evidence = attachment.url
+                break
 
         # Show modal for duration and reason
         modal = MuteModal(

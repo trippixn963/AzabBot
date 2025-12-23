@@ -295,6 +295,18 @@ class AzabBot(commands.Bot):
             self.voice_handler = VoiceHandler(self)
             logger.info("Voice Handler Initialized")
 
+            # Summary of all initialized services
+            logger.tree("ALL SERVICES INITIALIZED", [
+                ("AI Service", "✓ Ready"),
+                ("Prison Handler", "✓ Ready"),
+                ("Mute Scheduler", "✓ Running"),
+                ("Case Log", "✓ Enabled" if self.case_log_service.enabled else "✗ Disabled"),
+                ("Alt Detection", "✓ Enabled" if self.alt_detection.enabled else "✗ Disabled"),
+                ("Mod Tracker", "✓ Enabled" if self.mod_tracker.enabled else "✗ Disabled"),
+                ("Server Logs", "✓ Enabled" if self.logging_service.enabled else "✗ Disabled"),
+                ("Voice Handler", "✓ Ready"),
+            ], emoji="🚀")
+
         except Exception as e:
             logger.error("Service Initialization Failed", [("Error", str(e))])
 

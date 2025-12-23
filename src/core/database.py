@@ -2410,6 +2410,13 @@ class DatabaseManager:
                VALUES (?, ?, ?, ?, ?)""",
             (user_id, guild_id, moderator_id, note, now)
         )
+
+        logger.tree("MOD NOTE SAVED", [
+            ("User ID", str(user_id)),
+            ("Moderator ID", str(moderator_id)),
+            ("Note", (note[:40] + "...") if len(note) > 40 else note),
+        ], emoji="📝")
+
         return cursor.lastrowid
 
     def get_mod_notes(
@@ -2600,6 +2607,18 @@ class DatabaseManager:
             (user_id, guild_id, moderator_id, reason, additional_seconds, now)
         )
 
+        # Format duration for logging
+        hours, remainder = divmod(additional_seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+        duration_str = f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+        logger.tree("MUTE EXTENDED", [
+            ("User ID", str(user_id)),
+            ("Extension", duration_str),
+            ("Moderator ID", str(moderator_id)),
+            ("Reason", (reason[:30] + "...") if reason and len(reason) > 30 else (reason or "None")),
+        ], emoji="⏱️")
+
         return new_expires
 
     # =========================================================================
@@ -2657,6 +2676,15 @@ class DatabaseManager:
         # Combine and sort
         combined = [dict(row) for row in mutes] + [dict(row) for row in bans] + [dict(row) for row in warnings]
         combined.sort(key=lambda x: x["timestamp"], reverse=True)
+
+        # Log history query
+        logger.tree("HISTORY QUERIED", [
+            ("User ID", str(user_id)),
+            ("Mutes", str(len(mutes))),
+            ("Bans", str(len(bans))),
+            ("Warnings", str(len(warnings))),
+            ("Total", str(len(combined))),
+        ], emoji="📋")
 
         # Apply pagination
         return combined[offset:offset + limit]

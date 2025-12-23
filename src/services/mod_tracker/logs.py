@@ -12,7 +12,7 @@ Server: discord.gg/syria
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional, List
+from typing import TYPE_CHECKING, Optional, List, Tuple
 import asyncio
 import io
 import re

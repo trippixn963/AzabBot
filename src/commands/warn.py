@@ -77,7 +77,7 @@ class WarnModal(discord.ui.Modal, title="Warn User"):
         self,
         bot: "AzabBot",
         target_user: discord.Member,
-        evidence: str,
+        evidence: Optional[str],
         cog: "WarnCog",
     ):
         super().__init__()
@@ -188,19 +188,39 @@ class WarnCog(commands.Cog):
         # ---------------------------------------------------------------------
 
         if user.id == interaction.user.id:
+            logger.tree("WARN BLOCKED", [
+                ("Reason", "Self-warn attempt"),
+                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+            ], emoji="🚫")
             await interaction.followup.send("You cannot warn yourself.", ephemeral=True)
             return
 
         if user.id == self.bot.user.id:
+            logger.tree("WARN BLOCKED", [
+                ("Reason", "Bot self-warn attempt"),
+                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+            ], emoji="🚫")
             await interaction.followup.send("I cannot warn myself.", ephemeral=True)
             return
 
         if user.bot:
+            logger.tree("WARN BLOCKED", [
+                ("Reason", "Target is a bot"),
+                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                ("Target", f"{user} ({user.id})"),
+            ], emoji="🚫")
             await interaction.followup.send("I cannot warn bots.", ephemeral=True)
             return
 
         if isinstance(interaction.user, discord.Member):
             if user.top_role >= interaction.user.top_role and not is_developer(interaction.user.id):
+                logger.tree("WARN BLOCKED", [
+                    ("Reason", "Role hierarchy"),
+                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                    ("Mod Role", interaction.user.top_role.name),
+                    ("Target", f"{user} ({user.id})"),
+                    ("Target Role", user.top_role.name),
+                ], emoji="🚫")
                 await interaction.followup.send(
                     "You cannot warn someone with an equal or higher role.",
                     ephemeral=True,
@@ -257,8 +277,8 @@ class WarnCog(commands.Cog):
         if reason:
             embed.add_field(name="Reason", value=reason, inline=False)
 
-        if evidence:
-            embed.add_field(name="Evidence", value=evidence, inline=False)
+        # Note: Evidence is intentionally not shown in public embed
+        # It's only visible in DMs, case logs, and mod logs
 
         embed.set_thumbnail(url=user.display_avatar.url)
         set_footer(embed)
@@ -343,7 +363,7 @@ class WarnCog(commands.Cog):
     @app_commands.describe(
         user="The user to warn",
         reason="Reason for the warning (required)",
-        evidence="Message link or description of evidence",
+        evidence="Screenshot or video evidence (image/video only)",
     )
     @app_commands.default_permissions(manage_messages=True)
     @app_commands.autocomplete(reason=reason_autocomplete)
@@ -352,11 +372,23 @@ class WarnCog(commands.Cog):
         interaction: discord.Interaction,
         user: discord.Member,
         reason: str,
-        evidence: Optional[str] = None,
+        evidence: Optional[discord.Attachment] = None,
     ) -> None:
         """Issue a warning to a user."""
+        # Validate attachment is image/video if provided
+        evidence_url = None
+        if evidence:
+            valid_types = ('image/', 'video/')
+            if not evidence.content_type or not evidence.content_type.startswith(valid_types):
+                await interaction.response.send_message(
+                    "Evidence must be an image or video file.",
+                    ephemeral=True,
+                )
+                return
+            evidence_url = evidence.url
+
         await interaction.response.defer(ephemeral=False)
-        await self.execute_warn(interaction, user, reason, evidence)
+        await self.execute_warn(interaction, user, reason, evidence_url)
 
     # =========================================================================
     # Context Menu Handlers
@@ -375,10 +407,12 @@ class WarnCog(commands.Cog):
             )
             return
 
-        evidence = f"[Message]({message.jump_url})"
-        if message.content:
-            content_preview = message.content[:100] + ("..." if len(message.content) > 100 else "")
-            evidence += f"\n> {content_preview}"
+        # Get evidence from message attachment if it's an image/video
+        evidence = None
+        for attachment in message.attachments:
+            if attachment.content_type and attachment.content_type.startswith(('image/', 'video/')):
+                evidence = attachment.url
+                break
 
         user = interaction.guild.get_member(message.author.id)
         if not user:
@@ -404,7 +438,7 @@ class WarnCog(commands.Cog):
             )
             return
 
-        modal = WarnModal(self.bot, user, "", self)
+        modal = WarnModal(self.bot, user, None, self)
         await interaction.response.send_modal(modal)
 
     # =========================================================================

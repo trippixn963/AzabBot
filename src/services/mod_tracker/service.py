@@ -424,7 +424,10 @@ class ModTrackerService(ModTrackerLogsMixin):
             return
 
         asyncio.create_task(self._inactivity_check_loop())
-        logger.info("Mod Tracker: Inactivity Checker Started")
+        logger.tree("Mod Tracker: Inactivity Checker Started", [
+            ("Check Time", "Daily at 12:00 PM EST"),
+            ("Tracked Mods", str(len(self._tracked_mods))),
+        ], emoji="⏰")
 
     async def _inactivity_check_loop(self) -> None:
         """Loop that checks for inactive mods daily at noon EST."""
@@ -581,7 +584,10 @@ class ModTrackerService(ModTrackerLogsMixin):
 
         self._scheduler_healthy = True
         asyncio.create_task(self._title_update_loop())
-        logger.info("Mod Tracker: Title Update Scheduler Started")
+        logger.tree("Mod Tracker: Title Update Scheduler Started", [
+            ("Update Time", "Daily at 12:00 AM EST"),
+            ("Status", "Healthy"),
+        ], emoji="📅")
 
     async def _title_update_loop(self) -> None:
         """

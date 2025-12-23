@@ -20,6 +20,7 @@ import discord
 
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.core.logger import logger
 from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
@@ -78,6 +79,12 @@ class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_info:
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Show user info embed when clicked."""
+        logger.tree("Info Button Clicked", [
+            ("Clicked By", f"{interaction.user} ({interaction.user.id})"),
+            ("Target User ID", str(self.user_id)),
+            ("Guild ID", str(self.guild_id)),
+        ], emoji="ℹ️")
+
         db = get_db()
 
         # Get member from guild
@@ -243,6 +250,11 @@ class DownloadButton(discord.ui.DynamicItem[discord.ui.Button], template=r"downl
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Send avatar URL as ephemeral message."""
+        logger.tree("Avatar Download Clicked", [
+            ("Clicked By", f"{interaction.user} ({interaction.user.id})"),
+            ("Target User ID", str(self.user_id)),
+        ], emoji="📥")
+
         try:
             # Try to get member first, then fetch user if not found
             user = None
@@ -297,6 +309,12 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Show paginated history embed."""
+        logger.tree("History Button Clicked", [
+            ("Clicked By", f"{interaction.user} ({interaction.user.id})"),
+            ("Target User ID", str(self.user_id)),
+            ("Guild ID", str(self.guild_id)),
+        ], emoji="📜")
+
         db = get_db()
 
         # Get history count and first page
@@ -548,6 +566,13 @@ class ExtendModal(discord.ui.Modal, title="Extend Mute"):
         self.guild_id = guild_id
 
     async def on_submit(self, interaction: discord.Interaction):
+        logger.tree("Extend Modal Submitted", [
+            ("Submitted By", f"{interaction.user} ({interaction.user.id})"),
+            ("Target User ID", str(self.user_id)),
+            ("Duration Input", self.duration.value),
+            ("Reason", self.reason.value[:50] if self.reason.value else "None"),
+        ], emoji="⏱️")
+
         db = get_db()
 
         # Parse duration
@@ -660,6 +685,12 @@ class ExtendButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_ext
         return cls(user_id, guild_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        logger.tree("Extend Button Clicked", [
+            ("Clicked By", f"{interaction.user} ({interaction.user.id})"),
+            ("Target User ID", str(self.user_id)),
+            ("Guild ID", str(self.guild_id)),
+        ], emoji="⏱️")
+
         # Check if user is currently muted
         db = get_db()
         active_mute = db.get_active_mute(self.user_id, self.guild_id)
@@ -702,6 +733,12 @@ class UnmuteModal(discord.ui.Modal, title="Unmute User"):
         self.guild_id = guild_id
 
     async def on_submit(self, interaction: discord.Interaction):
+        logger.tree("Unmute Modal Submitted", [
+            ("Submitted By", f"{interaction.user} ({interaction.user.id})"),
+            ("Target User ID", str(self.user_id)),
+            ("Reason", self.reason.value[:50] if self.reason.value else "None"),
+        ], emoji="🔊")
+
         db = get_db()
         config = get_config()
 
@@ -812,6 +849,12 @@ class UnmuteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_unm
         return cls(user_id, guild_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        logger.tree("Unmute Button Clicked", [
+            ("Clicked By", f"{interaction.user} ({interaction.user.id})"),
+            ("Target User ID", str(self.user_id)),
+            ("Guild ID", str(self.guild_id)),
+        ], emoji="🔊")
+
         db = get_db()
 
         if not db.is_user_muted(self.user_id, self.guild_id):
@@ -845,6 +888,12 @@ class NoteModal(discord.ui.Modal, title="Add Moderator Note"):
         self.guild_id = guild_id
 
     async def on_submit(self, interaction: discord.Interaction):
+        logger.tree("Note Modal Submitted", [
+            ("Submitted By", f"{interaction.user} ({interaction.user.id})"),
+            ("Target User ID", str(self.user_id)),
+            ("Note Preview", self.note.value[:50] + "..." if len(self.note.value) > 50 else self.note.value),
+        ], emoji="📝")
+
         db = get_db()
 
         # Save the note
@@ -911,6 +960,12 @@ class NotesButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_note
         return cls(user_id, guild_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        logger.tree("Notes Button Clicked", [
+            ("Clicked By", f"{interaction.user} ({interaction.user.id})"),
+            ("Target User ID", str(self.user_id)),
+            ("Guild ID", str(self.guild_id)),
+        ], emoji="📝")
+
         db = get_db()
 
         # Get existing notes
@@ -935,8 +990,15 @@ class NotesButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_note
                 created_at = note.get("created_at", 0)
                 note_text = note.get("note", "")
 
+                # Get moderator name (mentions don't render in field names)
+                mod_name = f"Unknown ({mod_id})"
+                if interaction.guild:
+                    mod_member = interaction.guild.get_member(mod_id)
+                    if mod_member:
+                        mod_name = mod_member.display_name
+
                 embed.add_field(
-                    name=f"<t:{int(created_at)}:R> by <@{mod_id}>",
+                    name=f"<t:{int(created_at)}:R> by {mod_name}",
                     value=note_text[:200] + ("..." if len(note_text) > 200 else ""),
                     inline=False,
                 )
