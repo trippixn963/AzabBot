@@ -40,6 +40,27 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
+# Time Constants (in seconds)
+# =============================================================================
+
+SECONDS_1_HOUR = 3600
+SECONDS_6_HOURS = 21600
+SECONDS_24_HOURS = 86400
+SECONDS_7_DAYS = 604800
+
+# Age thresholds (in days)
+DAYS_7 = 7
+DAYS_30 = 30
+DAYS_90 = 90
+
+# Similarity thresholds
+SIMILARITY_EXACT = 1.0
+SIMILARITY_HIGH = 0.8
+SIMILARITY_MEDIUM = 0.6
+SIMILARITY_BIO = 0.7
+
+
+# =============================================================================
 # Signal Weights
 # =============================================================================
 
@@ -403,11 +424,11 @@ class AltDetectionService:
             created = created.replace(tzinfo=NY_TZ)
         age = now - created
 
-        if age.days < 7:
+        if age.days < DAYS_7:
             return SignalWeights.ACCOUNT_AGE_UNDER_7_DAYS, f"Account is {age.days} days old"
-        elif age.days < 30:
+        elif age.days < DAYS_30:
             return SignalWeights.ACCOUNT_AGE_UNDER_30_DAYS, f"Account is {age.days} days old"
-        elif age.days < 90:
+        elif age.days < DAYS_90:
             return SignalWeights.ACCOUNT_AGE_UNDER_90_DAYS, f"Account is {age.days} days old"
 
         return 0, ""
@@ -435,11 +456,11 @@ class AltDetectionService:
                     best_ratio = ratio
                     best_pair = (name1, name2)
 
-        if best_ratio >= 1.0:
+        if best_ratio >= SIMILARITY_EXACT:
             return SignalWeights.USERNAME_EXACT_MATCH, f"Exact name match: '{best_pair[0]}'"
-        elif best_ratio >= 0.8:
+        elif best_ratio >= SIMILARITY_HIGH:
             return SignalWeights.USERNAME_HIGH_SIMILARITY, f"{int(best_ratio*100)}% name similarity"
-        elif best_ratio >= 0.6:
+        elif best_ratio >= SIMILARITY_MEDIUM:
             return SignalWeights.USERNAME_MEDIUM_SIMILARITY, f"{int(best_ratio*100)}% name similarity"
 
         return 0, ""
@@ -464,13 +485,13 @@ class AltDetectionService:
 
         diff = abs((banned_joined - candidate_joined).total_seconds())
 
-        if diff <= 3600:  # 1 hour
+        if diff <= SECONDS_1_HOUR:
             return SignalWeights.JOINED_WITHIN_1_HOUR, "Joined within 1 hour of banned user"
-        elif diff <= 21600:  # 6 hours
+        elif diff <= SECONDS_6_HOURS:
             return SignalWeights.JOINED_WITHIN_6_HOURS, "Joined within 6 hours of banned user"
-        elif diff <= 86400:  # 24 hours
+        elif diff <= SECONDS_24_HOURS:
             return SignalWeights.JOINED_WITHIN_24_HOURS, "Joined within 24 hours of banned user"
-        elif diff <= 604800:  # 7 days
+        elif diff <= SECONDS_7_DAYS:
             return SignalWeights.JOINED_WITHIN_7_DAYS, "Joined within 7 days of banned user"
 
         return 0, ""
@@ -495,11 +516,11 @@ class AltDetectionService:
 
         diff = abs((banned_created - candidate_created).total_seconds())
 
-        if diff <= 3600:  # 1 hour
+        if diff <= SECONDS_1_HOUR:
             return SignalWeights.CREATED_WITHIN_1_HOUR, "Accounts created within 1 hour"
-        elif diff <= 86400:  # 24 hours
+        elif diff <= SECONDS_24_HOURS:
             return SignalWeights.CREATED_WITHIN_24_HOURS, "Accounts created within 24 hours"
-        elif diff <= 604800:  # 7 days
+        elif diff <= SECONDS_7_DAYS:
             return SignalWeights.CREATED_WITHIN_7_DAYS, "Accounts created within 7 days"
 
         return 0, ""
@@ -522,7 +543,7 @@ class AltDetectionService:
 
         # Similarity check
         ratio = SequenceMatcher(None, banned_bio, candidate_bio).ratio()
-        if ratio >= 0.7:
+        if ratio >= SIMILARITY_BIO:
             return SignalWeights.SIMILAR_BIO, f"{int(ratio*100)}% status similarity"
 
         return 0, ""
@@ -543,7 +564,7 @@ class AltDetectionService:
         for b_date in banned_dates:
             for c_date in candidate_dates:
                 # Compare timestamps (within 24 hours = same day punishment)
-                if abs(b_date - c_date) <= 86400:
+                if abs(b_date - c_date) <= SECONDS_24_HOURS:
                     return SignalWeights.BOTH_PUNISHED_SAME_DAY, "Both punished within 24 hours of each other"
 
         # Both have punishment history
