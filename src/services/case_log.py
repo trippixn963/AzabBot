@@ -581,9 +581,7 @@ class CaseLogService:
                     warning_message = await safe_send(
                         case_thread,
                         f"⚠️ {moderator.mention} No reason was provided for this unmute.\n\n"
-                        f"**Reply to this message** with:\n"
-                        f"• A reason **and** an attachment (screenshot/video), OR\n"
-                        f"• Just an attachment\n\n"
+                        f"**Reply to this message** with the reason.\n"
                         f"You have **1 hour** or the owner will be notified.\n"
                         f"_Only replies from you will be accepted._"
                     )
@@ -793,9 +791,7 @@ class CaseLogService:
                     warning_message = await safe_send(
                         case_thread,
                         f"⚠️ {moderator.mention} No reason was provided for this unban.\n\n"
-                        f"**Reply to this message** with:\n"
-                        f"• A reason **and** an attachment (screenshot/video), OR\n"
-                        f"• Just an attachment\n\n"
+                        f"**Reply to this message** with the reason.\n"
                         f"You have **1 hour** or the owner will be notified.\n"
                         f"_Only replies from you will be accepted._"
                     )
