@@ -22,6 +22,7 @@ Available Commands:
     /ban: Ban a user from the server (moderator)
     /unban: Unban a user by ID (moderator)
     /warn: Issue a warning to a user (moderator)
+    /purge: Bulk delete messages from channel (moderator)
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -35,6 +36,7 @@ COMMAND_COGS = [
     "src.commands.mute",
     "src.commands.ban",
     "src.commands.warn",
+    "src.commands.purge",
 ]
 """
 List of command cog module paths for dynamic loading.
