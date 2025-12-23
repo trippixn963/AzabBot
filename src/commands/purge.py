@@ -268,15 +268,6 @@ class PurgeCog(commands.Cog):
             ("Reason", reason or "None"),
         ], emoji="🗑️")
 
-        # Post to mod log
-        await self._post_mod_log(
-            channel=channel,
-            moderator=interaction.user,
-            deleted_count=total_deleted,
-            description=description,
-            reason=reason,
-        )
-
         # Log to mod tracker (pings owner for review)
         if self.bot.mod_tracker and isinstance(interaction.user, discord.Member):
             if self.bot.mod_tracker.is_tracked(interaction.user.id):
@@ -287,38 +278,6 @@ class PurgeCog(commands.Cog):
                     purge_type=description,
                     reason=reason,
                 )
-
-    async def _post_mod_log(
-        self,
-        channel: discord.abc.GuildChannel,
-        moderator: discord.Member,
-        deleted_count: int,
-        description: str,
-        reason: Optional[str] = None,
-    ) -> None:
-        """Post purge action to mod log channel."""
-        log_channel = self.bot.get_channel(self.config.logs_channel_id)
-        if not log_channel:
-            return
-
-        embed = discord.Embed(
-            title="Moderation: Purge",
-            color=EmbedColors.INFO,
-            timestamp=datetime.now(NY_TZ),
-        )
-        embed.add_field(name="Channel", value=f"{channel.mention}\n`#{channel.name}`", inline=True)
-        embed.add_field(name="Moderator", value=f"{moderator.mention}\n`{moderator.display_name}`", inline=True)
-        embed.add_field(name="Deleted", value=f"`{deleted_count}` {description}", inline=True)
-
-        if reason:
-            embed.add_field(name="Reason", value=reason, inline=False)
-
-        set_footer(embed)
-
-        try:
-            await log_channel.send(embed=embed)
-        except Exception as e:
-            logger.error(f"Failed to post purge to mod log: {e}")
 
     # =========================================================================
     # Purge Commands

@@ -426,7 +426,7 @@ class ModTrackerService(ModTrackerLogsMixin):
         asyncio.create_task(self._inactivity_check_loop())
         logger.tree("Mod Tracker: Inactivity Checker Started", [
             ("Check Time", "Daily at 12:00 PM EST"),
-            ("Tracked Mods", str(len(self._tracked_mods))),
+            ("Tracked Mods", str(len(self.db.get_all_tracked_mods()))),
         ], emoji="⏰")
 
     async def _inactivity_check_loop(self) -> None:

@@ -250,6 +250,7 @@ class PrisonHandler:
             ], emoji="🔓")
 
             current_duration = await self.bot.db.get_current_mute_duration(member.id)
+            prisoner_stats = await self.bot.db.get_prisoner_stats(member.id)
 
             # Update presence
             if self.bot.presence_handler:
