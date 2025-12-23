@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Optional, List, Tuple, Callable, Any, Dict
 from collections import defaultdict
 import asyncio
 import io
+import re
 
 import aiohttp
 import discord
@@ -24,6 +25,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.utils.views import CASE_EMOJI, MESSAGE_EMOJI, CaseButtonView, MessageButtonView
 
 # Import from local package modules
 from .constants import (
@@ -315,11 +317,13 @@ class ModTrackerService:
         Returns:
             True if role was removed, False otherwise.
         """
-        if not self.config.mod_role_id or not self.config.mod_server_id:
+        if not self.config.mod_role_id:
             return False
 
         try:
-            guild = self.bot.get_guild(self.config.mod_server_id)
+            # Mod role is in main server
+            main_guild_id = self.config.logging_guild_id or self.config.mod_server_id
+            guild = self.bot.get_guild(main_guild_id)
             if not guild:
                 return False
 
@@ -454,31 +458,40 @@ class ModTrackerService:
             return
 
         now = datetime.now(NY_TZ)
-        cutoff = now - timedelta(days=INACTIVITY_DAYS)
+        cutoff_timestamp = (now - timedelta(days=INACTIVITY_DAYS)).timestamp()
         inactive_count = 0
 
         tracked_mods = self.db.get_all_tracked_mods()
 
         for mod_data in tracked_mods:
             mod_id = mod_data["mod_id"]
-            last_action = self._last_action.get(mod_id)
+            last_action_at = mod_data.get("last_action_at")
 
             # If no recorded action, check if they were recently added
-            if last_action is None:
-                # Assume active if no data yet
-                continue
+            if last_action_at is None:
+                # Check created_at - if added recently, skip
+                created_at = mod_data.get("created_at", 0)
+                if created_at > cutoff_timestamp:
+                    continue
+                # Otherwise they've never had activity, alert
+                days_inactive = INACTIVITY_DAYS
+                last_action_str = "Never"
+            else:
+                if last_action_at > cutoff_timestamp:
+                    continue  # Active, skip
+                last_action_dt = datetime.fromtimestamp(last_action_at, tz=NY_TZ)
+                days_inactive = (now - last_action_dt).days
+                last_action_str = last_action_dt.strftime('%B %d, %Y')
 
-            if last_action < cutoff:
-                days_inactive = (now - last_action).days
-                await self._send_alert(
-                    mod_id=mod_id,
-                    alert_type="Inactivity Warning",
-                    description=f"No mod actions recorded in **{days_inactive}** days\n"
-                                f"Last activity: {last_action.strftime('%B %d, %Y')}",
-                    color=EmbedColors.ERROR,
-                )
-                inactive_count += 1
-                await asyncio.sleep(RATE_LIMIT_DELAY)
+            await self._send_alert(
+                mod_id=mod_id,
+                alert_type="Inactivity Warning",
+                description=f"No mod actions recorded in **{days_inactive}** days\n"
+                            f"Last activity: {last_action_str}",
+                color=EmbedColors.ERROR,
+            )
+            inactive_count += 1
+            await asyncio.sleep(RATE_LIMIT_DELAY)
 
         if inactive_count > 0:
             logger.tree("Mod Tracker: Inactivity Check Complete", [
@@ -486,28 +499,71 @@ class ModTrackerService:
             ], emoji="⏰")
 
     # =========================================================================
+    # Peak Hours Formatter
+    # =========================================================================
+
+    def _format_peak_hours(self, mod_id: int) -> str:
+        """
+        Format peak activity hours for display.
+
+        Args:
+            mod_id: The moderator's ID.
+
+        Returns:
+            Formatted string like "2 PM (45), 8 PM (32), 10 PM (28)" or "No data yet".
+        """
+        peak_hours = self.db.get_peak_hours(mod_id, top_n=3)
+        if not peak_hours:
+            return "No data yet"
+
+        formatted = []
+        for hour, count in peak_hours:
+            # Convert 24h to 12h format
+            if hour == 0:
+                time_str = "12 AM"
+            elif hour < 12:
+                time_str = f"{hour} AM"
+            elif hour == 12:
+                time_str = "12 PM"
+            else:
+                time_str = f"{hour - 12} PM"
+            formatted.append(f"{time_str} ({count})")
+
+        return ", ".join(formatted)
+
+    # =========================================================================
     # Thread Name Builder
     # =========================================================================
 
-    def _build_thread_name(self, mod: discord.Member) -> str:
+    def _build_thread_name(
+        self,
+        mod: discord.Member,
+        action_count: int = 0,
+        is_active: bool = True,
+    ) -> str:
         """
         Build a thread name for a mod.
 
-        Format: [username] | [display_name] or just [username] if same.
+        Format: ModName | 156 actions | Active
 
         Args:
             mod: The moderator member.
+            action_count: Total actions logged for this mod.
+            is_active: Whether the mod is currently active (has mod role).
 
         Returns:
             Formatted thread name (max 100 chars).
         """
-        username = strip_emojis(mod.name)
-        display_name = strip_emojis(mod.display_name)
+        display_name = strip_emojis(mod.display_name or mod.name)
 
-        if not display_name or display_name.lower() == username.lower():
-            thread_name = f"[{username}]"
-        else:
-            thread_name = f"[{username}] | [{display_name}]"
+        # Build status string
+        status = "Active" if is_active else "Inactive"
+
+        # Build action count string
+        action_str = f"{action_count} action{'s' if action_count != 1 else ''}"
+
+        # Combine: Name | X actions | Status
+        thread_name = f"{display_name} | {action_str} | {status}"
 
         return thread_name[:100]
 
@@ -586,24 +642,25 @@ class ModTrackerService:
 
         try:
             # -------------------------------------------------------------
-            # Get Guild and Role
+            # Get Guild and Role (mod role is in main server, not mod server)
             # -------------------------------------------------------------
 
-            guild = self.bot.get_guild(self.config.mod_server_id)
+            main_guild_id = self.config.logging_guild_id or self.config.mod_server_id
+            guild = self.bot.get_guild(main_guild_id)
             if not guild:
-                guild = await self.bot.fetch_guild(self.config.mod_server_id)
+                guild = await self.bot.fetch_guild(main_guild_id)
 
             if not guild:
                 logger.error("Mod Tracker: Midnight Scan Failed", [
-                    ("Reason", "Could not access server"),
-                    ("Server ID", str(self.config.mod_server_id)),
+                    ("Reason", "Could not access main server"),
+                    ("Server ID", str(main_guild_id)),
                 ])
                 return
 
             mod_role = guild.get_role(self.config.mod_role_id)
             if not mod_role:
                 logger.error("Mod Tracker: Midnight Scan Failed", [
-                    ("Reason", "Mod role not found"),
+                    ("Reason", "Mod role not found in main server"),
                     ("Role ID", str(self.config.mod_role_id)),
                 ])
                 return
@@ -709,8 +766,11 @@ class ModTrackerService:
                         await asyncio.sleep(self.config.rate_limit_delay)
                         continue
 
-                    # Build expected name
-                    expected_name = self._build_thread_name(member)
+                    # Build expected name with action count and active status
+                    action_count = mod_data.get("action_count") or 0
+                    mod_role = guild.get_role(self.config.mod_role_id) if guild else None
+                    is_active = mod_role in member.roles if mod_role else True
+                    expected_name = self._build_thread_name(member, action_count, is_active)
 
                     # Update title if different
                     if thread.name != expected_name:
@@ -787,13 +847,15 @@ class ModTrackerService:
             return
 
         try:
-            guild = self.bot.get_guild(self.config.mod_server_id)
+            # Mod role is in main server, not mod tracker server
+            main_guild_id = self.config.logging_guild_id or self.config.mod_server_id
+            guild = self.bot.get_guild(main_guild_id)
             if not guild:
-                guild = await self.bot.fetch_guild(self.config.mod_server_id)
+                guild = await self.bot.fetch_guild(main_guild_id)
 
             if not guild:
-                logger.error("Mod Tracker: Failed To Get Mod Server", [
-                    ("Server ID", str(self.config.mod_server_id)),
+                logger.error("Mod Tracker: Failed To Get Main Server", [
+                    ("Server ID", str(main_guild_id)),
                 ])
                 return
 
@@ -801,6 +863,7 @@ class ModTrackerService:
             if not mod_role:
                 logger.error("Mod Tracker: Mod Role Not Found", [
                     ("Role ID", str(self.config.mod_role_id)),
+                    ("Server ID", str(main_guild_id)),
                 ])
                 return
 
@@ -924,7 +987,6 @@ class ModTrackerService:
         self,
         title: str,
         color: int = EmbedColors.INFO,
-        mod_avatar_url: Optional[str] = None,
     ) -> discord.Embed:
         """
         Create a standardized embed with NY timezone.
@@ -932,7 +994,6 @@ class ModTrackerService:
         Args:
             title: Embed title.
             color: Embed color.
-            mod_avatar_url: Optional moderator avatar URL for thumbnail.
 
         Returns:
             Configured embed.
@@ -943,11 +1004,6 @@ class ModTrackerService:
             color=color,
             timestamp=now,
         )
-
-        if mod_avatar_url:
-            embed.set_thumbnail(url=mod_avatar_url)
-
-        embed.set_footer(text=now.strftime("%B %d, %Y"))
         return embed
 
     def _add_mod_field(
@@ -996,9 +1052,8 @@ class ModTrackerService:
 
         # Build initial profile embed
         profile_embed = self._create_embed(
-            title="Moderator Profile",
+            title="👤 Moderator Profile",
             color=EmbedColors.INFO,
-            mod_avatar_url=mod.display_avatar.url,
         )
         profile_embed.set_thumbnail(url=mod.display_avatar.url)
         profile_embed.add_field(name="Username", value=f"`{mod.name}`", inline=True)
@@ -1018,8 +1073,15 @@ class ModTrackerService:
             inline=True,
         )
 
-        # Build thread name using helper
-        thread_name = self._build_thread_name(mod)
+        # Add peak hours (will show "No data yet" for new mods)
+        profile_embed.add_field(
+            name="🕐 Peak Hours",
+            value=self._format_peak_hours(mod.id),
+            inline=False,
+        )
+
+        # Build thread name using helper (new thread = 0 actions, Active)
+        thread_name = self._build_thread_name(mod, action_count=0, is_active=True)
 
         try:
             thread_with_msg = await forum.create_thread(
@@ -1107,16 +1169,18 @@ class ModTrackerService:
         mod_id: int,
         embed: discord.Embed,
         action_name: str,
+        view: Optional[discord.ui.View] = None,
     ) -> bool:
         """
         Send a log embed to a mod's tracking thread.
 
-        Automatically unarchives threads if needed.
+        Automatically unarchives threads if needed and updates thread title.
 
         Args:
             mod_id: The moderator's ID.
             embed: The embed to send.
             action_name: Name of the action for logging.
+            view: Optional view with buttons.
 
         Returns:
             True if sent successfully, False otherwise.
@@ -1146,7 +1210,32 @@ class ModTrackerService:
                     ])
                     # Continue anyway - might still work
 
-            await thread.send(embed=embed)
+            await thread.send(embed=embed, view=view)
+
+            # Increment action count and update thread title
+            new_count = self.db.increment_mod_action_count(mod_id)
+
+            # Track hourly activity
+            current_hour = datetime.now(NY_TZ).hour
+            self.db.increment_hourly_activity(mod_id, current_hour)
+
+            # Get mod member to build new thread name
+            main_guild_id = self.config.logging_guild_id or self.config.mod_server_id
+            main_guild = self.bot.get_guild(main_guild_id)
+            if main_guild:
+                mod_member = main_guild.get_member(mod_id)
+                if mod_member:
+                    # Check if mod still has mod role
+                    mod_role = main_guild.get_role(self.config.mod_role_id)
+                    is_active = mod_role in mod_member.roles if mod_role else True
+
+                    new_name = self._build_thread_name(mod_member, new_count, is_active)
+                    if thread.name != new_name:
+                        try:
+                            await thread.edit(name=new_name)
+                        except discord.HTTPException:
+                            pass  # Ignore rate limits on title updates
+
             logger.debug(f"Mod Tracker: Log Sent - Mod {mod_id}, Action: {action_name}")
             return True
         except discord.Forbidden:
@@ -1182,21 +1271,21 @@ class ModTrackerService:
     ) -> None:
         """Log an avatar change."""
         embed = self._create_embed(
-            title="Avatar Changed",
+            title="🖼️ Avatar Changed",
             color=EmbedColors.WARNING,
-            mod_avatar_url=new_avatar.url if new_avatar else None,
         )
         self._add_mod_field(embed, mod)
 
         if old_avatar:
-            embed.add_field(name="Old Avatar", value=f"[Link]({old_avatar.url})", inline=True)
+            embed.add_field(name="Old", value=f"[View]({old_avatar.url})", inline=True)
         else:
-            embed.add_field(name="Old Avatar", value="*None*", inline=True)
+            embed.add_field(name="Old", value="-", inline=True)
 
         if new_avatar:
-            embed.add_field(name="New Avatar", value=f"[Link]({new_avatar.url})", inline=True)
+            embed.add_field(name="New", value=f"[View]({new_avatar.url})", inline=True)
+            embed.set_thumbnail(url=new_avatar.url)
         else:
-            embed.add_field(name="New Avatar", value="*Removed*", inline=True)
+            embed.add_field(name="New", value="*Removed*", inline=True)
 
         if await self._send_log(mod.id, embed, "Avatar Change"):
             # Update stored avatar hash
@@ -1216,9 +1305,8 @@ class ModTrackerService:
     ) -> None:
         """Log a username or display name change."""
         embed = self._create_embed(
-            title=f"{change_type} Changed",
+            title=f"✏️ {change_type} Changed",
             color=EmbedColors.WARNING,
-            mod_avatar_url=mod.display_avatar.url,
         )
         self._add_mod_field(embed, mod)
         embed.add_field(name="Before", value=f"`{old_name}`", inline=True)
@@ -1265,11 +1353,12 @@ class ModTrackerService:
 
         # Build embed
         embed = self._create_embed(
-            title="Message Deleted",
+            title="🗑️ Message Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Channel", value=f"#{channel.name}", inline=True)
-        embed.add_field(name="Attachments", value=str(len(attachments) if attachments else 0), inline=True)
+        if attachments and len(attachments) > 0:
+            embed.add_field(name="Attachments", value=str(len(attachments)), inline=True)
 
         # Add reply info if this was a reply
         if reply_to_user and reply_to_id:
@@ -1288,6 +1377,23 @@ class ModTrackerService:
             embed.add_field(name="Content", value=f"```{display_content}```", inline=False)
         else:
             embed.add_field(name="Content", value="*(No text content)*", inline=False)
+
+        # Extract and display GIF/image URLs from content
+        media_url_pattern = r'https?://[^\s]+\.(?:gif|png|jpg|jpeg|webp)(?:\?[^\s]*)?|https?://(?:tenor\.com|giphy\.com|media\.discordapp\.net|cdn\.discordapp\.com)[^\s]+'
+        has_media_url = False
+        if content:
+            media_urls = re.findall(media_url_pattern, content, re.IGNORECASE)
+            if media_urls:
+                # Set the first media URL as embed image
+                embed.set_image(url=media_urls[0])
+                has_media_url = True
+
+        # Set embed image from first image attachment if no URL found
+        if not has_media_url and attachments:
+            for att in attachments:
+                if att.content_type and "image" in att.content_type:
+                    embed.set_image(url=att.url)
+                    break
 
         # Try to get attachments from cache first
         files_to_send: List[discord.File] = []
@@ -1357,13 +1463,11 @@ class ModTrackerService:
     ) -> None:
         """Log an edited message."""
         embed = self._create_embed(
-            title="Message Edited",
+            title="✏️ Message Edited",
             color=EmbedColors.WARNING,
-            mod_avatar_url=mod.display_avatar.url,
         )
         self._add_mod_field(embed, mod)
         embed.add_field(name="Channel", value=f"#{channel.name}", inline=True)
-        embed.add_field(name="Jump", value=f"[Go to message]({jump_url})", inline=True)
 
         # Add reply info if this was a reply
         if reply_to_user and reply_to_id:
@@ -1393,7 +1497,10 @@ class ModTrackerService:
             inline=False,
         )
 
-        if await self._send_log(mod.id, embed, "Message Edit"):
+        # Create message button view
+        view = MessageButtonView(jump_url)
+
+        if await self._send_log(mod.id, embed, "Message Edit", view=view):
             logger.tree("Mod Tracker: Message Edit Logged", [
                 ("Mod", mod.display_name),
                 ("Channel", channel.name),
@@ -1407,9 +1514,8 @@ class ModTrackerService:
     ) -> None:
         """Log role changes."""
         embed = self._create_embed(
-            title="Roles Changed",
+            title="🎭 Roles Changed",
             color=EmbedColors.INFO,
-            mod_avatar_url=mod.display_avatar.url,
         )
         self._add_mod_field(embed, mod)
 
@@ -1438,9 +1544,8 @@ class ModTrackerService:
     ) -> None:
         """Log voice channel activity."""
         embed = self._create_embed(
-            title=f"Voice: {action}",
+            title=f"🎤 Voice: {action}",
             color=EmbedColors.INFO,
-            mod_avatar_url=mod.display_avatar.url,
         )
         self._add_mod_field(embed, mod)
 
@@ -1470,9 +1575,8 @@ class ModTrackerService:
     ) -> None:
         """Log when mod mutes a user via /mute command."""
         embed = self._create_embed(
-            title="Muted User",
+            title="🔇 Muted User",
             color=EmbedColors.ERROR,
-            mod_avatar_url=mod.display_avatar.url,
         )
         self._add_mod_field(embed, mod)
 
@@ -1482,12 +1586,24 @@ class ModTrackerService:
             inline=True,
         )
         embed.add_field(name="Duration", value=duration, inline=True)
-        embed.add_field(name="Reason", value=reason or "No reason provided", inline=False)
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
 
-        # Add target's avatar as image
-        embed.set_image(url=target.display_avatar.url)
+        # Add target's avatar as thumbnail
+        embed.set_thumbnail(url=target.display_avatar.url)
 
-        if await self._send_log(mod.id, embed, "Mute"):
+        # Check for case and add button
+        view = None
+        case = self.db.get_case_log(target.id)
+        if case:
+            embed.set_footer(text=f"Case ID: {case['case_id']}")
+            view = CaseButtonView(
+                guild_id=self.config.logging_guild_id or target.guild.id,
+                thread_id=case["thread_id"],
+                user_id=target.id,
+            )
+
+        if await self._send_log(mod.id, embed, "Mute", view=view):
             logger.tree("Mod Tracker: Mute Logged", [
                 ("Mod", mod.display_name),
                 ("Target", target.display_name),
@@ -1502,9 +1618,8 @@ class ModTrackerService:
     ) -> None:
         """Log when mod unmutes a user via /unmute command."""
         embed = self._create_embed(
-            title="Unmuted User",
+            title="🔊 Unmuted User",
             color=EmbedColors.SUCCESS,
-            mod_avatar_url=mod.display_avatar.url,
         )
         self._add_mod_field(embed, mod)
 
@@ -1513,12 +1628,24 @@ class ModTrackerService:
             value=f"{target.mention}\n`{target.name}` ({target.id})",
             inline=True,
         )
-        embed.add_field(name="Reason", value=reason or "No reason provided", inline=False)
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
 
-        # Add target's avatar as image
-        embed.set_image(url=target.display_avatar.url)
+        # Add target's avatar as thumbnail
+        embed.set_thumbnail(url=target.display_avatar.url)
 
-        if await self._send_log(mod.id, embed, "Unmute"):
+        # Check for case and add button
+        view = None
+        case = self.db.get_case_log(target.id)
+        if case:
+            embed.set_footer(text=f"Case ID: {case['case_id']}")
+            view = CaseButtonView(
+                guild_id=self.config.logging_guild_id or target.guild.id,
+                thread_id=case["thread_id"],
+                user_id=target.id,
+            )
+
+        if await self._send_log(mod.id, embed, "Unmute", view=view):
             logger.tree("Mod Tracker: Unmute Logged", [
                 ("Mod", mod.display_name),
                 ("Target", target.display_name),
@@ -1546,7 +1673,6 @@ class ModTrackerService:
         embed = self._create_embed(
             title="🚨 Management Violation Attempt",
             color=EmbedColors.GOLD,
-            mod_avatar_url=mod.display_avatar.url,
         )
         self._add_mod_field(embed, mod)
 
@@ -1612,21 +1738,9 @@ class ModTrackerService:
         # Record action
         self._record_action(mod_id, "timeout")
 
-        # Try to get mod member for avatar
-        mod_avatar_url = None
-        try:
-            guild = self.bot.get_guild(self.config.mod_server_id)
-            if guild:
-                mod_member = guild.get_member(mod_id)
-                if mod_member:
-                    mod_avatar_url = mod_member.display_avatar.url
-        except Exception:
-            pass
-
         embed = self._create_embed(
             title="⏰ Timeout",
             color=EmbedColors.WARNING,
-            mod_avatar_url=mod_avatar_url,
         )
 
         embed.add_field(
@@ -1651,12 +1765,24 @@ class ModTrackerService:
         else:
             embed.add_field(name="Duration", value="Unknown", inline=True)
 
-        embed.add_field(name="Reason", value=reason or "No reason provided", inline=False)
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
 
         if hasattr(target, 'display_avatar'):
-            embed.set_image(url=target.display_avatar.url)
+            embed.set_thumbnail(url=target.display_avatar.url)
 
-        if await self._send_log(mod_id, embed, "Timeout"):
+        # Check for case and add button
+        view = None
+        case = self.db.get_case_log(target.id)
+        if case:
+            embed.set_footer(text=f"Case ID: {case['case_id']}")
+            view = CaseButtonView(
+                guild_id=self.config.logging_guild_id or target.guild.id,
+                thread_id=case["thread_id"],
+                user_id=target.id,
+            )
+
+        if await self._send_log(mod_id, embed, "Timeout", view=view):
             logger.tree("Mod Tracker: Timeout Logged", [
                 ("Mod ID", str(mod_id)),
                 ("Target", str(target)),
@@ -1742,21 +1868,9 @@ class ModTrackerService:
         action_type = action.lower()
         self._record_action(mod_id, action_type)
 
-        # Try to get mod member for avatar
-        mod_avatar_url = None
-        try:
-            guild = self.bot.get_guild(self.config.mod_server_id)
-            if guild:
-                mod_member = guild.get_member(mod_id)
-                if mod_member:
-                    mod_avatar_url = mod_member.display_avatar.url
-        except Exception:
-            pass
-
         embed = self._create_embed(
             title=f"{emoji_icon} {action}",
             color=EmbedColors.WARNING,
-            mod_avatar_url=mod_avatar_url,
         )
 
         embed.add_field(
@@ -1770,9 +1884,20 @@ class ModTrackerService:
                 embed.add_field(name=name, value=value, inline=True)
 
         if hasattr(target, 'display_avatar'):
-            embed.set_image(url=target.display_avatar.url)
+            embed.set_thumbnail(url=target.display_avatar.url)
 
-        if await self._send_log(mod_id, embed, action):
+        # Check for case and add button
+        view = None
+        case = self.db.get_case_log(target.id)
+        if case:
+            embed.set_footer(text=f"Case ID: {case['case_id']}")
+            view = CaseButtonView(
+                guild_id=self.config.logging_guild_id,
+                thread_id=case["thread_id"],
+                user_id=target.id,
+            )
+
+        if await self._send_log(mod_id, embed, action, view=view):
             logger.tree(f"Mod Tracker: {action} Logged", [
                 ("Mod ID", str(mod_id)),
                 ("Target", str(target)),
@@ -1804,7 +1929,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Channel Deleted",
+            title="🗑️ Channel Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Name", value=f"`{channel_name}`", inline=True)
@@ -1827,7 +1952,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Channel Updated",
+            title="📝 Channel Updated",
             color=EmbedColors.WARNING,
         )
         embed.add_field(name="Channel", value=f"#{channel.name}", inline=True)
@@ -1894,7 +2019,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Role Deleted",
+            title="🗑️ Role Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Name", value=f"`{role_name}`", inline=True)
@@ -1916,7 +2041,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Role Updated",
+            title="📝 Role Updated",
             color=role.color if role.color.value else EmbedColors.WARNING,
         )
         embed.add_field(name="Role", value=f"`{role.name}`", inline=True)
@@ -1978,7 +2103,6 @@ class ModTrackerService:
         )
         embed.add_field(name="Channel", value=f"#{channel.name}", inline=True)
         embed.add_field(name="Author", value=f"{message.author}", inline=True)
-        embed.add_field(name="Link", value=f"[Jump]({message.jump_url})", inline=True)
 
         if message.content:
             max_content_length = 200
@@ -1987,7 +2111,10 @@ class ModTrackerService:
                 content += "..."
             embed.add_field(name="Content", value=f"```{content}```", inline=False)
 
-        if await self._send_log(mod_id, embed, f"Message {action}"):
+        # Create message button view
+        view = MessageButtonView(message.jump_url)
+
+        if await self._send_log(mod_id, embed, f"Message {action}", view=view):
             logger.tree(f"Mod Tracker: Message {action} Logged", [
                 ("Mod ID", str(mod_id)),
                 ("Channel", channel.name),
@@ -2007,7 +2134,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Thread Created",
+            title="🧵 Thread Created",
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Name", value=thread.name, inline=True)
@@ -2016,9 +2143,11 @@ class ModTrackerService:
         if thread.parent:
             parent_name = thread.parent.name
         embed.add_field(name="Parent", value=f"#{parent_name}", inline=True)
-        embed.add_field(name="Link", value=f"[Jump]({thread.jump_url})", inline=True)
 
-        if await self._send_log(mod_id, embed, "Thread Create"):
+        # Create message button view for thread
+        view = MessageButtonView(thread.jump_url)
+
+        if await self._send_log(mod_id, embed, "Thread Create", view=view):
             logger.tree("Mod Tracker: Thread Create Logged", [
                 ("Mod ID", str(mod_id)),
                 ("Thread", thread.name),
@@ -2035,7 +2164,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Thread Deleted",
+            title="🗑️ Thread Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Name", value=thread_name, inline=True)
@@ -2061,7 +2190,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Invite Created",
+            title="🔗 Invite Created",
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Code", value=f"`{invite.code}`", inline=True)
@@ -2100,7 +2229,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Invite Deleted",
+            title="🗑️ Invite Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Code", value=f"`{invite_code}`", inline=True)
@@ -2126,7 +2255,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Emoji Created",
+            title="😀 Emoji Created",
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Name", value=f"`:{emoji.name}:`", inline=True)
@@ -2149,7 +2278,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Emoji Deleted",
+            title="🗑️ Emoji Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Name", value=f"`:{emoji_name}:`", inline=True)
@@ -2170,7 +2299,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Sticker Created",
+            title="🏷️ Sticker Created",
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Name", value=sticker.name, inline=True)
@@ -2193,7 +2322,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Sticker Deleted",
+            title="🗑️ Sticker Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Name", value=sticker_name, inline=True)
@@ -2219,7 +2348,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Webhook Created",
+            title="🔌 Webhook Created",
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Name", value=webhook_name, inline=True)
@@ -2242,7 +2371,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Webhook Deleted",
+            title="🗑️ Webhook Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Name", value=webhook_name, inline=True)
@@ -2268,7 +2397,7 @@ class ModTrackerService:
             return
 
         embed = self._create_embed(
-            title="Server Settings Changed",
+            title="⚙️ Server Settings Changed",
             color=EmbedColors.WARNING,
         )
 
@@ -2299,7 +2428,7 @@ class ModTrackerService:
         self._record_action(mod_id, "slowmode")
 
         embed = self._create_embed(
-            title="Slowmode Changed",
+            title="🐌 Slowmode Changed",
             color=EmbedColors.WARNING,
         )
         embed.add_field(name="Channel", value=f"#{channel.name}", inline=True)
@@ -2349,7 +2478,7 @@ class ModTrackerService:
         self._record_action(mod_id, "automod")
 
         embed = self._create_embed(
-            title="AutoMod Rule Created",
+            title="🤖 AutoMod Rule Created",
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Rule Name", value=rule_name, inline=True)
@@ -2374,7 +2503,7 @@ class ModTrackerService:
         self._record_action(mod_id, "automod")
 
         embed = self._create_embed(
-            title="AutoMod Rule Updated",
+            title="📝 AutoMod Rule Updated",
             color=EmbedColors.WARNING,
         )
         embed.add_field(name="Rule Name", value=rule_name, inline=True)
@@ -2398,7 +2527,7 @@ class ModTrackerService:
         self._record_action(mod_id, "automod")
 
         embed = self._create_embed(
-            title="AutoMod Rule Deleted",
+            title="🗑️ AutoMod Rule Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Rule Name", value=rule_name, inline=True)
@@ -2427,7 +2556,7 @@ class ModTrackerService:
         self._record_action(mod_id, "nickname")
 
         embed = self._create_embed(
-            title="Nickname Changed",
+            title="✏️ Nickname Changed",
             color=EmbedColors.WARNING,
         )
         embed.add_field(
@@ -2465,7 +2594,7 @@ class ModTrackerService:
         self._record_action(mod_id, "voice_move")
 
         embed = self._create_embed(
-            title="User Moved (Voice)",
+            title="🔀 User Moved (Voice)",
             color=EmbedColors.WARNING,
         )
         embed.add_field(
@@ -2503,7 +2632,7 @@ class ModTrackerService:
         self._record_action(mod_id, "purge")
 
         embed = self._create_embed(
-            title="Messages Purged",
+            title="🧹 Messages Purged",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Channel", value=f"#{channel.name}", inline=True)
@@ -2619,7 +2748,7 @@ class ModTrackerService:
         self._record_action(mod_id, "voice_disconnect")
 
         embed = self._create_embed(
-            title="User Disconnected (Voice)",
+            title="🔌 User Disconnected (Voice)",
             color=EmbedColors.ERROR,
         )
         embed.add_field(
@@ -2699,7 +2828,7 @@ class ModTrackerService:
         self._record_action(mod_id, "sticker")
 
         embed = self._create_embed(
-            title="Sticker Created",
+            title="🏷️ Sticker Created",
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Name", value=sticker_name, inline=True)
@@ -2722,7 +2851,7 @@ class ModTrackerService:
         self._record_action(mod_id, "sticker")
 
         embed = self._create_embed(
-            title="Sticker Deleted",
+            title="🗑️ Sticker Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Name", value=sticker_name, inline=True)
@@ -2750,7 +2879,7 @@ class ModTrackerService:
         self._record_action(mod_id, "event")
 
         embed = self._create_embed(
-            title="Scheduled Event Created",
+            title="📅 Scheduled Event Created",
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Name", value=event_name, inline=True)
@@ -2774,7 +2903,7 @@ class ModTrackerService:
         self._record_action(mod_id, "event")
 
         embed = self._create_embed(
-            title="Scheduled Event Updated",
+            title="📝 Scheduled Event Updated",
             color=EmbedColors.WARNING,
         )
         embed.add_field(name="Name", value=event_name, inline=True)
@@ -2797,7 +2926,7 @@ class ModTrackerService:
         self._record_action(mod_id, "event")
 
         embed = self._create_embed(
-            title="Scheduled Event Deleted",
+            title="🗑️ Scheduled Event Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Name", value=event_name, inline=True)
@@ -2826,7 +2955,7 @@ class ModTrackerService:
         self._record_action(mod_id, "command")
 
         embed = self._create_embed(
-            title="Command Used",
+            title="⚡ Command Used",
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Command", value=f"`/{command_name}`", inline=True)
@@ -2871,7 +3000,7 @@ class ModTrackerService:
             color=EmbedColors.GREEN,
         )
         embed.add_field(name="Note", value=note, inline=False)
-        embed.add_field(name="Added By", value=f"{added_by.mention} ({added_by.id})", inline=True)
+        embed.add_field(name="Added By", value=f"{added_by.mention}\n`{added_by.display_name}`", inline=True)
 
         try:
             if thread.archived:
@@ -3089,7 +3218,7 @@ class ModTrackerService:
         self._record_action(mod_id, "stage")
 
         embed = self._create_embed(
-            title="Stage Topic Changed",
+            title="🎙️ Stage Topic Changed",
             color=EmbedColors.WARNING,
         )
         embed.add_field(name="Stage", value=f"🎭 {stage_channel.name}", inline=True)
@@ -3119,7 +3248,7 @@ class ModTrackerService:
         self._record_action(mod_id, "forum_tag")
 
         embed = self._create_embed(
-            title="Forum Tag Created",
+            title="🏷️ Forum Tag Created",
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Forum", value=f"#{forum.name}", inline=True)
@@ -3145,7 +3274,7 @@ class ModTrackerService:
         self._record_action(mod_id, "forum_tag")
 
         embed = self._create_embed(
-            title="Forum Tag Deleted",
+            title="🗑️ Forum Tag Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Forum", value=f"#{forum.name}", inline=True)
@@ -3172,7 +3301,7 @@ class ModTrackerService:
         self._record_action(mod_id, "forum_tag")
 
         embed = self._create_embed(
-            title="Forum Tag Updated",
+            title="📝 Forum Tag Updated",
             color=EmbedColors.WARNING,
         )
         embed.add_field(name="Forum", value=f"#{forum.name}", inline=True)
@@ -3202,7 +3331,7 @@ class ModTrackerService:
         self._record_action(mod_id, "integration")
 
         embed = self._create_embed(
-            title="Integration Added",
+            title="🔗 Integration Added",
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Name", value=integration_name, inline=True)
@@ -3226,7 +3355,7 @@ class ModTrackerService:
         self._record_action(mod_id, "integration")
 
         embed = self._create_embed(
-            title="Integration Removed",
+            title="🗑️ Integration Removed",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Name", value=integration_name, inline=True)
@@ -3249,7 +3378,7 @@ class ModTrackerService:
         self._record_action(mod_id, "bot")
 
         embed = self._create_embed(
-            title="Bot Added",
+            title="🤖 Bot Added",
             color=EmbedColors.WARNING,
         )
         embed.add_field(
@@ -3281,7 +3410,7 @@ class ModTrackerService:
         self._record_action(mod_id, "bot")
 
         embed = self._create_embed(
-            title="Bot Removed",
+            title="🗑️ Bot Removed",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Bot", value=f"`{bot_name}` ({bot_id})", inline=True)
@@ -3310,7 +3439,7 @@ class ModTrackerService:
         self._record_action(mod_id, "timeout_remove")
 
         embed = self._create_embed(
-            title="Timeout Removed Early",
+            title="⏰ Timeout Removed Early",
             color=EmbedColors.WARNING,
         )
         embed.add_field(
@@ -3352,7 +3481,7 @@ class ModTrackerService:
         self._record_action(mod_id, "prune")
 
         embed = self._create_embed(
-            title="Member Prune",
+            title="🧹 Member Prune",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Inactive Days", value=f"{days} days", inline=True)
@@ -3400,7 +3529,7 @@ class ModTrackerService:
         self._record_action(mod_id, "server_settings")
 
         embed = self._create_embed(
-            title="Verification Level Changed",
+            title="🔒 Verification Level Changed",
             color=EmbedColors.WARNING,
         )
         embed.add_field(name="Before", value=old_level, inline=True)
@@ -3425,7 +3554,7 @@ class ModTrackerService:
         self._record_action(mod_id, "server_settings")
 
         embed = self._create_embed(
-            title="Explicit Content Filter Changed",
+            title="🔞 Explicit Content Filter Changed",
             color=EmbedColors.WARNING,
         )
         embed.add_field(name="Before", value=old_filter, inline=True)
@@ -3452,7 +3581,7 @@ class ModTrackerService:
         color = EmbedColors.SUCCESS if enabled else EmbedColors.ERROR
 
         embed = self._create_embed(
-            title="Mod 2FA Requirement Changed",
+            title="🔐 Mod 2FA Requirement Changed",
             color=color,
         )
         embed.add_field(name="Status", value=f"**{status}**", inline=True)
@@ -3496,7 +3625,7 @@ class ModTrackerService:
         self._record_action(mod_id, "soundboard")
 
         embed = self._create_embed(
-            title="Soundboard Sound Created",
+            title="🔊 Soundboard Sound Created",
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Name", value=f"`{sound_name}`", inline=True)
@@ -3519,7 +3648,7 @@ class ModTrackerService:
         self._record_action(mod_id, "soundboard")
 
         embed = self._create_embed(
-            title="Soundboard Sound Deleted",
+            title="🗑️ Soundboard Sound Deleted",
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="Name", value=f"`{sound_name}`", inline=True)
@@ -3543,7 +3672,7 @@ class ModTrackerService:
         self._record_action(mod_id, "soundboard")
 
         embed = self._create_embed(
-            title="Soundboard Sound Updated",
+            title="📝 Soundboard Sound Updated",
             color=EmbedColors.WARNING,
         )
         embed.add_field(name="Name", value=f"`{sound_name}`", inline=True)
@@ -3570,7 +3699,7 @@ class ModTrackerService:
         self._record_action(mod_id, "onboarding")
 
         embed = self._create_embed(
-            title="Onboarding Enabled",
+            title="✅ Onboarding Enabled",
             color=EmbedColors.INFO,
         )
         embed.add_field(
@@ -3596,7 +3725,7 @@ class ModTrackerService:
         self._record_action(mod_id, "onboarding")
 
         embed = self._create_embed(
-            title="Onboarding Updated",
+            title="📝 Onboarding Updated",
             color=EmbedColors.WARNING,
         )
         embed.add_field(name="Changes", value=changes[:500], inline=False)
@@ -3617,7 +3746,7 @@ class ModTrackerService:
         self._record_action(mod_id, "onboarding")
 
         embed = self._create_embed(
-            title="Onboarding Disabled",
+            title="❌ Onboarding Disabled",
             color=EmbedColors.ERROR,
         )
         embed.add_field(

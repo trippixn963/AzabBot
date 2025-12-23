@@ -658,6 +658,14 @@ class AuditLogEvents(commands.Cog):
                             entry.target, until=entry.after.timed_out_until,
                             moderator=moderator, reason=entry.reason,
                         )
+                        # Log to case log
+                        if self.bot.case_log_service:
+                            await self.bot.case_log_service.log_timeout(
+                                user=entry.target,
+                                moderator_id=moderator.id if moderator else entry.user_id,
+                                until=entry.after.timed_out_until,
+                                reason=entry.reason,
+                            )
 
                 old_timeout = getattr(entry.before, 'timed_out_until', None)
                 new_timeout = getattr(entry.after, 'timed_out_until', None)

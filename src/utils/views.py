@@ -250,6 +250,25 @@ class CaseButtonView(discord.ui.View):
 
 
 # =============================================================================
+# Message Button View
+# =============================================================================
+
+class MessageButtonView(discord.ui.View):
+    """View with a single Message link button."""
+
+    def __init__(self, jump_url: str):
+        super().__init__(timeout=None)
+
+        # Message link button
+        self.add_item(discord.ui.Button(
+            label="Message",
+            url=jump_url,
+            style=discord.ButtonStyle.link,
+            emoji=MESSAGE_EMOJI,
+        ))
+
+
+# =============================================================================
 # View Registration
 # =============================================================================
 
@@ -274,5 +293,6 @@ __all__ = [
     "InfoButton",
     "DownloadButton",
     "CaseButtonView",
+    "MessageButtonView",
     "setup_moderation_views",
 ]

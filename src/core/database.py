@@ -460,6 +460,22 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE case_logs ADD COLUMN profile_message_id INTEGER")
         except sqlite3.OperationalError:
             pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE case_logs ADD COLUMN last_mute_duration TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE case_logs ADD COLUMN last_mute_moderator_id INTEGER")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE case_logs ADD COLUMN last_ban_moderator_id INTEGER")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE case_logs ADD COLUMN last_ban_reason TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
         # -----------------------------------------------------------------
         # Mod Tracker Table
@@ -473,6 +489,29 @@ class DatabaseManager:
                 avatar_hash TEXT,
                 username TEXT,
                 created_at REAL NOT NULL
+            )
+        """)
+
+        # Migration: Add action tracking columns if they don't exist
+        try:
+            cursor.execute("ALTER TABLE mod_tracker ADD COLUMN action_count INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE mod_tracker ADD COLUMN last_action_at REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        # -----------------------------------------------------------------
+        # Mod Hourly Activity Table
+        # DESIGN: Tracks mod activity by hour for peak hours analysis
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mod_hourly_activity (
+                mod_id INTEGER NOT NULL,
+                hour INTEGER NOT NULL,
+                count INTEGER DEFAULT 0,
+                PRIMARY KEY (mod_id, hour)
             )
         """)
 
@@ -1226,6 +1265,8 @@ class DatabaseManager:
         user_id: int,
         case_id: str,
         thread_id: int,
+        duration: Optional[str] = None,
+        moderator_id: Optional[int] = None,
     ) -> None:
         """
         Create a new case log for a user.
@@ -1234,13 +1275,16 @@ class DatabaseManager:
             user_id: Discord user ID.
             case_id: Unique 4-character alphanumeric case ID.
             thread_id: Forum thread ID for this case.
+            duration: Optional duration string of the first mute.
+            moderator_id: Optional moderator ID who issued the first mute.
         """
         now = time.time()
         self.execute(
             """INSERT INTO case_logs
-               (user_id, case_id, thread_id, mute_count, created_at, last_mute_at)
-               VALUES (?, ?, ?, 1, ?, ?)""",
-            (user_id, case_id, thread_id, now, now)
+               (user_id, case_id, thread_id, mute_count, created_at, last_mute_at,
+                last_mute_duration, last_mute_moderator_id)
+               VALUES (?, ?, ?, 1, ?, ?, ?, ?)""",
+            (user_id, case_id, thread_id, now, now, duration, moderator_id)
         )
 
         logger.tree("Case Log Created", [
@@ -1249,12 +1293,19 @@ class DatabaseManager:
             ("Thread ID", str(thread_id)),
         ], emoji="📋")
 
-    def increment_mute_count(self, user_id: int) -> int:
+    def increment_mute_count(
+        self,
+        user_id: int,
+        duration: Optional[str] = None,
+        moderator_id: Optional[int] = None,
+    ) -> int:
         """
         Increment mute count for a user's case.
 
         Args:
             user_id: Discord user ID.
+            duration: Optional duration string (e.g., "1h", "1d").
+            moderator_id: Optional moderator ID who issued the mute.
 
         Returns:
             New mute count.
@@ -1262,9 +1313,12 @@ class DatabaseManager:
         now = time.time()
         self.execute(
             """UPDATE case_logs
-               SET mute_count = mute_count + 1, last_mute_at = ?
+               SET mute_count = mute_count + 1,
+                   last_mute_at = ?,
+                   last_mute_duration = ?,
+                   last_mute_moderator_id = ?
                WHERE user_id = ?""",
-            (now, user_id)
+            (now, duration, moderator_id, user_id)
         )
 
         row = self.fetchone(
@@ -1272,6 +1326,29 @@ class DatabaseManager:
             (user_id,)
         )
         return row["mute_count"] if row else 1
+
+    def get_last_mute_info(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get last mute info for a user's case.
+
+        Args:
+            user_id: Discord user ID.
+
+        Returns:
+            Dict with last_mute_at, last_mute_duration, last_mute_moderator_id.
+        """
+        row = self.fetchone(
+            """SELECT last_mute_at, last_mute_duration, last_mute_moderator_id
+               FROM case_logs WHERE user_id = ?""",
+            (user_id,)
+        )
+        if row:
+            return {
+                "last_mute_at": row["last_mute_at"],
+                "last_mute_duration": row["last_mute_duration"],
+                "last_mute_moderator_id": row["last_mute_moderator_id"],
+            }
+        return None
 
     def update_last_unmute(self, user_id: int) -> None:
         """
@@ -1286,12 +1363,19 @@ class DatabaseManager:
             (now, user_id)
         )
 
-    def increment_ban_count(self, user_id: int) -> int:
+    def increment_ban_count(
+        self,
+        user_id: int,
+        moderator_id: Optional[int] = None,
+        reason: Optional[str] = None,
+    ) -> int:
         """
         Increment ban count for a user's case.
 
         Args:
             user_id: Discord user ID.
+            moderator_id: Optional moderator ID who issued the ban.
+            reason: Optional reason for the ban.
 
         Returns:
             New ban count.
@@ -1299,9 +1383,12 @@ class DatabaseManager:
         now = time.time()
         self.execute(
             """UPDATE case_logs
-               SET ban_count = COALESCE(ban_count, 0) + 1, last_ban_at = ?
+               SET ban_count = COALESCE(ban_count, 0) + 1,
+                   last_ban_at = ?,
+                   last_ban_moderator_id = ?,
+                   last_ban_reason = ?
                WHERE user_id = ?""",
-            (now, user_id)
+            (now, moderator_id, reason, user_id)
         )
 
         row = self.fetchone(
@@ -1309,6 +1396,29 @@ class DatabaseManager:
             (user_id,)
         )
         return row["ban_count"] if row and row["ban_count"] else 1
+
+    def get_last_ban_info(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get last ban info for a user's case.
+
+        Args:
+            user_id: Discord user ID.
+
+        Returns:
+            Dict with last_ban_at, last_ban_moderator_id, last_ban_reason.
+        """
+        row = self.fetchone(
+            """SELECT last_ban_at, last_ban_moderator_id, last_ban_reason
+               FROM case_logs WHERE user_id = ?""",
+            (user_id,)
+        )
+        if row:
+            return {
+                "last_ban_at": row["last_ban_at"],
+                "last_ban_moderator_id": row["last_ban_moderator_id"],
+                "last_ban_reason": row["last_ban_reason"],
+            }
+        return None
 
     def get_user_ban_count(self, user_id: int, guild_id: int) -> int:
         """
@@ -1460,6 +1570,81 @@ class DatabaseManager:
                 f"UPDATE mod_tracker SET {', '.join(updates)} WHERE mod_id = ?",
                 tuple(params)
             )
+
+    def increment_mod_action_count(self, mod_id: int) -> int:
+        """
+        Increment the action count for a mod and update last action time.
+
+        Args:
+            mod_id: Discord user ID.
+
+        Returns:
+            New action count.
+        """
+        now = time.time()
+        self.execute(
+            """UPDATE mod_tracker
+               SET action_count = COALESCE(action_count, 0) + 1,
+                   last_action_at = ?
+               WHERE mod_id = ?""",
+            (now, mod_id)
+        )
+        row = self.fetchone(
+            "SELECT action_count FROM mod_tracker WHERE mod_id = ?",
+            (mod_id,)
+        )
+        return row["action_count"] if row else 0
+
+    def get_mod_action_count(self, mod_id: int) -> int:
+        """
+        Get the action count for a mod.
+
+        Args:
+            mod_id: Discord user ID.
+
+        Returns:
+            Action count (0 if not found).
+        """
+        row = self.fetchone(
+            "SELECT action_count FROM mod_tracker WHERE mod_id = ?",
+            (mod_id,)
+        )
+        return row["action_count"] if row and row["action_count"] else 0
+
+    def increment_hourly_activity(self, mod_id: int, hour: int) -> None:
+        """
+        Increment the hourly activity count for a mod.
+
+        Args:
+            mod_id: Discord user ID.
+            hour: Hour of day (0-23).
+        """
+        self.execute(
+            """INSERT INTO mod_hourly_activity (mod_id, hour, count)
+               VALUES (?, ?, 1)
+               ON CONFLICT(mod_id, hour) DO UPDATE SET count = count + 1""",
+            (mod_id, hour)
+        )
+
+    def get_peak_hours(self, mod_id: int, top_n: int = 3) -> list:
+        """
+        Get the peak activity hours for a mod.
+
+        Args:
+            mod_id: Discord user ID.
+            top_n: Number of top hours to return.
+
+        Returns:
+            List of tuples (hour, count) sorted by count descending.
+        """
+        rows = self.fetchall(
+            """SELECT hour, count FROM mod_hourly_activity
+               WHERE mod_id = ? AND count > 0
+               ORDER BY count DESC
+               LIMIT ?""",
+            (mod_id, top_n)
+        )
+        return [(row["hour"], row["count"]) for row in rows]
 
     # =========================================================================
     # Nickname History Operations

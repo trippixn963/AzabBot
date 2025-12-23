@@ -508,7 +508,7 @@ class MuteCog(commands.Cog):
         embed = discord.Embed(title=embed_title, color=EmbedColors.ERROR)
         embed.add_field(name="User", value=f"`{user.name}` ({user.mention})", inline=False)
         embed.add_field(name="Duration", value=f"`{duration_display}`", inline=True)
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+        embed.add_field(name="Moderator", value=f"{interaction.user.mention}\n`{interaction.user.display_name}`", inline=True)
 
         if case_info:
             embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
@@ -771,7 +771,7 @@ class MuteCog(commands.Cog):
 
         embed = discord.Embed(title="🔊 User Unmuted", color=EmbedColors.SUCCESS)
         embed.add_field(name="User", value=f"`{user.name}` ({user.mention})", inline=False)
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+        embed.add_field(name="Moderator", value=f"{interaction.user.mention}\n`{interaction.user.display_name}`", inline=True)
 
         if case_info:
             embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
@@ -896,8 +896,8 @@ class MuteCog(commands.Cog):
             timestamp=datetime.now(NY_TZ),
         )
 
-        embed.add_field(name="User", value=f"{user.mention} ({user})", inline=True)
-        embed.add_field(name="Moderator", value=f"{moderator.mention}", inline=True)
+        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}`", inline=True)
+        embed.add_field(name="Moderator", value=f"{moderator.mention}\n`{moderator.display_name}`", inline=True)
 
         if duration:
             embed.add_field(name="Duration", value=duration, inline=True)

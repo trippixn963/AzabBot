@@ -2,12 +2,11 @@
 Azab Discord Bot - Ban Command Cog
 ===================================
 
-Server moderation ban/unban/softban commands.
+Server moderation ban/unban commands.
 
 Features:
     - /ban <user> [reason] [evidence]: Ban a user
     - /unban <user> [reason] [evidence]: Unban a user (with autocomplete)
-    - /softban <user> [reason]: Ban + immediate unban (message purge)
     - Right-click context menu ban
     - Management role protection
     - DM notification before ban
@@ -128,7 +127,7 @@ class BanModal(discord.ui.Modal, title="Ban User"):
 # =============================================================================
 
 class BanCog(commands.Cog):
-    """Ban/unban/softban command implementations."""
+    """Ban/unban command implementations."""
 
     def __init__(self, bot: "AzabBot") -> None:
         self.bot = bot
@@ -281,11 +280,11 @@ class BanCog(commands.Cog):
                 logger.error("Softban Unban Failed", [("Error", str(e)[:50])])
 
         # -----------------------------------------------------------------
-        # Increment Ban Count
+        # Increment Ban Count (store moderator and reason for unban context)
         # -----------------------------------------------------------------
 
         db = get_db()
-        ban_count = db.increment_ban_count(user.id)
+        ban_count = db.increment_ban_count(user.id, interaction.user.id, reason)
 
         # -----------------------------------------------------------------
         # Logging
@@ -319,7 +318,7 @@ class BanCog(commands.Cog):
             color=EmbedColors.ERROR,
         )
         embed.add_field(name="User", value=f"`{user.name}` ({user.mention})", inline=False)
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+        embed.add_field(name="Moderator", value=f"{interaction.user.mention}\n`{interaction.user.display_name}`", inline=True)
 
         if case_info:
             embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
@@ -423,39 +422,6 @@ class BanCog(commands.Cog):
         )
 
     # =========================================================================
-    # /softban Command
-    # =========================================================================
-
-    @app_commands.command(name="softban", description="Ban and immediately unban a user (purges their messages)")
-    @app_commands.default_permissions(ban_members=True)
-    @app_commands.describe(
-        user="The user to softban",
-        reason="Reason for the softban",
-        attachment="Screenshot or video evidence",
-    )
-    @app_commands.autocomplete(reason=reason_autocomplete)
-    async def softban(
-        self,
-        interaction: discord.Interaction,
-        user: discord.Member,
-        reason: Optional[str] = None,
-        attachment: Optional[discord.Attachment] = None,
-    ) -> None:
-        """Softban a user (ban + immediate unban to purge messages)."""
-        # Build evidence from attachment
-        evidence = None
-        if attachment:
-            evidence = f"[{attachment.filename}]({attachment.url})"
-
-        await self.execute_ban(
-            interaction=interaction,
-            user=user,
-            reason=reason,
-            evidence=evidence,
-            is_softban=True,
-        )
-
-    # =========================================================================
     # /unban Command
     # =========================================================================
 
@@ -544,7 +510,7 @@ class BanCog(commands.Cog):
             color=EmbedColors.SUCCESS,
         )
         embed.add_field(name="User", value=f"`{target_user.name}` ({target_user.mention})", inline=False)
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+        embed.add_field(name="Moderator", value=f"{interaction.user.mention}\n`{interaction.user.display_name}`", inline=True)
 
         if case:
             embed.add_field(name="Case ID", value=f"`{case['case_id']}`", inline=True)

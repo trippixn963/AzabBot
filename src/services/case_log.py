@@ -30,7 +30,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
-from src.utils.views import CASE_EMOJI, MESSAGE_EMOJI, DownloadButton
+from src.utils.views import CASE_EMOJI, MESSAGE_EMOJI, DownloadButton, InfoButton
 from src.utils.retry import (
     retry_async,
     safe_fetch_channel,
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 # =============================================================================
 
 class CaseLogView(discord.ui.View):
-    """View with Case button (if user has case), jump-to-message, and download avatar buttons."""
+    """View with Case button (if user has case), jump-to-message, info, and download avatar buttons."""
 
     def __init__(
         self,
@@ -79,7 +79,10 @@ class CaseLogView(discord.ui.View):
                 emoji=MESSAGE_EMOJI,
             ))
 
-        # Button 3: Download PFP (persistent button)
+        # Button 3: Info button (persistent)
+        self.add_item(InfoButton(user_id, guild_id))
+
+        # Button 4: Download PFP (persistent button)
         self.add_item(DownloadButton(user_id))
 
 
@@ -424,7 +427,7 @@ class CaseLogService:
             return None
 
         try:
-            case = await self._get_or_create_case(user)
+            case = await self._get_or_create_case(user, duration, moderator.id)
 
             case_thread = await self._get_case_thread(case["thread_id"])
 
@@ -436,14 +439,26 @@ class CaseLogService:
             if case.get("just_created"):
                 mute_count = 1
             elif is_extension:
-                # Get current count without incrementing
+                # Get current count without incrementing, but update last mute info
                 case_data = self.db.get_case_log(user.id)
                 mute_count = case_data["mute_count"] if case_data else 1
+                # Update last mute info for extensions too
+                self.db.execute(
+                    """UPDATE case_logs SET last_mute_at = ?, last_mute_duration = ?,
+                       last_mute_moderator_id = ? WHERE user_id = ?""",
+                    (datetime.now(NY_TZ).timestamp(), duration, moderator.id, user.id)
+                )
             else:
-                mute_count = self.db.increment_mute_count(user.id)
+                mute_count = self.db.increment_mute_count(user.id, duration, moderator.id)
+
+            # Calculate expiry time for non-permanent mutes
+            expires_at = None
+            duration_seconds = self._parse_duration_to_seconds(duration)
+            if duration_seconds:
+                expires_at = datetime.now(NY_TZ) + timedelta(seconds=duration_seconds)
 
             # Build and send mute embed with jump button and download
-            embed = self._build_mute_embed(user, moderator, duration, reason, mute_count, is_extension, evidence)
+            embed = self._build_mute_embed(user, moderator, duration, reason, mute_count, is_extension, evidence, expires_at)
             view = CaseLogView(
                 user_id=user.id,
                 guild_id=user.guild.id,
@@ -559,12 +574,43 @@ class CaseLogService:
                 # No case exists, nothing to log
                 return None
 
+            # Get last mute info BEFORE updating unmute timestamp
+            last_mute_info = self.db.get_last_mute_info(user_id)
+
+            # Calculate "was muted for" duration
+            time_served = None
+            original_duration = None
+            original_moderator_name = None
+
+            if last_mute_info and last_mute_info.get("last_mute_at"):
+                muted_at = last_mute_info["last_mute_at"]
+                now = datetime.now(NY_TZ).timestamp()
+                time_served_seconds = now - muted_at
+                time_served = self._format_duration_precise(time_served_seconds)
+                original_duration = last_mute_info.get("last_mute_duration")
+
+                # Get original moderator name
+                original_mod_id = last_mute_info.get("last_mute_moderator_id")
+                if original_mod_id and moderator.guild:
+                    original_mod = moderator.guild.get_member(original_mod_id)
+                    if original_mod:
+                        original_moderator_name = original_mod.display_name
+                    else:
+                        original_moderator_name = f"Unknown ({original_mod_id})"
+
             # Update last unmute timestamp
             self.db.update_last_unmute(user_id)
 
             case_thread = await self._get_case_thread(case["thread_id"])
             if case_thread:
-                embed = self._build_unmute_embed(moderator, reason, user_avatar_url)
+                embed = self._build_unmute_embed(
+                    moderator=moderator,
+                    reason=reason,
+                    user_avatar_url=user_avatar_url,
+                    time_served=time_served,
+                    original_duration=original_duration,
+                    original_moderator_name=original_moderator_name,
+                )
                 view = CaseLogView(
                     user_id=user_id,
                     guild_id=moderator.guild.id,
@@ -618,6 +664,95 @@ class CaseLogService:
             return None
 
     # =========================================================================
+    # Timeout Logging
+    # =========================================================================
+
+    async def log_timeout(
+        self,
+        user: discord.Member,
+        moderator_id: int,
+        until: datetime,
+        reason: Optional[str] = None,
+    ) -> Optional[dict]:
+        """
+        Log a timeout action to the user's case thread.
+
+        Args:
+            user: The user being timed out.
+            moderator_id: ID of the moderator who issued the timeout.
+            until: When the timeout expires.
+            reason: Optional reason for the timeout.
+
+        Returns:
+            Dict with case_id and thread_id, or None if disabled/failed.
+        """
+        if not self.enabled:
+            return None
+
+        try:
+            case = await self._get_or_create_case(user)
+
+            case_thread = await self._get_case_thread(case["thread_id"])
+
+            if not case_thread:
+                logger.warning(f"log_timeout: Thread {case['thread_id']} not found")
+                return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+
+            # Get moderator name
+            guild = user.guild
+            moderator = guild.get_member(moderator_id)
+            mod_name = moderator.display_name if moderator else f"Mod ({moderator_id})"
+
+            # Calculate duration string
+            now = datetime.now(NY_TZ)
+            until_aware = until.replace(tzinfo=NY_TZ) if until.tzinfo is None else until
+            delta = until_aware - now
+            if delta.days > 0:
+                duration = f"{delta.days}d {delta.seconds // 3600}h"
+            elif delta.seconds >= 3600:
+                duration = f"{delta.seconds // 3600}h {(delta.seconds % 3600) // 60}m"
+            else:
+                duration = f"{delta.seconds // 60}m"
+
+            # Increment mute count (timeouts count as mutes)
+            if case.get("just_created"):
+                mute_count = 1
+            else:
+                mute_count = self.db.increment_mute_count(user.id)
+
+            # Build and send timeout embed
+            embed = self._build_timeout_embed(user, mod_name, duration, until, reason, mute_count)
+            view = CaseLogView(
+                user_id=user.id,
+                guild_id=user.guild.id,
+                message_url=None,
+                case_thread_id=case["thread_id"],
+            )
+            await safe_send(case_thread, embed=embed, view=view)
+
+            logger.tree("Case Log: Timeout Logged", [
+                ("User", f"{user.display_name} ({user.id})"),
+                ("Case ID", case['case_id']),
+                ("Timeout By", mod_name),
+                ("Duration", duration),
+                ("Mute #", str(mute_count)),
+            ], emoji="⏰")
+
+            # Schedule debounced profile stats update
+            updated_case = self.db.get_case_log(user.id)
+            if updated_case:
+                self._schedule_profile_update(user.id, updated_case)
+
+            return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+
+        except Exception as e:
+            logger.error("Case Log: Failed To Log Timeout", [
+                ("User ID", str(user.id)),
+                ("Error", str(e)[:100]),
+            ])
+            return None
+
+    # =========================================================================
     # Ban Logging
     # =========================================================================
 
@@ -656,13 +791,42 @@ class CaseLogService:
 
             now = datetime.now(NY_TZ)
 
+            # Get ban count for this user
+            ban_count = self.db.get_user_ban_count(user.id, user.guild.id)
+
+            # Build title with ban count if > 1
+            if ban_count > 0:
+                title = f"🔨 User Banned (Ban #{ban_count + 1})"
+            else:
+                title = "🔨 User Banned"
+
             embed = discord.Embed(
-                title="🔨 User Banned",
+                title=title,
                 color=EmbedColors.ERROR,
                 timestamp=now,
             )
             embed.set_thumbnail(url=user.display_avatar.url)
-            embed.add_field(name="Moderator", value=f"{moderator.mention}\n`{moderator.display_name}`", inline=True)
+            embed.add_field(name="Banned By", value=f"`{moderator.display_name}`", inline=True)
+
+            # Account Age with warning for new accounts
+            created_at = user.created_at.replace(tzinfo=NY_TZ) if user.created_at.tzinfo is None else user.created_at
+            account_age_days = (now - created_at).days
+            age_str = self._format_age(created_at, now)
+
+            if account_age_days < 7:
+                embed.add_field(name="Account Age", value=f"`{age_str}` ⚠️", inline=True)
+            elif account_age_days < 30:
+                embed.add_field(name="Account Age", value=f"`{age_str}` ⚡", inline=True)
+            else:
+                embed.add_field(name="Account Age", value=f"`{age_str}`", inline=True)
+
+            # Server Join Date
+            if hasattr(user, "joined_at") and user.joined_at:
+                embed.add_field(name="Server Joined", value=f"<t:{int(user.joined_at.timestamp())}:R>", inline=True)
+
+            # Previous Bans (only show if > 0)
+            if ban_count > 0:
+                embed.add_field(name="Previous Bans", value=f"`{ban_count}`", inline=True)
 
             if reason:
                 embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
@@ -758,6 +922,30 @@ class CaseLogService:
             if not case:
                 return None
 
+            # Get last ban info BEFORE we might update anything
+            last_ban_info = self.db.get_last_ban_info(user_id)
+
+            # Calculate ban context
+            time_banned = None
+            original_moderator_name = None
+            original_reason = None
+
+            if last_ban_info and last_ban_info.get("last_ban_at"):
+                banned_at = last_ban_info["last_ban_at"]
+                now_ts = datetime.now(NY_TZ).timestamp()
+                time_banned_seconds = now_ts - banned_at
+                time_banned = self._format_duration_precise(time_banned_seconds)
+                original_reason = last_ban_info.get("last_ban_reason")
+
+                # Get original moderator name
+                original_mod_id = last_ban_info.get("last_ban_moderator_id")
+                if original_mod_id and moderator.guild:
+                    original_mod = moderator.guild.get_member(original_mod_id)
+                    if original_mod:
+                        original_moderator_name = original_mod.display_name
+                    else:
+                        original_moderator_name = f"Unknown ({original_mod_id})"
+
             case_thread = await self._get_case_thread(case["thread_id"])
 
             if case_thread:
@@ -768,10 +956,22 @@ class CaseLogService:
                     color=EmbedColors.SUCCESS,
                     timestamp=now,
                 )
-                embed.add_field(name="Moderator", value=f"{moderator.mention}\n`{moderator.display_name}`", inline=True)
+                embed.add_field(name="Unbanned By", value=f"`{moderator.display_name}`", inline=True)
+
+                # Time banned (how long the ban lasted)
+                if time_banned:
+                    embed.add_field(name="Banned For", value=f"`{time_banned}`", inline=True)
+
+                # Originally banned by
+                if original_moderator_name:
+                    embed.add_field(name="Originally Banned By", value=f"`{original_moderator_name}`", inline=True)
+
+                # Original reason
+                if original_reason:
+                    embed.add_field(name="Original Reason", value=f"```{original_reason[:200]}```", inline=False)
 
                 if reason:
-                    embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
+                    embed.add_field(name="Unban Reason", value=f"```{reason}```", inline=False)
 
                 embed.set_footer(text=f"Unban • ID: {user_id}")
 
@@ -877,6 +1077,7 @@ class CaseLogService:
         user_id: int,
         display_name: str,
         muted_at: float,
+        avatar_url: Optional[str] = None,
     ) -> None:
         """
         Log when a muted user leaves the server.
@@ -885,6 +1086,7 @@ class CaseLogService:
             user_id: The user who left.
             display_name: Display name of the user.
             muted_at: Timestamp when the user was muted.
+            avatar_url: Optional avatar URL of the user.
         """
         if not self.enabled:
             return
@@ -893,6 +1095,21 @@ class CaseLogService:
             case = self.db.get_case_log(user_id)
             if not case:
                 return
+
+            # Get muted by info
+            last_mute_info = self.db.get_last_mute_info(user_id)
+            muted_by_name = None
+
+            if last_mute_info and last_mute_info.get("last_mute_moderator_id"):
+                mod_id = last_mute_info["last_mute_moderator_id"]
+                # Try to get mod name from any guild the bot is in
+                for guild in self.bot.guilds:
+                    mod = guild.get_member(mod_id)
+                    if mod:
+                        muted_by_name = mod.display_name
+                        break
+                if not muted_by_name:
+                    muted_by_name = f"Unknown ({mod_id})"
 
             case_thread = await self._get_case_thread(case["thread_id"])
             if case_thread:
@@ -905,17 +1122,35 @@ class CaseLogService:
                     timestamp=now,
                 )
 
+                # Set thumbnail
+                if avatar_url:
+                    embed.set_thumbnail(url=avatar_url)
+
                 # Calculate time since muted
                 time_since_mute = now.timestamp() - muted_at
                 duration_str = self._format_duration_precise(time_since_mute)
                 embed.add_field(
-                    name="Time After Mute",
+                    name="Left After",
                     value=f"`{duration_str}`",
                     inline=True,
                 )
 
+                # Muted by
+                if muted_by_name:
+                    embed.add_field(
+                        name="Muted By",
+                        value=f"`{muted_by_name}`",
+                        inline=True,
+                    )
+
                 embed.set_footer(text=f"Leave • ID: {user_id}")
-                await safe_send(case_thread, embed=embed)
+
+                # Add Info and Avatar buttons
+                view = CaseLogView(
+                    user_id=user_id,
+                    guild_id=case_thread.guild.id,
+                )
+                await safe_send(case_thread, embed=embed, view=view)
 
                 logger.tree("Case Log: Member Left Muted", [
                     ("User", f"{display_name} ({user_id})"),
@@ -1024,6 +1259,7 @@ class CaseLogService:
         user_id: int,
         display_name: str,
         channel_name: str,
+        avatar_url: Optional[str] = None,
     ) -> None:
         """
         Log when a muted user attempts to join voice and gets timed out.
@@ -1032,6 +1268,7 @@ class CaseLogService:
             user_id: The user's Discord ID.
             display_name: The user's display name.
             channel_name: The voice channel they attempted to join.
+            avatar_url: Optional avatar URL of the user.
         """
         if not self.enabled:
             return
@@ -1052,6 +1289,10 @@ class CaseLogService:
                     timestamp=now,
                 )
 
+                # Set thumbnail
+                if avatar_url:
+                    embed.set_thumbnail(url=avatar_url)
+
                 embed.add_field(
                     name="Attempted Channel",
                     value=f"`{channel_name}`",
@@ -1064,7 +1305,13 @@ class CaseLogService:
                 )
 
                 embed.set_footer(text=f"Violation • ID: {user_id}")
-                await safe_send(case_thread, embed=embed)
+
+                # Add Info and Avatar buttons
+                view = CaseLogView(
+                    user_id=user_id,
+                    guild_id=case_thread.guild.id,
+                )
+                await safe_send(case_thread, embed=embed, view=view)
 
                 logger.tree("Case Log: VC Violation", [
                     ("User", f"{display_name} ({user_id})"),
@@ -1085,12 +1332,16 @@ class CaseLogService:
     async def _get_or_create_case(
         self,
         user: discord.Member,
+        duration: Optional[str] = None,
+        moderator_id: Optional[int] = None,
     ) -> dict:
         """
         Get existing case or create new one with forum thread.
 
         Args:
             user: The user to get/create case for.
+            duration: Optional duration string for initial mute.
+            moderator_id: Optional moderator ID for initial mute.
 
         Returns:
             Dict with case info, includes 'just_created' flag if new.
@@ -1105,7 +1356,7 @@ class CaseLogService:
         thread = await self._create_case_thread(user, case_id)
 
         if thread:
-            self.db.create_case_log(user.id, case_id, thread.id)
+            self.db.create_case_log(user.id, case_id, thread.id, duration, moderator_id)
             # Cache the thread immediately so we don't need to fetch it again
             self._thread_cache[thread.id] = (thread, datetime.now(NY_TZ))
             return {
@@ -1322,6 +1573,7 @@ class CaseLogService:
         mute_count: int = 1,
         is_extension: bool = False,
         evidence: Optional[str] = None,
+        expires_at: Optional[datetime] = None,
     ) -> discord.Embed:
         """
         Build a mute action embed.
@@ -1334,6 +1586,7 @@ class CaseLogService:
             mute_count: The mute number for this user.
             is_extension: Whether this is a mute extension.
             evidence: Optional evidence link or description.
+            expires_at: Optional expiry datetime for non-permanent mutes.
 
         Returns:
             Discord Embed for the mute action.
@@ -1354,6 +1607,29 @@ class CaseLogService:
         embed.add_field(name="Muted By", value=f"`{moderator.display_name}`", inline=True)
         embed.add_field(name="Duration", value=f"`{duration}`", inline=True)
 
+        # Expires field (for non-permanent mutes)
+        if expires_at:
+            embed.add_field(name="Expires", value=f"<t:{int(expires_at.timestamp())}:R>", inline=True)
+        else:
+            embed.add_field(name="Expires", value="`Never`", inline=True)
+
+        # Account Age with warning for new accounts
+        now = datetime.now(NY_TZ)
+        created_at = user.created_at.replace(tzinfo=NY_TZ) if user.created_at.tzinfo is None else user.created_at
+        account_age_days = (now - created_at).days
+        age_str = self._format_age(created_at, now)
+
+        if account_age_days < 7:
+            embed.add_field(name="Account Age", value=f"`{age_str}` ⚠️", inline=True)
+        elif account_age_days < 30:
+            embed.add_field(name="Account Age", value=f"`{age_str}` ⚡", inline=True)
+        else:
+            embed.add_field(name="Account Age", value=f"`{age_str}`", inline=True)
+
+        # Previous Mutes count
+        previous_mutes = mute_count - 1 if mute_count > 1 else 0
+        embed.add_field(name="Previous Mutes", value=f"`{previous_mutes}`", inline=True)
+
         if reason:
             embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
 
@@ -1363,11 +1639,71 @@ class CaseLogService:
         set_footer(embed)
         return embed
 
+    def _build_timeout_embed(
+        self,
+        user: discord.Member,
+        mod_name: str,
+        duration: str,
+        until: datetime,
+        reason: Optional[str] = None,
+        mute_count: int = 1,
+    ) -> discord.Embed:
+        """
+        Build a timeout action embed.
+
+        Args:
+            user: The user being timed out.
+            mod_name: Display name of the moderator.
+            duration: Duration display string.
+            until: When the timeout expires.
+            reason: Optional reason for the timeout.
+            mute_count: The mute number for this user.
+
+        Returns:
+            Discord Embed for the timeout action.
+        """
+        if mute_count > 1:
+            title = f"⏰ User Timed Out (Mute #{mute_count})"
+        else:
+            title = "⏰ User Timed Out"
+
+        embed = discord.Embed(
+            title=title,
+            color=EmbedColors.WARNING,
+            timestamp=datetime.now(NY_TZ),
+        )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        embed.add_field(name="Timed Out By", value=f"`{mod_name}`", inline=True)
+        embed.add_field(name="Duration", value=f"`{duration}`", inline=True)
+        embed.add_field(name="Expires", value=f"<t:{int(until.timestamp())}:R>", inline=True)
+
+        # Account Age with warning for new accounts
+        now = datetime.now(NY_TZ)
+        created_at = user.created_at.replace(tzinfo=NY_TZ) if user.created_at.tzinfo is None else user.created_at
+        account_age_days = (now - created_at).days
+        age_str = self._format_age(created_at, now)
+
+        if account_age_days < 7:
+            embed.add_field(name="Account Age", value=f"`{age_str}` ⚠️", inline=True)
+        elif account_age_days < 30:
+            embed.add_field(name="Account Age", value=f"`{age_str}` ⚡", inline=True)
+        else:
+            embed.add_field(name="Account Age", value=f"`{age_str}`", inline=True)
+
+        if reason:
+            embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
+
+        set_footer(embed)
+        return embed
+
     def _build_unmute_embed(
         self,
         moderator: discord.Member,
         reason: Optional[str] = None,
         user_avatar_url: Optional[str] = None,
+        time_served: Optional[str] = None,
+        original_duration: Optional[str] = None,
+        original_moderator_name: Optional[str] = None,
     ) -> discord.Embed:
         """
         Build an unmute action embed.
@@ -1376,6 +1712,9 @@ class CaseLogService:
             moderator: The moderator who issued the unmute.
             reason: Optional reason for the unmute.
             user_avatar_url: Avatar URL of the unmuted user.
+            time_served: How long the user was muted for.
+            original_duration: Original mute duration.
+            original_moderator_name: Name of the mod who issued the mute.
 
         Returns:
             Discord Embed for the unmute action.
@@ -1387,10 +1726,22 @@ class CaseLogService:
         )
         if user_avatar_url:
             embed.set_thumbnail(url=user_avatar_url)
-        embed.add_field(name="Unmuted By", value=f"{moderator.mention}", inline=True)
+        embed.add_field(name="Unmuted By", value=f"`{moderator.display_name}`", inline=True)
+
+        # Time served (how long they were muted)
+        if time_served:
+            embed.add_field(name="Was Muted For", value=f"`{time_served}`", inline=True)
+
+        # Original duration
+        if original_duration:
+            embed.add_field(name="Original Duration", value=f"`{original_duration}`", inline=True)
+
+        # Originally muted by
+        if original_moderator_name:
+            embed.add_field(name="Originally Muted By", value=f"`{original_moderator_name}`", inline=True)
 
         if reason:
-            embed.add_field(name="Reason", value=reason, inline=False)
+            embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
 
         set_footer(embed)
         return embed
@@ -1422,6 +1773,44 @@ class CaseLogService:
     # =========================================================================
     # Helper Methods
     # =========================================================================
+
+    def _parse_duration_to_seconds(self, duration: str) -> Optional[int]:
+        """
+        Parse duration string to seconds.
+
+        Supports formats like: 1h, 30m, 1d, 2d12h, permanent, perm, forever
+
+        Args:
+            duration: Duration string.
+
+        Returns:
+            Total seconds, or None for permanent/invalid durations.
+        """
+        if not duration:
+            return None
+
+        duration_lower = duration.lower().strip()
+
+        # Permanent durations
+        if duration_lower in ("permanent", "perm", "forever", "indefinite"):
+            return None
+
+        total_seconds = 0
+        import re
+
+        # Match patterns like 1d, 2h, 30m, 15s
+        pattern = r"(\d+)\s*(d|h|m|s)"
+        matches = re.findall(pattern, duration_lower)
+
+        if not matches:
+            return None
+
+        multipliers = {"d": 86400, "h": 3600, "m": 60, "s": 1}
+
+        for value, unit in matches:
+            total_seconds += int(value) * multipliers.get(unit, 0)
+
+        return total_seconds if total_seconds > 0 else None
 
     def _format_age(self, start: datetime, end: datetime) -> str:
         """

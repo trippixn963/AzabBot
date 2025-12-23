@@ -392,7 +392,7 @@ class LoggingService:
         embed = self._create_embed("🔨 Member Banned", EmbedColors.ERROR, category="Ban", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
@@ -411,7 +411,7 @@ class LoggingService:
         embed = self._create_embed("🔓 Member Unbanned", EmbedColors.SUCCESS, category="Unban", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
@@ -430,7 +430,7 @@ class LoggingService:
         embed = self._create_embed("👢 Member Kicked", EmbedColors.WARNING, category="Kick", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
@@ -454,7 +454,7 @@ class LoggingService:
         embed = self._create_embed("⏰ Member Timed Out", EmbedColors.WARNING, category="Timeout", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
 
         if until:
             timestamp = int(until.timestamp())
@@ -488,7 +488,7 @@ class LoggingService:
         embed = self._create_embed("⏰ Timeout Removed", EmbedColors.SUCCESS, category="Timeout Remove", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
         self._set_user_thumbnail(embed, user)
 
         await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
@@ -506,7 +506,7 @@ class LoggingService:
         embed = self._create_embed("🔇 Member Muted", EmbedColors.ERROR, category="Mute", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
@@ -524,7 +524,7 @@ class LoggingService:
         embed = self._create_embed("🔊 Member Unmuted", EmbedColors.SUCCESS, category="Unmute", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
         self._set_user_thumbnail(embed, user)
 
         await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
@@ -648,7 +648,7 @@ class LoggingService:
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         embed.add_field(name="Messages", value=f"**{count}**", inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.MESSAGES, embed)
 
@@ -680,11 +680,11 @@ class LoggingService:
         if invite_code:
             embed.add_field(name="Invite", value=f"`{invite_code}`", inline=True)
         if inviter:
-            embed.add_field(name="Invited By", value=inviter.mention, inline=True)
+            embed.add_field(name="Invited By", value=self._format_user_field(inviter), inline=True)
 
         # Join counter
         if join_count > 1:
-            embed.add_field(name="Join #", value=f"```{join_count}```", inline=True)
+            embed.add_field(name="Join #", value=f"`{join_count}`", inline=True)
 
         self._set_user_thumbnail(embed, member)
 
@@ -728,7 +728,7 @@ class LoggingService:
 
         # Leave counter
         if leave_count > 1:
-            embed.add_field(name="Leave #", value=f"```{leave_count}```", inline=True)
+            embed.add_field(name="Leave #", value=f"`{leave_count}`", inline=True)
 
         # Role list with count
         roles = [r for r in member.roles if r.name != "@everyone"]
@@ -762,7 +762,7 @@ class LoggingService:
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
         embed.add_field(name="Role", value=self._format_role(role), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         self._set_user_thumbnail(embed, member)
 
         await self._send_log(LogCategory.ROLE_CHANGES, embed, user_id=member.id)
@@ -781,7 +781,7 @@ class LoggingService:
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
         embed.add_field(name="Role", value=self._format_role(role), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         self._set_user_thumbnail(embed, member)
 
         await self._send_log(LogCategory.ROLE_CHANGES, embed, user_id=member.id)
@@ -947,7 +947,7 @@ class LoggingService:
 
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         self._set_user_thumbnail(embed, member)
 
         await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
@@ -969,7 +969,7 @@ class LoggingService:
 
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         self._set_user_thumbnail(embed, member)
 
         await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
@@ -991,7 +991,7 @@ class LoggingService:
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         embed.add_field(name="Type", value=str(channel.type).title(), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.CHANNELS, embed)
 
@@ -1009,7 +1009,7 @@ class LoggingService:
         embed.add_field(name="Channel", value=f"`{channel_name}`", inline=True)
         embed.add_field(name="Type", value=channel_type.title(), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.CHANNELS, embed)
 
@@ -1026,7 +1026,7 @@ class LoggingService:
         embed = self._create_embed("📁 Channel Updated", EmbedColors.WARNING, category="Channel Update")
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         embed.add_field(name="Changes", value=f"```{changes}```", inline=False)
 
         await self._send_log(LogCategory.CHANNELS, embed)
@@ -1048,7 +1048,7 @@ class LoggingService:
         embed.add_field(name="Role", value=self._format_role(role), inline=True)
         embed.add_field(name="Color", value=str(role.color), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.ROLES, embed)
 
@@ -1065,7 +1065,7 @@ class LoggingService:
         role_display = f"`{role_name}`" if role_name else "unknown role"
         embed.add_field(name="Role", value=role_display, inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.ROLES, embed)
 
@@ -1082,7 +1082,7 @@ class LoggingService:
         embed = self._create_embed("🎭 Role Updated", EmbedColors.WARNING, category="Role Update")
         embed.add_field(name="Role", value=self._format_role(role), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         embed.add_field(name="Changes", value=f"```{changes}```", inline=False)
 
         await self._send_log(LogCategory.ROLES, embed)
@@ -1103,7 +1103,7 @@ class LoggingService:
         embed = self._create_embed("😀 Emoji Created", EmbedColors.SUCCESS, category="Emoji Create")
         embed.add_field(name="Emoji", value=f"{emoji} `:{emoji.name}:`", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         embed.set_thumbnail(url=emoji.url)
 
@@ -1121,7 +1121,7 @@ class LoggingService:
         embed = self._create_embed("😀 Emoji Deleted", EmbedColors.ERROR, category="Emoji Delete")
         embed.add_field(name="Emoji", value=f"`:{emoji_name}:`", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.EMOJI_STICKERS, embed)
 
@@ -1137,7 +1137,7 @@ class LoggingService:
         embed = self._create_embed("🎨 Sticker Created", EmbedColors.SUCCESS, category="Sticker Create")
         embed.add_field(name="Sticker", value=sticker.name, inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         embed.set_thumbnail(url=sticker.url)
 
@@ -1155,7 +1155,7 @@ class LoggingService:
         embed = self._create_embed("🎨 Sticker Deleted", EmbedColors.ERROR, category="Sticker Delete")
         embed.add_field(name="Sticker", value=sticker_name, inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.EMOJI_STICKERS, embed)
 
@@ -1174,7 +1174,7 @@ class LoggingService:
 
         embed = self._create_embed("⚙️ Server Updated", EmbedColors.WARNING, category="Server Update")
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         embed.add_field(name="Changes", value=f"```{changes}```", inline=False)
 
         await self._send_log(LogCategory.SERVER_SETTINGS, embed)
@@ -1193,7 +1193,7 @@ class LoggingService:
         embed = self._create_embed("🖼️ Server Icon Changed", EmbedColors.WARNING, category="Icon Change")
         embed.add_field(name="Server", value=guild.name, inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         if old_icon_url:
             embed.add_field(name="Previous", value=f"[View]({old_icon_url})", inline=True)
@@ -1222,7 +1222,7 @@ class LoggingService:
         embed = self._create_embed("🎨 Server Banner Changed", EmbedColors.WARNING, category="Banner Change")
         embed.add_field(name="Server", value=guild.name, inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         if old_banner_url:
             embed.add_field(name="Previous", value=f"[View]({old_banner_url})", inline=True)
@@ -1256,7 +1256,7 @@ class LoggingService:
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         embed.add_field(name="Target", value=f"`{target}`", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.PERMISSIONS, embed)
 
@@ -1276,7 +1276,7 @@ class LoggingService:
         embed = self._create_embed("🤖 Bot Added", EmbedColors.WARNING, category="Bot Add", user_id=bot.id)
         embed.add_field(name="Bot", value=self._format_user_field(bot), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         self._set_user_thumbnail(embed, bot)
 
         await self._send_log(LogCategory.BOTS_INTEGRATIONS, embed, user_id=bot.id)
@@ -1294,7 +1294,7 @@ class LoggingService:
         embed = self._create_embed("🤖 Bot Removed", EmbedColors.ERROR, category="Bot Remove", user_id=bot_id)
         embed.add_field(name="Bot", value=f"`{bot_name}`", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.BOTS_INTEGRATIONS, embed, user_id=bot_id)
 
@@ -1312,7 +1312,7 @@ class LoggingService:
         embed.add_field(name="Name", value=name, inline=True)
         embed.add_field(name="Type", value=int_type, inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.BOTS_INTEGRATIONS, embed)
 
@@ -1328,7 +1328,7 @@ class LoggingService:
         embed = self._create_embed("🔗 Integration Removed", EmbedColors.ERROR, category="Integration Remove")
         embed.add_field(name="Name", value=name, inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.BOTS_INTEGRATIONS, embed)
 
@@ -1350,7 +1350,7 @@ class LoggingService:
         embed.add_field(name="Name", value=f"`{webhook_name}`", inline=True)
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.BOTS_INTEGRATIONS, embed)
 
@@ -1368,7 +1368,7 @@ class LoggingService:
         embed.add_field(name="Name", value=f"`{webhook_name}`", inline=True)
         embed.add_field(name="Channel", value=f"`{channel_name}`", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.BOTS_INTEGRATIONS, embed)
 
@@ -1390,7 +1390,7 @@ class LoggingService:
         if thread.parent:
             embed.add_field(name="Parent", value=self._format_channel(thread.parent), inline=True)
         if creator:
-            embed.add_field(name="By", value=creator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(creator), inline=True)
 
         await self._send_log(LogCategory.THREADS, embed)
 
@@ -1408,7 +1408,7 @@ class LoggingService:
         embed.add_field(name="Thread", value=f"`{thread_name}`", inline=True)
         embed.add_field(name="Parent", value=f"`{parent_name}`", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.THREADS, embed)
 
@@ -1431,7 +1431,7 @@ class LoggingService:
         if thread.parent:
             embed.add_field(name="Parent", value=self._format_channel(thread.parent), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.THREADS, embed)
 
@@ -1527,7 +1527,7 @@ class LoggingService:
             embed.add_field(name="Channel", value=self._format_channel(event.channel), inline=True)
 
         if creator:
-            embed.add_field(name="Created By", value=creator.mention, inline=True)
+            embed.add_field(name="Created By", value=self._format_user_field(creator), inline=True)
 
         if event.description:
             desc = event.description[:200] if len(event.description) > 200 else event.description
@@ -1551,7 +1551,7 @@ class LoggingService:
         embed = self._create_embed("📅 Event Updated", EmbedColors.WARNING, category="Event Update")
         embed.add_field(name="Event", value=f"`{event.name}`", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         embed.add_field(name="Changes", value=f"```{changes}```", inline=False)
 
         await self._send_log(LogCategory.EVENTS, embed)
@@ -1568,7 +1568,7 @@ class LoggingService:
         embed = self._create_embed("📅 Event Deleted", EmbedColors.ERROR, category="Event Delete")
         embed.add_field(name="Event", value=f"`{event_name}`", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.EVENTS, embed)
 
@@ -1695,7 +1695,7 @@ class LoggingService:
         embed.add_field(name="Channel", value=self._format_channel(message.channel), inline=True)
         embed.add_field(name="Message", value=f"[Jump]({message.jump_url})", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.REACTIONS, embed)
 
@@ -1719,7 +1719,7 @@ class LoggingService:
             embed.add_field(name="Channel", value=self._format_channel(stage.channel), inline=True)
 
         if moderator:
-            embed.add_field(name="Started By", value=moderator.mention, inline=True)
+            embed.add_field(name="Started By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.STAGE, embed)
 
@@ -1737,7 +1737,7 @@ class LoggingService:
         embed.add_field(name="Topic", value=f"`{topic}`", inline=True)
         embed.add_field(name="Channel", value=f"`{channel_name}`", inline=True)
         if moderator:
-            embed.add_field(name="Ended By", value=moderator.mention, inline=True)
+            embed.add_field(name="Ended By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.STAGE, embed)
 
@@ -1756,7 +1756,7 @@ class LoggingService:
         if stage.channel:
             embed.add_field(name="Channel", value=self._format_channel(stage.channel), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         embed.add_field(name="Changes", value=f"```{changes}```", inline=False)
 
         await self._send_log(LogCategory.STAGE, embed)
@@ -1804,7 +1804,7 @@ class LoggingService:
         embed.add_field(name="Author", value=self._format_user_field(message.author), inline=True)
         embed.add_field(name="Channel", value=self._format_channel(message.channel), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         embed.add_field(name="Message", value=f"[Jump to message]({message.jump_url})", inline=True)
 
@@ -1897,9 +1897,9 @@ class LoggingService:
             embed.add_field(name="Channel", value=self._format_channel(invite.channel), inline=True)
 
         if moderator:
-            embed.add_field(name="Created By", value=moderator.mention, inline=True)
+            embed.add_field(name="Created By", value=self._format_user_field(moderator), inline=True)
         elif invite.inviter:
-            embed.add_field(name="Created By", value=invite.inviter.mention, inline=True)
+            embed.add_field(name="Created By", value=self._format_user_field(invite.inviter), inline=True)
 
         # Max uses
         if invite.max_uses:
@@ -1947,7 +1947,7 @@ class LoggingService:
             embed.add_field(name="Times Used", value=str(uses), inline=True)
 
         if moderator:
-            embed.add_field(name="Deleted By", value=moderator.mention, inline=True)
+            embed.add_field(name="Deleted By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.INVITES, embed)
 
@@ -1972,7 +1972,7 @@ class LoggingService:
 
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         if member.voice and member.voice.channel:
             embed.add_field(name="Channel", value=f"🔊 {member.voice.channel.name}", inline=True)
@@ -1998,7 +1998,7 @@ class LoggingService:
 
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         if member.voice and member.voice.channel:
             embed.add_field(name="Channel", value=f"🔊 {member.voice.channel.name}", inline=True)
@@ -2056,7 +2056,7 @@ class LoggingService:
         embed = self._create_embed("✏️ Nickname Force Changed", EmbedColors.WARNING, category="Nickname Force", user_id=target.id)
         embed.add_field(name="Target", value=self._format_user_field(target), inline=True)
         if moderator:
-            embed.add_field(name="Changed By", value=moderator.mention, inline=True)
+            embed.add_field(name="Changed By", value=self._format_user_field(moderator), inline=True)
 
         embed.add_field(name="Before", value=f"`{old_nick}`" if old_nick else "*(none)*", inline=True)
         embed.add_field(name="After", value=f"`{new_nick}`" if new_nick else "*(none)*", inline=True)
@@ -2083,7 +2083,7 @@ class LoggingService:
         embed.add_field(name="User", value=self._format_user_field(target), inline=True)
         embed.add_field(name="From Channel", value=f"🔊 {channel_name}", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         self._set_user_thumbnail(embed, target)
 
@@ -2113,7 +2113,7 @@ class LoggingService:
         embed.add_field(name="Author", value=self._format_user_field(author), inline=True)
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         if moderator:
-            embed.add_field(name="Deleted By", value=moderator.mention, inline=True)
+            embed.add_field(name="Deleted By", value=self._format_user_field(moderator), inline=True)
 
         if content:
             truncated = content[:900] if len(content) > 900 else content
@@ -2180,7 +2180,7 @@ class LoggingService:
         embed = self._create_embed("🐌 Slowmode Changed", EmbedColors.WARNING, category="Slowmode")
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         # Format delays nicely
         def format_delay(seconds: int) -> str:
@@ -2221,7 +2221,7 @@ class LoggingService:
         if thread.parent:
             embed.add_field(name="Parent", value=self._format_channel(thread.parent), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.THREADS, embed)
 
@@ -2243,7 +2243,7 @@ class LoggingService:
         embed.add_field(name="Forum", value=self._format_channel(forum), inline=True)
         embed.add_field(name="Tag", value=f"`{tag_name}`", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.CHANNELS, embed)
 
@@ -2261,7 +2261,7 @@ class LoggingService:
         embed.add_field(name="Forum", value=self._format_channel(forum), inline=True)
         embed.add_field(name="Tag", value=f"`{tag_name}`", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.CHANNELS, embed)
 
@@ -2281,7 +2281,7 @@ class LoggingService:
         embed.add_field(name="Before", value=f"`{old_name}`", inline=True)
         embed.add_field(name="After", value=f"`{new_name}`", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.CHANNELS, embed)
 
@@ -2303,7 +2303,7 @@ class LoggingService:
         embed = self._create_embed("📂 Channel Moved", EmbedColors.WARNING, category="Category Move")
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         embed.add_field(
             name="From Category",
@@ -2344,7 +2344,7 @@ class LoggingService:
         embed.add_field(name="Role", value=self._format_role(role), inline=True)
         embed.add_field(name="Position", value=f"`{old_position}` → `{new_position}` ({direction})", inline=True)
         if moderator:
-            embed.add_field(name="By", value=moderator.mention, inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.ROLES, embed)
 

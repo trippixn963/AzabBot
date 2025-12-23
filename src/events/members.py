@@ -227,6 +227,7 @@ class MemberEvents(commands.Cog):
                 user_id=member.id,
                 display_name=member.display_name,
                 muted_at=active_mute["muted_at"],
+                avatar_url=member.display_avatar.url,
             )
 
     @commands.Cog.listener()

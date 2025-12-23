@@ -54,9 +54,6 @@ class VoiceHandler:
         # Check muted user VC restriction first
         await self._enforce_muted_vc_restriction(member, before, after)
 
-        # Mod tracker voice logging
-        await self._log_mod_voice_activity(member, before, after)
-
         # Server logging service
         await self._log_voice_to_server_logs(member, before, after)
 
@@ -137,6 +134,7 @@ class VoiceHandler:
                 user_id=member.id,
                 display_name=member.display_name,
                 channel_name=channel_name,
+                avatar_url=member.display_avatar.url,
             )
 
     async def _log_mod_voice_activity(
