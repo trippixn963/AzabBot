@@ -588,6 +588,7 @@ class CaseLogService:
                     case_thread,
                     f"⚠️ {moderator.mention} No screenshot/video evidence was provided for this {action_type}.\n\n"
                     f"**Reply to this message** with an attachment (screenshot/video).\n\n"
+                    f"🎙️ If this happened in a voice chat where evidence cannot be provided, reply with `voice chat`.\n\n"
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
@@ -730,6 +731,7 @@ class CaseLogService:
                     case_thread,
                     f"⚠️ {moderator.mention} No screenshot/video evidence was provided for this warning.\n\n"
                     f"**Reply to this message** with an attachment (screenshot/video).\n\n"
+                    f"🎙️ If this happened in a voice chat where evidence cannot be provided, reply with `voice chat`.\n\n"
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
@@ -1077,6 +1079,7 @@ class CaseLogService:
                     case_thread,
                     f"⚠️ {moderator.mention} No screenshot/video evidence was provided for this timeout.\n\n"
                     f"**Reply to this message** with an attachment (screenshot/video).\n\n"
+                    f"🎙️ If this happened in a voice chat where evidence cannot be provided, reply with `voice chat`.\n\n"
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
@@ -1236,6 +1239,7 @@ class CaseLogService:
                     case_thread,
                     f"⚠️ {moderator.mention} No screenshot/video evidence was provided for this ban.\n\n"
                     f"**Reply to this message** with an attachment (screenshot/video).\n\n"
+                    f"🎙️ If this happened in a voice chat where evidence cannot be provided, reply with `voice chat`.\n\n"
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
@@ -2297,14 +2301,16 @@ class CaseLogService:
                     attachment_url = att.url
                     break
 
-        # For mute/timeout/ban: require attachment (text is optional)
+        # For mute/timeout/ban: require attachment OR "voice chat" text
         # For unmute/unban: require text only
+        is_voice_chat = reason and reason.lower().strip() in ("voice chat", "voicechat", "vc")
+
         if action_type in ("mute", "extension", "ban", "timeout"):
-            if not attachment_url:
-                # No attachment provided - send reminder and don't process
+            if not attachment_url and not is_voice_chat:
+                # No attachment or voice chat provided - send reminder and don't process
                 try:
                     reminder = await message.channel.send(
-                        f"{message.author.mention} An attachment (screenshot/video) is required. Please reply again with evidence attached.",
+                        f"{message.author.mention} An attachment (screenshot/video) is required, or reply with `voice chat` if this happened in VC.",
                         delete_after=10,
                     )
                 except discord.HTTPException:
@@ -2363,6 +2369,14 @@ class CaseLogService:
                         logger.warning(f"Evidence reply message failed to send in thread {thread.id}")
                 except Exception as e:
                     logger.error(f"Evidence reply storage failed: {e}")
+            elif is_voice_chat:
+                # Voice chat incident - no evidence possible
+                embed.add_field(name="Evidence", value="`🎙️ Voice Chat Incident`", inline=False)
+                logger.tree("Voice Chat Evidence", [
+                    ("Target", f"{pending['target_user_id']}"),
+                    ("Action", action_type.capitalize()),
+                    ("Moderator", f"{message.author} ({message.author.id})"),
+                ], emoji="🎙️")
 
             # Preserve the view (buttons) when editing
             view = None
