@@ -12,7 +12,7 @@ import asyncio
 import re
 from datetime import datetime
 from collections import deque
-from typing import TYPE_CHECKING, Optional, Set
+from typing import TYPE_CHECKING, Optional
 
 import discord
 from discord.ext import commands
@@ -40,7 +40,6 @@ class MessageEvents(commands.Cog):
     def __init__(self, bot: "AzabBot") -> None:
         self.bot = bot
         self.config = get_config()
-        self._allowed_guild_invites: Set[str] = set()  # Cached allowed invite codes
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -145,7 +144,7 @@ class MessageEvents(commands.Cog):
         # Auto-Mod: External Discord Invite Links
         # -----------------------------------------------------------------
         if message.guild and message.content:
-            external_invite = await self._check_external_invite(message)
+            external_invite = self._check_external_invite(message)
             if external_invite:
                 await self._handle_external_invite(message, external_invite)
                 return  # Stop processing - message deleted
@@ -199,9 +198,11 @@ class MessageEvents(commands.Cog):
     # Invite Link Detection
     # =========================================================================
 
-    async def _check_external_invite(self, message: discord.Message) -> Optional[str]:
+    def _check_external_invite(self, message: discord.Message) -> Optional[str]:
         """
         Check if message contains an external Discord invite link.
+
+        Only discord.gg/syria is allowed. Everything else is external.
 
         Args:
             message: The message to check.
@@ -217,40 +218,10 @@ class MessageEvents(commands.Cog):
         if not matches:
             return None
 
-        # Cache allowed invites for this guild if not already cached
-        if not self._allowed_guild_invites:
-            try:
-                invites = await message.guild.invites()
-                self._allowed_guild_invites = {inv.code for inv in invites}
-                # Also add vanity URL if exists
-                if message.guild.vanity_url_code:
-                    self._allowed_guild_invites.add(message.guild.vanity_url_code)
-            except discord.Forbidden:
-                logger.warning("Cannot fetch guild invites - missing permissions")
-            except Exception as e:
-                logger.error(f"Failed to fetch guild invites: {e}")
-
-        # Check each invite code
+        # Only allow "syria" (case-insensitive)
         for invite_code in matches:
-            # Skip if it's one of our server's invites
-            if invite_code in self._allowed_guild_invites:
-                continue
-
-            # Check if invite code matches vanity (case-insensitive)
-            if message.guild.vanity_url_code and invite_code.lower() == message.guild.vanity_url_code.lower():
-                continue
-
-            # Fetch the invite to verify it's external
-            try:
-                invite = await self.bot.fetch_invite(invite_code)
-                if invite.guild and invite.guild.id != message.guild.id:
-                    return invite_code  # External invite found
-            except discord.NotFound:
-                # Invalid/expired invite - still suspicious, treat as external
-                return invite_code
-            except discord.HTTPException:
-                # Can't verify - be safe and treat as external
-                return invite_code
+            if invite_code.lower() != "syria":
+                return invite_code  # External invite found
 
         return None
 
