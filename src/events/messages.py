@@ -144,7 +144,11 @@ class MessageEvents(commands.Cog):
         # Auto-Mod: External Discord Invite Links
         # Skip: links-allowed channel, management role holders
         # -----------------------------------------------------------------
-        if message.guild and message.content and message.channel.id != 1406209362976047104:
+        is_links_allowed_channel = (
+            self.config.links_allowed_channel_id
+            and message.channel.id == self.config.links_allowed_channel_id
+        )
+        if message.guild and message.content and not is_links_allowed_channel:
             # Check if user has management role (moderators can post any links)
             is_mod = (
                 isinstance(message.author, discord.Member)
