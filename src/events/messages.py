@@ -9,18 +9,29 @@ Server: discord.gg/syria
 """
 
 import asyncio
+import re
 from datetime import datetime
 from collections import deque
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Set
 
 import discord
 from discord.ext import commands
 
 from src.core.logger import logger
-from src.core.config import get_config
+from src.core.config import get_config, EmbedColors, NY_TZ
+from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
+
+
+# Discord invite link patterns
+INVITE_PATTERN = re.compile(
+    r'(?:https?://)?(?:www\.)?'
+    r'(?:discord\.gg|discord(?:app)?\.com/invite|dsc\.gg)'
+    r'/([a-zA-Z0-9-]+)',
+    re.IGNORECASE
+)
 
 
 class MessageEvents(commands.Cog):
@@ -29,6 +40,7 @@ class MessageEvents(commands.Cog):
     def __init__(self, bot: "AzabBot") -> None:
         self.bot = bot
         self.config = get_config()
+        self._allowed_guild_invites: Set[str] = set()  # Cached allowed invite codes
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -130,6 +142,15 @@ class MessageEvents(commands.Cog):
             return
 
         # -----------------------------------------------------------------
+        # Auto-Mod: External Discord Invite Links
+        # -----------------------------------------------------------------
+        if message.guild and message.content:
+            external_invite = await self._check_external_invite(message)
+            if external_invite:
+                await self._handle_external_invite(message, external_invite)
+                return  # Stop processing - message deleted
+
+        # -----------------------------------------------------------------
         # Skip: Ignored users
         # -----------------------------------------------------------------
         if self.bot.db.is_user_ignored(message.author.id):
@@ -173,6 +194,194 @@ class MessageEvents(commands.Cog):
             if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(message.author.id):
                 if message.attachments:
                     await self.bot.mod_tracker.cache_message(message)
+
+    # =========================================================================
+    # Invite Link Detection
+    # =========================================================================
+
+    async def _check_external_invite(self, message: discord.Message) -> Optional[str]:
+        """
+        Check if message contains an external Discord invite link.
+
+        Args:
+            message: The message to check.
+
+        Returns:
+            The invite code if external, None if allowed or no invite.
+        """
+        if not message.guild:
+            return None
+
+        # Find all invite codes in the message
+        matches = INVITE_PATTERN.findall(message.content)
+        if not matches:
+            return None
+
+        # Cache allowed invites for this guild if not already cached
+        if not self._allowed_guild_invites:
+            try:
+                invites = await message.guild.invites()
+                self._allowed_guild_invites = {inv.code for inv in invites}
+                # Also add vanity URL if exists
+                if message.guild.vanity_url_code:
+                    self._allowed_guild_invites.add(message.guild.vanity_url_code)
+            except discord.Forbidden:
+                logger.warning("Cannot fetch guild invites - missing permissions")
+            except Exception as e:
+                logger.error(f"Failed to fetch guild invites: {e}")
+
+        # Check each invite code
+        for invite_code in matches:
+            # Skip if it's one of our server's invites
+            if invite_code in self._allowed_guild_invites:
+                continue
+
+            # Check if invite code matches vanity (case-insensitive)
+            if message.guild.vanity_url_code and invite_code.lower() == message.guild.vanity_url_code.lower():
+                continue
+
+            # Fetch the invite to verify it's external
+            try:
+                invite = await self.bot.fetch_invite(invite_code)
+                if invite.guild and invite.guild.id != message.guild.id:
+                    return invite_code  # External invite found
+            except discord.NotFound:
+                # Invalid/expired invite - still suspicious, treat as external
+                return invite_code
+            except discord.HTTPException:
+                # Can't verify - be safe and treat as external
+                return invite_code
+
+        return None
+
+    async def _handle_external_invite(self, message: discord.Message, invite_code: str) -> None:
+        """
+        Handle an external Discord invite link.
+
+        Actions:
+        1. Delete the message
+        2. Apply permanent mute role
+        3. Send notification to prison channel
+        4. Create case log entry
+
+        Args:
+            message: The message containing the invite.
+            invite_code: The external invite code.
+        """
+        member = message.author
+        if not isinstance(member, discord.Member):
+            return
+
+        guild = message.guild
+        if not guild:
+            return
+
+        # -----------------------------------------------------------------
+        # 1. Delete the message
+        # -----------------------------------------------------------------
+        try:
+            await message.delete()
+        except discord.Forbidden:
+            logger.error(f"Cannot delete invite message - missing permissions")
+        except discord.HTTPException as e:
+            logger.error(f"Failed to delete invite message: {e}")
+
+        # -----------------------------------------------------------------
+        # 2. Apply permanent mute role
+        # -----------------------------------------------------------------
+        muted_role = guild.get_role(self.config.muted_role_id)
+        if not muted_role:
+            logger.error("Muted role not found for invite auto-mute")
+            return
+
+        try:
+            await member.add_roles(muted_role, reason="Auto-mute: External Discord invite link")
+
+            logger.tree("AUTO-MUTE: EXTERNAL INVITE", [
+                ("User", f"{member} ({member.id})"),
+                ("Channel", f"#{message.channel.name}"),
+                ("Invite Code", invite_code),
+                ("Action", "Permanent mute applied"),
+            ], emoji="🔗")
+
+        except discord.Forbidden:
+            logger.error(f"Cannot apply mute role to {member} - missing permissions")
+            return
+        except discord.HTTPException as e:
+            logger.error(f"Failed to apply mute role: {e}")
+            return
+
+        # -----------------------------------------------------------------
+        # 3. Record mute in database
+        # -----------------------------------------------------------------
+        self.bot.db.record_mute(
+            user_id=member.id,
+            moderator_id=self.bot.user.id,
+            duration="permanent",
+            reason="Auto-mute: Advertising external Discord server",
+        )
+
+        # -----------------------------------------------------------------
+        # 4. Send notification to prison channel
+        # -----------------------------------------------------------------
+        prison_channel = None
+        if self.config.prison_channel_ids:
+            # Use the first prison channel
+            for channel_id in self.config.prison_channel_ids:
+                prison_channel = guild.get_channel(channel_id)
+                if prison_channel:
+                    break
+
+        if prison_channel:
+            embed = discord.Embed(
+                title="🔗 Auto-Muted: External Invite Link",
+                color=EmbedColors.ERROR,
+                timestamp=datetime.now(NY_TZ),
+            )
+            embed.add_field(
+                name="User",
+                value=f"{member.mention}\n`{member.name}`",
+                inline=True,
+            )
+            embed.add_field(
+                name="Violation",
+                value="`Advertising`",
+                inline=True,
+            )
+            embed.add_field(
+                name="Duration",
+                value="`Permanent`",
+                inline=True,
+            )
+            embed.add_field(
+                name="Reason",
+                value=(
+                    "You have been **permanently muted** for posting an external Discord server invite link.\n\n"
+                    "This is a serious rule violation. The server owner will review your case and decide "
+                    "whether to remove the mute.\n\n"
+                    "⚠️ **Do not attempt to evade this mute.**"
+                ),
+                inline=False,
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+            set_footer(embed)
+
+            try:
+                await prison_channel.send(content=member.mention, embed=embed)
+            except discord.HTTPException as e:
+                logger.error(f"Failed to send prison notification: {e}")
+
+        # -----------------------------------------------------------------
+        # 5. Create case log entry
+        # -----------------------------------------------------------------
+        if self.bot.case_log_service:
+            await self.bot.case_log_service.log_mute(
+                user=member,
+                moderator=guild.me,  # Bot is the moderator
+                duration="Permanent",
+                reason="Auto-mute: Advertising external Discord server",
+                evidence=f"Posted invite link: `discord.gg/{invite_code}` in #{message.channel.name}",
+            )
 
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message) -> None:
