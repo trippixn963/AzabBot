@@ -142,8 +142,9 @@ class MessageEvents(commands.Cog):
 
         # -----------------------------------------------------------------
         # Auto-Mod: External Discord Invite Links
+        # Skip the links-allowed channel (1406209362976047104)
         # -----------------------------------------------------------------
-        if message.guild and message.content:
+        if message.guild and message.content and message.channel.id != 1406209362976047104:
             external_invite = self._check_external_invite(message)
             if external_invite:
                 await self._handle_external_invite(message, external_invite)
