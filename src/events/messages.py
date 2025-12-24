@@ -144,22 +144,50 @@ class MessageEvents(commands.Cog):
         # Auto-Mod: External Discord Invite Links
         # Skip: links-allowed channel, management role holders
         # -----------------------------------------------------------------
-        is_links_allowed_channel = (
-            self.config.links_allowed_channel_id
-            and message.channel.id == self.config.links_allowed_channel_id
-        )
-        if message.guild and message.content and not is_links_allowed_channel:
-            # Check if user has management role (moderators can post any links)
-            is_mod = (
-                isinstance(message.author, discord.Member)
-                and self.config.management_role_id
-                and message.author.get_role(self.config.management_role_id)
-            )
-            if not is_mod:
-                external_invite = self._check_external_invite(message)
-                if external_invite:
-                    await self._handle_external_invite(message, external_invite)
-                    return  # Stop processing - message deleted
+        if message.guild and message.content:
+            invite_matches = INVITE_PATTERN.findall(message.content)
+            if invite_matches:
+                # Check if in links-allowed channel
+                is_links_allowed_channel = (
+                    self.config.links_allowed_channel_id
+                    and message.channel.id == self.config.links_allowed_channel_id
+                )
+                if is_links_allowed_channel:
+                    logger.tree("INVITE LINK ALLOWED", [
+                        ("User", f"{message.author} ({message.author.id})"),
+                        ("Channel", f"#{message.channel.name}"),
+                        ("Reason", "Links-allowed channel"),
+                        ("Invite(s)", ", ".join(invite_matches)),
+                    ], emoji="✅")
+                    # Don't return - continue processing message
+                else:
+                    # Check if user has management role
+                    is_mod = (
+                        isinstance(message.author, discord.Member)
+                        and self.config.management_role_id
+                        and message.author.get_role(self.config.management_role_id)
+                    )
+                    if is_mod:
+                        logger.tree("INVITE LINK ALLOWED", [
+                            ("User", f"{message.author} ({message.author.id})"),
+                            ("Channel", f"#{message.channel.name}"),
+                            ("Reason", "Management role holder"),
+                            ("Invite(s)", ", ".join(invite_matches)),
+                        ], emoji="✅")
+                        # Don't return - continue processing message
+                    else:
+                        # Check if it's an external invite
+                        external_invite = self._check_external_invite(message)
+                        if external_invite:
+                            await self._handle_external_invite(message, external_invite)
+                            return  # Stop processing - message deleted
+                        else:
+                            logger.tree("INVITE LINK ALLOWED", [
+                                ("User", f"{message.author} ({message.author.id})"),
+                                ("Channel", f"#{message.channel.name}"),
+                                ("Reason", "Server invite (syria)"),
+                                ("Invite(s)", ", ".join(invite_matches)),
+                            ], emoji="✅")
 
         # -----------------------------------------------------------------
         # Skip: Ignored users
@@ -262,37 +290,62 @@ class MessageEvents(commands.Cog):
         # -----------------------------------------------------------------
         # 1. Delete the message
         # -----------------------------------------------------------------
+        message_deleted = False
         try:
             await message.delete()
+            message_deleted = True
         except discord.Forbidden:
-            logger.error(f"Cannot delete invite message - missing permissions")
+            logger.tree("INVITE DELETE FAILED", [
+                ("User", f"{member} ({member.id})"),
+                ("Channel", f"#{message.channel.name}"),
+                ("Reason", "Missing permissions"),
+            ], emoji="❌")
         except discord.HTTPException as e:
-            logger.error(f"Failed to delete invite message: {e}")
+            logger.tree("INVITE DELETE FAILED", [
+                ("User", f"{member} ({member.id})"),
+                ("Channel", f"#{message.channel.name}"),
+                ("Error", str(e)[:50]),
+            ], emoji="❌")
 
         # -----------------------------------------------------------------
         # 2. Apply permanent mute role
         # -----------------------------------------------------------------
         muted_role = guild.get_role(self.config.muted_role_id)
         if not muted_role:
-            logger.error("Muted role not found for invite auto-mute")
+            logger.tree("INVITE MUTE FAILED", [
+                ("User", f"{member} ({member.id})"),
+                ("Reason", "Muted role not found"),
+                ("Role ID", str(self.config.muted_role_id)),
+            ], emoji="❌")
             return
 
+        mute_applied = False
         try:
             await member.add_roles(muted_role, reason="Auto-mute: External Discord invite link")
-
-            logger.tree("AUTO-MUTE: EXTERNAL INVITE", [
-                ("User", f"{member} ({member.id})"),
-                ("Channel", f"#{message.channel.name}"),
-                ("Invite Code", invite_code),
-                ("Action", "Permanent mute applied"),
-            ], emoji="🔗")
-
+            mute_applied = True
         except discord.Forbidden:
-            logger.error(f"Cannot apply mute role to {member} - missing permissions")
+            logger.tree("INVITE MUTE FAILED", [
+                ("User", f"{member} ({member.id})"),
+                ("Reason", "Missing permissions"),
+            ], emoji="❌")
             return
         except discord.HTTPException as e:
-            logger.error(f"Failed to apply mute role: {e}")
+            logger.tree("INVITE MUTE FAILED", [
+                ("User", f"{member} ({member.id})"),
+                ("Error", str(e)[:50]),
+            ], emoji="❌")
             return
+
+        # Comprehensive success log
+        logger.tree("AUTO-MUTE: EXTERNAL INVITE", [
+            ("User", f"{member} ({member.id})"),
+            ("Display Name", member.display_name),
+            ("Channel", f"#{message.channel.name}"),
+            ("Invite Code", f"discord.gg/{invite_code}"),
+            ("Message Deleted", "Yes" if message_deleted else "No"),
+            ("Mute Applied", "Yes" if mute_applied else "No"),
+            ("Duration", "Permanent"),
+        ], emoji="🔗")
 
         # -----------------------------------------------------------------
         # 3. Record mute in database
@@ -303,6 +356,11 @@ class MessageEvents(commands.Cog):
             duration="permanent",
             reason="Auto-mute: Advertising external Discord server",
         )
+        logger.tree("DATABASE RECORD", [
+            ("Action", "Mute recorded"),
+            ("User ID", str(member.id)),
+            ("Duration", "Permanent"),
+        ], emoji="💾")
 
         # -----------------------------------------------------------------
         # 4. Send notification to prison channel
@@ -315,6 +373,7 @@ class MessageEvents(commands.Cog):
                 if prison_channel:
                     break
 
+        notification_sent = False
         if prison_channel:
             embed = discord.Embed(
                 title="🔗 Auto-Muted: External Invite Link",
@@ -351,20 +410,49 @@ class MessageEvents(commands.Cog):
 
             try:
                 await prison_channel.send(content=member.mention, embed=embed)
+                notification_sent = True
+                logger.tree("PRISON NOTIFICATION SENT", [
+                    ("User", f"{member} ({member.id})"),
+                    ("Channel", f"#{prison_channel.name}"),
+                ], emoji="📢")
             except discord.HTTPException as e:
-                logger.error(f"Failed to send prison notification: {e}")
+                logger.tree("PRISON NOTIFICATION FAILED", [
+                    ("User", f"{member} ({member.id})"),
+                    ("Error", str(e)[:50]),
+                ], emoji="❌")
+        else:
+            logger.tree("PRISON NOTIFICATION SKIPPED", [
+                ("User", f"{member} ({member.id})"),
+                ("Reason", "No prison channel configured"),
+            ], emoji="⚠️")
 
         # -----------------------------------------------------------------
         # 5. Create case log entry
         # -----------------------------------------------------------------
         if self.bot.case_log_service:
-            await self.bot.case_log_service.log_mute(
+            case_result = await self.bot.case_log_service.log_mute(
                 user=member,
                 moderator=guild.me,  # Bot is the moderator
                 duration="Permanent",
                 reason="Auto-mute: Advertising external Discord server",
                 evidence=f"Posted invite link: `discord.gg/{invite_code}` in #{message.channel.name}",
             )
+            if case_result:
+                logger.tree("CASE LOG CREATED", [
+                    ("User", f"{member} ({member.id})"),
+                    ("Case Number", str(case_result.get("case_number", "N/A"))),
+                    ("Thread", case_result.get("thread_name", "N/A")),
+                ], emoji="📋")
+            else:
+                logger.tree("CASE LOG FAILED", [
+                    ("User", f"{member} ({member.id})"),
+                    ("Reason", "log_mute returned None"),
+                ], emoji="❌")
+        else:
+            logger.tree("CASE LOG SKIPPED", [
+                ("User", f"{member} ({member.id})"),
+                ("Reason", "Case log service not configured"),
+            ], emoji="⚠️")
 
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message) -> None:
