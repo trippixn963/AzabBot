@@ -295,18 +295,18 @@ class PurgeCog(commands.Cog):
     @app_commands.command(name="purge", description="Bulk delete messages from the channel")
     @app_commands.describe(
         amount="Number of messages to delete (1-500)",
-        filter="Type of messages to delete",
+        filter_type="Type of messages to delete",
         user="User to delete messages from (only for 'From User' filter)",
         text="Text to search for (only for 'Containing Text' filter)",
         reason="Reason for the purge",
     )
-    @app_commands.choices(filter=FILTER_CHOICES)
+    @app_commands.choices(filter_type=FILTER_CHOICES)
     @app_commands.default_permissions(manage_messages=True)
     async def purge(
         self,
         interaction: discord.Interaction,
         amount: app_commands.Range[int, 1, MAX_PURGE_AMOUNT],
-        filter: app_commands.Choice[str] = None,
+        filter_type: Optional[app_commands.Choice[str]] = None,
         user: Optional[discord.Member] = None,
         text: Optional[str] = None,
         reason: Optional[str] = None,
@@ -315,7 +315,7 @@ class PurgeCog(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         # Default to all messages if no filter specified
-        filter_value = filter.value if filter else PurgeFilter.ALL
+        filter_value = filter_type.value if filter_type else PurgeFilter.ALL
 
         # Build the check function based on filter
         check: Optional[Callable[[discord.Message], bool]] = None
@@ -327,12 +327,19 @@ class PurgeCog(commands.Cog):
 
         elif filter_value == PurgeFilter.USER:
             if not user:
+                logger.tree("PURGE VALIDATION FAILED", [
+                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                    ("Filter", "From User"),
+                    ("Reason", "User parameter not provided"),
+                ], emoji="⚠️")
                 await interaction.followup.send(
                     "You must specify a user when using the 'From User' filter.",
                     ephemeral=True,
                 )
                 return
-            check = lambda msg: msg.author.id == user.id
+            # Capture user.id by value using default argument
+            target_user_id = user.id
+            check = lambda msg, uid=target_user_id: msg.author.id == uid
             description = f"messages from {user.display_name}"
 
         elif filter_value == PurgeFilter.BOTS:
@@ -345,13 +352,19 @@ class PurgeCog(commands.Cog):
 
         elif filter_value == PurgeFilter.CONTAINS:
             if not text:
+                logger.tree("PURGE VALIDATION FAILED", [
+                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                    ("Filter", "Containing Text"),
+                    ("Reason", "Text parameter not provided"),
+                ], emoji="⚠️")
                 await interaction.followup.send(
                     "You must specify text when using the 'Containing Text' filter.",
                     ephemeral=True,
                 )
                 return
+            # Capture search_text by value using default argument
             search_text = text.lower()
-            check = lambda msg: search_text in msg.content.lower()
+            check = lambda msg, st=search_text: st in msg.content.lower()
             description = f"messages containing '{text[:20]}...'" if len(text) > 20 else f"messages containing '{text}'"
 
         elif filter_value == PurgeFilter.ATTACHMENTS:
