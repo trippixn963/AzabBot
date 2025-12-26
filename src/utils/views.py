@@ -14,7 +14,7 @@ Server: discord.gg/syria
 
 import re
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import discord
 
@@ -179,6 +179,31 @@ class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_info:
                 inline=True,
             )
 
+        # Last mute info
+        last_mute = db.get_last_mute_info(self.user_id)
+        if last_mute and last_mute.get("last_mute_at"):
+            mute_timestamp = int(last_mute["last_mute_at"])
+            mute_duration = last_mute.get("last_mute_duration") or "Unknown"
+            mute_mod_id = last_mute.get("last_mute_moderator_id")
+            mute_mod_str = f"by <@{mute_mod_id}>" if mute_mod_id else ""
+            embed.add_field(
+                name="Last Muted",
+                value=f"<t:{mute_timestamp}:R>\n`{mute_duration}` {mute_mod_str}",
+                inline=True,
+            )
+
+        # Last ban info
+        last_ban = db.get_last_ban_info(self.user_id)
+        if last_ban and last_ban.get("last_ban_at"):
+            ban_timestamp = int(last_ban["last_ban_at"])
+            ban_mod_id = last_ban.get("last_ban_moderator_id")
+            ban_mod_str = f"by <@{ban_mod_id}>" if ban_mod_id else ""
+            embed.add_field(
+                name="Last Banned",
+                value=f"<t:{ban_timestamp}:R> {ban_mod_str}",
+                inline=True,
+            )
+
         # Warning for repeat offenders
         if mute_count >= 3 or ban_count >= 2 or active_warns >= 3:
             warnings = []
@@ -308,7 +333,7 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
         return cls(user_id, guild_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        """Show paginated history embed."""
+        """Show paginated history embed with per-action cases."""
         logger.tree("History Button Clicked", [
             ("Clicked By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),
@@ -317,7 +342,16 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
 
         db = get_db()
 
-        # Get history count and first page
+        # Try to get per-action cases first (new system)
+        cases = db.get_user_cases(self.user_id, self.guild_id, limit=10, include_resolved=True)
+
+        if cases:
+            # Show per-action cases with links to threads
+            embed = await self._build_cases_embed(interaction.client, cases)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        # Fall back to legacy history if no per-action cases
         total_count = db.get_history_count(self.user_id, self.guild_id)
         history = db.get_combined_history(self.user_id, self.guild_id, limit=5, offset=0)
 
@@ -328,7 +362,7 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
             )
             return
 
-        # Build history embed
+        # Build legacy history embed
         embed = await self._build_history_embed(interaction.client, history, 0, total_count)
 
         # Create pagination view if needed
@@ -337,6 +371,79 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         else:
             await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def _build_cases_embed(
+        self,
+        client,
+        cases: list,
+    ) -> discord.Embed:
+        """Build embed showing per-action cases with links."""
+        embed = discord.Embed(
+            title="Case History",
+            color=EmbedColors.INFO,
+        )
+
+        # Try to get user info
+        try:
+            user = await client.fetch_user(self.user_id)
+            embed.set_author(name=user.name, icon_url=user.display_avatar.url)
+        except Exception:
+            pass
+
+        # Get case counts
+        db = get_db()
+        counts = db.get_user_case_counts(self.user_id, self.guild_id)
+        count_str = []
+        if counts.get("mute_count", 0) > 0:
+            count_str.append(f"🔇 {counts['mute_count']} mutes")
+        if counts.get("ban_count", 0) > 0:
+            count_str.append(f"🔨 {counts['ban_count']} bans")
+        if counts.get("warn_count", 0) > 0:
+            count_str.append(f"⚠️ {counts['warn_count']} warns")
+
+        if count_str:
+            embed.description = " • ".join(count_str)
+
+        for case in cases:
+            case_id = case.get("case_id", "???")
+            action_type = case.get("action_type", "unknown")
+            status = case.get("status", "open")
+            thread_id = case.get("thread_id")
+            created_at = case.get("created_at", 0)
+            reason = case.get("reason") or "No reason"
+            moderator_id = case.get("moderator_id")
+
+            # Status and action emoji
+            status_emoji = "🔓" if status == "resolved" else "🔒"
+            action_emoji = {
+                "mute": "🔇",
+                "ban": "🔨",
+                "warn": "⚠️",
+            }.get(action_type, "📋")
+
+            # Build case title with link
+            thread_url = f"https://discord.com/channels/{self.guild_id}/{thread_id}"
+            title = f"{status_emoji} {action_emoji} [{case_id}] {action_type.title()}"
+
+            # Time
+            time_str = f"<t:{int(created_at)}:R>" if created_at else "Unknown"
+
+            # Value
+            value_parts = [f"[View Case]({thread_url})"]
+            value_parts.append(f"**When:** {time_str}")
+            if moderator_id:
+                value_parts.append(f"**By:** <@{moderator_id}>")
+            if reason and reason != "No reason":
+                value_parts.append(f"**Reason:** {reason[:50]}...")
+
+            embed.add_field(
+                name=title,
+                value="\n".join(value_parts),
+                inline=False,
+            )
+
+        embed.set_footer(text=f"{len(cases)} cases shown")
+        return embed
 
     async def _build_history_embed(
         self,
@@ -628,7 +735,7 @@ class ExtendModal(discord.ui.Modal, title="Extend Mute"):
         except Exception:
             pass  # Silently fail if can't log
 
-    def _parse_duration(self, duration_str: str) -> int | None:
+    def _parse_duration(self, duration_str: str) -> Optional[int]:
         """Parse duration string like 1h, 30m, 2h30m, 1d into seconds."""
         import re as regex
         total = 0
@@ -696,13 +803,32 @@ class ExtendButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_ext
         active_mute = db.get_active_mute(self.user_id, self.guild_id)
 
         if not active_mute:
-            await interaction.response.send_message(
-                "This user is not currently muted.",
-                ephemeral=True,
-            )
+            # Check if there's a resolved mute case for context
+            resolved_case = db.get_most_recent_resolved_case(self.user_id, self.guild_id, "mute")
+            resolved_at = resolved_case.get("resolved_at") if resolved_case else None
+            if resolved_at:
+                resolved_timestamp = int(resolved_at)
+                resolved_by = resolved_case.get("resolved_by")
+                if resolved_by and resolved_by != 0:
+                    await interaction.response.send_message(
+                        f"✅ **Case Resolved**\n\n"
+                        f"This user was unmuted <t:{resolved_timestamp}:R> by <@{resolved_by}>.",
+                        ephemeral=True,
+                    )
+                else:
+                    await interaction.response.send_message(
+                        f"✅ **Case Resolved**\n\n"
+                        f"This user's mute expired <t:{resolved_timestamp}:R>.",
+                        ephemeral=True,
+                    )
+            else:
+                await interaction.response.send_message(
+                    "This user is not currently muted.",
+                    ephemeral=True,
+                )
             return
 
-        if active_mute["expires_at"] is None:
+        if active_mute.get("expires_at") is None:
             await interaction.response.send_message(
                 "Cannot extend a permanent mute.",
                 ephemeral=True,
@@ -789,22 +915,17 @@ class UnmuteModal(discord.ui.Modal, title="Unmute User"):
                 ephemeral=True,
             )
 
-            # Log to case thread
+            # Log to case thread using case_log_service (handles per-action cases)
             try:
-                case_log = db.get_case_log(self.user_id)
-                if case_log:
-                    thread = guild.get_thread(case_log["thread_id"])
-                    if thread:
-                        reason_text = self.reason.value if self.reason.value else "No reason provided"
-                        embed = discord.Embed(
-                            title="🔊 User Unmuted",
-                            color=EmbedColors.SUCCESS,
-                        )
-                        embed.add_field(name="User", value=f"{member.mention}\n`{member.name}`", inline=True)
-                        embed.add_field(name="Unmuted By", value=f"{interaction.user.mention}\n`{interaction.user.name}`", inline=True)
-                        embed.add_field(name="Reason", value=reason_text, inline=False)
-                        set_footer(embed)
-                        await thread.send(embed=embed)
+                bot = interaction.client
+                if hasattr(bot, 'case_log_service') and bot.case_log_service:
+                    await bot.case_log_service.log_unmute(
+                        user_id=self.user_id,
+                        moderator=interaction.user,
+                        display_name=member.display_name,
+                        reason=self.reason.value if self.reason.value else None,
+                        user_avatar_url=member.display_avatar.url,
+                    )
             except Exception:
                 pass
 
@@ -858,10 +979,29 @@ class UnmuteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_unm
         db = get_db()
 
         if not db.is_user_muted(self.user_id, self.guild_id):
-            await interaction.response.send_message(
-                "This user is not currently muted.",
-                ephemeral=True,
-            )
+            # Check if there's a resolved mute case for context
+            resolved_case = db.get_most_recent_resolved_case(self.user_id, self.guild_id, "mute")
+            resolved_at = resolved_case.get("resolved_at") if resolved_case else None
+            if resolved_at:
+                resolved_timestamp = int(resolved_at)
+                resolved_by = resolved_case.get("resolved_by")
+                if resolved_by and resolved_by != 0:
+                    await interaction.response.send_message(
+                        f"✅ **Case Resolved**\n\n"
+                        f"This user was unmuted <t:{resolved_timestamp}:R> by <@{resolved_by}>.",
+                        ephemeral=True,
+                    )
+                else:
+                    await interaction.response.send_message(
+                        f"✅ **Case Resolved**\n\n"
+                        f"This user's mute expired <t:{resolved_timestamp}:R>.",
+                        ephemeral=True,
+                    )
+            else:
+                await interaction.response.send_message(
+                    "This user is not currently muted.",
+                    ephemeral=True,
+                )
             return
 
         await interaction.response.send_modal(UnmuteModal(self.user_id, self.guild_id))
@@ -882,38 +1022,55 @@ class NoteModal(discord.ui.Modal, title="Add Moderator Note"):
         style=discord.TextStyle.paragraph,
     )
 
-    def __init__(self, user_id: int, guild_id: int):
+    def __init__(self, user_id: int, guild_id: int, case_id: Optional[str] = None):
         super().__init__()
         self.user_id = user_id
         self.guild_id = guild_id
+        self.case_id = case_id
 
     async def on_submit(self, interaction: discord.Interaction):
         logger.tree("Note Modal Submitted", [
             ("Submitted By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),
+            ("Case ID", self.case_id or "N/A"),
             ("Note Preview", self.note.value[:50] + "..." if len(self.note.value) > 50 else self.note.value),
         ], emoji="📝")
 
         db = get_db()
 
-        # Save the note
+        # Save the note linked to the case
         db.save_mod_note(
             user_id=self.user_id,
             guild_id=self.guild_id,
             moderator_id=interaction.user.id,
             note=self.note.value,
+            case_id=self.case_id,
         )
 
+        case_label = f" for case `{self.case_id}`" if self.case_id else ""
         await interaction.response.send_message(
-            "Note saved successfully.",
+            f"Note saved successfully{case_label}.",
             ephemeral=True,
         )
 
         # Log to case thread
         try:
-            case_log = db.get_case_log(self.user_id)
-            if case_log and interaction.guild:
-                thread = interaction.guild.get_thread(case_log["thread_id"])
+            thread_id = None
+
+            # If we have a case_id, use the per-action case thread
+            if self.case_id:
+                case = db.get_case(self.case_id)
+                if case:
+                    thread_id = case.get("thread_id")
+
+            # Fallback to legacy per-user case log
+            if not thread_id:
+                case_log = db.get_case_log(self.user_id)
+                if case_log:
+                    thread_id = case_log.get("thread_id")
+
+            if thread_id and interaction.guild:
+                thread = interaction.guild.get_thread(thread_id)
                 if thread:
                     embed = discord.Embed(
                         title="📝 Note Added",
@@ -924,29 +1081,36 @@ class NoteModal(discord.ui.Modal, title="Add Moderator Note"):
                         value=f"{interaction.user.mention}\n`{interaction.user.name}`",
                         inline=True,
                     )
+                    if self.case_id:
+                        embed.add_field(name="Case", value=f"`{self.case_id}`", inline=True)
                     embed.add_field(name="Note", value=self.note.value, inline=False)
                     set_footer(embed)
                     await thread.send(embed=embed)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to log note to thread: {e}")
 
 
-class NotesButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_notes:(?P<user_id>\d+):(?P<guild_id>\d+)"):
+class NotesButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_notes:(?P<user_id>\d+):(?P<guild_id>\d+)(?::(?P<case_id>\w+))?"):
     """
     Persistent notes button that shows existing notes and allows adding new ones.
+    Optionally linked to a specific case.
     """
 
-    def __init__(self, user_id: int, guild_id: int):
+    def __init__(self, user_id: int, guild_id: int, case_id: Optional[str] = None):
+        custom_id = f"mod_notes:{user_id}:{guild_id}"
+        if case_id:
+            custom_id += f":{case_id}"
         super().__init__(
             discord.ui.Button(
                 label="Notes",
                 style=discord.ButtonStyle.secondary,
                 emoji=NOTE_EMOJI,
-                custom_id=f"mod_notes:{user_id}:{guild_id}",
+                custom_id=custom_id,
             )
         )
         self.user_id = user_id
         self.guild_id = guild_id
+        self.case_id = case_id
 
     @classmethod
     async def from_custom_id(
@@ -957,24 +1121,29 @@ class NotesButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_note
     ) -> "NotesButton":
         user_id = int(match.group("user_id"))
         guild_id = int(match.group("guild_id"))
-        return cls(user_id, guild_id)
+        case_id = match.group("case_id")  # May be None
+        return cls(user_id, guild_id, case_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
         logger.tree("Notes Button Clicked", [
             ("Clicked By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),
             ("Guild ID", str(self.guild_id)),
+            ("Case ID", self.case_id or "All"),
         ], emoji="📝")
 
         db = get_db()
 
-        # Get existing notes
-        notes = db.get_mod_notes(self.user_id, self.guild_id, limit=10)
+        # Get existing notes (filtered by case_id if provided)
+        notes = db.get_mod_notes(self.user_id, self.guild_id, limit=10, case_id=self.case_id)
         note_count = db.get_note_count(self.user_id, self.guild_id)
 
         # Build notes embed
+        title = "📝 Moderator Notes"
+        if self.case_id:
+            title += f" (Case {self.case_id})"
         embed = discord.Embed(
-            title="📝 Moderator Notes",
+            title=title,
             color=EmbedColors.INFO,
         )
 
@@ -987,18 +1156,27 @@ class NotesButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_note
         if notes:
             for note in notes:
                 mod_id = note.get("moderator_id")
-                created_at = note.get("created_at", 0)
+                created_at = note.get("created_at") or 0
                 note_text = note.get("note", "")
+                note_case_id = note.get("case_id")
 
                 # Get moderator name (mentions don't render in field names)
-                mod_name = f"Unknown ({mod_id})"
-                if interaction.guild:
-                    mod_member = interaction.guild.get_member(mod_id)
-                    if mod_member:
-                        mod_name = mod_member.display_name
+                mod_name = "Unknown"
+                if mod_id:
+                    mod_name = f"Unknown ({mod_id})"
+                    if interaction.guild:
+                        mod_member = interaction.guild.get_member(mod_id)
+                        if mod_member:
+                            mod_name = mod_member.display_name
+
+                # Include case ID in display if not filtering by case
+                timestamp_str = f"<t:{int(created_at)}:R>" if created_at else "Unknown time"
+                field_name = f"{timestamp_str} by {mod_name}"
+                if note_case_id and not self.case_id:
+                    field_name += f" [Case {note_case_id}]"
 
                 embed.add_field(
-                    name=f"<t:{int(created_at)}:R> by {mod_name}",
+                    name=field_name,
                     value=note_text[:200] + ("..." if len(note_text) > 200 else ""),
                     inline=False,
                 )
@@ -1006,24 +1184,129 @@ class NotesButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_note
             if note_count > 10:
                 embed.set_footer(text=f"Showing 10 of {note_count} notes")
         else:
-            embed.description = "No notes have been added for this user yet."
+            if self.case_id:
+                embed.description = f"No notes have been added for case `{self.case_id}` yet."
+            else:
+                embed.description = "No notes have been added for this user yet."
 
-        # Create view with Add Note button
-        view = NotesDisplayView(self.user_id, self.guild_id)
+        # Create view with Add Note button (passing case_id)
+        view = NotesDisplayView(self.user_id, self.guild_id, self.case_id)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
 class NotesDisplayView(discord.ui.View):
     """View for displaying notes with an Add Note button."""
 
-    def __init__(self, user_id: int, guild_id: int):
+    def __init__(self, user_id: int, guild_id: int, case_id: Optional[str] = None):
         super().__init__(timeout=300)
         self.user_id = user_id
         self.guild_id = guild_id
+        self.case_id = case_id
 
     @discord.ui.button(label="Add Note", style=discord.ButtonStyle.primary, emoji=NOTE_EMOJI)
     async def add_note_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(NoteModal(self.user_id, self.guild_id))
+        await interaction.response.send_modal(NoteModal(self.user_id, self.guild_id, self.case_id))
+
+
+# =============================================================================
+# Approve Button (Owner Only)
+# =============================================================================
+
+APPROVE_EMOJI = discord.PartialEmoji(name="✅")
+
+
+class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approve_case:(?P<thread_id>\d+):(?P<case_id>\w+)"):
+    """
+    Persistent approve button that closes/archives the case thread when clicked by owner.
+
+    Works after bot restart by using DynamicItem with regex pattern.
+    Only the developer/owner can use this button.
+    """
+
+    def __init__(self, thread_id: int, case_id: str):
+        super().__init__(
+            discord.ui.Button(
+                label="Approve",
+                style=discord.ButtonStyle.success,
+                emoji=APPROVE_EMOJI,
+                custom_id=f"approve_case:{thread_id}:{case_id}",
+            )
+        )
+        self.thread_id = thread_id
+        self.case_id = case_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match: re.Match[str],
+    ) -> "ApproveButton":
+        """Reconstruct the button from the custom_id regex match."""
+        thread_id = int(match.group("thread_id"))
+        case_id = match.group("case_id")
+        return cls(thread_id, case_id)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle approve button click - only owner can use."""
+        from src.core.config import is_developer
+
+        # Only owner can approve
+        if not is_developer(interaction.user.id):
+            await interaction.response.send_message(
+                "Only the owner can approve cases.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            # Get the thread
+            thread = interaction.channel
+            if not isinstance(thread, discord.Thread):
+                await interaction.response.send_message(
+                    "This button can only be used in case threads.",
+                    ephemeral=True,
+                )
+                return
+
+            # Send approval message
+            await interaction.response.send_message(
+                f"✅ **Case Approved** by {interaction.user.mention}\n"
+                f"This case has been reviewed and closed.",
+            )
+
+            # Update database FIRST (before Discord action)
+            db = get_db()
+            db.archive_case(self.case_id)
+
+            # Archive and lock the thread
+            await thread.edit(
+                archived=True,
+                locked=True,
+                reason=f"Case approved by {interaction.user.display_name}",
+            )
+
+            logger.tree("Case Approved", [
+                ("Case ID", self.case_id),
+                ("Thread ID", str(self.thread_id)),
+                ("Approved By", f"{interaction.user.display_name} ({interaction.user.id})"),
+            ], emoji="✅")
+
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "I don't have permission to archive this thread.",
+                ephemeral=True,
+            )
+        except Exception as e:
+            logger.error("Approve Button Error", [
+                ("Case ID", self.case_id),
+                ("Error", str(e)[:100]),
+            ])
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "An error occurred while approving the case.",
+                    ephemeral=True,
+                )
 
 
 # =============================================================================
@@ -1088,6 +1371,7 @@ def setup_moderation_views(bot: "AzabBot") -> None:
         ExtendButton,
         UnmuteButton,
         NotesButton,
+        ApproveButton,
     )
 
 
@@ -1104,12 +1388,14 @@ __all__ = [
     "EXTEND_EMOJI",
     "UNMUTE_EMOJI",
     "NOTE_EMOJI",
+    "APPROVE_EMOJI",
     "InfoButton",
     "DownloadButton",
     "HistoryButton",
     "ExtendButton",
     "UnmuteButton",
     "NotesButton",
+    "ApproveButton",
     "CaseButtonView",
     "MessageButtonView",
     "setup_moderation_views",

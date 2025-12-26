@@ -35,6 +35,9 @@ def _has_valid_media_evidence(evidence: Optional[str]) -> bool:
     Valid sources:
     - Discord CDN (cdn.discordapp.com, media.discordapp.net)
     - Direct image/video links (.png, .jpg, .gif, .mp4, .webm, etc.)
+    - Image hosting sites (imgur, gyazo, postimg, ibb.co, etc.)
+    - Cloud storage (Google Drive, Dropbox, OneDrive)
+    - Video platforms (YouTube, Streamable, Medal.tv)
 
     Args:
         evidence: The evidence string to check.
@@ -45,6 +48,8 @@ def _has_valid_media_evidence(evidence: Optional[str]) -> bool:
     if not evidence:
         return False
 
+    evidence_lower = evidence.lower()
+
     # Check for Discord CDN URLs
     discord_cdn_pattern = r'(cdn\.discordapp\.com|media\.discordapp\.net)/attachments/'
     if re.search(discord_cdn_pattern, evidence):
@@ -53,6 +58,50 @@ def _has_valid_media_evidence(evidence: Optional[str]) -> bool:
     # Check for direct media file extensions
     media_extensions = r'\.(png|jpg|jpeg|gif|webp|mp4|webm|mov|avi)(\?|$|\s)'
     if re.search(media_extensions, evidence, re.IGNORECASE):
+        return True
+
+    # Image hosting sites
+    image_hosts = [
+        'imgur.com', 'i.imgur.com',
+        'gyazo.com', 'i.gyazo.com',
+        'postimg.cc', 'postimg.org', 'i.postimg.cc',
+        'ibb.co', 'i.ibb.co',
+        'prnt.sc', 'prntscr.com',
+        'lightshot.com',
+        'tinypic.com',
+        'imgbb.com',
+        'flickr.com', 'flic.kr',
+        'photobucket.com',
+    ]
+    if any(host in evidence_lower for host in image_hosts):
+        return True
+
+    # Cloud storage links
+    cloud_hosts = [
+        'drive.google.com',
+        'docs.google.com',
+        'dropbox.com', 'dl.dropboxusercontent.com',
+        'onedrive.live.com', '1drv.ms',
+        'icloud.com',
+        'box.com',
+        'mega.nz', 'mega.io',
+    ]
+    if any(host in evidence_lower for host in cloud_hosts):
+        return True
+
+    # Video platforms
+    video_hosts = [
+        'youtube.com', 'youtu.be',
+        'streamable.com',
+        'medal.tv',
+        'twitch.tv', 'clips.twitch.tv',
+        'vimeo.com',
+        'gfycat.com',
+        'tenor.com',
+        'giphy.com',
+        'reddit.com/gallery', 'i.redd.it', 'v.redd.it',
+    ]
+    if any(host in evidence_lower for host in video_hosts):
         return True
 
     return False
@@ -70,6 +119,7 @@ from src.utils.views import (
     ExtendButton,
     UnmuteButton,
     NotesButton,
+    ApproveButton,
 )
 from src.utils.retry import (
     retry_async,
@@ -95,6 +145,7 @@ class CaseLogView(discord.ui.View):
     Row 0: Link buttons (Case, Message)
     Row 1: Info buttons (Info, Avatar, History, Notes)
     Row 2: Action buttons (Extend, Unmute) - mute embeds only
+    Row 3: Approve button (owner only)
     """
 
     def __init__(
@@ -104,6 +155,7 @@ class CaseLogView(discord.ui.View):
         message_url: Optional[str] = None,
         case_thread_id: Optional[int] = None,
         is_mute_embed: bool = False,
+        case_id: Optional[str] = None,
     ):
         super().__init__(timeout=None)
 
@@ -146,7 +198,7 @@ class CaseLogView(discord.ui.View):
         history_btn.row = 1
         self.add_item(history_btn)
 
-        notes_btn = NotesButton(user_id, guild_id)
+        notes_btn = NotesButton(user_id, guild_id, case_id)
         notes_btn.row = 1
         self.add_item(notes_btn)
 
@@ -162,6 +214,15 @@ class CaseLogView(discord.ui.View):
             unmute_btn = UnmuteButton(user_id, guild_id)
             unmute_btn.row = 2
             self.add_item(unmute_btn)
+
+        # =================================================================
+        # Row 3: Approve button (owner only)
+        # =================================================================
+
+        if case_thread_id and case_id:
+            approve_btn = ApproveButton(case_thread_id, case_id)
+            approve_btn.row = 3
+            self.add_item(approve_btn)
 
 
 # =============================================================================
@@ -497,11 +558,11 @@ class CaseLogService:
         evidence: Optional[str] = None,
     ) -> Optional[dict]:
         """
-        Log a mute action to the user's case thread.
+        Log a mute action - creates NEW case/thread for each mute.
 
-        DESIGN:
-            Creates new case thread if user has no existing case.
-            Increments mute count and logs event to existing case.
+        NEW DESIGN (per-action cases):
+            Each mute creates its own case and thread.
+            Extensions log to the existing active mute case.
 
         Args:
             user: The user being muted.
@@ -519,7 +580,29 @@ class CaseLogService:
             return None
 
         try:
-            case = await self._get_or_create_case(user, duration, moderator.id)
+            duration_seconds = self._parse_duration_to_seconds(duration)
+            guild_id = moderator.guild.id
+
+            if is_extension:
+                # For extensions, find the active mute case and log to it
+                active_case = self.db.get_active_mute_case(user.id, guild_id)
+                if not active_case:
+                    # No active case found, create new one
+                    logger.warning(f"log_mute extension: No active mute case for {user.id}, creating new case")
+                    is_extension = False  # Treat as new mute
+                else:
+                    case = active_case
+
+            if not is_extension:
+                # Create new per-action case for this mute
+                case = await self._create_action_case(
+                    user=user,
+                    moderator=moderator,
+                    action_type="mute",
+                    reason=reason,
+                    duration_seconds=duration_seconds,
+                    evidence=evidence,
+                )
 
             case_thread = await self._get_case_thread(case["thread_id"])
 
@@ -527,25 +610,12 @@ class CaseLogService:
                 logger.warning(f"log_mute: Thread {case['thread_id']} not found, returning early")
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
-            # Determine mute count (don't increment for extensions)
-            if case.get("just_created"):
-                mute_count = 1
-            elif is_extension:
-                # Get current count without incrementing, but update last mute info
-                case_data = self.db.get_case_log(user.id)
-                mute_count = case_data["mute_count"] if case_data else 1
-                # Update last mute info for extensions too
-                self.db.execute(
-                    """UPDATE case_logs SET last_mute_at = ?, last_mute_duration = ?,
-                       last_mute_moderator_id = ? WHERE user_id = ?""",
-                    (datetime.now(NY_TZ).timestamp(), duration, moderator.id, user.id)
-                )
-            else:
-                mute_count = self.db.increment_mute_count(user.id, duration, moderator.id)
+            # Get mute count from new cases table
+            case_counts = self.db.get_user_case_counts(user.id, guild_id)
+            mute_count = case_counts.get("mute_count", 1)
 
             # Calculate expiry time for non-permanent mutes
             expires_at = None
-            duration_seconds = self._parse_duration_to_seconds(duration)
             if duration_seconds:
                 expires_at = datetime.now(NY_TZ) + timedelta(seconds=duration_seconds)
 
@@ -571,28 +641,28 @@ class CaseLogService:
             embed = self._build_mute_embed(user, moderator, duration, reason, mute_count, is_extension, evidence_message_url, expires_at)
             view = CaseLogView(
                 user_id=user.id,
-                guild_id=user.guild.id,
+                guild_id=guild_id,
                 message_url=source_message_url,
                 case_thread_id=case["thread_id"],
                 is_mute_embed=True,  # Include Extend and Unmute buttons
+                case_id=case["case_id"],
             )
             embed_message = await safe_send(case_thread, embed=embed, view=view)
             if not embed_message:
                 logger.warning(f"log_mute: Failed to send embed to thread {case_thread.id}")
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
-            # If no valid media evidence provided, ping moderator for attachment
-            if not _has_valid_media_evidence(evidence):
+            # If no reason provided, ping moderator to add one
+            if not reason:
                 action_type = "extension" if is_extension else "mute"
                 warning_message = await safe_send(
                     case_thread,
-                    f"⚠️ {moderator.mention} No screenshot/video evidence was provided for this {action_type}.\n\n"
-                    f"**Reply to this message** with an attachment (screenshot/video).\n\n"
-                    f"🎙️ If this happened in a voice chat where evidence cannot be provided, reply with `voice chat`.\n\n"
+                    f"⚠️ {moderator.mention} No reason was provided for this {action_type}.\n\n"
+                    f"**Reply to this message** with the reason.\n\n"
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
-                # Track pending evidence in database (only if warning sent)
+                # Track pending reason in database (only if warning sent)
                 if warning_message:
                     self.db.create_pending_reason(
                         thread_id=case_thread.id,
@@ -616,26 +686,16 @@ class CaseLogService:
                     alert_embed.set_footer(text=f"Alert • ID: {user.id}")
                     await safe_send(case_thread, embed=alert_embed)
 
-            if is_extension:
-                log_type = "Mute Extended"
-            elif case.get("just_created"):
-                log_type = "New Case Created With Mute"
-            else:
-                log_type = "Mute Logged"
+            log_type = "Mute Extended" if is_extension else "Mute Case Created"
 
             logger.tree(f"Case Log: {log_type}", [
                 ("User", f"{user.display_name} ({user.id})"),
                 ("Case ID", case['case_id']),
                 ("Muted By", f"{moderator.display_name}"),
                 ("Duration", duration),
-                ("Mute #", str(mute_count)),
+                ("Total Mutes", str(mute_count)),
                 ("Reason", reason if reason else "Not provided"),
             ], emoji="🔇")
-
-            # Schedule debounced profile stats update
-            updated_case = self.db.get_case_log(user.id)
-            if updated_case:
-                self._schedule_profile_update(user.id, updated_case)
 
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
@@ -663,7 +723,11 @@ class CaseLogService:
         source_message_url: Optional[str] = None,
     ) -> Optional[dict]:
         """
-        Log a warning action to the user's case thread.
+        Log a warning action - creates a NEW per-action case.
+
+        NEW DESIGN (per-action cases):
+            Each warning creates its own case with its own forum thread.
+            Thread naming: [CASE_ID] | Warn | Username
 
         Args:
             user: The user being warned.
@@ -681,7 +745,14 @@ class CaseLogService:
             return None
 
         try:
-            case = await self._get_or_create_case(user)
+            # Create per-action case (new thread for this warning)
+            case = await self._create_action_case(
+                user=user,
+                moderator=moderator,
+                action_type="warn",
+                reason=reason,
+                evidence=evidence,
+            )
 
             case_thread = await self._get_case_thread(case["thread_id"])
 
@@ -689,9 +760,8 @@ class CaseLogService:
                 logger.warning(f"log_warn: Thread {case['thread_id']} not found, returning early")
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
-            # Increment warn count in case_logs
-            if not case.get("just_created"):
-                self.db.increment_warn_count(user.id, moderator.id)
+            # Update legacy case_logs for backward compatibility stats
+            self.db.increment_warn_count(user.id, moderator.id)
 
             # If evidence provided, send it as a separate message first to preserve it
             evidence_message_url = None
@@ -719,19 +789,19 @@ class CaseLogService:
                 message_url=source_message_url,
                 case_thread_id=case["thread_id"],
                 is_mute_embed=False,
+                case_id=case["case_id"],
             )
             embed_message = await safe_send(case_thread, embed=embed, view=view)
             if not embed_message:
                 logger.warning(f"log_warn: Failed to send embed to thread {case_thread.id}")
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
-            # If no valid media evidence provided, ping moderator for attachment
-            if not _has_valid_media_evidence(evidence):
+            # If no reason provided, ping moderator to add one
+            if not reason:
                 warning_message = await safe_send(
                     case_thread,
-                    f"⚠️ {moderator.mention} No screenshot/video evidence was provided for this warning.\n\n"
-                    f"**Reply to this message** with an attachment (screenshot/video).\n\n"
-                    f"🎙️ If this happened in a voice chat where evidence cannot be provided, reply with `voice chat`.\n\n"
+                    f"⚠️ {moderator.mention} No reason was provided for this warning.\n\n"
+                    f"**Reply to this message** with the reason.\n\n"
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
@@ -756,12 +826,7 @@ class CaseLogService:
                 alert_embed.set_footer(text=f"Alert • ID: {user.id}")
                 await safe_send(case_thread, embed=alert_embed)
 
-            if case.get("just_created"):
-                log_type = "New Case Created With Warning"
-            else:
-                log_type = "Warning Logged"
-
-            logger.tree(f"Case Log: {log_type}", [
+            logger.tree("Case Log: Warning Case Created", [
                 ("User", f"{user.display_name} ({user.id})"),
                 ("Case ID", case['case_id']),
                 ("Warned By", f"{moderator.display_name}"),
@@ -876,7 +941,11 @@ class CaseLogService:
         user_avatar_url: Optional[str] = None,
     ) -> Optional[dict]:
         """
-        Log an unmute action to the user's case thread.
+        Log an unmute action to the active mute case thread.
+
+        NEW DESIGN (per-action cases):
+            Finds the active mute case for this user and logs to that thread.
+            Resolves the case after logging.
 
         Args:
             user_id: The user being unmuted.
@@ -887,34 +956,47 @@ class CaseLogService:
             user_avatar_url: Optional avatar URL (avoids API call if provided).
 
         Returns:
-            Dict with case_id and thread_id, or None if no case exists.
+            Dict with case_id and thread_id, or None if no active case exists.
         """
         if not self.enabled:
             return None
 
         try:
-            case = self.db.get_case_log(user_id)
-            if not case:
-                # No case exists, nothing to log
+            guild_id = moderator.guild.id
+
+            # Find the active mute case for this user
+            active_case = self.db.get_active_mute_case(user_id, guild_id)
+            if not active_case:
+                # No active mute case in new system, check legacy
+                legacy_case = self.db.get_case_log(user_id)
+                if legacy_case:
+                    # Fall back to legacy behavior
+                    return await self._log_unmute_legacy(
+                        user_id, moderator, display_name, reason,
+                        source_message_url, user_avatar_url, legacy_case
+                    )
                 return None
 
-            # Get last mute info BEFORE updating unmute timestamp
-            last_mute_info = self.db.get_last_mute_info(user_id)
-
-            # Calculate "was muted for" duration
+            # Calculate "was muted for" duration from case created_at
             time_served = None
             original_duration = None
             original_moderator_name = None
 
-            if last_mute_info and last_mute_info.get("last_mute_at"):
-                muted_at = last_mute_info["last_mute_at"]
+            if active_case.get("created_at"):
+                muted_at = active_case["created_at"]
                 now = datetime.now(NY_TZ).timestamp()
                 time_served_seconds = now - muted_at
                 time_served = self._format_duration_precise(time_served_seconds)
-                original_duration = last_mute_info.get("last_mute_duration")
+
+                # Get original duration from case
+                duration_seconds = active_case.get("duration_seconds")
+                if duration_seconds:
+                    original_duration = self._format_duration_precise(duration_seconds)
+                else:
+                    original_duration = "Permanent"
 
                 # Get original moderator name
-                original_mod_id = last_mute_info.get("last_mute_moderator_id")
+                original_mod_id = active_case.get("moderator_id")
                 if original_mod_id and moderator.guild:
                     original_mod = moderator.guild.get_member(original_mod_id)
                     if original_mod:
@@ -922,10 +1004,7 @@ class CaseLogService:
                     else:
                         original_moderator_name = f"Unknown ({original_mod_id})"
 
-            # Update last unmute timestamp
-            self.db.update_last_unmute(user_id)
-
-            case_thread = await self._get_case_thread(case["thread_id"])
+            case_thread = await self._get_case_thread(active_case["thread_id"])
             if case_thread:
                 embed = self._build_unmute_embed(
                     moderator=moderator,
@@ -937,17 +1016,17 @@ class CaseLogService:
                 )
                 view = CaseLogView(
                     user_id=user_id,
-                    guild_id=moderator.guild.id,
+                    guild_id=guild_id,
                     message_url=source_message_url,
-                    case_thread_id=case["thread_id"],
+                    case_thread_id=active_case["thread_id"],
+                    case_id=active_case["case_id"],
                 )
                 embed_message = await safe_send(case_thread, embed=embed, view=view)
                 if not embed_message:
                     logger.warning(f"log_unmute: Failed to send embed to thread {case_thread.id}")
-                    return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
                 # If no reason provided, ping moderator and track pending reason
-                if not reason:
+                if not reason and embed_message:
                     warning_message = await safe_send(
                         case_thread,
                         f"⚠️ {moderator.mention} No reason was provided for this unmute.\n\n"
@@ -955,7 +1034,6 @@ class CaseLogService:
                         f"You have **1 hour** or the owner will be notified.\n"
                         f"_Only replies from you will be accepted._"
                     )
-                    # Track pending reason in database (only if warning sent)
                     if warning_message:
                         self.db.create_pending_reason(
                             thread_id=case_thread.id,
@@ -966,19 +1044,22 @@ class CaseLogService:
                             action_type="unmute",
                         )
 
-                logger.tree("Case Log: Unmute Logged", [
-                    ("User", f"{display_name} ({user_id})"),
-                    ("Case ID", case['case_id']),
-                    ("Unmuted By", f"{moderator.display_name}"),
-                    ("Reason", reason if reason else "Not provided"),
-                ], emoji="🔊")
+            # Resolve the case
+            self.db.resolve_case(
+                case_id=active_case["case_id"],
+                resolved_by=moderator.id,
+                reason=reason,
+            )
 
-                # Schedule debounced profile stats update
-                updated_case = self.db.get_case_log(user_id)
-                if updated_case:
-                    self._schedule_profile_update(user_id, updated_case)
+            logger.tree("Case Log: Unmute Logged & Case Resolved", [
+                ("User", f"{display_name} ({user_id})"),
+                ("Case ID", active_case['case_id']),
+                ("Unmuted By", f"{moderator.display_name}"),
+                ("Time Served", time_served or "Unknown"),
+                ("Reason", reason if reason else "Not provided"),
+            ], emoji="🔊")
 
-            return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+            return {"case_id": active_case["case_id"], "thread_id": active_case["thread_id"]}
 
         except Exception as e:
             logger.error("Case Log: Failed To Log Unmute", [
@@ -986,6 +1067,69 @@ class CaseLogService:
                 ("Error", str(e)[:100]),
             ])
             return None
+
+    async def _log_unmute_legacy(
+        self,
+        user_id: int,
+        moderator: discord.Member,
+        display_name: str,
+        reason: Optional[str],
+        source_message_url: Optional[str],
+        user_avatar_url: Optional[str],
+        case: dict,
+    ) -> Optional[dict]:
+        """Legacy unmute logging for old per-user cases."""
+        # Get last mute info BEFORE updating unmute timestamp
+        last_mute_info = self.db.get_last_mute_info(user_id)
+
+        # Calculate "was muted for" duration
+        time_served = None
+        original_duration = None
+        original_moderator_name = None
+
+        if last_mute_info and last_mute_info.get("last_mute_at"):
+            muted_at = last_mute_info["last_mute_at"]
+            now = datetime.now(NY_TZ).timestamp()
+            time_served_seconds = now - muted_at
+            time_served = self._format_duration_precise(time_served_seconds)
+            original_duration = last_mute_info.get("last_mute_duration")
+
+            original_mod_id = last_mute_info.get("last_mute_moderator_id")
+            if original_mod_id and moderator.guild:
+                original_mod = moderator.guild.get_member(original_mod_id)
+                if original_mod:
+                    original_moderator_name = original_mod.display_name
+                else:
+                    original_moderator_name = f"Unknown ({original_mod_id})"
+
+        self.db.update_last_unmute(user_id)
+
+        case_thread = await self._get_case_thread(case["thread_id"])
+        if case_thread:
+            embed = self._build_unmute_embed(
+                moderator=moderator,
+                reason=reason,
+                user_avatar_url=user_avatar_url,
+                time_served=time_served,
+                original_duration=original_duration,
+                original_moderator_name=original_moderator_name,
+            )
+            view = CaseLogView(
+                user_id=user_id,
+                guild_id=moderator.guild.id,
+                message_url=source_message_url,
+                case_thread_id=case["thread_id"],
+                case_id=case["case_id"],
+            )
+            await safe_send(case_thread, embed=embed, view=view)
+
+            logger.tree("Case Log: Unmute Logged (Legacy)", [
+                ("User", f"{display_name} ({user_id})"),
+                ("Case ID", case['case_id']),
+                ("Unmuted By", f"{moderator.display_name}"),
+            ], emoji="🔊")
+
+        return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
     # =========================================================================
     # Timeout Logging
@@ -1070,16 +1214,16 @@ class CaseLogService:
                 message_url=None,
                 case_thread_id=case["thread_id"],
                 is_mute_embed=True,  # Include Extend and Unmute buttons
+                case_id=case["case_id"],
             )
             embed_message = await safe_send(case_thread, embed=embed, view=view)
 
-            # If no valid media evidence provided, ping moderator for attachment
-            if moderator and not _has_valid_media_evidence(evidence):
+            # If no reason provided, ping moderator to add one
+            if moderator and not reason:
                 warning_message = await safe_send(
                     case_thread,
-                    f"⚠️ {moderator.mention} No screenshot/video evidence was provided for this timeout.\n\n"
-                    f"**Reply to this message** with an attachment (screenshot/video).\n\n"
-                    f"🎙️ If this happened in a voice chat where evidence cannot be provided, reply with `voice chat`.\n\n"
+                    f"⚠️ {moderator.mention} No reason was provided for this timeout.\n\n"
+                    f"**Reply to this message** with the reason.\n\n"
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
@@ -1129,7 +1273,11 @@ class CaseLogService:
         source_message_url: Optional[str] = None,
     ) -> Optional[dict]:
         """
-        Log a ban action to the user's case thread.
+        Log a ban action - creates a NEW per-action case.
+
+        NEW DESIGN (per-action cases):
+            Each ban creates its own case with its own forum thread.
+            Thread naming: [CASE_ID] | Ban | Username
 
         Args:
             user: The user being banned.
@@ -1145,7 +1293,14 @@ class CaseLogService:
             return None
 
         try:
-            case = await self._get_or_create_case(user)
+            # Create per-action case (new thread for this ban)
+            case = await self._create_action_case(
+                user=user,
+                moderator=moderator,
+                action_type="ban",
+                reason=reason,
+                evidence=evidence,
+            )
 
             case_thread = await self._get_case_thread(case["thread_id"])
 
@@ -1227,19 +1382,19 @@ class CaseLogService:
                 guild_id=user.guild.id,
                 message_url=source_message_url,
                 case_thread_id=case["thread_id"],
+                case_id=case["case_id"],
             )
             embed_message = await safe_send(case_thread, embed=embed, view=view)
             if not embed_message:
                 logger.warning(f"log_ban: Failed to send embed to thread {case_thread.id}")
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
-            # If no valid media evidence provided, ping moderator for attachment
-            if not _has_valid_media_evidence(evidence):
+            # If no reason provided, ping moderator to add one
+            if not reason:
                 warning_message = await safe_send(
                     case_thread,
-                    f"⚠️ {moderator.mention} No screenshot/video evidence was provided for this ban.\n\n"
-                    f"**Reply to this message** with an attachment (screenshot/video).\n\n"
-                    f"🎙️ If this happened in a voice chat where evidence cannot be provided, reply with `voice chat`.\n\n"
+                    f"⚠️ {moderator.mention} No reason was provided for this ban.\n\n"
+                    f"**Reply to this message** with the reason.\n\n"
                     f"You have **1 hour** or the owner will be notified.\n"
                     f"_Only replies from you will be accepted._"
                 )
@@ -1254,7 +1409,7 @@ class CaseLogService:
                         action_type="ban",
                     )
 
-            logger.tree("Case Log: Ban Logged", [
+            logger.tree("Case Log: Ban Case Created", [
                 ("User", f"{user} ({user.id})"),
                 ("Case ID", case['case_id']),
                 ("Banned By", f"{moderator.display_name}"),
@@ -1285,7 +1440,12 @@ class CaseLogService:
         source_message_url: Optional[str] = None,
     ) -> Optional[dict]:
         """
-        Log an unban action to the user's case thread.
+        Log an unban action - finds active ban case and resolves it.
+
+        NEW DESIGN (per-action cases):
+            Finds the active ban case for this user and logs the unban
+            to that case's thread, then marks the case as resolved.
+            Falls back to legacy per-user cases for backward compatibility.
 
         Args:
             user_id: The user being unbanned.
@@ -1301,27 +1461,31 @@ class CaseLogService:
             return None
 
         try:
-            case = self.db.get_case_log(user_id)
-            if not case:
-                return None
+            guild_id = moderator.guild.id
 
-            # Get last ban info BEFORE we might update anything
-            last_ban_info = self.db.get_last_ban_info(user_id)
+            # Try to find active ban case (new per-action system)
+            active_ban_case = self.db.get_active_ban_case(user_id, guild_id)
 
-            # Calculate ban context
-            time_banned = None
-            original_moderator_name = None
-            original_reason = None
+            if active_ban_case:
+                # Found active ban case - log unban to that case and resolve
+                case_thread = await self._get_case_thread(active_ban_case["thread_id"])
 
-            if last_ban_info and last_ban_info.get("last_ban_at"):
-                banned_at = last_ban_info["last_ban_at"]
-                now_ts = datetime.now(NY_TZ).timestamp()
-                time_banned_seconds = now_ts - banned_at
-                time_banned = self._format_duration_precise(time_banned_seconds)
-                original_reason = last_ban_info.get("last_ban_reason")
+                if not case_thread:
+                    logger.warning(f"log_unban: Thread {active_ban_case['thread_id']} not found")
+                    return {"case_id": active_ban_case["case_id"], "thread_id": active_ban_case["thread_id"]}
+
+                now = datetime.now(NY_TZ)
+
+                # Calculate ban duration from the case's created_at
+                time_banned = None
+                if active_ban_case.get("created_at"):
+                    banned_at = active_ban_case["created_at"]
+                    time_banned_seconds = now.timestamp() - banned_at
+                    time_banned = self._format_duration_precise(time_banned_seconds)
 
                 # Get original moderator name
-                original_mod_id = last_ban_info.get("last_ban_moderator_id")
+                original_moderator_name = None
+                original_mod_id = active_ban_case.get("moderator_id")
                 if original_mod_id and moderator.guild:
                     original_mod = moderator.guild.get_member(original_mod_id)
                     if original_mod:
@@ -1329,10 +1493,7 @@ class CaseLogService:
                     else:
                         original_moderator_name = f"Unknown ({original_mod_id})"
 
-            case_thread = await self._get_case_thread(case["thread_id"])
-
-            if case_thread:
-                now = datetime.now(NY_TZ)
+                original_reason = active_ban_case.get("reason")
 
                 embed = discord.Embed(
                     title="🔓 User Unbanned",
@@ -1342,66 +1503,47 @@ class CaseLogService:
                 embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
                 embed.add_field(name="Unbanned By", value=f"`{moderator.display_name}`", inline=True)
 
-                # Time banned (how long the ban lasted)
                 if time_banned:
                     embed.add_field(name="Banned For", value=f"`{time_banned}`", inline=True)
 
-                # Originally banned by
                 if original_moderator_name:
                     embed.add_field(name="Originally Banned By", value=f"`{original_moderator_name}`", inline=True)
 
-                # Original reason
                 if original_reason:
                     embed.add_field(name="Original Reason", value=f"```{original_reason[:200]}```", inline=False)
 
                 if reason:
                     embed.add_field(name="Unban Reason", value=f"```{reason}```", inline=False)
 
-                embed.set_footer(text=f"Unban • ID: {user_id}")
+                embed.set_footer(text=f"Case Resolved • ID: {user_id}")
 
                 view = CaseLogView(
                     user_id=user_id,
-                    guild_id=moderator.guild.id,
+                    guild_id=guild_id,
                     message_url=source_message_url,
-                    case_thread_id=case["thread_id"],
+                    case_thread_id=active_ban_case["thread_id"],
+                    case_id=active_ban_case["case_id"],
                 )
                 embed_message = await safe_send(case_thread, embed=embed, view=view)
-                if not embed_message:
-                    logger.warning(f"log_unban: Failed to send embed to thread {case_thread.id}")
-                    return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
-                # If no reason provided, ping moderator and track pending reason
-                if not reason:
-                    warning_message = await safe_send(
-                        case_thread,
-                        f"⚠️ {moderator.mention} No reason was provided for this unban.\n\n"
-                        f"**Reply to this message** with the reason.\n"
-                        f"You have **1 hour** or the owner will be notified.\n"
-                        f"_Only replies from you will be accepted._"
-                    )
-                    # Track pending reason in database (only if warning sent)
-                    if warning_message:
-                        self.db.create_pending_reason(
-                            thread_id=case_thread.id,
-                            warning_message_id=warning_message.id,
-                            embed_message_id=embed_message.id,
-                            moderator_id=moderator.id,
-                            target_user_id=user_id,
-                            action_type="unban",
-                        )
+                # Resolve the ban case
+                self.db.resolve_case(
+                    case_id=active_ban_case["case_id"],
+                    resolved_by=moderator.id,
+                    reason=reason,
+                )
 
-                logger.tree("Case Log: Unban Logged", [
+                logger.tree("Case Log: Ban Case Resolved (Unban)", [
                     ("User", f"{username} ({user_id})"),
-                    ("Case ID", case['case_id']),
+                    ("Case ID", active_ban_case["case_id"]),
                     ("Unbanned By", f"{moderator.display_name}"),
+                    ("Banned For", time_banned or "Unknown"),
                 ], emoji="🔓")
 
-                # Schedule debounced profile stats update
-                updated_case = self.db.get_case_log(user_id)
-                if updated_case:
-                    self._schedule_profile_update(user_id, updated_case)
+                return {"case_id": active_ban_case["case_id"], "thread_id": active_ban_case["thread_id"]}
 
-            return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+            # No active ban case found - fall back to legacy per-user case
+            return await self._log_unban_legacy(user_id, username, moderator, reason, source_message_url)
 
         except Exception as e:
             logger.error("Case Log: Failed To Log Unban", [
@@ -1410,24 +1552,173 @@ class CaseLogService:
             ])
             return None
 
+    async def _log_unban_legacy(
+        self,
+        user_id: int,
+        username: str,
+        moderator: discord.Member,
+        reason: Optional[str] = None,
+        source_message_url: Optional[str] = None,
+    ) -> Optional[dict]:
+        """
+        Legacy unban logging for backward compatibility with per-user cases.
+
+        Used when no active per-action ban case is found.
+        """
+        case = self.db.get_case_log(user_id)
+        if not case:
+            return None
+
+        # Get last ban info from legacy system
+        last_ban_info = self.db.get_last_ban_info(user_id)
+
+        time_banned = None
+        original_moderator_name = None
+        original_reason = None
+
+        if last_ban_info and last_ban_info.get("last_ban_at"):
+            banned_at = last_ban_info["last_ban_at"]
+            now_ts = datetime.now(NY_TZ).timestamp()
+            time_banned_seconds = now_ts - banned_at
+            time_banned = self._format_duration_precise(time_banned_seconds)
+            original_reason = last_ban_info.get("last_ban_reason")
+
+            original_mod_id = last_ban_info.get("last_ban_moderator_id")
+            if original_mod_id and moderator.guild:
+                original_mod = moderator.guild.get_member(original_mod_id)
+                if original_mod:
+                    original_moderator_name = original_mod.display_name
+                else:
+                    original_moderator_name = f"Unknown ({original_mod_id})"
+
+        case_thread = await self._get_case_thread(case["thread_id"])
+
+        if case_thread:
+            now = datetime.now(NY_TZ)
+
+            embed = discord.Embed(
+                title="🔓 User Unbanned",
+                color=EmbedColors.SUCCESS,
+                timestamp=now,
+            )
+            embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
+            embed.add_field(name="Unbanned By", value=f"`{moderator.display_name}`", inline=True)
+
+            if time_banned:
+                embed.add_field(name="Banned For", value=f"`{time_banned}`", inline=True)
+
+            if original_moderator_name:
+                embed.add_field(name="Originally Banned By", value=f"`{original_moderator_name}`", inline=True)
+
+            if original_reason:
+                embed.add_field(name="Original Reason", value=f"```{original_reason[:200]}```", inline=False)
+
+            if reason:
+                embed.add_field(name="Unban Reason", value=f"```{reason}```", inline=False)
+
+            embed.set_footer(text=f"Unban • ID: {user_id}")
+
+            view = CaseLogView(
+                user_id=user_id,
+                guild_id=moderator.guild.id,
+                message_url=source_message_url,
+                case_thread_id=case["thread_id"],
+                case_id=case["case_id"],
+            )
+            await safe_send(case_thread, embed=embed, view=view)
+
+            logger.tree("Case Log: Unban Logged (Legacy)", [
+                ("User", f"{username} ({user_id})"),
+                ("Case ID", case['case_id']),
+                ("Unbanned By", f"{moderator.display_name}"),
+            ], emoji="🔓")
+
+        return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+
     async def log_mute_expired(
         self,
         user_id: int,
         display_name: str,
         user_avatar_url: Optional[str] = None,
+        guild_id: Optional[int] = None,
     ) -> None:
         """
-        Log an auto-unmute (expired mute) to the user's case thread.
+        Log an auto-unmute (expired mute) - finds active mute case and resolves it.
+
+        NEW DESIGN (per-action cases):
+            Finds the active mute case for this user and logs the expiry
+            to that case's thread, then marks the case as resolved.
+            Falls back to legacy per-user cases for backward compatibility.
 
         Args:
             user_id: The user whose mute expired.
             display_name: Display name of the user.
             user_avatar_url: Optional avatar URL (avoids API call if provided).
+            guild_id: Guild ID (for looking up per-action cases).
         """
         if not self.enabled:
             return
 
         try:
+            # Try to find active mute case (new per-action system)
+            if guild_id:
+                active_mute_case = self.db.get_active_mute_case(user_id, guild_id)
+
+                if active_mute_case:
+                    case_thread = await self._get_case_thread(active_mute_case["thread_id"])
+
+                    if case_thread:
+                        now = datetime.now(NY_TZ)
+
+                        # Calculate mute duration from the case's created_at
+                        mute_duration = None
+                        if active_mute_case.get("created_at"):
+                            muted_at = active_mute_case["created_at"]
+                            mute_duration_seconds = now.timestamp() - muted_at
+                            mute_duration = self._format_duration_precise(mute_duration_seconds)
+
+                        embed = discord.Embed(
+                            title="⏰ Mute Expired",
+                            description="The mute duration has ended.",
+                            color=EmbedColors.SUCCESS,
+                            timestamp=now,
+                        )
+
+                        if user_avatar_url:
+                            embed.set_thumbnail(url=user_avatar_url)
+
+                        if mute_duration:
+                            embed.add_field(name="Was Muted For", value=f"`{mute_duration}`", inline=True)
+
+                        embed.set_footer(text=f"Case Resolved • ID: {user_id}")
+
+                        view = CaseLogView(
+                            user_id=user_id,
+                            guild_id=guild_id,
+                            case_thread_id=active_mute_case["thread_id"],
+                            case_id=active_mute_case["case_id"],
+                        )
+                        await safe_send(case_thread, embed=embed, view=view)
+
+                        # Resolve the mute case
+                        self.db.resolve_case(
+                            case_id=active_mute_case["case_id"],
+                            resolved_by=0,  # 0 indicates system/auto-resolve
+                            reason="Mute duration expired",
+                        )
+
+                        # Also update legacy unmute timestamp
+                        self.db.update_last_unmute(user_id)
+
+                        logger.tree("Case Log: Mute Case Resolved (Expired)", [
+                            ("User", f"{display_name} ({user_id})"),
+                            ("Case ID", active_mute_case["case_id"]),
+                            ("Duration", mute_duration or "Unknown"),
+                        ], emoji="⏰")
+
+                        return
+
+            # Fall back to legacy per-user case
             case = self.db.get_case_log(user_id)
             if not case:
                 return
@@ -1442,10 +1733,11 @@ class CaseLogService:
                     user_id=user_id,
                     guild_id=case_thread.guild.id,
                     case_thread_id=case["thread_id"],
+                    case_id=case["case_id"],
                 )
                 await safe_send(case_thread, embed=embed, view=view)
 
-                logger.tree("Case Log: Mute Expiry Logged", [
+                logger.tree("Case Log: Mute Expiry Logged (Legacy)", [
                     ("User", f"{display_name} ({user_id})"),
                     ("Case ID", case['case_id']),
                 ], emoji="⏰")
@@ -1533,6 +1825,8 @@ class CaseLogService:
                 view = CaseLogView(
                     user_id=user_id,
                     guild_id=case_thread.guild.id,
+                    case_thread_id=case["thread_id"],
+                    case_id=case["case_id"],
                 )
                 await safe_send(case_thread, embed=embed, view=view)
 
@@ -1620,6 +1914,7 @@ class CaseLogService:
                     guild_id=member.guild.id,
                     case_thread_id=case["thread_id"],
                     is_mute_embed=True,  # User is still muted
+                    case_id=case["case_id"],
                 )
                 await safe_send(case_thread, embed=embed, view=view)
 
@@ -1696,7 +1991,9 @@ class CaseLogService:
                 view = CaseLogView(
                     user_id=user_id,
                     guild_id=case_thread.guild.id,
+                    case_thread_id=case["thread_id"],
                     is_mute_embed=True,  # User is still muted
+                    case_id=case["case_id"],
                 )
                 await safe_send(case_thread, embed=embed, view=view)
 
@@ -1716,6 +2013,164 @@ class CaseLogService:
     # Case Management
     # =========================================================================
 
+    async def _create_action_case(
+        self,
+        user: discord.User,
+        moderator: discord.Member,
+        action_type: str,
+        reason: Optional[str] = None,
+        duration_seconds: Optional[int] = None,
+        evidence: Optional[str] = None,
+    ) -> dict:
+        """
+        Create a new per-action case with its own forum thread.
+
+        NEW DESIGN (per-action cases):
+            Each mute/ban/warn creates its own case and thread.
+            Thread naming: [CASE_ID] | ActionType | Username
+
+        Args:
+            user: The target user.
+            moderator: The moderator performing the action.
+            action_type: 'mute', 'ban', or 'warn'.
+            reason: Optional reason for the action.
+            duration_seconds: Optional duration (for mutes).
+            evidence: Optional evidence URL/text.
+
+        Returns:
+            Dict with case_id, thread_id, and action_type.
+        """
+        case_id = self.db.get_next_case_id()
+        guild_id = moderator.guild.id
+
+        thread = await self._create_action_thread(user, case_id, action_type)
+
+        if thread:
+            self.db.create_case(
+                case_id=case_id,
+                user_id=user.id,
+                guild_id=guild_id,
+                thread_id=thread.id,
+                action_type=action_type,
+                moderator_id=moderator.id,
+                reason=reason,
+                duration_seconds=duration_seconds,
+                evidence=evidence,
+            )
+            # Cache the thread immediately
+            self._thread_cache[thread.id] = (thread, datetime.now(NY_TZ))
+
+            logger.tree("ACTION CASE CREATED", [
+                ("User", f"{user} ({user.id})"),
+                ("Action", action_type.title()),
+                ("Case ID", case_id),
+                ("Thread ID", str(thread.id)),
+            ], emoji="📂")
+
+            return {
+                "case_id": case_id,
+                "thread_id": thread.id,
+                "action_type": action_type,
+                "user_id": user.id,
+            }
+
+        logger.error(f"_create_action_case: Failed to create thread for {action_type} case, user {user.id}")
+        raise RuntimeError(f"Failed to create {action_type} case thread")
+
+    async def _create_action_thread(
+        self,
+        user: discord.User,
+        case_id: str,
+        action_type: str,
+    ) -> Optional[discord.Thread]:
+        """
+        Create a new forum thread for a per-action case.
+
+        Thread naming: [CASE_ID] | ActionType | Username
+        Examples: [K3M9] | Mute | JohnDoe
+                  [X7B2] | Ban | JohnDoe
+
+        Args:
+            user: The target user.
+            case_id: The unique 4-character case ID.
+            action_type: 'mute', 'ban', or 'warn'.
+
+        Returns:
+            The created thread, or None on failure.
+        """
+        forum = await self._get_forum()
+        if not forum:
+            logger.warning("_create_action_thread: Forum not found")
+            return None
+
+        # Build user profile embed
+        user_embed = discord.Embed(
+            title="📋 User Profile",
+            color=EmbedColors.INFO,
+            timestamp=datetime.now(NY_TZ),
+        )
+        user_embed.set_thumbnail(url=user.display_avatar.url)
+        user_embed.add_field(name="Username", value=f"{user.name}", inline=True)
+        user_embed.add_field(
+            name="Display Name",
+            value=f"{user.display_name}" if hasattr(user, 'display_name') else user.name,
+            inline=True,
+        )
+        user_embed.add_field(name="User ID", value=f"`{user.id}`", inline=True)
+
+        # Discord account creation date
+        user_embed.add_field(
+            name="Discord Joined",
+            value=f"<t:{int(user.created_at.timestamp())}:F>",
+            inline=True,
+        )
+
+        # Server join date (if member)
+        if hasattr(user, "joined_at") and user.joined_at:
+            user_embed.add_field(
+                name="Server Joined",
+                value=f"<t:{int(user.joined_at.timestamp())}:F>",
+                inline=True,
+            )
+
+        # Account age
+        now = datetime.now(NY_TZ)
+        created_at = user.created_at.replace(tzinfo=NY_TZ) if user.created_at.tzinfo is None else user.created_at
+        account_age = self._format_age(created_at, now)
+        user_embed.add_field(name="Account Age", value=account_age, inline=True)
+
+        # Previous names (if any)
+        previous_names = self.db.get_previous_names(user.id, limit=3)
+        if previous_names:
+            names_str = ", ".join(f"`{name}`" for name in previous_names)
+            user_embed.add_field(name="Previous Names", value=names_str, inline=False)
+
+        set_footer(user_embed)
+
+        # Create thread with action-specific naming
+        action_display = action_type.title()  # "Mute", "Ban", "Warn"
+        display_name = user.display_name if hasattr(user, 'display_name') else user.name
+        thread_name = f"[{case_id}] | {action_display} | {display_name}"
+
+        try:
+            thread_with_msg = await forum.create_thread(
+                name=thread_name[:100],  # Discord limit
+                embed=user_embed,
+            )
+
+            # Pin the first message (user profile)
+            try:
+                if thread_with_msg.message:
+                    await thread_with_msg.message.pin()
+            except Exception as pin_error:
+                logger.warning(f"Failed to pin profile in action case {case_id}: {str(pin_error)[:50]}")
+
+            return thread_with_msg.thread
+
+        except Exception as e:
+            logger.error(f"Failed to create action thread: {type(e).__name__}: {str(e)[:100]}")
+            return None
+
     async def _get_or_create_case(
         self,
         user: discord.Member,
@@ -1723,7 +2178,8 @@ class CaseLogService:
         moderator_id: Optional[int] = None,
     ) -> dict:
         """
-        Get existing case or create new one with forum thread.
+        LEGACY: Get existing case or create new one with forum thread.
+        Kept for backward compatibility with old per-user cases.
 
         Args:
             user: The user to get/create case for.
@@ -2445,12 +2901,17 @@ class CaseLogService:
             # Preserve the view (buttons) when editing
             view = None
             if embed_message.components:
+                # Look up the case_id from the thread
+                case_by_thread = self.db.get_case_by_thread(thread.id)
+                case_id_for_view = case_by_thread["case_id"] if case_by_thread else None
+
                 # Recreate the view for this message
                 view = CaseLogView(
                     user_id=pending["target_user_id"],
                     guild_id=thread.guild.id if thread.guild else None,
                     case_thread_id=thread.id,
                     is_mute_embed=(action_type in ("mute", "extension", "timeout")),
+                    case_id=case_id_for_view,
                 )
 
             if view:

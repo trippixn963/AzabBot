@@ -419,8 +419,8 @@ class TestCaseLogView:
             case_thread_id=555666777,
         )
 
-        # Should have 3 children: Case button, Message button, Download button
-        assert len(view.children) == 3
+        # Should have 6 children: Case, Message (row 0), Info, Avatar, History, Notes (row 1)
+        assert len(view.children) == 6
 
         # Check button labels
         labels = [getattr(c, 'label', '') for c in view.children]
@@ -428,7 +428,7 @@ class TestCaseLogView:
         assert "Message" in labels
 
     def test_case_log_view_without_optional_buttons(self, test_db, mock_bot, monkeypatch):
-        """Test view works without optional message URL."""
+        """Test view works without optional message URL and case thread."""
         from src.core import config as config_module
         mock_config = MagicMock()
         mock_config.case_log_forum_id = 123456789
@@ -444,8 +444,8 @@ class TestCaseLogView:
             case_thread_id=None,
         )
 
-        # Should only have 1 child: Download button
-        assert len(view.children) == 1
+        # Should have 4 children: Info, Avatar, History, Notes (row 1 only)
+        assert len(view.children) == 4
 
     def test_case_log_view_case_button_url(self, test_db, mock_bot, monkeypatch):
         """Test case button has correct URL."""
@@ -489,15 +489,15 @@ class TestCaseLogView:
 
 
 # =============================================================================
-# Integration Tests: Mute → Case Log → Reply Flow
+# Integration Tests: Per-Action Case System
 # =============================================================================
 
 class TestMuteCaseLogIntegration:
-    """Integration tests for the full mute → case log → reply flow."""
+    """Integration tests for the per-action case system."""
 
     @pytest.mark.asyncio
-    async def test_log_mute_creates_case_and_thread(self, test_db, mock_bot, mock_discord_member, mock_discord_moderator, mock_discord_forum, mock_discord_thread, monkeypatch):
-        """Test that log_mute creates a case and thread for new users."""
+    async def test_log_mute_creates_per_action_case(self, test_db, mock_bot, mock_discord_member, mock_discord_moderator, mock_discord_forum, mock_discord_thread, monkeypatch):
+        """Test that log_mute creates a per-action case with its own thread."""
         from src.core import config as config_module
         mock_config = MagicMock()
         mock_config.case_log_forum_id = 444555666
@@ -514,6 +514,7 @@ class TestMuteCaseLogIntegration:
         mock_discord_forum.create_thread = AsyncMock(return_value=thread_result)
         mock_bot.get_channel.return_value = mock_discord_forum
         mock_bot.fetch_channel = AsyncMock(return_value=mock_discord_thread)
+        mock_discord_thread.send = AsyncMock(return_value=MagicMock(id=888999000))
 
         service = CaseLogService(mock_bot)
 
@@ -525,20 +526,21 @@ class TestMuteCaseLogIntegration:
             reason="Test reason",
         )
 
-        # Verify case was created
+        # Verify per-action case was created
         assert result is not None
         assert "case_id" in result
         assert "thread_id" in result
         assert len(result["case_id"]) == 4
 
-        # Verify database entry
-        case = test_db.get_case_log(mock_discord_member.id)
+        # Verify per-action case in database
+        case = test_db.get_case(result["case_id"])
         assert case is not None
-        assert case["mute_count"] == 1
+        assert case["action_type"] == "mute"
+        assert case["status"] == "open"
 
     @pytest.mark.asyncio
-    async def test_log_mute_increments_count_for_existing_case(self, test_db, mock_bot, mock_discord_member, mock_discord_moderator, mock_discord_thread, monkeypatch):
-        """Test that second mute increments count for existing case."""
+    async def test_second_mute_creates_new_case(self, test_db, mock_bot, mock_discord_member, mock_discord_moderator, mock_discord_forum, mock_discord_thread, monkeypatch):
+        """Test that second mute creates a NEW per-action case (not reusing old one)."""
         from src.core import config as config_module
         mock_config = MagicMock()
         mock_config.case_log_forum_id = 444555666
@@ -547,148 +549,8 @@ class TestMuteCaseLogIntegration:
         monkeypatch.setattr(config_module, "_config", mock_config)
 
         from src.services.case_log import CaseLogService
-
-        # Pre-create a case
-        test_db.create_case_log(mock_discord_member.id, "ABCD", mock_discord_thread.id)
 
         # Setup mocks
-        mock_bot.get_channel.return_value = mock_discord_thread
-        mock_bot.fetch_channel = AsyncMock(return_value=mock_discord_thread)
-        mock_discord_thread.send = AsyncMock(return_value=MagicMock(id=888999000))
-
-        service = CaseLogService(mock_bot)
-
-        # Log second mute
-        result = await service.log_mute(
-            user=mock_discord_member,
-            moderator=mock_discord_moderator,
-            duration="2 hours",
-            reason="Second offense",
-        )
-
-        # Verify mute count incremented
-        case = test_db.get_case_log(mock_discord_member.id)
-        assert case["mute_count"] == 2
-
-    @pytest.mark.asyncio
-    async def test_log_mute_creates_pending_reason_without_reason(self, test_db, mock_bot, mock_discord_member, mock_discord_moderator, mock_discord_thread, monkeypatch):
-        """Test that mute without reason creates pending reason entry."""
-        from src.core import config as config_module
-        mock_config = MagicMock()
-        mock_config.case_log_forum_id = 444555666
-        mock_config.developer_id = 111222333
-        mock_config.logging_guild_id = 987654321
-        monkeypatch.setattr(config_module, "_config", mock_config)
-
-        from src.services.case_log import CaseLogService
-
-        # Pre-create a case
-        test_db.create_case_log(mock_discord_member.id, "ABCD", mock_discord_thread.id)
-
-        # Setup mocks
-        mock_bot.get_channel.return_value = mock_discord_thread
-        mock_bot.fetch_channel = AsyncMock(return_value=mock_discord_thread)
-
-        embed_msg = MagicMock(id=111111)
-        warning_msg = MagicMock(id=222222)
-        mock_discord_thread.send = AsyncMock(side_effect=[embed_msg, warning_msg])
-
-        service = CaseLogService(mock_bot)
-
-        # Log mute without reason
-        await service.log_mute(
-            user=mock_discord_member,
-            moderator=mock_discord_moderator,
-            duration="1 hour",
-            reason=None,  # No reason
-        )
-
-        # Verify pending reason was created
-        pending = test_db.get_pending_reason_by_thread(mock_discord_thread.id, mock_discord_moderator.id)
-        assert pending is not None
-        assert pending["action_type"] == "mute"
-        assert pending["embed_message_id"] == 111111
-        assert pending["warning_message_id"] == 222222
-
-    @pytest.mark.asyncio
-    async def test_handle_reason_reply_updates_embed(self, test_db, mock_bot, mock_discord_member, mock_discord_moderator, mock_discord_thread, monkeypatch):
-        """Test that replying with reason updates the embed."""
-        from src.core import config as config_module
-        mock_config = MagicMock()
-        mock_config.case_log_forum_id = 444555666
-        mock_config.developer_id = 111222333
-        mock_config.logging_guild_id = 987654321
-        monkeypatch.setattr(config_module, "_config", mock_config)
-
-        from src.services.case_log import CaseLogService
-        from tests.conftest import MockEmbed
-
-        # Create pending reason
-        test_db.create_pending_reason(
-            thread_id=mock_discord_thread.id,
-            warning_message_id=222222,
-            embed_message_id=111111,
-            moderator_id=mock_discord_moderator.id,
-            target_user_id=mock_discord_member.id,
-            action_type="mute",
-        )
-
-        # Create mock embed message with our MockEmbed
-        mock_embed = MockEmbed(title="🔇 User Muted")
-        mock_embed.add_field(name="Reason", value="```No reason provided```", inline=False)
-
-        embed_msg = MagicMock()
-        embed_msg.id = 111111
-        embed_msg.embeds = [mock_embed]
-        embed_msg.edit = AsyncMock()
-
-        warning_msg = MagicMock()
-        warning_msg.id = 222222
-        warning_msg.delete = AsyncMock()
-
-        # Setup thread to return messages
-        mock_discord_thread.fetch_message = AsyncMock(side_effect=lambda id: embed_msg if id == 111111 else warning_msg)
-
-        # Create mock reply message with attachment
-        reply_message = MagicMock()
-        reply_message.content = "Spamming in chat"
-        reply_message.channel = mock_discord_thread
-        reply_message.author = mock_discord_moderator
-        reply_message.id = 333333
-        reply_message.reference = MagicMock()
-        reply_message.reference.message_id = 222222  # Reply to warning
-        reply_message.attachments = [
-            MagicMock(content_type="image/png", url="https://example.com/evidence.png")
-        ]
-        reply_message.delete = AsyncMock()
-
-        mock_bot.get_channel.return_value = mock_discord_thread
-        mock_bot.fetch_channel = AsyncMock(return_value=mock_discord_thread)
-
-        service = CaseLogService(mock_bot)
-
-        # Handle the reply
-        result = await service.handle_reason_reply(reply_message)
-
-        assert result is True
-
-        # Verify pending reason was deleted
-        pending_after = test_db.get_pending_reason_by_thread(mock_discord_thread.id, mock_discord_moderator.id)
-        assert pending_after is None
-
-    @pytest.mark.asyncio
-    async def test_full_mute_unmute_flow(self, test_db, mock_bot, mock_discord_member, mock_discord_moderator, mock_discord_forum, mock_discord_thread, monkeypatch):
-        """Test full flow: mute → case created → unmute logged."""
-        from src.core import config as config_module
-        mock_config = MagicMock()
-        mock_config.case_log_forum_id = 444555666
-        mock_config.developer_id = 111222333
-        mock_config.logging_guild_id = 987654321
-        monkeypatch.setattr(config_module, "_config", mock_config)
-
-        from src.services.case_log import CaseLogService
-
-        # Setup mock thread creation
         thread_result = MagicMock()
         thread_result.thread = mock_discord_thread
         thread_result.message = MagicMock(id=999888777)
@@ -699,7 +561,60 @@ class TestMuteCaseLogIntegration:
 
         service = CaseLogService(mock_bot)
 
-        # Step 1: Log mute
+        # First mute
+        result1 = await service.log_mute(
+            user=mock_discord_member,
+            moderator=mock_discord_moderator,
+            duration="1 hour",
+            reason="First offense",
+        )
+
+        # Resolve the first case
+        test_db.resolve_case(result1["case_id"], mock_discord_moderator.id, "Unmuted")
+
+        # Second mute
+        result2 = await service.log_mute(
+            user=mock_discord_member,
+            moderator=mock_discord_moderator,
+            duration="2 hours",
+            reason="Second offense",
+        )
+
+        # Verify different case IDs
+        assert result1["case_id"] != result2["case_id"]
+
+        # Verify both cases exist
+        case1 = test_db.get_case(result1["case_id"])
+        case2 = test_db.get_case(result2["case_id"])
+        assert case1 is not None
+        assert case2 is not None
+        assert case1["status"] == "resolved"
+        assert case2["status"] == "open"
+
+    @pytest.mark.asyncio
+    async def test_unmute_resolves_active_mute_case(self, test_db, mock_bot, mock_discord_member, mock_discord_moderator, mock_discord_forum, mock_discord_thread, monkeypatch):
+        """Test that unmute finds and resolves the active mute case."""
+        from src.core import config as config_module
+        mock_config = MagicMock()
+        mock_config.case_log_forum_id = 444555666
+        mock_config.developer_id = 111222333
+        mock_config.logging_guild_id = 987654321
+        monkeypatch.setattr(config_module, "_config", mock_config)
+
+        from src.services.case_log import CaseLogService
+
+        # Setup mocks
+        thread_result = MagicMock()
+        thread_result.thread = mock_discord_thread
+        thread_result.message = MagicMock(id=999888777)
+        mock_discord_forum.create_thread = AsyncMock(return_value=thread_result)
+        mock_bot.get_channel.return_value = mock_discord_forum
+        mock_bot.fetch_channel = AsyncMock(return_value=mock_discord_thread)
+        mock_discord_thread.send = AsyncMock(return_value=MagicMock(id=888999000))
+
+        service = CaseLogService(mock_bot)
+
+        # Step 1: Log mute (creates per-action case)
         mute_result = await service.log_mute(
             user=mock_discord_member,
             moderator=mock_discord_moderator,
@@ -708,7 +623,11 @@ class TestMuteCaseLogIntegration:
         )
         assert mute_result is not None
 
-        # Step 2: Log unmute
+        # Verify case is open
+        case_before = test_db.get_case(mute_result["case_id"])
+        assert case_before["status"] == "open"
+
+        # Step 2: Log unmute (should find and resolve the case)
         mock_bot.get_channel.return_value = mock_discord_thread
         unmute_result = await service.log_unmute(
             user_id=mock_discord_member.id,
@@ -720,9 +639,58 @@ class TestMuteCaseLogIntegration:
         assert unmute_result is not None
         assert unmute_result["case_id"] == mute_result["case_id"]
 
-        # Verify database reflects unmute
-        case = test_db.get_case_log(mock_discord_member.id)
-        assert case["last_unmute_at"] is not None
+        # Verify case is now resolved
+        case_after = test_db.get_case(mute_result["case_id"])
+        assert case_after["status"] == "resolved"
+        assert case_after["resolved_by"] == mock_discord_moderator.id
+
+    @pytest.mark.asyncio
+    async def test_get_user_cases_returns_all_cases(self, test_db, mock_bot, mock_discord_member, mock_discord_moderator, monkeypatch):
+        """Test that get_user_cases returns all cases for a user."""
+        from src.core import config as config_module
+        mock_config = MagicMock()
+        mock_config.case_log_forum_id = 444555666
+        monkeypatch.setattr(config_module, "_config", mock_config)
+
+        guild_id = mock_discord_member.guild.id
+
+        # Create some cases directly in the database
+        test_db.create_case("ABC1", mock_discord_member.id, guild_id, 111, "mute", mock_discord_moderator.id, "Reason 1", 3600, None)
+        test_db.create_case("ABC2", mock_discord_member.id, guild_id, 222, "warn", mock_discord_moderator.id, "Reason 2", None, None)
+        test_db.create_case("ABC3", mock_discord_member.id, guild_id, 333, "ban", mock_discord_moderator.id, "Reason 3", None, None)
+
+        # Resolve one case
+        test_db.resolve_case("ABC1", mock_discord_moderator.id, "Unmuted")
+
+        # Get all cases
+        cases = test_db.get_user_cases(mock_discord_member.id, guild_id, limit=10, include_resolved=True)
+        assert len(cases) == 3
+
+        # Get only open cases
+        open_cases = test_db.get_user_cases(mock_discord_member.id, guild_id, limit=10, include_resolved=False)
+        assert len(open_cases) == 2
+
+    @pytest.mark.asyncio
+    async def test_get_user_case_counts(self, test_db, mock_bot, mock_discord_member, mock_discord_moderator, monkeypatch):
+        """Test that get_user_case_counts returns correct counts by action type."""
+        from src.core import config as config_module
+        mock_config = MagicMock()
+        mock_config.case_log_forum_id = 444555666
+        monkeypatch.setattr(config_module, "_config", mock_config)
+
+        guild_id = mock_discord_member.guild.id
+
+        # Create cases of different types
+        test_db.create_case("MUT1", mock_discord_member.id, guild_id, 111, "mute", mock_discord_moderator.id, "Mute 1", 3600, None)
+        test_db.create_case("MUT2", mock_discord_member.id, guild_id, 222, "mute", mock_discord_moderator.id, "Mute 2", 3600, None)
+        test_db.create_case("WRN1", mock_discord_member.id, guild_id, 333, "warn", mock_discord_moderator.id, "Warn 1", None, None)
+        test_db.create_case("BAN1", mock_discord_member.id, guild_id, 444, "ban", mock_discord_moderator.id, "Ban 1", None, None)
+
+        # Get counts
+        counts = test_db.get_user_case_counts(mock_discord_member.id, guild_id)
+        assert counts["mute_count"] == 2
+        assert counts["warn_count"] == 1
+        assert counts["ban_count"] == 1
 
 
 class TestDebounceProfileUpdates:

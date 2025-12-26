@@ -253,12 +253,13 @@ class MuteScheduler:
             ("Reason", "Mute duration expired"),
         ], emoji="⏰")
 
-        # Log to case forum
+        # Log to case forum (includes guild_id for per-action case lookup)
         if self.bot.case_log_service:
             await self.bot.case_log_service.log_mute_expired(
                 user_id=member.id,
                 display_name=member.display_name,
                 user_avatar_url=member.display_avatar.url,
+                guild_id=guild.id,
             )
 
         # DM user (silent fail)

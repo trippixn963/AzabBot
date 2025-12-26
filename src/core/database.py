@@ -506,6 +506,44 @@ class DatabaseManager:
             pass  # Column already exists
 
         # -----------------------------------------------------------------
+        # Cases Table (NEW - Per-Action Cases)
+        # DESIGN: One case per moderation action (mute/ban/warn)
+        # Each action gets its own thread and case_id
+        # Unmute/unban resolves the corresponding case
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id TEXT UNIQUE NOT NULL,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                thread_id INTEGER NOT NULL,
+                action_type TEXT NOT NULL,
+                status TEXT DEFAULT 'open',
+                moderator_id INTEGER NOT NULL,
+                reason TEXT,
+                duration_seconds INTEGER,
+                evidence TEXT,
+                created_at REAL NOT NULL,
+                resolved_at REAL,
+                resolved_by INTEGER,
+                resolved_reason TEXT
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cases_user ON cases(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status, action_type)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cases_thread ON cases(thread_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cases_case_id ON cases(case_id)"
+        )
+
+        # -----------------------------------------------------------------
         # Mod Tracker Table
         # DESIGN: Tracks moderators and their activity log threads
         # -----------------------------------------------------------------
@@ -675,6 +713,11 @@ class DatabaseManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_mod_notes_time ON mod_notes(created_at)"
         )
+        # Add case_id column if it doesn't exist (migration)
+        try:
+            cursor.execute("ALTER TABLE mod_notes ADD COLUMN case_id TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
         # -----------------------------------------------------------------
         # Ban History Table
@@ -1358,7 +1401,7 @@ class DatabaseManager:
 
         DESIGN:
             Uses uppercase letters and digits for readability.
-            Checks database to ensure uniqueness before returning.
+            Checks both legacy case_logs and new cases tables for uniqueness.
             With 36^4 = 1,679,616 possible combinations, collisions are rare.
 
         Returns:
@@ -1370,12 +1413,19 @@ class DatabaseManager:
             # Generate random 4-character code
             case_id = ''.join(secrets.choice(chars) for _ in range(4))
 
-            # Check if it already exists
+            # Check if it already exists in legacy table
             row = self.fetchone(
                 "SELECT 1 FROM case_logs WHERE case_id = ?",
                 (case_id,)
             )
+            if row:
+                continue
 
+            # Check if it exists in new cases table
+            row = self.fetchone(
+                "SELECT 1 FROM cases WHERE case_id = ?",
+                (case_id,)
+            )
             if not row:
                 return case_id
 
@@ -1752,6 +1802,276 @@ class DatabaseManager:
             "UPDATE case_logs SET profile_message_id = ? WHERE user_id = ?",
             (message_id, user_id)
         )
+
+    # =========================================================================
+    # Per-Action Case Operations (NEW)
+    # =========================================================================
+
+    def create_case(
+        self,
+        case_id: str,
+        user_id: int,
+        guild_id: int,
+        thread_id: int,
+        action_type: str,
+        moderator_id: int,
+        reason: Optional[str] = None,
+        duration_seconds: Optional[int] = None,
+        evidence: Optional[str] = None,
+    ) -> str:
+        """
+        Create a new per-action case.
+
+        Args:
+            case_id: Unique 4-char case ID.
+            user_id: Target user ID.
+            guild_id: Guild ID.
+            thread_id: Forum thread ID for this case.
+            action_type: 'mute', 'ban', or 'warn'.
+            moderator_id: Moderator who created the case.
+            reason: Optional reason for the action.
+            duration_seconds: Optional duration (for mutes).
+            evidence: Optional evidence URL/text.
+
+        Returns:
+            The case_id.
+        """
+        now = time.time()
+        self.execute(
+            """INSERT INTO cases
+               (case_id, user_id, guild_id, thread_id, action_type, status,
+                moderator_id, reason, duration_seconds, evidence, created_at)
+               VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)""",
+            (case_id, user_id, guild_id, thread_id, action_type,
+             moderator_id, reason, duration_seconds, evidence, now)
+        )
+        return case_id
+
+    def get_case(self, case_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a case by its ID.
+
+        Args:
+            case_id: The 4-char case ID.
+
+        Returns:
+            Case dict or None if not found.
+        """
+        row = self.fetchone(
+            "SELECT * FROM cases WHERE case_id = ?",
+            (case_id,)
+        )
+        return dict(row) if row else None
+
+    def get_case_by_thread(self, thread_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a case by its thread ID.
+
+        Args:
+            thread_id: The forum thread ID.
+
+        Returns:
+            Case dict or None if not found.
+        """
+        row = self.fetchone(
+            "SELECT * FROM cases WHERE thread_id = ?",
+            (thread_id,)
+        )
+        return dict(row) if row else None
+
+    def get_active_mute_case(
+        self,
+        user_id: int,
+        guild_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get the most recent open mute case for a user.
+
+        Used when unmuting to find the case thread to log to.
+
+        Args:
+            user_id: Target user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Active mute case dict or None.
+        """
+        row = self.fetchone(
+            """SELECT * FROM cases
+               WHERE user_id = ? AND guild_id = ?
+               AND action_type = 'mute' AND status = 'open'
+               ORDER BY created_at DESC LIMIT 1""",
+            (user_id, guild_id)
+        )
+        return dict(row) if row else None
+
+    def get_active_ban_case(
+        self,
+        user_id: int,
+        guild_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get the most recent open ban case for a user.
+
+        Used when unbanning to find the case thread to log to.
+
+        Args:
+            user_id: Target user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Active ban case dict or None.
+        """
+        row = self.fetchone(
+            """SELECT * FROM cases
+               WHERE user_id = ? AND guild_id = ?
+               AND action_type = 'ban' AND status = 'open'
+               ORDER BY created_at DESC LIMIT 1""",
+            (user_id, guild_id)
+        )
+        return dict(row) if row else None
+
+    def resolve_case(
+        self,
+        case_id: str,
+        resolved_by: int,
+        reason: Optional[str] = None,
+    ) -> bool:
+        """
+        Mark a case as resolved (for unmute/unban).
+
+        Args:
+            case_id: The case to resolve.
+            resolved_by: User ID who resolved it.
+            reason: Optional reason for resolution.
+
+        Returns:
+            True if case was resolved, False if not found or already resolved.
+        """
+        now = time.time()
+        cursor = self.execute(
+            """UPDATE cases
+               SET status = 'resolved', resolved_at = ?, resolved_by = ?, resolved_reason = ?
+               WHERE case_id = ? AND status = 'open'""",
+            (now, resolved_by, reason, case_id)
+        )
+        return cursor.rowcount > 0
+
+    def get_user_cases(
+        self,
+        user_id: int,
+        guild_id: int,
+        limit: int = 25,
+        include_resolved: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all cases for a user, sorted by most recent.
+
+        Args:
+            user_id: Target user ID.
+            guild_id: Guild ID.
+            limit: Maximum number of cases to return.
+            include_resolved: Whether to include resolved cases.
+
+        Returns:
+            List of case dicts.
+        """
+        if include_resolved:
+            query = """SELECT * FROM cases
+                       WHERE user_id = ? AND guild_id = ?
+                       ORDER BY created_at DESC LIMIT ?"""
+            rows = self.fetchall(query, (user_id, guild_id, limit))
+        else:
+            query = """SELECT * FROM cases
+                       WHERE user_id = ? AND guild_id = ? AND status = 'open'
+                       ORDER BY created_at DESC LIMIT ?"""
+            rows = self.fetchall(query, (user_id, guild_id, limit))
+        return [dict(row) for row in rows]
+
+    def get_user_case_counts(self, user_id: int, guild_id: int) -> Dict[str, int]:
+        """
+        Get case counts by action type for a user.
+
+        Args:
+            user_id: Target user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Dict with mute_count, ban_count, warn_count.
+        """
+        row = self.fetchone(
+            """SELECT
+                SUM(CASE WHEN action_type = 'mute' THEN 1 ELSE 0 END) as mute_count,
+                SUM(CASE WHEN action_type = 'ban' THEN 1 ELSE 0 END) as ban_count,
+                SUM(CASE WHEN action_type = 'warn' THEN 1 ELSE 0 END) as warn_count
+               FROM cases WHERE user_id = ? AND guild_id = ?""",
+            (user_id, guild_id)
+        )
+        return {
+            "mute_count": row["mute_count"] or 0 if row else 0,
+            "ban_count": row["ban_count"] or 0 if row else 0,
+            "warn_count": row["warn_count"] or 0 if row else 0,
+        }
+
+    def get_old_cases(self, cutoff_timestamp: float) -> List[Dict[str, Any]]:
+        """
+        Get cases older than the cutoff timestamp that aren't archived.
+
+        Args:
+            cutoff_timestamp: Unix timestamp cutoff (cases created before this).
+
+        Returns:
+            List of case dicts.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM cases
+               WHERE created_at < ? AND status != 'archived'
+               ORDER BY created_at ASC""",
+            (cutoff_timestamp,)
+        )
+        return [dict(row) for row in rows]
+
+    def archive_case(self, case_id: str) -> bool:
+        """
+        Mark a case as archived (thread was deleted).
+
+        Args:
+            case_id: The case ID to archive.
+
+        Returns:
+            True if case was archived, False if not found.
+        """
+        cursor = self.execute(
+            "UPDATE cases SET status = 'archived' WHERE case_id = ?",
+            (case_id,)
+        )
+        return cursor.rowcount > 0
+
+    def get_most_recent_resolved_case(
+        self,
+        user_id: int,
+        guild_id: int,
+        action_type: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get the most recently resolved case for a user.
+
+        Args:
+            user_id: Target user ID.
+            guild_id: Guild ID.
+            action_type: Type of action ('mute', 'ban', 'warn').
+
+        Returns:
+            Case dict with resolved_at, resolved_by, etc. or None.
+        """
+        row = self.fetchone(
+            """SELECT * FROM cases
+               WHERE user_id = ? AND guild_id = ? AND action_type = ?
+               AND status = 'resolved'
+               ORDER BY resolved_at DESC LIMIT 1""",
+            (user_id, guild_id, action_type)
+        )
+        return dict(row) if row else None
 
     # =========================================================================
     # Mod Tracker Operations
@@ -2412,6 +2732,7 @@ class DatabaseManager:
         guild_id: int,
         moderator_id: int,
         note: str,
+        case_id: Optional[str] = None,
     ) -> int:
         """
         Save a moderator note about a user.
@@ -2421,6 +2742,7 @@ class DatabaseManager:
             guild_id: Guild ID.
             moderator_id: Moderator who created the note.
             note: The note text.
+            case_id: Optional case ID to link this note to.
 
         Returns:
             The row ID of the inserted note.
@@ -2428,14 +2750,15 @@ class DatabaseManager:
         now = time.time()
         cursor = self.execute(
             """INSERT INTO mod_notes
-               (user_id, guild_id, moderator_id, note, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (user_id, guild_id, moderator_id, note, now)
+               (user_id, guild_id, moderator_id, note, created_at, case_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, guild_id, moderator_id, note, now, case_id)
         )
 
         logger.tree("MOD NOTE SAVED", [
             ("User ID", str(user_id)),
             ("Moderator ID", str(moderator_id)),
+            ("Case ID", case_id or "N/A"),
             ("Note", (note[:40] + "...") if len(note) > 40 else note),
         ], emoji="📝")
 
@@ -2446,6 +2769,7 @@ class DatabaseManager:
         user_id: int,
         guild_id: int,
         limit: int = 20,
+        case_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Get moderator notes for a user.
@@ -2454,17 +2778,27 @@ class DatabaseManager:
             user_id: Discord user ID.
             guild_id: Guild ID.
             limit: Maximum records to return.
+            case_id: Optional case ID to filter by.
 
         Returns:
             List of note records, newest first.
         """
-        rows = self.fetchall(
-            """SELECT * FROM mod_notes
-               WHERE user_id = ? AND guild_id = ?
-               ORDER BY created_at DESC
-               LIMIT ?""",
-            (user_id, guild_id, limit)
-        )
+        if case_id:
+            rows = self.fetchall(
+                """SELECT * FROM mod_notes
+                   WHERE user_id = ? AND guild_id = ? AND case_id = ?
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (user_id, guild_id, case_id, limit)
+            )
+        else:
+            rows = self.fetchall(
+                """SELECT * FROM mod_notes
+                   WHERE user_id = ? AND guild_id = ?
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (user_id, guild_id, limit)
+            )
         return [dict(row) for row in rows]
 
     def get_note_count(self, user_id: int, guild_id: int) -> int:

@@ -83,6 +83,10 @@ class MockEmbed:
         self._image = {'url': url}
         return self
 
+    def set_author(self, name='', icon_url=None, url=None):
+        self._author = {'name': name, 'icon_url': icon_url, 'url': url}
+        return self
+
 
 # Mock View that tracks children
 class MockView:
@@ -101,12 +105,13 @@ class MockView:
 class MockButton:
     """Mock Discord Button."""
 
-    def __init__(self, label='', url=None, style=None, emoji=None, custom_id=None):
+    def __init__(self, label='', url=None, style=None, emoji=None, custom_id=None, row=None):
         self.label = label
         self.url = url
         self.style = style
         self.emoji = emoji
         self.custom_id = custom_id
+        self.row = row
 
 
 # Mock PartialEmoji

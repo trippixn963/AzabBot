@@ -88,6 +88,7 @@ class AzabBot(commands.Bot):
         self.health_server = None
         self.mute_scheduler = None
         self.case_log_service = None
+        self.case_archive_scheduler = None
         self.alt_detection = None
         self.mod_tracker = None
         self.logging_service = None
@@ -251,6 +252,11 @@ class AzabBot(commands.Bot):
                     ("Forum ID", str(self.config.case_log_forum_id)),
                     ("Reason Scheduler", "Running"),
                 ], emoji="📝")
+
+                # Start case archive scheduler
+                from src.services.case_archive_scheduler import CaseArchiveScheduler
+                self.case_archive_scheduler = CaseArchiveScheduler(self)
+                await self.case_archive_scheduler.start()
             else:
                 logger.info("Case Log Service Disabled (no forum configured)")
 
@@ -473,6 +479,9 @@ class AzabBot(commands.Bot):
 
         if self.case_log_service and self.case_log_service.enabled:
             await self.case_log_service.stop_reason_scheduler()
+
+        if self.case_archive_scheduler:
+            await self.case_archive_scheduler.stop()
 
         if self.health_server:
             await self.health_server.stop()

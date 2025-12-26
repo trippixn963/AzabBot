@@ -167,11 +167,19 @@ class PrisonHandler:
             # )
 
             # Create welcome embed
+            visit_num = prisoner_stats['total_mutes'] + 1
             embed = discord.Embed(
-                title="NEW PRISONER ARRIVAL",
-                description=f"{member.mention}",
+                title="🔒 Sent to Prison",
+                description=f"**{member.display_name}** has been sent to prison.",
                 color=EmbedColors.PRISON,
             )
+
+            embed.add_field(name="Prisoner", value=f"`{member.name}`\n{member.mention}", inline=True)
+
+            if prisoner_stats["total_mutes"] > 0:
+                total_time = format_duration(prisoner_stats["total_minutes"] or 0)
+                embed.add_field(name="Visit #", value=f"`{visit_num}`", inline=True)
+                embed.add_field(name="Total Time Served", value=f"`{total_time}`", inline=True)
 
             if mute_reason:
                 embed.add_field(
@@ -179,15 +187,6 @@ class PrisonHandler:
                     value=mute_reason[:self.config.mute_reason_max_length],
                     inline=False,
                 )
-
-            if prisoner_stats["total_mutes"] > 0:
-                embed.add_field(
-                    name="Prison Record",
-                    value=f"Visit #{prisoner_stats['total_mutes'] + 1}",
-                    inline=True,
-                )
-                total_time = format_duration(prisoner_stats["total_minutes"] or 0)
-                embed.add_field(name="Total Time Served", value=total_time, inline=True)
 
             embed.set_thumbnail(
                 url=member.avatar.url if member.avatar else member.default_avatar.url
@@ -389,10 +388,11 @@ class PrisonHandler:
                 mute_announcement = "Welcome to prison!"
 
             embed = discord.Embed(
-                title="USER MUTED",
-                description=f"{member.mention} has been sent to prison.",
-                color=EmbedColors.ERROR,
+                title="🔒 Sent to Prison",
+                description=f"**{member.display_name}** has been sent to prison.",
+                color=EmbedColors.PRISON,
             )
+            embed.add_field(name="Prisoner", value=f"`{member.name}`\n{member.mention}", inline=True)
             embed.set_thumbnail(
                 url=member.avatar.url if member.avatar else member.default_avatar.url
             )

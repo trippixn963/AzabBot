@@ -113,7 +113,7 @@ class WarnModal(discord.ui.Modal, title="Warn User"):
 # =============================================================================
 
 class WarnCog(commands.Cog):
-    """Cog for warning users."""
+    """Cog for warning users. Supports cross-server moderation from mod server."""
 
     def __init__(self, bot: "AzabBot") -> None:
         self.bot = bot
@@ -135,6 +135,31 @@ class WarnCog(commands.Cog):
         logger.tree("Warn Cog Loaded", [
             ("Commands", "/warn, context menus"),
         ], emoji="⚠️")
+
+    # =========================================================================
+    # Cross-Server Helpers
+    # =========================================================================
+
+    def _get_target_guild(self, interaction: discord.Interaction) -> discord.Guild:
+        """
+        Get the target guild for moderation actions.
+
+        If command is run from mod server, targets the main server.
+        Otherwise, targets the current server.
+        """
+        if (self.config.mod_server_id and
+            self.config.logging_guild_id and
+            interaction.guild.id == self.config.mod_server_id):
+            main_guild = self.bot.get_guild(self.config.logging_guild_id)
+            if main_guild:
+                return main_guild
+        return interaction.guild
+
+    def _is_cross_server(self, interaction: discord.Interaction) -> bool:
+        """Check if this is a cross-server moderation action."""
+        return (self.config.mod_server_id and
+                self.config.logging_guild_id and
+                interaction.guild.id == self.config.mod_server_id)
 
     async def cog_unload(self) -> None:
         """Unload the cog."""
@@ -170,12 +195,15 @@ class WarnCog(commands.Cog):
     async def execute_warn(
         self,
         interaction: discord.Interaction,
-        user: discord.Member,
+        user: discord.User,
         reason: Optional[str] = None,
         evidence: Optional[str] = None,
     ) -> None:
         """
         Execute warn logic (shared by /warn command and context menu).
+
+        Supports cross-server moderation: when run from mod server,
+        the warning is recorded for the main server.
 
         Args:
             interaction: Discord interaction context.
@@ -183,6 +211,16 @@ class WarnCog(commands.Cog):
             reason: Optional reason for warning.
             evidence: Optional evidence link/description.
         """
+        # -----------------------------------------------------------------
+        # Get Target Guild (for cross-server moderation)
+        # -----------------------------------------------------------------
+
+        target_guild = self._get_target_guild(interaction)
+        is_cross_server = self._is_cross_server(interaction)
+
+        # Try to get member from target guild for role checks
+        target_member = target_guild.get_member(user.id)
+
         # ---------------------------------------------------------------------
         # Validation
         # ---------------------------------------------------------------------
@@ -212,14 +250,16 @@ class WarnCog(commands.Cog):
             await interaction.followup.send("I cannot warn bots.", ephemeral=True)
             return
 
-        if isinstance(interaction.user, discord.Member):
-            if user.top_role >= interaction.user.top_role and not is_developer(interaction.user.id):
+        # Role hierarchy check (only if target is a member)
+        if target_member and isinstance(interaction.user, discord.Member):
+            mod_member = target_guild.get_member(interaction.user.id) if is_cross_server else interaction.user
+            if mod_member and target_member.top_role >= mod_member.top_role and not is_developer(interaction.user.id):
                 logger.tree("WARN BLOCKED", [
                     ("Reason", "Role hierarchy"),
                     ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-                    ("Mod Role", interaction.user.top_role.name),
+                    ("Mod Role", mod_member.top_role.name),
                     ("Target", f"{user} ({user.id})"),
-                    ("Target Role", user.top_role.name),
+                    ("Target Role", target_member.top_role.name),
                 ], emoji="🚫")
                 await interaction.followup.send(
                     "You cannot warn someone with an equal or higher role.",
@@ -233,46 +273,63 @@ class WarnCog(commands.Cog):
 
         self.db.add_warning(
             user_id=user.id,
-            guild_id=interaction.guild.id,
+            guild_id=target_guild.id,
             moderator_id=interaction.user.id,
             reason=reason,
             evidence=evidence,
         )
 
-        active_warns, total_warns = self.db.get_warn_counts(user.id, interaction.guild.id)
+        active_warns, total_warns = self.db.get_warn_counts(user.id, target_guild.id)
 
-        logger.tree("USER WARNED", [
+        log_items = [
             ("User", f"{user} ({user.id})"),
             ("Moderator", str(interaction.user)),
             ("Active Warnings", str(active_warns)),
             ("Total Warnings", str(total_warns)),
             ("Reason", (reason or "None")[:50]),
-        ], emoji="⚠️")
+        ]
+        if is_cross_server:
+            log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
+        logger.tree("USER WARNED", log_items, emoji="⚠️")
 
         # ---------------------------------------------------------------------
-        # Prepare Case
+        # Log to Case Forum (creates per-action case)
         # ---------------------------------------------------------------------
 
         case_info = None
         if self.bot.case_log_service:
-            case_info = await self.bot.case_log_service.prepare_case(user)
+            case_info = await self.bot.case_log_service.log_warn(
+                user=target_member or user,
+                moderator=interaction.user,
+                reason=reason,
+                evidence=evidence,
+                active_warns=active_warns,
+                total_warns=total_warns,
+            )
 
         # ---------------------------------------------------------------------
         # Build & Send Embed
         # ---------------------------------------------------------------------
 
-        embed = discord.Embed(title="⚠️ User Warned", color=EmbedColors.WARNING)
-        embed.add_field(name="User", value=f"`{user.name}` ({user.mention})", inline=False)
-        embed.add_field(name="Moderator", value=f"{interaction.user.mention}\n`{interaction.user.display_name}`", inline=True)
+        display_name = target_member.display_name if target_member else user.name
+        avatar_url = target_member.display_avatar.url if target_member else user.display_avatar.url
+
+        embed = discord.Embed(
+            title="⚠️ User Warned",
+            description=f"**{display_name}** has received a warning.",
+            color=EmbedColors.WARNING,
+        )
+        embed.add_field(name="User", value=f"`{user.name}`\n{user.mention}", inline=True)
+        embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`\n{interaction.user.mention}", inline=True)
 
         # Show active warnings with total in parentheses if different
         if active_warns != total_warns:
-            embed.add_field(name="Warnings", value=f"`{active_warns}` active (`{total_warns}` total)", inline=True)
+            embed.add_field(name="Warnings", value=f"`{active_warns}` active\n(`{total_warns}` total)", inline=True)
         else:
             embed.add_field(name="Warning #", value=f"`{active_warns}`", inline=True)
 
         if case_info:
-            embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
+            embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
 
         if reason:
             embed.add_field(name="Reason", value=reason, inline=False)
@@ -280,13 +337,13 @@ class WarnCog(commands.Cog):
         # Note: Evidence is intentionally not shown in public embed
         # It's only visible in DMs, case logs, and mod logs
 
-        embed.set_thumbnail(url=user.display_avatar.url)
+        embed.set_thumbnail(url=avatar_url)
         set_footer(embed)
 
         sent_message = None
         try:
             if case_info:
-                view = CaseButtonView(interaction.guild.id, case_info["thread_id"], user.id)
+                view = CaseButtonView(target_guild.id, case_info["thread_id"], user.id)
                 sent_message = await interaction.followup.send(embed=embed, view=view)
             else:
                 sent_message = await interaction.followup.send(embed=embed)
@@ -297,22 +354,10 @@ class WarnCog(commands.Cog):
         # Concurrent Post-Response Operations
         # ---------------------------------------------------------------------
 
-        async def _log_to_case_forum():
-            if self.bot.case_log_service and case_info and sent_message:
-                await self.bot.case_log_service.log_warn(
-                    user=user,
-                    moderator=interaction.user,
-                    reason=reason,
-                    evidence=evidence,
-                    active_warns=active_warns,
-                    total_warns=total_warns,
-                    source_message_url=sent_message.jump_url,
-                )
-
         async def _dm_user():
             try:
                 dm_embed = discord.Embed(title="You have been warned", color=EmbedColors.WARNING)
-                dm_embed.add_field(name="Server", value=f"`{interaction.guild.name}`", inline=False)
+                dm_embed.add_field(name="Server", value=f"`{target_guild.name}`", inline=False)
                 if active_warns != total_warns:
                     dm_embed.add_field(name="Active Warnings", value=f"`{active_warns}` (`{total_warns}` total)", inline=True)
                 else:
@@ -321,7 +366,7 @@ class WarnCog(commands.Cog):
                 dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
                 if evidence:
                     dm_embed.add_field(name="Evidence", value=evidence, inline=False)
-                dm_embed.set_thumbnail(url=user.display_avatar.url)
+                dm_embed.set_thumbnail(url=avatar_url)
                 set_footer(dm_embed)
                 await user.send(embed=dm_embed)
             except (discord.Forbidden, discord.HTTPException):
@@ -330,7 +375,7 @@ class WarnCog(commands.Cog):
         async def _post_logs():
             await self._post_mod_log(
                 action="Warn",
-                user=user,
+                user=target_member or user,
                 moderator=interaction.user,
                 reason=reason,
                 active_warns=active_warns,
@@ -342,13 +387,12 @@ class WarnCog(commands.Cog):
             if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(interaction.user.id):
                 await self.bot.mod_tracker.log_warn(
                     mod=interaction.user,
-                    target=user,
+                    target=target_member or user,
                     reason=reason,
                 )
 
         # Run all post-response operations concurrently
         await asyncio.gather(
-            _log_to_case_forum(),
             _dm_user(),
             _post_logs(),
             _mod_tracker(),
@@ -370,11 +414,11 @@ class WarnCog(commands.Cog):
     async def warn(
         self,
         interaction: discord.Interaction,
-        user: discord.Member,
+        user: discord.User,
         reason: str,
         evidence: Optional[discord.Attachment] = None,
     ) -> None:
-        """Issue a warning to a user."""
+        """Issue a warning to a user (supports cross-server from mod server)."""
         # Validate attachment is image/video if provided
         evidence_url = None
         if evidence:
@@ -448,7 +492,7 @@ class WarnCog(commands.Cog):
     async def _post_mod_log(
         self,
         action: str,
-        user: discord.Member,
+        user: discord.User,
         moderator: discord.Member,
         reason: Optional[str] = None,
         active_warns: int = 1,

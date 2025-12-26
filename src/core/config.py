@@ -118,7 +118,7 @@ class Config:
     # -------------------------------------------------------------------------
 
     server_logs_forum_id: Optional[int] = None
-    logging_guild_id: Optional[int] = None  # Only log events from this guild
+    logging_guild_id: Optional[int] = None  # Main guild ID (for logging and cross-server moderation)
 
     # -------------------------------------------------------------------------
     # Optional: AI Settings
