@@ -71,9 +71,9 @@ class MemberEvents(commands.Cog):
         # -----------------------------------------------------------------
         # Mod Tracker: Auto-track on role add/remove
         # -----------------------------------------------------------------
-        if self.bot.mod_tracker and self.bot.mod_tracker.enabled and self.config.mod_role_id:
-            had_mod_role = any(r.id == self.config.mod_role_id for r in before.roles)
-            has_mod_role = any(r.id == self.config.mod_role_id for r in after.roles)
+        if self.bot.mod_tracker and self.bot.mod_tracker.enabled and self.config.moderation_role_id:
+            had_mod_role = any(r.id == self.config.moderation_role_id for r in before.roles)
+            has_mod_role = any(r.id == self.config.moderation_role_id for r in after.roles)
 
             if not had_mod_role and has_mod_role:
                 if not self.bot.mod_tracker.is_tracked(after.id):

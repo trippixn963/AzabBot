@@ -709,10 +709,10 @@ class ExtendModal(discord.ui.Modal, title="Extend Mute"):
             )
             return
 
-        # Success message
+        # Success message (public so other mods can see)
         await interaction.response.send_message(
-            f"Mute extended by **{duration_str}**. New expiration: <t:{int(new_expires)}:R>",
-            ephemeral=True,
+            f"⏰ **Mute Extended** by {interaction.user.mention}\n"
+            f"Extended by **{duration_str}**. New expiration: <t:{int(new_expires)}:R>",
         )
 
         # Log the extension to case thread if possible
@@ -911,8 +911,7 @@ class UnmuteModal(discord.ui.Modal, title="Unmute User"):
             )
 
             await interaction.response.send_message(
-                f"Successfully unmuted {member.mention}.",
-                ephemeral=True,
+                f"✅ **Unmuted** {member.mention} by {interaction.user.mention}",
             )
 
             # Log to case thread using case_log_service (handles per-action cases)

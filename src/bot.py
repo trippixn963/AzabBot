@@ -189,6 +189,9 @@ class AzabBot(commands.Bot):
         from src.utils.footer import init_footer
         await init_footer(self)
 
+        from src.utils.banner import init_banner
+        await init_banner(self)
+
         from src.utils.metrics import init_metrics
         init_metrics()
 
@@ -203,6 +206,7 @@ class AzabBot(commands.Bot):
 
         await self._cleanup_polls_channel()
         await self._cache_invites()
+        await self._check_lockdown_state()
 
         logger.tree("AZAB READY", [
             ("AI Service", "Online" if self.ai_service else "Offline"),
@@ -273,7 +277,7 @@ class AzabBot(commands.Bot):
                 logger.tree("Mod Tracker Service Initialized", [
                     ("Server ID", str(self.config.mod_server_id)),
                     ("Forum ID", str(self.config.mod_tracker_forum_id)),
-                    ("Role ID", str(self.config.mod_role_id)),
+                    ("Role ID", str(self.config.moderation_role_id)),
                 ], emoji="👁️")
                 await self.mod_tracker.auto_scan_mods()
                 await self.mod_tracker.start_title_update_scheduler()
@@ -362,6 +366,40 @@ class AzabBot(commands.Bot):
                     pass
         except Exception as e:
             logger.debug(f"Invite cache failed: {e}")
+
+    async def _check_lockdown_state(self) -> None:
+        """Check if any guild is in lockdown state on startup."""
+        for guild in self.guilds:
+            lockdown = self.db.get_lockdown_state(guild.id)
+            if lockdown:
+                locked_at = lockdown.get("locked_at", 0)
+                locked_by = lockdown.get("locked_by", 0)
+                channel_count = lockdown.get("channel_count", 0)
+                reason = lockdown.get("reason", "None")
+
+                logger.tree("SERVER IS LOCKED", [
+                    ("Guild", f"{guild.name} ({guild.id})"),
+                    ("Locked At", f"<t:{int(locked_at)}:R>"),
+                    ("Locked By", str(locked_by)),
+                    ("Channels", str(channel_count)),
+                    ("Reason", reason or "None"),
+                ], emoji="🔒")
+
+                # Alert in logs channel
+                if self.config.logs_channel_id:
+                    logs_channel = guild.get_channel(self.config.logs_channel_id)
+                    if logs_channel:
+                        try:
+                            alert_msg = (
+                                f"⚠️ **Bot Restarted During Lockdown**\n"
+                                f"Server is still locked since <t:{int(locked_at)}:R>\n"
+                                f"Use `/unlock` to restore permissions."
+                            )
+                            if self.config.developer_id:
+                                alert_msg = f"<@{self.config.developer_id}> {alert_msg}"
+                            await logs_channel.send(alert_msg)
+                        except discord.HTTPException:
+                            pass
 
     async def _find_used_invite(self, guild: discord.Guild) -> Optional[tuple]:
         """Find which invite was used by comparing use counts."""

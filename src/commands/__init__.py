@@ -37,6 +37,7 @@ COMMAND_COGS = [
     "src.commands.ban",
     "src.commands.warn",
     "src.commands.purge",
+    "src.commands.lockdown",
 ]
 """
 List of command cog module paths for dynamic loading.

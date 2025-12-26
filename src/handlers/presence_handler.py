@@ -19,10 +19,11 @@ Server: discord.gg/syria
 import discord
 import asyncio
 import random
+from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 
 from src.core.logger import logger
-from src.core.config import get_config
+from src.core.config import get_config, NY_TZ
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -63,6 +64,7 @@ class PresenceHandler:
         self.config = get_config()
         self.update_task: Optional[asyncio.Task] = None
         self.last_prisoner_count: int = 0
+        self._last_banner_refresh_date: Optional[str] = None
 
         # -------------------------------------------------------------------------
         # Active Mode Messages
@@ -121,12 +123,14 @@ class PresenceHandler:
 
         DESIGN:
             Updates presence every 30 seconds.
+            Refreshes banner daily at midnight EST.
             Catches and logs errors without crashing.
             Continues running until explicitly cancelled.
         """
         while True:
             try:
                 await self.update_presence()
+                await self._check_midnight_tasks()
                 await asyncio.sleep(self.config.presence_update_interval)
             except asyncio.CancelledError:
                 break
@@ -135,6 +139,31 @@ class PresenceHandler:
                     ("Error", str(e)[:50]),
                 ])
                 await asyncio.sleep(self.config.presence_update_interval)
+
+    async def _check_midnight_tasks(self) -> None:
+        """
+        Run daily tasks at midnight EST (banner refresh, etc).
+
+        DESIGN:
+            Tracks last refresh date to ensure once-daily execution.
+            Refreshes bot banner from server banner.
+        """
+        try:
+            now = datetime.now(NY_TZ)
+            today = now.strftime("%Y-%m-%d")
+
+            # Check if it's a new day and within first hour (midnight-1am)
+            if self._last_banner_refresh_date != today and now.hour == 0:
+                self._last_banner_refresh_date = today
+
+                # Refresh banner
+                from src.utils.banner import refresh_banner
+                await refresh_banner()
+
+        except Exception as e:
+            logger.error("Midnight Tasks Failed", [
+                ("Error", str(e)[:50]),
+            ])
 
     # =========================================================================
     # Presence Updates

@@ -164,8 +164,8 @@ class MessageEvents(commands.Cog):
                     # Check if user has management role
                     is_mod = (
                         isinstance(message.author, discord.Member)
-                        and self.config.management_role_id
-                        and message.author.get_role(self.config.management_role_id)
+                        and self.config.moderation_role_id
+                        and message.author.get_role(self.config.moderation_role_id)
                     )
                     if is_mod:
                         logger.tree("INVITE LINK ALLOWED", [

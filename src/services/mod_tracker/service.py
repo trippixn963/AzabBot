@@ -122,7 +122,7 @@ class ModTrackerService(ModTrackerLogsMixin):
         return (
             self.config.mod_server_id is not None and
             self.config.mod_tracker_forum_id is not None and
-            self.config.mod_role_id is not None
+            self.config.moderation_role_id is not None
         )
 
     # =========================================================================
@@ -318,7 +318,7 @@ class ModTrackerService(ModTrackerLogsMixin):
         Returns:
             True if role was removed, False otherwise.
         """
-        if not self.config.mod_role_id:
+        if not self.config.moderation_role_id:
             return False
 
         try:
@@ -332,7 +332,7 @@ class ModTrackerService(ModTrackerLogsMixin):
             if not member:
                 return False
 
-            role = guild.get_role(self.config.mod_role_id)
+            role = guild.get_role(self.config.moderation_role_id)
             if not role:
                 return False
 
@@ -664,11 +664,11 @@ class ModTrackerService(ModTrackerLogsMixin):
                 ])
                 return
 
-            mod_role = guild.get_role(self.config.mod_role_id)
+            mod_role = guild.get_role(self.config.moderation_role_id)
             if not mod_role:
                 logger.error("Mod Tracker: Midnight Scan Failed", [
                     ("Reason", "Mod role not found in main server"),
-                    ("Role ID", str(self.config.mod_role_id)),
+                    ("Role ID", str(self.config.moderation_role_id)),
                 ])
                 return
 
@@ -775,7 +775,7 @@ class ModTrackerService(ModTrackerLogsMixin):
 
                     # Build expected name with action count and active status
                     action_count = mod_data.get("action_count") or 0
-                    mod_role = guild.get_role(self.config.mod_role_id) if guild else None
+                    mod_role = guild.get_role(self.config.moderation_role_id) if guild else None
                     is_active = mod_role in member.roles if mod_role else True
                     expected_name = self._build_thread_name(member, action_count, is_active)
 
@@ -866,10 +866,10 @@ class ModTrackerService(ModTrackerLogsMixin):
                 ])
                 return
 
-            mod_role = guild.get_role(self.config.mod_role_id)
+            mod_role = guild.get_role(self.config.moderation_role_id)
             if not mod_role:
                 logger.error("Mod Tracker: Mod Role Not Found", [
-                    ("Role ID", str(self.config.mod_role_id)),
+                    ("Role ID", str(self.config.moderation_role_id)),
                     ("Server ID", str(main_guild_id)),
                 ])
                 return
@@ -1233,7 +1233,7 @@ class ModTrackerService(ModTrackerLogsMixin):
                 mod_member = main_guild.get_member(mod_id)
                 if mod_member:
                     # Check if mod still has mod role
-                    mod_role = main_guild.get_role(self.config.mod_role_id)
+                    mod_role = main_guild.get_role(self.config.moderation_role_id)
                     is_active = mod_role in mod_member.roles if mod_role else True
 
                     new_name = self._build_thread_name(mod_member, new_count, is_active)

@@ -807,6 +807,55 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_voice_activity_time ON voice_activity(timestamp)"
         )
 
+        # -----------------------------------------------------------------
+        # LOCKDOWN STATE TABLE
+        # DESIGN: Tracks server lockdown status for raid protection
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lockdown_state (
+                guild_id INTEGER PRIMARY KEY,
+                locked_at REAL NOT NULL,
+                locked_by INTEGER NOT NULL,
+                reason TEXT,
+                channel_count INTEGER DEFAULT 0
+            )
+        """)
+
+        # -----------------------------------------------------------------
+        # LOCKDOWN PERMISSIONS TABLE (Legacy - per-channel)
+        # DESIGN: Stores original channel permissions before lockdown
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lockdown_permissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                channel_type TEXT NOT NULL,
+                original_send_messages INTEGER,
+                original_connect INTEGER,
+                UNIQUE(guild_id, channel_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_lockdown_perms_guild ON lockdown_permissions(guild_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # LOCKDOWN ROLE PERMISSIONS TABLE
+        # DESIGN: Stores original @everyone role permissions for instant lockdown
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lockdown_role_permissions (
+                guild_id INTEGER PRIMARY KEY,
+                send_messages INTEGER,
+                connect INTEGER,
+                add_reactions INTEGER,
+                create_public_threads INTEGER,
+                create_private_threads INTEGER,
+                send_messages_in_threads INTEGER
+            )
+        """)
+
         conn.commit()
 
     # =========================================================================
@@ -3285,6 +3334,206 @@ class DatabaseManager:
             (cutoff,)
         )
         return cursor.rowcount if cursor else 0
+
+    # =========================================================================
+    # Lockdown Operations
+    # =========================================================================
+
+    def start_lockdown(
+        self,
+        guild_id: int,
+        locked_by: int,
+        reason: Optional[str] = None,
+        channel_count: int = 0
+    ) -> None:
+        """
+        Record a server lockdown.
+
+        Args:
+            guild_id: Guild being locked.
+            locked_by: Moderator who initiated lockdown.
+            reason: Reason for lockdown.
+            channel_count: Number of channels locked.
+        """
+        self.execute(
+            """INSERT OR REPLACE INTO lockdown_state
+               (guild_id, locked_at, locked_by, reason, channel_count)
+               VALUES (?, ?, ?, ?, ?)""",
+            (guild_id, time.time(), locked_by, reason, channel_count)
+        )
+
+    def end_lockdown(self, guild_id: int) -> None:
+        """
+        End a server lockdown and clear saved permissions.
+
+        Args:
+            guild_id: Guild to unlock.
+        """
+        self.execute("DELETE FROM lockdown_state WHERE guild_id = ?", (guild_id,))
+        self.execute("DELETE FROM lockdown_permissions WHERE guild_id = ?", (guild_id,))
+
+    def is_locked(self, guild_id: int) -> bool:
+        """
+        Check if a guild is currently locked.
+
+        Args:
+            guild_id: Guild to check.
+
+        Returns:
+            True if guild is locked.
+        """
+        row = self.fetchone(
+            "SELECT 1 FROM lockdown_state WHERE guild_id = ?",
+            (guild_id,)
+        )
+        return row is not None
+
+    def get_lockdown_state(self, guild_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get lockdown state for a guild.
+
+        Args:
+            guild_id: Guild to check.
+
+        Returns:
+            Lockdown info dict or None if not locked.
+        """
+        row = self.fetchone(
+            "SELECT * FROM lockdown_state WHERE guild_id = ?",
+            (guild_id,)
+        )
+        return dict(row) if row else None
+
+    def save_channel_permission(
+        self,
+        guild_id: int,
+        channel_id: int,
+        channel_type: str,
+        send_messages: Optional[bool],
+        connect: Optional[bool]
+    ) -> None:
+        """
+        Save original channel permission before lockdown.
+
+        Args:
+            guild_id: Guild ID.
+            channel_id: Channel ID.
+            channel_type: 'text' or 'voice'.
+            send_messages: Original send_messages permission (None, True, False).
+            connect: Original connect permission (None, True, False).
+        """
+        # Convert bool/None to int for storage (None=NULL, True=1, False=0)
+        send_int = None if send_messages is None else (1 if send_messages else 0)
+        connect_int = None if connect is None else (1 if connect else 0)
+
+        self.execute(
+            """INSERT OR REPLACE INTO lockdown_permissions
+               (guild_id, channel_id, channel_type, original_send_messages, original_connect)
+               VALUES (?, ?, ?, ?, ?)""",
+            (guild_id, channel_id, channel_type, send_int, connect_int)
+        )
+
+    def get_channel_permissions(self, guild_id: int) -> List[Dict[str, Any]]:
+        """
+        Get all saved channel permissions for a guild.
+
+        Args:
+            guild_id: Guild to get permissions for.
+
+        Returns:
+            List of permission records.
+        """
+        rows = self.fetchall(
+            "SELECT * FROM lockdown_permissions WHERE guild_id = ?",
+            (guild_id,)
+        )
+        result = []
+        for row in rows:
+            record = dict(row)
+            # Convert stored ints back to bool/None
+            send = record.get("original_send_messages")
+            connect = record.get("original_connect")
+            record["original_send_messages"] = None if send is None else bool(send)
+            record["original_connect"] = None if connect is None else bool(connect)
+            result.append(record)
+        return result
+
+    def clear_lockdown_permissions(self, guild_id: int) -> None:
+        """
+        Clear saved channel permissions for a guild.
+
+        Args:
+            guild_id: Guild to clear permissions for.
+        """
+        self.execute("DELETE FROM lockdown_permissions WHERE guild_id = ?", (guild_id,))
+        self.execute("DELETE FROM lockdown_role_permissions WHERE guild_id = ?", (guild_id,))
+
+    # =========================================================================
+    # Role-Based Lockdown Operations
+    # =========================================================================
+
+    def save_lockdown_permissions(
+        self,
+        guild_id: int,
+        send_messages: bool,
+        connect: bool,
+        add_reactions: bool,
+        create_public_threads: bool,
+        create_private_threads: bool,
+        send_messages_in_threads: bool,
+    ) -> None:
+        """
+        Save original @everyone role permissions before lockdown.
+
+        Args:
+            guild_id: Guild ID.
+            send_messages: Original send_messages permission.
+            connect: Original connect permission.
+            add_reactions: Original add_reactions permission.
+            create_public_threads: Original create_public_threads permission.
+            create_private_threads: Original create_private_threads permission.
+            send_messages_in_threads: Original send_messages_in_threads permission.
+        """
+        self.execute(
+            """INSERT OR REPLACE INTO lockdown_role_permissions
+               (guild_id, send_messages, connect, add_reactions,
+                create_public_threads, create_private_threads, send_messages_in_threads)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                guild_id,
+                1 if send_messages else 0,
+                1 if connect else 0,
+                1 if add_reactions else 0,
+                1 if create_public_threads else 0,
+                1 if create_private_threads else 0,
+                1 if send_messages_in_threads else 0,
+            )
+        )
+
+    def get_lockdown_permissions(self, guild_id: int) -> Optional[Dict[str, bool]]:
+        """
+        Get saved @everyone role permissions for a guild.
+
+        Args:
+            guild_id: Guild to get permissions for.
+
+        Returns:
+            Dict with permission booleans or None if not found.
+        """
+        row = self.fetchone(
+            "SELECT * FROM lockdown_role_permissions WHERE guild_id = ?",
+            (guild_id,)
+        )
+        if not row:
+            return None
+        return {
+            "send_messages": bool(row["send_messages"]),
+            "connect": bool(row["connect"]),
+            "add_reactions": bool(row["add_reactions"]),
+            "create_public_threads": bool(row["create_public_threads"]),
+            "create_private_threads": bool(row["create_private_threads"]),
+            "send_messages_in_threads": bool(row["send_messages_in_threads"]),
+        }
 
 
 # =============================================================================

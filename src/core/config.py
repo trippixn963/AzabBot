@@ -103,7 +103,7 @@ class Config:
     # Optional: Roles
     # -------------------------------------------------------------------------
 
-    management_role_id: Optional[int] = None
+    moderation_role_id: Optional[int] = None
 
     # -------------------------------------------------------------------------
     # Optional: Mod Tracker
@@ -111,7 +111,6 @@ class Config:
 
     mod_server_id: Optional[int] = None
     mod_tracker_forum_id: Optional[int] = None
-    mod_role_id: Optional[int] = None
 
     # -------------------------------------------------------------------------
     # Optional: Server Logs
@@ -119,6 +118,12 @@ class Config:
 
     server_logs_forum_id: Optional[int] = None
     logging_guild_id: Optional[int] = None  # Main guild ID (for logging and cross-server moderation)
+
+    # -------------------------------------------------------------------------
+    # Optional: Lockdown Exclusions
+    # -------------------------------------------------------------------------
+
+    lockdown_exclude_ids: Set[int] = None  # Channel/category IDs to exclude from lockdown
 
     # -------------------------------------------------------------------------
     # Optional: AI Settings
@@ -134,7 +139,6 @@ class Config:
 
     cooldown_seconds: int = 10
     prisoner_cooldown_seconds: int = 30
-    prisoner_batch_delay_seconds: float = 5.0
 
     # -------------------------------------------------------------------------
     # Optional: Scheduler Intervals (seconds)
@@ -145,7 +149,6 @@ class Config:
     presence_retry_delay: int = 5           # Delay before retrying presence update
     hourly_task_interval: int = 3600        # Interval for hourly background tasks
     rate_limit_delay: float = 1.0           # Delay between rate-limited operations
-    message_send_delay: float = 1.0         # Delay between batch message sends
 
     # -------------------------------------------------------------------------
     # Optional: Limits
@@ -369,14 +372,14 @@ def load_config() -> Config:
     permanent_polls_channel_id = _parse_int_optional(os.getenv("PERMANENT_POLLS_CHANNEL_ID"))
     case_log_forum_id = _parse_int_optional(os.getenv("CASE_LOG_FORUM_ID"))
     links_allowed_channel_id = _parse_int_optional(os.getenv("LINKS_ALLOWED_CHANNEL_ID"))
-    management_role_id = _parse_int_optional(os.getenv("MANAGEMENT_ROLE_ID"))
+    moderation_role_id = _parse_int_optional(os.getenv("MODERATION_ROLE_ID"))
     mod_server_id = _parse_int_optional(os.getenv("MOD_SERVER_ID"))
     mod_tracker_forum_id = _parse_int_optional(os.getenv("MOD_TRACKER_FORUM_ID"))
-    mod_role_id = _parse_int_optional(os.getenv("MOD_ROLE_ID"))
     server_logs_forum_id = _parse_int_optional(os.getenv("SERVER_LOGS_FORUM_ID"))
     logging_guild_id = _parse_int_optional(os.getenv("LOGGING_GUILD_ID"))
     moderator_ids = _parse_int_set(os.getenv("MODERATOR_IDS"))
     ignored_bot_ids = _parse_int_set(os.getenv("IGNORED_BOT_IDS"))
+    lockdown_exclude_ids = _parse_int_set(os.getenv("LOCKDOWN_EXCLUDE_IDS"))
 
     # -------------------------------------------------------------------------
     # Build Config Object
@@ -394,10 +397,9 @@ def load_config() -> Config:
         permanent_polls_channel_id=permanent_polls_channel_id,
         case_log_forum_id=case_log_forum_id,
         links_allowed_channel_id=links_allowed_channel_id,
-        management_role_id=management_role_id,
+        moderation_role_id=moderation_role_id,
         mod_server_id=mod_server_id,
         mod_tracker_forum_id=mod_tracker_forum_id,
-        mod_role_id=mod_role_id,
         server_logs_forum_id=server_logs_forum_id,
         logging_guild_id=logging_guild_id,
         ai_model=os.getenv("AI_MODEL", "gpt-4o-mini"),
@@ -405,7 +407,6 @@ def load_config() -> Config:
         max_response_length=int(os.getenv("MAX_RESPONSE_LENGTH", "150")),
         cooldown_seconds=int(os.getenv("COOLDOWN_SECONDS", "10")),
         prisoner_cooldown_seconds=int(os.getenv("PRISONER_COOLDOWN_SECONDS", "30")),
-        prisoner_batch_delay_seconds=float(os.getenv("PRISONER_BATCH_DELAY_SECONDS", "5.0")),
         mute_reason_max_length=int(os.getenv("MUTE_REASON_MAX_LENGTH", "100")),
         message_content_max_length=int(os.getenv("MESSAGE_CONTENT_MAX_LENGTH", "500")),
         log_truncate_length=int(os.getenv("LOG_TRUNCATE_LENGTH", "50")),
@@ -416,6 +417,7 @@ def load_config() -> Config:
         alert_webhook_url=os.getenv("ALERT_WEBHOOK_URL"),
         error_webhook_url=os.getenv("ERROR_WEBHOOK_URL"),
         ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,
+        lockdown_exclude_ids=lockdown_exclude_ids if lockdown_exclude_ids else None,
     )
 
 

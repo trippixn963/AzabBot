@@ -281,8 +281,8 @@ class BanCog(commands.Cog):
                 return False
 
         # Management protection (only if target is a member)
-        if self.config.management_role_id and target_member:
-            management_role = target_guild.get_role(self.config.management_role_id)
+        if self.config.moderation_role_id and target_member:
+            management_role = target_guild.get_role(self.config.moderation_role_id)
             mod_member = target_guild.get_member(interaction.user.id) if is_cross_server else interaction.user
             if management_role and mod_member and isinstance(mod_member, discord.Member):
                 user_has_management = management_role in target_member.roles

@@ -2393,6 +2393,50 @@ class LoggingService:
 
         await self._send_log(LogCategory.ALERTS, embed)
 
+    # =========================================================================
+    # Lockdown Logs
+    # =========================================================================
+
+    async def log_lockdown(
+        self,
+        moderator: discord.Member,
+        reason: Optional[str],
+        channel_count: int,
+        action: str,
+    ) -> None:
+        """
+        Log a server lockdown or unlock action.
+
+        Args:
+            moderator: Moderator who initiated the action.
+            reason: Reason for lockdown (None for unlock).
+            channel_count: Number of channels affected.
+            action: 'lock' or 'unlock'.
+        """
+        if not self.enabled:
+            return
+
+        if action == "lock":
+            embed = self._create_embed("🔒 SERVER LOCKED", EmbedColors.ERROR, category="Lockdown")
+            embed.add_field(name="Status", value="**All channels locked**", inline=False)
+        else:
+            embed = self._create_embed("🔓 SERVER UNLOCKED", EmbedColors.SUCCESS, category="Lockdown")
+            embed.add_field(name="Status", value="**All channels restored**", inline=False)
+
+        embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+        embed.add_field(name="Channels", value=f"`{channel_count}`", inline=True)
+
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
+
+        await self._send_log(LogCategory.ALERTS, embed)
+
+        # Ping developer for dangerous lockdown command
+        if action == "lock" and self.config.developer_id:
+            thread = await self._get_or_create_thread(LogCategory.ALERTS)
+            if thread:
+                await thread.send(f"<@{self.config.developer_id}> ⚠️ **Server lockdown initiated**")
+
 
 # =============================================================================
 # Module Export
