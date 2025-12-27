@@ -230,23 +230,8 @@ class CaseLogView(discord.ui.View):
             approve_btn.row = 3
             self.add_item(approve_btn)
 
-        # Add appeal button for eligible cases:
-        # - All bans can be appealed
-        # - Mutes >= 6 hours can be appealed
-        if case_id and show_appeal:
-            can_appeal = False
-            if action_type == "ban":
-                can_appeal = True
-            elif action_type == "mute":
-                # Permanent mutes (None) or mutes >= 6 hours
-                if duration_seconds is None or duration_seconds >= self.MIN_APPEALABLE_MUTE_SECONDS:
-                    can_appeal = True
-
-            if can_appeal:
-                from src.services.appeal_service import SubmitAppealButton
-                appeal_btn = SubmitAppealButton(case_id, user_id)
-                appeal_btn.row = 3
-                self.add_item(appeal_btn)
+        # NOTE: Appeal button is now sent via DM to the user, not in the case log
+        # This allows the affected user to appeal rather than moderators seeing it
 
 
 # =============================================================================

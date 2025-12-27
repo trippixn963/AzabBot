@@ -4417,6 +4417,39 @@ class DatabaseManager:
 
         return (True, None)
 
+    def get_last_appeal_time(self, case_id: str) -> Optional[float]:
+        """
+        Get the most recent appeal time for a case.
+
+        Args:
+            case_id: Case ID to check.
+
+        Returns:
+            Unix timestamp of last appeal or None.
+        """
+        row = self.fetchone(
+            "SELECT created_at FROM appeals WHERE case_id = ? ORDER BY created_at DESC LIMIT 1",
+            (case_id,)
+        )
+        return row["created_at"] if row else None
+
+    def get_user_appeal_count_since(self, user_id: int, since_timestamp: float) -> int:
+        """
+        Count appeals from a user since a given time.
+
+        Args:
+            user_id: User ID to check.
+            since_timestamp: Unix timestamp to count from.
+
+        Returns:
+            Number of appeals since the timestamp.
+        """
+        row = self.fetchone(
+            "SELECT COUNT(*) as c FROM appeals WHERE user_id = ? AND created_at >= ?",
+            (user_id, since_timestamp)
+        )
+        return row["c"] if row else 0
+
     def get_appealable_case(self, case_id: str) -> Optional[Dict[str, Any]]:
         """
         Get case info for appeal eligibility check.

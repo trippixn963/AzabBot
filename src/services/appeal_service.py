@@ -38,6 +38,13 @@ if TYPE_CHECKING:
 # Minimum mute duration (in seconds) that can be appealed (6 hours)
 MIN_APPEALABLE_MUTE_DURATION = 6 * 60 * 60  # 6 hours in seconds
 
+# Appeal cooldown: 24 hours between appeals for the same case
+APPEAL_COOLDOWN_SECONDS = 24 * 60 * 60  # 24 hours
+
+# Appeal rate limit: max 3 appeals per user per week
+MAX_APPEALS_PER_WEEK = 3
+APPEAL_RATE_LIMIT_SECONDS = 7 * 24 * 60 * 60  # 7 days
+
 
 # =============================================================================
 # Appeal Service
@@ -212,6 +219,21 @@ class AppealService:
         # Verify user matches case
         if case["user_id"] != user.id:
             return (False, "You can only appeal your own cases", None)
+
+        # Check cooldown (24h between appeals for same case)
+        import time
+        last_appeal_time = self.db.get_last_appeal_time(case_id)
+        if last_appeal_time:
+            time_since_last = time.time() - last_appeal_time
+            if time_since_last < APPEAL_COOLDOWN_SECONDS:
+                hours_remaining = int((APPEAL_COOLDOWN_SECONDS - time_since_last) / 3600)
+                return (False, f"You must wait {hours_remaining}h before appealing this case again", None)
+
+        # Check rate limit (max 3 appeals per week)
+        week_ago = time.time() - APPEAL_RATE_LIMIT_SECONDS
+        appeals_this_week = self.db.get_user_appeal_count_since(user.id, week_ago)
+        if appeals_this_week >= MAX_APPEALS_PER_WEEK:
+            return (False, f"You have reached the maximum of {MAX_APPEALS_PER_WEEK} appeals per week", None)
 
         try:
             # Get forum
@@ -402,6 +424,17 @@ class AppealService:
         if appeal["status"] != "pending":
             return (False, "Appeal is no longer pending")
 
+        # Atomically resolve the appeal first to prevent race conditions
+        # This only succeeds if status is still 'pending'
+        resolved = self.db.resolve_appeal(
+            appeal_id=appeal_id,
+            resolution="approved",
+            resolved_by=moderator.id,
+            resolution_reason=reason,
+        )
+        if not resolved:
+            return (False, "Appeal was already processed by another moderator")
+
         try:
             # Get the guild
             guild = self.bot.get_guild(appeal["guild_id"])
@@ -447,7 +480,7 @@ class AppealService:
                 # Clear mute from database
                 self.db.clear_mute(user_id, guild.id)
 
-            # Resolve case
+            # Resolve the original case
             case = self.db.get_case(case_id)
             if case:
                 self.db.resolve_case(
@@ -455,14 +488,6 @@ class AppealService:
                     resolved_by=moderator.id,
                     resolved_reason=f"Appeal approved: {reason}" if reason else "Appeal approved",
                 )
-
-            # Resolve appeal in database
-            self.db.resolve_appeal(
-                appeal_id=appeal_id,
-                resolution="approved",
-                resolved_by=moderator.id,
-                resolution_reason=reason,
-            )
 
             # Update thread
             thread = await self._get_appeal_thread(appeal["thread_id"])
@@ -568,17 +593,20 @@ class AppealService:
         if appeal["status"] != "pending":
             return (False, "Appeal is no longer pending")
 
+        # Atomically resolve the appeal first to prevent race conditions
+        # This only succeeds if status is still 'pending'
+        resolved = self.db.resolve_appeal(
+            appeal_id=appeal_id,
+            resolution="denied",
+            resolved_by=moderator.id,
+            resolution_reason=reason,
+        )
+        if not resolved:
+            return (False, "Appeal was already processed by another moderator")
+
         try:
             user_id = appeal["user_id"]
             case_id = appeal["case_id"]
-
-            # Resolve appeal in database
-            self.db.resolve_appeal(
-                appeal_id=appeal_id,
-                resolution="denied",
-                resolved_by=moderator.id,
-                resolution_reason=reason,
-            )
 
             # Update thread
             thread = await self._get_appeal_thread(appeal["thread_id"])

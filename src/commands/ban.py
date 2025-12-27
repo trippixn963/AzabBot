@@ -410,21 +410,42 @@ class BanCog(commands.Cog):
 
         case_info = None
         if self.bot.case_log_service:
-            case_info = await self.bot.case_log_service.log_ban(
-                user=user,
-                moderator=interaction.user,
-                reason=f"[SOFTBAN] {reason}" if is_softban else reason,
-                evidence=evidence,
-            )
+            try:
+                case_info = await asyncio.wait_for(
+                    self.bot.case_log_service.log_ban(
+                        user=user,
+                        moderator=interaction.user,
+                        reason=f"[SOFTBAN] {reason}" if is_softban else reason,
+                        evidence=evidence,
+                    ),
+                    timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Case Log Timeout", [
+                    ("Action", "Ban"),
+                    ("User", f"{user} ({user.id})"),
+                ])
+            except Exception as e:
+                logger.error("Case Log Failed", [
+                    ("Action", "Ban"),
+                    ("User", f"{user} ({user.id})"),
+                    ("Error", str(e)[:100]),
+                ])
 
         # Server logs (after case creation to include case_id)
         if self.bot.logging_service and self.bot.logging_service.enabled:
-            await self.bot.logging_service.log_ban(
-                user=user,
-                reason=reason,
-                moderator=interaction.user,
-                case_id=case_info["case_id"] if case_info else None,
-            )
+            try:
+                await asyncio.wait_for(
+                    self.bot.logging_service.log_ban(
+                        user=user,
+                        reason=reason,
+                        moderator=interaction.user,
+                        case_id=case_info["case_id"] if case_info else None,
+                    ),
+                    timeout=5.0,
+                )
+            except Exception:
+                pass  # Don't block command for server logs
 
         # -----------------------------------------------------------------
         # Build & Send Embed
@@ -462,6 +483,36 @@ class BanCog(commands.Cog):
                 sent_message = await interaction.followup.send(embed=embed)
         except Exception as e:
             logger.error(f"Ban followup failed: {e}")
+
+        # -----------------------------------------------------------------
+        # Send Appeal Button to User via DM
+        # -----------------------------------------------------------------
+
+        if case_info and not is_softban:
+            try:
+                from src.services.appeal_service import SubmitAppealButton
+                appeal_view = discord.ui.View(timeout=None)
+                appeal_btn = SubmitAppealButton(case_info["case_id"], user.id)
+                appeal_view.add_item(appeal_btn)
+
+                appeal_embed = discord.Embed(
+                    title="📝 Appeal Your Ban",
+                    description="If you believe this ban was issued in error, you may submit an appeal.",
+                    color=EmbedColors.INFO,
+                )
+                appeal_embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
+                appeal_embed.add_field(name="Server", value=f"`{target_guild.name}`", inline=True)
+                set_footer(appeal_embed)
+
+                await user.send(embed=appeal_embed, view=appeal_view)
+                logger.tree("Appeal DM Sent", [
+                    ("User", f"{user} ({user.id})"),
+                    ("Case", case_info["case_id"]),
+                ], emoji="📝")
+            except (discord.Forbidden, discord.HTTPException):
+                pass  # User has DMs disabled or blocked
+            except Exception as e:
+                logger.error(f"Failed to send appeal DM: {e}")
 
         # -----------------------------------------------------------------
         # Alt Detection (background task, regular bans only)
@@ -674,20 +725,41 @@ class BanCog(commands.Cog):
 
         case_info = None
         if self.bot.case_log_service:
-            case_info = await self.bot.case_log_service.log_unban(
-                user_id=target_user.id,
-                username=str(target_user),
-                moderator=interaction.user,
-                reason=reason,
-            )
+            try:
+                case_info = await asyncio.wait_for(
+                    self.bot.case_log_service.log_unban(
+                        user_id=target_user.id,
+                        username=str(target_user),
+                        moderator=interaction.user,
+                        reason=reason,
+                    ),
+                    timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Case Log Timeout", [
+                    ("Action", "Unban"),
+                    ("User", f"{target_user} ({target_user.id})"),
+                ])
+            except Exception as e:
+                logger.error("Case Log Failed", [
+                    ("Action", "Unban"),
+                    ("User", f"{target_user} ({target_user.id})"),
+                    ("Error", str(e)[:100]),
+                ])
 
         # Server logs (after case creation to include case_id)
         if self.bot.logging_service and self.bot.logging_service.enabled:
-            await self.bot.logging_service.log_unban(
-                user=target_user,
-                moderator=interaction.user,
-                case_id=case_info["case_id"] if case_info else None,
-            )
+            try:
+                await asyncio.wait_for(
+                    self.bot.logging_service.log_unban(
+                        user=target_user,
+                        moderator=interaction.user,
+                        case_id=case_info["case_id"] if case_info else None,
+                    ),
+                    timeout=5.0,
+                )
+            except Exception:
+                pass  # Don't block command for server logs
 
         # Get ban duration from history
         ban_duration = None

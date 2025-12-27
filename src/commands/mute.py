@@ -585,14 +585,29 @@ class MuteCog(commands.Cog):
 
         case_info = None
         if self.bot.case_log_service:
-            case_info = await self.bot.case_log_service.log_mute(
-                user=target_member,
-                moderator=interaction.user,
-                duration=duration_display,
-                reason=reason,
-                is_extension=is_extension,
-                evidence=evidence,
-            )
+            try:
+                case_info = await asyncio.wait_for(
+                    self.bot.case_log_service.log_mute(
+                        user=target_member,
+                        moderator=interaction.user,
+                        duration=duration_display,
+                        reason=reason,
+                        is_extension=is_extension,
+                        evidence=evidence,
+                    ),
+                    timeout=10.0,  # 10 second timeout for case logging
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Case Log Timeout", [
+                    ("Action", "Mute"),
+                    ("User", f"{target_member} ({target_member.id})"),
+                ])
+            except Exception as e:
+                logger.error("Case Log Failed", [
+                    ("Action", "Mute"),
+                    ("User", f"{target_member} ({target_member.id})"),
+                    ("Error", str(e)[:100]),
+                ])
 
         # ---------------------------------------------------------------------
         # Build & Send Embed
@@ -645,6 +660,28 @@ class MuteCog(commands.Cog):
                 dm_embed.set_thumbnail(url=target_member.display_avatar.url)
                 set_footer(dm_embed)
                 await target_member.send(embed=dm_embed)
+
+                # Send appeal button for eligible mutes (>= 6 hours or permanent)
+                MIN_APPEAL_SECONDS = 6 * 60 * 60  # 6 hours
+                if case_info and (duration_seconds is None or duration_seconds >= MIN_APPEAL_SECONDS):
+                    try:
+                        from src.services.appeal_service import SubmitAppealButton
+                        appeal_view = discord.ui.View(timeout=None)
+                        appeal_btn = SubmitAppealButton(case_info["case_id"], target_member.id)
+                        appeal_view.add_item(appeal_btn)
+
+                        appeal_embed = discord.Embed(
+                            title="📝 Appeal Your Mute",
+                            description="If you believe this mute was issued in error, you may submit an appeal.",
+                            color=EmbedColors.INFO,
+                        )
+                        appeal_embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
+                        appeal_embed.add_field(name="Server", value=f"`{target_guild.name}`", inline=True)
+                        set_footer(appeal_embed)
+
+                        await target_member.send(embed=appeal_embed, view=appeal_view)
+                    except Exception:
+                        pass  # Don't fail DM if appeal button fails
             except (discord.Forbidden, discord.HTTPException):
                 pass
 
@@ -901,13 +938,28 @@ class MuteCog(commands.Cog):
 
         case_info = None
         if self.bot.case_log_service:
-            case_info = await self.bot.case_log_service.log_unmute(
-                user_id=user.id,
-                moderator=interaction.user,
-                display_name=target_member.display_name,
-                reason=reason,
-                user_avatar_url=target_member.display_avatar.url,
-            )
+            try:
+                case_info = await asyncio.wait_for(
+                    self.bot.case_log_service.log_unmute(
+                        user_id=user.id,
+                        moderator=interaction.user,
+                        display_name=target_member.display_name,
+                        reason=reason,
+                        user_avatar_url=target_member.display_avatar.url,
+                    ),
+                    timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Case Log Timeout", [
+                    ("Action", "Unmute"),
+                    ("User", f"{target_member} ({target_member.id})"),
+                ])
+            except Exception as e:
+                logger.error("Case Log Failed", [
+                    ("Action", "Unmute"),
+                    ("User", f"{target_member} ({target_member.id})"),
+                    ("Error", str(e)[:100]),
+                ])
 
         # ---------------------------------------------------------------------
         # Build & Send Embed
