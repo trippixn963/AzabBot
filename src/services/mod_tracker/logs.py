@@ -1215,6 +1215,47 @@ class ModTrackerLogsMixin:
                 ("Thread", thread_name),
             ], emoji="🗑️")
 
+    async def log_thread_member_add(
+        self,
+        mod_id: int,
+        thread: discord.Thread,
+        user: discord.User,
+    ) -> None:
+        """Log when mod adds someone to a private thread."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            title="🔗 Added User to Private Thread",
+            color=EmbedColors.INFO,
+        )
+        embed.add_field(
+            name="Thread",
+            value=f"[{thread.name}]({thread.jump_url})",
+            inline=True,
+        )
+        embed.add_field(
+            name="User Added",
+            value=f"{user.mention}\n`{user.name}` ({user.id})",
+            inline=True,
+        )
+
+        parent_name = thread.parent.name if thread.parent else "Unknown"
+        embed.add_field(name="Parent Channel", value=f"#{parent_name}", inline=True)
+
+        if hasattr(user, 'display_avatar'):
+            embed.set_thumbnail(url=user.display_avatar.url)
+
+        # Create message button view for thread
+        view = MessageButtonView(thread.jump_url)
+
+        if await self._send_log(mod_id, embed, "Thread Member Add", view=view):
+            logger.tree("Mod Tracker: Thread Member Add Logged", [
+                ("Mod ID", str(mod_id)),
+                ("Thread", thread.name),
+                ("User", str(user)),
+            ], emoji="🔗")
+
     # =========================================================================
     # Invite Logging
     # =========================================================================

@@ -169,6 +169,98 @@ class ChannelEvents(commands.Cog):
         if before.locked != after.locked:
             await self.bot.logging_service.log_thread_lock(after, after.locked)
 
+    @commands.Cog.listener()
+    async def on_thread_member_join(self, member: discord.ThreadMember) -> None:
+        """Log when members are added to private threads."""
+        if not self.bot.logging_service or not self.bot.logging_service.enabled:
+            return
+
+        thread = member.thread
+        if not thread:
+            return
+
+        # Only track private threads (invitable threads that aren't public)
+        if not thread.is_private():
+            return
+
+        # Get the user who was added
+        user = self.bot.get_user(member.id)
+        if not user:
+            try:
+                user = await self.bot.fetch_user(member.id)
+            except discord.NotFound:
+                return
+
+        # Try to find who added them from audit log
+        added_by = None
+        if thread.guild:
+            try:
+                async for entry in thread.guild.audit_logs(
+                    action=discord.AuditLogAction.thread_member_add,
+                    limit=5,
+                ):
+                    if entry.target and entry.target.id == member.id:
+                        added_by = entry.user
+                        break
+            except discord.Forbidden:
+                pass
+
+        await self.bot.logging_service.log_thread_member_add(
+            thread=thread,
+            user=user,
+            added_by=added_by,
+        )
+
+        # Also track in mod_tracker if a mod added someone to a private thread
+        if added_by and self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(added_by.id):
+            await self.bot.mod_tracker.log_thread_member_add(
+                mod_id=added_by.id,
+                thread=thread,
+                user=user,
+            )
+
+    @commands.Cog.listener()
+    async def on_thread_member_remove(self, member: discord.ThreadMember) -> None:
+        """Log when members are removed from private threads."""
+        if not self.bot.logging_service or not self.bot.logging_service.enabled:
+            return
+
+        thread = member.thread
+        if not thread:
+            return
+
+        # Only track private threads
+        if not thread.is_private():
+            return
+
+        # Get the user who was removed
+        user = self.bot.get_user(member.id)
+        if not user:
+            try:
+                user = await self.bot.fetch_user(member.id)
+            except discord.NotFound:
+                return
+
+        # Try to find who removed them from audit log
+        removed_by = None
+        if thread.guild:
+            try:
+                async for entry in thread.guild.audit_logs(
+                    action=discord.AuditLogAction.thread_member_remove,
+                    limit=5,
+                ):
+                    if entry.target and entry.target.id == member.id:
+                        removed_by = entry.user
+                        break
+            except discord.Forbidden:
+                pass
+
+        await self.bot.logging_service.log_thread_member_remove(
+            thread=thread,
+            user=user,
+            removed_by=removed_by,
+        )
+
     # =========================================================================
     # Voice Events
     # =========================================================================

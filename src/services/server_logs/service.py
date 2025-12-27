@@ -2271,6 +2271,68 @@ class LoggingService:
         await self._send_log(LogCategory.THREADS, embed)
 
     # =========================================================================
+    # Thread Member Tracking
+    # =========================================================================
+
+    async def log_thread_member_add(
+        self,
+        thread: discord.Thread,
+        user: discord.User,
+        added_by: Optional[discord.User] = None,
+    ) -> None:
+        """Log when a member is added to a private thread."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed("🔗 Added to Private Thread", EmbedColors.INFO, category="Thread Member Add")
+
+        embed.add_field(name="Thread", value=f"#{thread.name}", inline=True)
+        embed.add_field(name="User Added", value=self._format_user_field(user), inline=True)
+        if added_by:
+            embed.add_field(name="Added By", value=self._format_user_field(added_by), inline=True)
+        if thread.parent:
+            embed.add_field(name="Parent Channel", value=self._format_channel(thread.parent), inline=True)
+
+        embed.set_thumbnail(url=user.display_avatar.url)
+
+        await self._send_log(LogCategory.THREADS, embed)
+
+        logger.tree("Thread Member Added", [
+            ("Thread", thread.name),
+            ("User", str(user)),
+            ("Added By", str(added_by) if added_by else "Unknown"),
+        ], emoji="🔗")
+
+    async def log_thread_member_remove(
+        self,
+        thread: discord.Thread,
+        user: discord.User,
+        removed_by: Optional[discord.User] = None,
+    ) -> None:
+        """Log when a member is removed from a private thread."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed("🔗 Removed from Private Thread", EmbedColors.WARNING, category="Thread Member Remove")
+
+        embed.add_field(name="Thread", value=f"#{thread.name}", inline=True)
+        embed.add_field(name="User Removed", value=self._format_user_field(user), inline=True)
+        if removed_by:
+            embed.add_field(name="Removed By", value=self._format_user_field(removed_by), inline=True)
+        if thread.parent:
+            embed.add_field(name="Parent Channel", value=self._format_channel(thread.parent), inline=True)
+
+        embed.set_thumbnail(url=user.display_avatar.url)
+
+        await self._send_log(LogCategory.THREADS, embed)
+
+        logger.tree("Thread Member Removed", [
+            ("Thread", thread.name),
+            ("User", str(user)),
+            ("Removed By", str(removed_by) if removed_by else "Unknown"),
+        ], emoji="🔗")
+
+    # =========================================================================
     # Forum Tag Changes
     # =========================================================================
 
