@@ -11,7 +11,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, List, Tuple
 import asyncio
 import io
@@ -26,7 +26,16 @@ from src.core.database import get_db
 from src.utils.views import CASE_EMOJI, MESSAGE_EMOJI, CaseButtonView, MessageButtonView
 from src.utils.footer import set_footer
 
-from .constants import RATE_LIMIT_DELAY
+from .constants import (
+    RATE_LIMIT_DELAY,
+    BAN_HISTORY_TTL,
+    SUSPICIOUS_UNBAN_WINDOW,
+    MASS_PERMISSION_WINDOW,
+    MASS_PERMISSION_THRESHOLD,
+    TARGET_HARASSMENT_WINDOW,
+    TARGET_HARASSMENT_THRESHOLD,
+    TARGET_HARASSMENT_TTL,
+)
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -465,6 +474,10 @@ class ModTrackerLogsMixin:
                 ("Case", case_id or "N/A"),
             ], emoji="🔇")
 
+        # Track for harassment detection
+        self._record_target_action(mod.id, target.id, "Mute")
+        await self._check_target_harassment(mod.id, target.id, target.display_name)
+
     async def log_unmute(
         self,
         mod: discord.Member,
@@ -695,6 +708,10 @@ class ModTrackerLogsMixin:
         # Check for bulk action
         await self._check_bulk_action(mod_id, "timeout")
 
+        # Track for harassment detection
+        self._record_target_action(mod_id, target.id, "Timeout")
+        await self._check_target_harassment(mod_id, target.id, target.display_name)
+
     async def log_kick(
         self,
         mod_id: int,
@@ -713,6 +730,10 @@ class ModTrackerLogsMixin:
             ],
             case_id=case_id,
         )
+
+        # Track for harassment detection
+        self._record_target_action(mod_id, target.id, "Kick")
+        await self._check_target_harassment(mod_id, target.id, target.name)
 
     async def log_ban(
         self,
@@ -735,6 +756,10 @@ class ModTrackerLogsMixin:
             ],
             case_id=case_id,
         )
+
+        # Track for harassment detection
+        self._record_target_action(mod_id, target.id, "Ban")
+        await self._check_target_harassment(mod_id, target.id, target.name)
 
     async def log_unban(
         self,
@@ -2170,6 +2195,63 @@ class ModTrackerLogsMixin:
             logger.tree("Mod Tracker: Mass Permission Alert", [
                 ("Mod ID", str(mod_id)),
                 ("Count", str(count)),
+            ], emoji="🚨")
+
+    # =========================================================================
+    # Target Harassment Detection
+    # =========================================================================
+
+    def _record_target_action(self, mod_id: int, target_id: int, action: str) -> None:
+        """Record a mod action against a specific target for harassment detection."""
+        now = datetime.now(NY_TZ)
+        self._target_actions[mod_id][target_id].append((action, now))
+
+        # Clean old entries
+        cutoff = now - timedelta(seconds=TARGET_HARASSMENT_TTL)
+        self._target_actions[mod_id][target_id] = [
+            (a, t) for a, t in self._target_actions[mod_id][target_id]
+            if t > cutoff
+        ]
+
+    async def _check_target_harassment(self, mod_id: int, target_id: int, target_name: str) -> None:
+        """Check if mod is repeatedly targeting the same user (potential harassment)."""
+        now = datetime.now(NY_TZ)
+        cutoff = now - timedelta(seconds=TARGET_HARASSMENT_WINDOW)
+
+        # Get recent actions against this target within the window
+        recent_actions = [
+            (action, ts) for action, ts in self._target_actions[mod_id][target_id]
+            if ts > cutoff
+        ]
+
+        if len(recent_actions) >= TARGET_HARASSMENT_THRESHOLD:
+            # Build action list for alert
+            action_list = "\n".join([
+                f"• **{action}** - <t:{int(ts.timestamp())}:R>"
+                for action, ts in recent_actions[-5:]  # Show last 5
+            ])
+
+            await self._send_alert(
+                mod_id=mod_id,
+                alert_type="Repeated Target Alert",
+                description=f"Mod has taken **{len(recent_actions)} actions** against the same user "
+                           f"in the last 5 minutes.\n\n"
+                           f"**Target:** `{target_name}` ({target_id})\n\n"
+                           f"**Recent Actions:**\n{action_list}\n\n"
+                           f"This could indicate:\n"
+                           f"• Targeted harassment\n"
+                           f"• Personal conflict\n"
+                           f"• Abuse of mod powers",
+                color=EmbedColors.ERROR,
+            )
+
+            # Clear history for this target after alerting
+            self._target_actions[mod_id][target_id].clear()
+
+            logger.tree("Mod Tracker: Target Harassment Alert", [
+                ("Mod ID", str(mod_id)),
+                ("Target ID", str(target_id)),
+                ("Action Count", str(len(recent_actions))),
             ], emoji="🚨")
 
     # =========================================================================

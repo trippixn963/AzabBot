@@ -108,6 +108,11 @@ class ModTrackerService(ModTrackerLogsMixin):
         # Permission change tracking: mod_id -> list of timestamps
         self._permission_changes: Dict[int, List[datetime]] = defaultdict(list)
 
+        # Target harassment tracking: mod_id -> {target_id: list of (action, timestamp)}
+        self._target_actions: Dict[int, Dict[int, List[Tuple[str, datetime]]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+
         logger.tree("Mod Tracker Service Created", [
             ("Enabled", str(self.enabled)),
         ], emoji="👁️")

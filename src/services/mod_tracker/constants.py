@@ -52,3 +52,11 @@ BAN_HISTORY_TTL = 86400  # 24 hours - how long to keep ban history
 
 MASS_PERMISSION_WINDOW = 300  # 5 minutes
 MASS_PERMISSION_THRESHOLD = 5  # Permission changes in window to trigger alert
+
+# =============================================================================
+# Target Harassment Detection
+# =============================================================================
+
+TARGET_HARASSMENT_WINDOW = 300  # 5 minutes
+TARGET_HARASSMENT_THRESHOLD = 3  # Actions on same user in window to trigger alert
+TARGET_HARASSMENT_TTL = 3600  # 1 hour - how long to keep target action history
