@@ -97,6 +97,7 @@ class AzabBot(commands.Bot):
         self.antispam_service = None
         self.antinuke_service = None
         self.raid_lockdown_service = None
+        self.appeal_service = None
 
         # Prisoner rate limiting
         self.prisoner_cooldowns: Dict[int, datetime] = {}
@@ -166,6 +167,9 @@ class AzabBot(commands.Bot):
 
         from src.utils.views import setup_moderation_views
         setup_moderation_views(self)
+
+        from src.services.appeal_service import setup_appeal_views
+        setup_appeal_views(self)
 
         # Sync commands
         try:
@@ -327,6 +331,16 @@ class AzabBot(commands.Bot):
             from src.services.raid_lockdown import RaidLockdownService
             self.raid_lockdown_service = RaidLockdownService(self)
 
+            from src.services.appeal_service import AppealService
+            self.appeal_service = AppealService(self)
+            if self.appeal_service.enabled:
+                logger.tree("Appeal Service Initialized", [
+                    ("Forum ID", str(self.config.appeal_forum_id)),
+                    ("Min Mute Duration", "6 hours"),
+                ], emoji="📝")
+            else:
+                logger.info("Appeal Service Disabled (no forum configured)")
+
             # Summary of all initialized services
             logger.tree("ALL SERVICES INITIALIZED", [
                 ("AI Service", "✓ Ready"),
@@ -336,6 +350,7 @@ class AzabBot(commands.Bot):
                 ("Alt Detection", "✓ Enabled" if self.alt_detection.enabled else "✗ Disabled"),
                 ("Mod Tracker", "✓ Enabled" if self.mod_tracker.enabled else "✗ Disabled"),
                 ("Server Logs", "✓ Enabled" if self.logging_service.enabled else "✗ Disabled"),
+                ("Appeals", "✓ Enabled" if self.appeal_service.enabled else "✗ Disabled"),
                 ("Voice Handler", "✓ Ready"),
                 ("Anti-Spam", "✓ Ready"),
                 ("Anti-Nuke", "✓ Ready"),

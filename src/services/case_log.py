@@ -145,8 +145,11 @@ class CaseLogView(discord.ui.View):
     Row 0: Link buttons (Case, Message)
     Row 1: Info buttons (Info, Avatar, History, Notes)
     Row 2: Action buttons (Extend, Unmute) - mute embeds only
-    Row 3: Approve button (owner only)
+    Row 3: Approve button (owner only), Appeal button (for eligible cases)
     """
+
+    # Minimum mute duration (6 hours) for appeal eligibility
+    MIN_APPEALABLE_MUTE_SECONDS = 6 * 60 * 60
 
     def __init__(
         self,
@@ -156,6 +159,9 @@ class CaseLogView(discord.ui.View):
         case_thread_id: Optional[int] = None,
         is_mute_embed: bool = False,
         case_id: Optional[str] = None,
+        action_type: Optional[str] = None,
+        duration_seconds: Optional[int] = None,
+        show_appeal: bool = False,
     ):
         super().__init__(timeout=None)
 
@@ -216,13 +222,31 @@ class CaseLogView(discord.ui.View):
             self.add_item(unmute_btn)
 
         # =================================================================
-        # Row 3: Approve button (owner only)
+        # Row 3: Approve button (owner only), Appeal button (for eligible cases)
         # =================================================================
 
         if case_thread_id and case_id:
             approve_btn = ApproveButton(case_thread_id, case_id)
             approve_btn.row = 3
             self.add_item(approve_btn)
+
+        # Add appeal button for eligible cases:
+        # - All bans can be appealed
+        # - Mutes >= 6 hours can be appealed
+        if case_id and show_appeal:
+            can_appeal = False
+            if action_type == "ban":
+                can_appeal = True
+            elif action_type == "mute":
+                # Permanent mutes (None) or mutes >= 6 hours
+                if duration_seconds is None or duration_seconds >= self.MIN_APPEALABLE_MUTE_SECONDS:
+                    can_appeal = True
+
+            if can_appeal:
+                from src.services.appeal_service import SubmitAppealButton
+                appeal_btn = SubmitAppealButton(case_id, user_id)
+                appeal_btn.row = 3
+                self.add_item(appeal_btn)
 
 
 # =============================================================================
@@ -646,6 +670,9 @@ class CaseLogService:
                 case_thread_id=case["thread_id"],
                 is_mute_embed=True,  # Include Extend and Unmute buttons
                 case_id=case["case_id"],
+                action_type="mute",
+                duration_seconds=duration_seconds,
+                show_appeal=True,  # Show appeal button for eligible mutes
             )
             embed_message = await safe_send(case_thread, embed=embed, view=view)
             if not embed_message:
@@ -1383,6 +1410,8 @@ class CaseLogService:
                 message_url=source_message_url,
                 case_thread_id=case["thread_id"],
                 case_id=case["case_id"],
+                action_type="ban",
+                show_appeal=True,  # All bans can be appealed
             )
             embed_message = await safe_send(case_thread, embed=embed, view=view)
             if not embed_message:

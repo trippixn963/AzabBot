@@ -107,6 +107,24 @@ class UsernameHistoryRecord(TypedDict, total=False):
     changed_at: float
 
 
+class AppealRecord(TypedDict, total=False):
+    """Type for appeal records."""
+    id: int
+    appeal_id: str
+    case_id: str
+    user_id: int
+    guild_id: int
+    thread_id: int
+    action_type: str
+    reason: Optional[str]
+    status: str
+    created_at: float
+    resolved_at: Optional[float]
+    resolved_by: Optional[int]
+    resolution: Optional[str]
+    resolution_reason: Optional[str]
+
+
 class MemberActivityRecord(TypedDict, total=False):
     """Type for member activity records."""
     user_id: int
@@ -916,6 +934,39 @@ class DatabaseManager:
         """)
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_forbid_user ON forbid_history(user_id, guild_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # APPEALS TABLE
+        # DESIGN: Tracks appeal requests for bans and long mutes
+        # Links to original case via case_id
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS appeals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                appeal_id TEXT UNIQUE NOT NULL,
+                case_id TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                thread_id INTEGER NOT NULL,
+                action_type TEXT NOT NULL,
+                reason TEXT,
+                status TEXT DEFAULT 'pending',
+                created_at REAL NOT NULL,
+                resolved_at REAL,
+                resolved_by INTEGER,
+                resolution TEXT,
+                resolution_reason TEXT
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_appeals_case ON appeals(case_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_appeals_user ON appeals(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_appeals_status ON appeals(status)"
         )
 
         conn.commit()
@@ -4172,6 +4223,247 @@ class DatabaseManager:
             (cutoff,)
         )
         return cursor.rowcount
+
+    # =========================================================================
+    # Appeal Operations
+    # =========================================================================
+
+    def get_next_appeal_id(self) -> str:
+        """
+        Generate next unique appeal ID (4 chars like AXXX).
+
+        Returns:
+            A unique 4-character appeal ID prefixed with 'A'.
+        """
+        # Prefix with 'A' for Appeal to distinguish from case IDs
+        chars = string.ascii_uppercase + string.digits
+        while True:
+            appeal_id = 'A' + ''.join(secrets.choice(chars) for _ in range(3))
+            existing = self.fetchone(
+                "SELECT 1 FROM appeals WHERE appeal_id = ?",
+                (appeal_id,)
+            )
+            if not existing:
+                return appeal_id
+
+    def create_appeal(
+        self,
+        appeal_id: str,
+        case_id: str,
+        user_id: int,
+        guild_id: int,
+        thread_id: int,
+        action_type: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        """
+        Create a new appeal.
+
+        Args:
+            appeal_id: Unique appeal ID.
+            case_id: Original case ID being appealed.
+            user_id: User submitting the appeal.
+            guild_id: Guild ID.
+            thread_id: Forum thread ID for this appeal.
+            action_type: Type of action being appealed (ban/mute).
+            reason: User's appeal reason.
+        """
+        self.execute(
+            """INSERT INTO appeals (
+                appeal_id, case_id, user_id, guild_id, thread_id,
+                action_type, reason, status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
+            (appeal_id, case_id, user_id, guild_id, thread_id, action_type, reason, time.time())
+        )
+
+        logger.tree("Appeal Created", [
+            ("Appeal ID", appeal_id),
+            ("Case ID", case_id),
+            ("User ID", str(user_id)),
+            ("Type", action_type),
+        ], emoji="📝")
+
+    def get_appeal(self, appeal_id: str) -> Optional[AppealRecord]:
+        """
+        Get an appeal by its ID.
+
+        Args:
+            appeal_id: Appeal ID.
+
+        Returns:
+            Appeal record or None.
+        """
+        row = self.fetchone(
+            "SELECT * FROM appeals WHERE appeal_id = ?",
+            (appeal_id,)
+        )
+        return dict(row) if row else None
+
+    def get_appeal_by_case(self, case_id: str) -> Optional[AppealRecord]:
+        """
+        Get appeal for a specific case.
+
+        Args:
+            case_id: Case ID.
+
+        Returns:
+            Appeal record or None.
+        """
+        row = self.fetchone(
+            "SELECT * FROM appeals WHERE case_id = ?",
+            (case_id,)
+        )
+        return dict(row) if row else None
+
+    def get_pending_appeals(self, guild_id: int) -> List[AppealRecord]:
+        """
+        Get all pending appeals for a guild.
+
+        Args:
+            guild_id: Guild ID.
+
+        Returns:
+            List of pending appeal records.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM appeals
+               WHERE guild_id = ? AND status = 'pending'
+               ORDER BY created_at ASC""",
+            (guild_id,)
+        )
+        return [dict(row) for row in rows]
+
+    def get_user_appeals(self, user_id: int, guild_id: int) -> List[AppealRecord]:
+        """
+        Get all appeals for a user.
+
+        Args:
+            user_id: User ID.
+            guild_id: Guild ID.
+
+        Returns:
+            List of appeal records.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM appeals
+               WHERE user_id = ? AND guild_id = ?
+               ORDER BY created_at DESC""",
+            (user_id, guild_id)
+        )
+        return [dict(row) for row in rows]
+
+    def resolve_appeal(
+        self,
+        appeal_id: str,
+        resolution: str,
+        resolved_by: int,
+        resolution_reason: Optional[str] = None,
+    ) -> bool:
+        """
+        Resolve an appeal (approve/deny/close).
+
+        Args:
+            appeal_id: Appeal ID to resolve.
+            resolution: Resolution type (approved/denied/closed).
+            resolved_by: Moderator ID who resolved.
+            resolution_reason: Optional reason for resolution.
+
+        Returns:
+            True if appeal was found and updated.
+        """
+        cursor = self.execute(
+            """UPDATE appeals
+               SET status = 'resolved',
+                   resolved_at = ?,
+                   resolved_by = ?,
+                   resolution = ?,
+                   resolution_reason = ?
+               WHERE appeal_id = ? AND status = 'pending'""",
+            (time.time(), resolved_by, resolution, resolution_reason, appeal_id)
+        )
+
+        if cursor.rowcount > 0:
+            logger.tree("Appeal Resolved", [
+                ("Appeal ID", appeal_id),
+                ("Resolution", resolution),
+                ("Resolved By", str(resolved_by)),
+            ], emoji="✅" if resolution == "approved" else "❌")
+            return True
+        return False
+
+    def can_appeal_case(self, case_id: str) -> tuple[bool, Optional[str]]:
+        """
+        Check if a case can be appealed.
+
+        Args:
+            case_id: Case ID to check.
+
+        Returns:
+            Tuple of (can_appeal, reason_if_not).
+        """
+        # Check if already appealed
+        existing = self.fetchone(
+            "SELECT status, resolution FROM appeals WHERE case_id = ?",
+            (case_id,)
+        )
+
+        if existing:
+            if existing["status"] == "pending":
+                return (False, "Case already has a pending appeal")
+            elif existing["resolution"] == "denied":
+                return (False, "Appeal was already denied")
+            elif existing["resolution"] == "approved":
+                return (False, "Appeal was already approved")
+
+        return (True, None)
+
+    def get_appealable_case(self, case_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get case info for appeal eligibility check.
+
+        Args:
+            case_id: Case ID.
+
+        Returns:
+            Case record or None.
+        """
+        row = self.fetchone(
+            """SELECT case_id, user_id, guild_id, action_type,
+                      duration_seconds, created_at, status
+               FROM cases
+               WHERE case_id = ?""",
+            (case_id,)
+        )
+        return dict(row) if row else None
+
+    def get_appeal_stats(self, guild_id: int) -> Dict[str, int]:
+        """
+        Get appeal statistics for a guild.
+
+        Args:
+            guild_id: Guild ID.
+
+        Returns:
+            Dict with pending, approved, denied counts.
+        """
+        pending = self.fetchone(
+            "SELECT COUNT(*) as c FROM appeals WHERE guild_id = ? AND status = 'pending'",
+            (guild_id,)
+        )
+        approved = self.fetchone(
+            "SELECT COUNT(*) as c FROM appeals WHERE guild_id = ? AND resolution = 'approved'",
+            (guild_id,)
+        )
+        denied = self.fetchone(
+            "SELECT COUNT(*) as c FROM appeals WHERE guild_id = ? AND resolution = 'denied'",
+            (guild_id,)
+        )
+
+        return {
+            "pending": pending["c"] if pending else 0,
+            "approved": approved["c"] if approved else 0,
+            "denied": denied["c"] if denied else 0,
+        }
 
 
 # =============================================================================

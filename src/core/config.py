@@ -114,6 +114,12 @@ class Config:
     alert_channel_id: Optional[int] = None  # Channel for critical alerts (raids, nuke attempts)
 
     # -------------------------------------------------------------------------
+    # Optional: Appeals
+    # -------------------------------------------------------------------------
+
+    appeal_forum_id: Optional[int] = None  # Forum channel for ban/mute appeals
+
+    # -------------------------------------------------------------------------
     # Optional: Server Logs
     # -------------------------------------------------------------------------
 
@@ -378,6 +384,7 @@ def load_config() -> Config:
     mod_server_id = _parse_int_optional(os.getenv("MOD_SERVER_ID"))
     mod_tracker_forum_id = _parse_int_optional(os.getenv("MOD_TRACKER_FORUM_ID"))
     alert_channel_id = _parse_int_optional(os.getenv("ALERT_CHANNEL_ID"))
+    appeal_forum_id = _parse_int_optional(os.getenv("APPEAL_FORUM_ID"))
     server_logs_forum_id = _parse_int_optional(os.getenv("SERVER_LOGS_FORUM_ID"))
     logging_guild_id = _parse_int_optional(os.getenv("LOGGING_GUILD_ID"))
     moderator_ids = _parse_int_set(os.getenv("MODERATOR_IDS"))
@@ -404,6 +411,7 @@ def load_config() -> Config:
         mod_server_id=mod_server_id,
         mod_tracker_forum_id=mod_tracker_forum_id,
         alert_channel_id=alert_channel_id,
+        appeal_forum_id=appeal_forum_id,
         server_logs_forum_id=server_logs_forum_id,
         logging_guild_id=logging_guild_id,
         ai_model=os.getenv("AI_MODEL", "gpt-4o-mini"),
