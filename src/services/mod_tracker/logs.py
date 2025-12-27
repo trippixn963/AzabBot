@@ -104,6 +104,133 @@ class ModTrackerLogsMixin:
                 ("Mod", mod.display_name),
             ], emoji="🖼️")
 
+    def _check_name_similarity(self, name1: str, name2: str) -> float:
+        """
+        Check similarity between two names for impersonation detection.
+        Returns a score from 0.0 to 1.0 (1.0 = identical).
+        """
+        if not name1 or not name2:
+            return 0.0
+
+        # Normalize names
+        n1 = name1.lower().strip()
+        n2 = name2.lower().strip()
+
+        # Exact match
+        if n1 == n2:
+            return 1.0
+
+        # Check if one contains the other
+        if n1 in n2 or n2 in n1:
+            return 0.8
+
+        # Check for common impersonation patterns
+        # Remove common substitutions (l/1/I, o/0, etc.)
+        def normalize_chars(s: str) -> str:
+            return (s.replace('1', 'l').replace('I', 'l').replace('|', 'l')
+                     .replace('0', 'o').replace('O', 'o')
+                     .replace('_', '').replace('-', '').replace(' ', ''))
+
+        n1_norm = normalize_chars(n1)
+        n2_norm = normalize_chars(n2)
+
+        if n1_norm == n2_norm:
+            return 0.9
+
+        # Simple character overlap ratio
+        if len(n1) > 2 and len(n2) > 2:
+            common = sum(1 for c in n1 if c in n2)
+            ratio = common / max(len(n1), len(n2))
+            if ratio > 0.7:
+                return ratio
+
+        return 0.0
+
+    async def _check_impersonation(
+        self,
+        mod: discord.Member,
+        new_name: str,
+        change_type: str,
+    ) -> None:
+        """Check if the new name might be impersonating another mod or admin."""
+        if not new_name:
+            return
+
+        # Get all tracked mods
+        all_mods = self.db.get_all_tracked_mods()
+        if not all_mods:
+            return
+
+        potential_targets = []
+
+        for tracked in all_mods:
+            # Skip self
+            if tracked["user_id"] == mod.id:
+                continue
+
+            # Check against stored username and display name
+            stored_username = tracked.get("username", "")
+            stored_display = tracked.get("display_name", "")
+
+            username_sim = self._check_name_similarity(new_name, stored_username)
+            display_sim = self._check_name_similarity(new_name, stored_display)
+
+            max_sim = max(username_sim, display_sim)
+            if max_sim >= 0.7:
+                potential_targets.append({
+                    "user_id": tracked["user_id"],
+                    "name": stored_display or stored_username,
+                    "similarity": max_sim,
+                })
+
+        # Also check against server owner and admins if possible
+        if mod.guild:
+            for member in mod.guild.members:
+                if member.id == mod.id:
+                    continue
+                if member.guild_permissions.administrator or member.id == mod.guild.owner_id:
+                    sim = max(
+                        self._check_name_similarity(new_name, member.name),
+                        self._check_name_similarity(new_name, member.display_name),
+                    )
+                    if sim >= 0.7:
+                        # Check if already in list
+                        if not any(t["user_id"] == member.id for t in potential_targets):
+                            potential_targets.append({
+                                "user_id": member.id,
+                                "name": member.display_name,
+                                "similarity": sim,
+                            })
+
+        if potential_targets:
+            # Sort by similarity
+            potential_targets.sort(key=lambda x: x["similarity"], reverse=True)
+            top_match = potential_targets[0]
+
+            await self._send_alert(
+                mod_id=mod.id,
+                alert_type="Potential Impersonation",
+                description=(
+                    f"Mod changed their **{change_type.lower()}** to a name similar to another user.\n\n"
+                    f"**New Name:** `{new_name}`\n"
+                    f"**Similar To:** `{top_match['name']}` (ID: {top_match['user_id']})\n"
+                    f"**Similarity:** {int(top_match['similarity'] * 100)}%\n\n"
+                    f"This could indicate:\n"
+                    f"• Impersonation attempt\n"
+                    f"• Social engineering\n"
+                    f"• Innocent coincidence"
+                ),
+                color=EmbedColors.ERROR,
+                priority=PRIORITY_HIGH,
+            )
+
+            logger.tree("Mod Tracker: Impersonation Alert", [
+                ("Mod", str(mod)),
+                ("New Name", new_name),
+                ("Similar To", top_match["name"]),
+                ("Similarity", f"{int(top_match['similarity'] * 100)}%"),
+            ], emoji="🚨")
+
     async def log_name_change(
         self,
         mod: discord.Member,
@@ -111,7 +238,7 @@ class ModTrackerLogsMixin:
         old_name: str,
         new_name: str,
     ) -> None:
-        """Log a username or display name change."""
+        """Log a username or display name change with impersonation detection."""
         embed = self._create_embed(
             title=f"✏️ {change_type} Changed",
             color=EmbedColors.WARNING,
@@ -133,6 +260,9 @@ class ModTrackerLogsMixin:
                 ("Before", old_name[:20]),
                 ("After", new_name[:20]),
             ], emoji="✏️")
+
+        # Check for potential impersonation
+        await self._check_impersonation(mod, new_name, change_type)
 
     async def log_message_delete(
         self,

@@ -129,16 +129,17 @@ class SnipeCog(commands.Cog):
             ], emoji="🎯")
 
             # Build plain text message (public, not embed)
-            # Format: Author name + content + deleted time in small text
-            message_lines = [f"**{author_display}** ({author_name})"]
-
+            # Format: Name (username): content
+            #         -# metadata underneath
             if content:
                 # Truncate if too long
                 if len(content) > 1500:
                     content = content[:1497] + "..."
-                message_lines.append(content)
+                main_line = f"**{author_display}** ({author_name}): {content}"
             else:
-                message_lines.append("*(No text content)*")
+                main_line = f"**{author_display}** ({author_name}): *(No text content)*"
+
+            message_lines = [main_line]
 
             # Add attachment names if any
             if attachment_names:
