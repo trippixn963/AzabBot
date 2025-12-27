@@ -94,6 +94,9 @@ class AzabBot(commands.Bot):
         self.logging_service = None
         self.webhook_alert_service = None
         self.voice_handler = None
+        self.antispam_service = None
+        self.antinuke_service = None
+        self.raid_lockdown_service = None
 
         # Prisoner rate limiting
         self.prisoner_cooldowns: Dict[int, datetime] = {}
@@ -113,6 +116,14 @@ class AzabBot(commands.Bot):
         # Message content cache
         self._message_cache: Dict[int, dict] = {}
         self._message_cache_limit: int = 5000
+
+        # Snipe cache (channel_id -> deque of last 10 deleted messages)
+        self._snipe_cache: Dict[int, deque] = {}
+        self._snipe_limit: int = 10
+
+        # Edit snipe cache (channel_id -> deque of last 10 edits)
+        self._editsnipe_cache: Dict[int, deque] = {}
+        self._editsnipe_limit: int = 10
 
         # Raid detection
         self._recent_joins: deque = deque(maxlen=50)
@@ -305,6 +316,15 @@ class AzabBot(commands.Bot):
             self.voice_handler = VoiceHandler(self)
             logger.info("Voice Handler Initialized")
 
+            from src.services.antispam import AntiSpamService
+            self.antispam_service = AntiSpamService(self)
+
+            from src.services.antinuke import AntiNukeService
+            self.antinuke_service = AntiNukeService(self)
+
+            from src.services.raid_lockdown import RaidLockdownService
+            self.raid_lockdown_service = RaidLockdownService(self)
+
             # Summary of all initialized services
             logger.tree("ALL SERVICES INITIALIZED", [
                 ("AI Service", "✓ Ready"),
@@ -315,6 +335,9 @@ class AzabBot(commands.Bot):
                 ("Mod Tracker", "✓ Enabled" if self.mod_tracker.enabled else "✗ Disabled"),
                 ("Server Logs", "✓ Enabled" if self.logging_service.enabled else "✗ Disabled"),
                 ("Voice Handler", "✓ Ready"),
+                ("Anti-Spam", "✓ Ready"),
+                ("Anti-Nuke", "✓ Ready"),
+                ("Raid Lockdown", "✓ Ready"),
             ], emoji="🚀")
 
         except Exception as e:
@@ -460,14 +483,25 @@ class AzabBot(commands.Bot):
                 if time_since_alert < 300:
                     can_alert = False
 
-            if can_alert and self.logging_service:
+            if can_alert:
                 self._last_raid_alert = current_time
                 recent_members = [m for _, m in recent]
-                await self.logging_service.log_raid_alert(
-                    join_count=join_count,
-                    time_window=self._raid_window,
-                    recent_members=recent_members,
-                )
+
+                # Log raid alert
+                if self.logging_service:
+                    await self.logging_service.log_raid_alert(
+                        join_count=join_count,
+                        time_window=self._raid_window,
+                        recent_members=recent_members,
+                    )
+
+                # Trigger auto-lockdown
+                if self.raid_lockdown_service:
+                    await self.raid_lockdown_service.trigger_raid_lockdown(
+                        guild=member.guild,
+                        join_count=join_count,
+                        time_window=self._raid_window,
+                    )
 
     async def _auto_hide_from_muted(self, channel: discord.abc.GuildChannel) -> None:
         """Automatically hide a new channel from the muted role."""

@@ -856,6 +856,68 @@ class DatabaseManager:
             )
         """)
 
+        # -----------------------------------------------------------------
+        # SPAM VIOLATIONS TABLE
+        # DESIGN: Persists spam violations across bot restarts
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS spam_violations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                violation_count INTEGER DEFAULT 1,
+                last_violation_at REAL NOT NULL,
+                last_spam_type TEXT,
+                UNIQUE(user_id, guild_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_spam_violations_user ON spam_violations(user_id, guild_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # SNIPE CACHE TABLE
+        # DESIGN: Persists deleted messages for /snipe command
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS snipe_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id INTEGER NOT NULL,
+                author_id INTEGER NOT NULL,
+                author_name TEXT NOT NULL,
+                author_display TEXT NOT NULL,
+                author_avatar TEXT,
+                content TEXT,
+                attachment_names TEXT,
+                deleted_at REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_snipe_channel ON snipe_cache(channel_id, deleted_at DESC)"
+        )
+
+        # -----------------------------------------------------------------
+        # FORBID HISTORY TABLE
+        # DESIGN: Tracks user restrictions (forbid reactions, attachments, etc.)
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS forbid_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                restriction_type TEXT NOT NULL,
+                moderator_id INTEGER NOT NULL,
+                reason TEXT,
+                created_at REAL NOT NULL,
+                removed_at REAL,
+                removed_by INTEGER,
+                UNIQUE(user_id, guild_id, restriction_type)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_forbid_user ON forbid_history(user_id, guild_id)"
+        )
+
         conn.commit()
 
     # =========================================================================
@@ -3534,6 +3596,329 @@ class DatabaseManager:
             "create_private_threads": bool(row["create_private_threads"]),
             "send_messages_in_threads": bool(row["send_messages_in_threads"]),
         }
+
+
+    # =========================================================================
+    # Spam Violations Operations
+    # =========================================================================
+
+    def get_spam_violations(self, user_id: int, guild_id: int) -> Dict[str, Any]:
+        """
+        Get spam violation record for a user.
+
+        Args:
+            user_id: User ID
+            guild_id: Guild ID
+
+        Returns:
+            Dict with violation_count, last_violation_at, last_spam_type
+            or defaults if no record exists
+        """
+        row = self.fetchone(
+            "SELECT violation_count, last_violation_at, last_spam_type "
+            "FROM spam_violations WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        if row:
+            return {
+                "violation_count": row["violation_count"],
+                "last_violation_at": row["last_violation_at"],
+                "last_spam_type": row["last_spam_type"],
+            }
+        return {
+            "violation_count": 0,
+            "last_violation_at": None,
+            "last_spam_type": None,
+        }
+
+    def add_spam_violation(
+        self,
+        user_id: int,
+        guild_id: int,
+        spam_type: str,
+    ) -> int:
+        """
+        Add or increment spam violation for a user.
+
+        Args:
+            user_id: User ID
+            guild_id: Guild ID
+            spam_type: Type of spam detected
+
+        Returns:
+            New violation count
+        """
+        now = time.time()
+        existing = self.get_spam_violations(user_id, guild_id)
+
+        if existing["violation_count"] > 0:
+            new_count = existing["violation_count"] + 1
+            self.execute(
+                "UPDATE spam_violations SET violation_count = ?, "
+                "last_violation_at = ?, last_spam_type = ? "
+                "WHERE user_id = ? AND guild_id = ?",
+                (new_count, now, spam_type, user_id, guild_id)
+            )
+        else:
+            new_count = 1
+            self.execute(
+                "INSERT INTO spam_violations "
+                "(user_id, guild_id, violation_count, last_violation_at, last_spam_type) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (user_id, guild_id, 1, now, spam_type)
+            )
+
+        return new_count
+
+    def decay_spam_violations(self, decay_seconds: int = 300) -> int:
+        """
+        Decay violations for users who haven't violated in a while.
+
+        Args:
+            decay_seconds: Time since last violation to decay (default 5 min)
+
+        Returns:
+            Number of records affected
+        """
+        cutoff = time.time() - decay_seconds
+        # Decrement by 1, delete if reaches 0
+        self.execute(
+            "UPDATE spam_violations SET violation_count = violation_count - 1 "
+            "WHERE last_violation_at < ? AND violation_count > 0",
+            (cutoff,)
+        )
+        # Clean up zero violations
+        result = self.execute(
+            "DELETE FROM spam_violations WHERE violation_count <= 0"
+        )
+        return result.rowcount if result else 0
+
+    def reset_spam_violations(self, user_id: int, guild_id: int) -> None:
+        """
+        Reset spam violations for a user (e.g., after manual review).
+
+        Args:
+            user_id: User ID
+            guild_id: Guild ID
+        """
+        self.execute(
+            "DELETE FROM spam_violations WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+
+    # =========================================================================
+    # Forbid Operations
+    # =========================================================================
+
+    def add_forbid(
+        self,
+        user_id: int,
+        guild_id: int,
+        restriction_type: str,
+        moderator_id: int,
+        reason: Optional[str] = None,
+    ) -> bool:
+        """
+        Add a restriction to a user.
+
+        Returns True if added, False if already exists.
+        """
+        now = time.time()
+        try:
+            self.execute(
+                """INSERT OR REPLACE INTO forbid_history
+                   (user_id, guild_id, restriction_type, moderator_id, reason, created_at, removed_at, removed_by)
+                   VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)""",
+                (user_id, guild_id, restriction_type, moderator_id, reason, now)
+            )
+            return True
+        except Exception:
+            return False
+
+    def remove_forbid(
+        self,
+        user_id: int,
+        guild_id: int,
+        restriction_type: str,
+        removed_by: int,
+    ) -> bool:
+        """
+        Remove a restriction from a user.
+
+        Returns True if removed, False if didn't exist.
+        """
+        now = time.time()
+        cursor = self.execute(
+            """UPDATE forbid_history
+               SET removed_at = ?, removed_by = ?
+               WHERE user_id = ? AND guild_id = ? AND restriction_type = ? AND removed_at IS NULL""",
+            (now, removed_by, user_id, guild_id, restriction_type)
+        )
+        return cursor.rowcount > 0
+
+    def get_user_forbids(self, user_id: int, guild_id: int) -> List[Dict[str, Any]]:
+        """
+        Get all active restrictions for a user.
+
+        Returns list of restriction records.
+        """
+        rows = self.fetchall(
+            """SELECT restriction_type, moderator_id, reason, created_at
+               FROM forbid_history
+               WHERE user_id = ? AND guild_id = ? AND removed_at IS NULL
+               ORDER BY created_at DESC""",
+            (user_id, guild_id)
+        )
+        return [dict(row) for row in rows]
+
+    def get_forbid_history(self, user_id: int, guild_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get full forbid history for a user (including removed).
+
+        Returns list of all restriction records.
+        """
+        rows = self.fetchall(
+            """SELECT restriction_type, moderator_id, reason, created_at, removed_at, removed_by
+               FROM forbid_history
+               WHERE user_id = ? AND guild_id = ?
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (user_id, guild_id, limit)
+        )
+        return [dict(row) for row in rows]
+
+    def is_forbidden(self, user_id: int, guild_id: int, restriction_type: str) -> bool:
+        """Check if user has a specific active restriction."""
+        row = self.fetchone(
+            """SELECT 1 FROM forbid_history
+               WHERE user_id = ? AND guild_id = ? AND restriction_type = ? AND removed_at IS NULL""",
+            (user_id, guild_id, restriction_type)
+        )
+        return row is not None
+
+    # =========================================================================
+    # Snipe Cache Operations
+    # =========================================================================
+
+    def save_snipe(
+        self,
+        channel_id: int,
+        author_id: int,
+        author_name: str,
+        author_display: str,
+        author_avatar: Optional[str],
+        content: Optional[str],
+        attachment_names: List[str],
+        deleted_at: float,
+    ) -> None:
+        """
+        Save a deleted message to snipe cache.
+
+        Args:
+            channel_id: Channel where message was deleted.
+            author_id: Author's Discord ID.
+            author_name: Author's username.
+            author_display: Author's display name.
+            author_avatar: Author's avatar URL.
+            content: Message content.
+            attachment_names: List of attachment filenames.
+            deleted_at: Timestamp when deleted.
+        """
+        import json
+
+        self.execute(
+            """INSERT INTO snipe_cache
+               (channel_id, author_id, author_name, author_display, author_avatar, content, attachment_names, deleted_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (channel_id, author_id, author_name, author_display, author_avatar, content, json.dumps(attachment_names), deleted_at)
+        )
+
+        # Keep only 10 messages per channel
+        self.execute(
+            """DELETE FROM snipe_cache
+               WHERE channel_id = ? AND id NOT IN (
+                   SELECT id FROM snipe_cache WHERE channel_id = ?
+                   ORDER BY deleted_at DESC LIMIT 10
+               )""",
+            (channel_id, channel_id)
+        )
+
+    def get_snipes(self, channel_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Get cached deleted messages for a channel.
+
+        Args:
+            channel_id: Channel ID.
+            limit: Max messages to return.
+
+        Returns:
+            List of snipe data dicts.
+        """
+        import json
+
+        rows = self.fetchall(
+            """SELECT author_id, author_name, author_display, author_avatar, content, attachment_names, deleted_at
+               FROM snipe_cache
+               WHERE channel_id = ?
+               ORDER BY deleted_at DESC
+               LIMIT ?""",
+            (channel_id, limit)
+        )
+
+        snipes = []
+        for row in rows:
+            snipes.append({
+                "author_id": row["author_id"],
+                "author_name": row["author_name"],
+                "author_display": row["author_display"],
+                "author_avatar": row["author_avatar"],
+                "content": row["content"],
+                "attachment_names": json.loads(row["attachment_names"]) if row["attachment_names"] else [],
+                "deleted_at": row["deleted_at"],
+            })
+
+        return snipes
+
+    def clear_snipes(self, channel_id: int, user_id: Optional[int] = None) -> int:
+        """
+        Clear snipe cache for a channel.
+
+        Args:
+            channel_id: Channel ID.
+            user_id: Optional - only clear messages from this user.
+
+        Returns:
+            Number of messages cleared.
+        """
+        if user_id:
+            cursor = self.execute(
+                "DELETE FROM snipe_cache WHERE channel_id = ? AND author_id = ?",
+                (channel_id, user_id)
+            )
+        else:
+            cursor = self.execute(
+                "DELETE FROM snipe_cache WHERE channel_id = ?",
+                (channel_id,)
+            )
+
+        return cursor.rowcount
+
+    def cleanup_old_snipes(self, max_age_seconds: int = 600) -> int:
+        """
+        Clean up snipes older than max age.
+
+        Args:
+            max_age_seconds: Max age in seconds (default 10 minutes).
+
+        Returns:
+            Number of messages cleaned.
+        """
+        cutoff = time.time() - max_age_seconds
+        cursor = self.execute(
+            "DELETE FROM snipe_cache WHERE deleted_at < ?",
+            (cutoff,)
+        )
+        return cursor.rowcount
 
 
 # =============================================================================

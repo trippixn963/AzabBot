@@ -297,6 +297,10 @@ class LockdownCog(commands.Cog):
             # Clear lockdown state
             self.db.end_lockdown(guild.id)
 
+            # Cancel any pending auto-unlock
+            if self.bot.raid_lockdown_service:
+                self.bot.raid_lockdown_service.cancel_auto_unlock()
+
             # Build response embed
             embed = discord.Embed(
                 title="🔓 Server Unlocked",

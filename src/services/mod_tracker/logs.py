@@ -306,28 +306,84 @@ class ModTrackerLogsMixin:
         mod: discord.Member,
         added_roles: List[discord.Role],
         removed_roles: List[discord.Role],
+        changed_by_id: Optional[int] = None,
     ) -> None:
-        """Log role changes."""
-        embed = self._create_embed(
-            title="🎭 Roles Changed",
-            color=EmbedColors.INFO,
-        )
+        """
+        Log role changes with self-change detection.
+
+        Args:
+            mod: The mod whose roles changed
+            added_roles: Roles that were added
+            removed_roles: Roles that were removed
+            changed_by_id: ID of who made the change (for self-change detection)
+        """
+        is_self_change = changed_by_id is not None and changed_by_id == mod.id
+
+        # Check for elevated permissions in added roles
+        elevated_roles = [
+            r for r in added_roles
+            if r.permissions.administrator or r.permissions.manage_guild
+        ]
+
+        # Use alert styling for self-changes, regular for others
+        if is_self_change:
+            title = "⚠️ Self Role Change"
+            color = EmbedColors.ERROR
+        else:
+            title = "🎭 Roles Changed"
+            color = EmbedColors.INFO
+
+        embed = self._create_embed(title=title, color=color)
         self._add_mod_field(embed, mod)
 
         if added_roles:
-            roles_str = ", ".join([r.name for r in added_roles])
-            embed.add_field(name="Added", value=f"`{roles_str}`", inline=False)
+            roles_str = ", ".join([f"{r.mention}" for r in added_roles])
+            embed.add_field(name="Added", value=roles_str, inline=False)
 
         if removed_roles:
-            roles_str = ", ".join([r.name for r in removed_roles])
-            embed.add_field(name="Removed", value=f"`{roles_str}`", inline=False)
+            roles_str = ", ".join([f"{r.mention}" for r in removed_roles])
+            embed.add_field(name="Removed", value=roles_str, inline=False)
 
-        if await self._send_log(mod.id, embed, "Role Change"):
-            logger.tree("Mod Tracker: Role Change Logged", [
-                ("Mod", mod.display_name),
-                ("Added", str(len(added_roles))),
-                ("Removed", str(len(removed_roles))),
-            ], emoji="🎭")
+        # Add warning for self-changes with elevated permissions
+        if is_self_change and elevated_roles:
+            elevated_names = ", ".join([r.name for r in elevated_roles])
+            embed.add_field(
+                name="🚨 Elevated Permissions",
+                value=f"Self-added role(s) with elevated permissions: **{elevated_names}**",
+                inline=False,
+            )
+
+        # For self-changes, ping developer; otherwise regular log
+        if is_self_change:
+            tracked = self.db.get_tracked_mod(mod.id)
+            if tracked:
+                thread = await self._get_mod_thread(tracked["thread_id"])
+                if thread:
+                    try:
+                        if thread.archived:
+                            await thread.edit(archived=False)
+                        await thread.send(
+                            content=f"<@{self.config.developer_id}>",
+                            embed=embed,
+                        )
+                        logger.tree("Mod Tracker: Self Role Change Alert", [
+                            ("Mod", mod.display_name),
+                            ("Added", str(len(added_roles))),
+                            ("Removed", str(len(removed_roles))),
+                            ("Elevated", str(len(elevated_roles))),
+                        ], emoji="⚠️")
+                    except Exception as e:
+                        logger.error("Mod Tracker: Failed To Log Self Role Change", [
+                            ("Mod", mod.display_name),
+                            ("Error", str(e)[:50]),
+                        ])
+        else:
+            if await self._send_log(mod.id, embed, "Role Change"):
+                logger.tree("Mod Tracker: Role Change Logged", [
+                    ("Mod", mod.display_name),
+                    ("Added", str(len(added_roles))),
+                    ("Removed", str(len(removed_roles))),
+                ], emoji="🎭")
 
     async def log_voice_activity(
         self,
@@ -367,6 +423,7 @@ class ModTrackerLogsMixin:
         target: discord.Member,
         duration: str,
         reason: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log when mod mutes a user via /mute command."""
         embed = self._create_embed(
@@ -381,6 +438,8 @@ class ModTrackerLogsMixin:
             inline=True,
         )
         embed.add_field(name="Duration", value=duration, inline=True)
+        if case_id:
+            embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         if reason:
             embed.add_field(name="Reason", value=reason, inline=False)
 
@@ -391,7 +450,7 @@ class ModTrackerLogsMixin:
         view = None
         case = self.db.get_case_log(target.id)
         if case:
-            embed.set_footer(text=f"Case ID: {case['case_id']}")
+            embed.set_footer(text=f"Case ID: {case_id or case['case_id']}")
             view = CaseButtonView(
                 guild_id=self.config.logging_guild_id or target.guild.id,
                 thread_id=case["thread_id"],
@@ -403,6 +462,7 @@ class ModTrackerLogsMixin:
                 ("Mod", mod.display_name),
                 ("Target", target.display_name),
                 ("Duration", duration),
+                ("Case", case_id or "N/A"),
             ], emoji="🔇")
 
     async def log_unmute(
@@ -410,6 +470,7 @@ class ModTrackerLogsMixin:
         mod: discord.Member,
         target: discord.Member,
         reason: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log when mod unmutes a user via /unmute command."""
         embed = self._create_embed(
@@ -423,6 +484,8 @@ class ModTrackerLogsMixin:
             value=f"{target.mention}\n`{target.name}` ({target.id})",
             inline=True,
         )
+        if case_id:
+            embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         if reason:
             embed.add_field(name="Reason", value=reason, inline=False)
 
@@ -433,7 +496,7 @@ class ModTrackerLogsMixin:
         view = None
         case = self.db.get_case_log(target.id)
         if case:
-            embed.set_footer(text=f"Case ID: {case['case_id']}")
+            embed.set_footer(text=f"Case ID: {case_id or case['case_id']}")
             view = CaseButtonView(
                 guild_id=self.config.logging_guild_id or target.guild.id,
                 thread_id=case["thread_id"],
@@ -562,6 +625,7 @@ class ModTrackerLogsMixin:
         target: discord.Member,
         until: Optional[datetime] = None,
         reason: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log when mod times out a member with dynamic countdown."""
         if not self.enabled:
@@ -601,6 +665,9 @@ class ModTrackerLogsMixin:
         else:
             embed.add_field(name="Duration", value="Unknown", inline=True)
 
+        if case_id:
+            embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
+
         if reason:
             embed.add_field(name="Reason", value=reason, inline=False)
 
@@ -611,7 +678,7 @@ class ModTrackerLogsMixin:
         view = None
         case = self.db.get_case_log(target.id)
         if case:
-            embed.set_footer(text=f"Case ID: {case['case_id']}")
+            embed.set_footer(text=f"Case ID: {case_id or case['case_id']}")
             view = CaseButtonView(
                 guild_id=self.config.logging_guild_id or target.guild.id,
                 thread_id=case["thread_id"],
@@ -622,6 +689,7 @@ class ModTrackerLogsMixin:
             logger.tree("Mod Tracker: Timeout Logged", [
                 ("Mod ID", str(mod_id)),
                 ("Target", str(target)),
+                ("Case", case_id or "N/A"),
             ], emoji="⏰")
 
         # Check for bulk action
@@ -632,6 +700,7 @@ class ModTrackerLogsMixin:
         mod_id: int,
         target: discord.User,
         reason: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log when mod kicks a member."""
         await self._log_mod_action(
@@ -642,6 +711,7 @@ class ModTrackerLogsMixin:
             extra_fields=[
                 ("Reason", reason or "No reason provided"),
             ],
+            case_id=case_id,
         )
 
     async def log_ban(
@@ -649,6 +719,7 @@ class ModTrackerLogsMixin:
         mod_id: int,
         target: discord.User,
         reason: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log when mod bans a member."""
         # Record for suspicious pattern detection
@@ -662,6 +733,7 @@ class ModTrackerLogsMixin:
             extra_fields=[
                 ("Reason", reason or "No reason provided"),
             ],
+            case_id=case_id,
         )
 
     async def log_unban(
@@ -669,6 +741,7 @@ class ModTrackerLogsMixin:
         mod_id: int,
         target: discord.User,
         reason: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log when mod unbans a member."""
         # Check for suspicious pattern (unbanning someone they recently banned)
@@ -682,6 +755,7 @@ class ModTrackerLogsMixin:
             extra_fields=[
                 ("Reason", reason or "No reason provided"),
             ],
+            case_id=case_id,
         )
 
     async def log_purge(
@@ -767,6 +841,7 @@ class ModTrackerLogsMixin:
         emoji_icon: str,
         target: discord.User,
         extra_fields: Optional[List[Tuple[str, str]]] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Helper to log mod actions."""
         if not self.enabled:
@@ -795,6 +870,10 @@ class ModTrackerLogsMixin:
             for name, value in extra_fields:
                 embed.add_field(name=name, value=value, inline=True)
 
+        # Add case ID field if provided
+        if case_id:
+            embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
+
         if hasattr(target, 'display_avatar'):
             embed.set_thumbnail(url=target.display_avatar.url)
 
@@ -802,7 +881,7 @@ class ModTrackerLogsMixin:
         view = None
         case = self.db.get_case_log(target.id)
         if case:
-            embed.set_footer(text=f"Case ID: {case['case_id']}")
+            embed.set_footer(text=f"Case ID: {case_id or case['case_id']}")
             view = CaseButtonView(
                 guild_id=self.config.logging_guild_id,
                 thread_id=case["thread_id"],
@@ -999,10 +1078,20 @@ class ModTrackerLogsMixin:
         self,
         mod_id: int,
         channel: discord.TextChannel,
-        message: discord.Message,
-        pinned: bool,
+        message: Optional[discord.Message] = None,
+        pinned: bool = True,
+        message_id: Optional[int] = None,
     ) -> None:
-        """Log when mod pins/unpins a message."""
+        """
+        Log when mod pins/unpins a message.
+
+        Args:
+            mod_id: The moderator's ID
+            channel: The channel where the pin action occurred
+            message: The message object (if available)
+            pinned: True for pin, False for unpin
+            message_id: Message ID fallback when message can't be fetched
+        """
         if not self.enabled:
             return
 
@@ -1014,17 +1103,26 @@ class ModTrackerLogsMixin:
             color=EmbedColors.INFO,
         )
         embed.add_field(name="Channel", value=f"#{channel.name}", inline=True)
-        embed.add_field(name="Author", value=f"{message.author}", inline=True)
 
-        if message.content:
-            max_content_length = 200
-            content = message.content[:max_content_length]
-            if len(message.content) > max_content_length:
-                content += "..."
-            embed.add_field(name="Content", value=f"```{content}```", inline=False)
+        view = None
+        if message:
+            embed.add_field(name="Author", value=f"{message.author}", inline=True)
 
-        # Create message button view
-        view = MessageButtonView(message.jump_url)
+            if message.content:
+                max_content_length = 200
+                content = message.content[:max_content_length]
+                if len(message.content) > max_content_length:
+                    content += "..."
+                embed.add_field(name="Content", value=f"```{content}```", inline=False)
+
+            # Create message button view
+            view = MessageButtonView(message.jump_url)
+        else:
+            # Fallback when message can't be fetched
+            msg_id = message_id or "Unknown"
+            embed.add_field(name="Message ID", value=f"`{msg_id}`", inline=True)
+            if not pinned:
+                embed.add_field(name="Note", value="*Message may have been deleted*", inline=False)
 
         if await self._send_log(mod_id, embed, f"Message {action}", view=view):
             logger.tree(f"Mod Tracker: Message {action} Logged", [
@@ -2343,6 +2441,7 @@ class ModTrackerLogsMixin:
         mod_id: int,
         target: discord.Member,
         original_until: Optional[datetime] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log when mod removes a timeout early."""
         if not self.enabled:
@@ -2367,13 +2466,28 @@ class ModTrackerLogsMixin:
                 inline=True,
             )
 
+        if case_id:
+            embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
+
         if hasattr(target, 'display_avatar'):
             embed.set_thumbnail(url=target.display_avatar.url)
 
-        if await self._send_log(mod_id, embed, "Timeout Remove"):
+        # Check for case and add button
+        view = None
+        case = self.db.get_case_log(target.id)
+        if case:
+            embed.set_footer(text=f"Case ID: {case_id or case['case_id']}")
+            view = CaseButtonView(
+                guild_id=self.config.logging_guild_id or target.guild.id,
+                thread_id=case["thread_id"],
+                user_id=target.id,
+            )
+
+        if await self._send_log(mod_id, embed, "Timeout Remove", view=view):
             logger.tree("Mod Tracker: Timeout Removed", [
                 ("Mod ID", str(mod_id)),
                 ("Target", str(target)),
+                ("Case", case_id or "N/A"),
             ], emoji="⏰")
 
     # =========================================================================

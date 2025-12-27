@@ -277,6 +277,17 @@ class PurgeCog(commands.Cog):
             ("Reason", reason or "None"),
         ], emoji="🗑️")
 
+        # Log to server logs (embed)
+        await self._log_purge_usage(
+            interaction=interaction,
+            channel=channel,
+            deleted_count=total_deleted,
+            purge_type=description,
+            old_deleted=old_deleted,
+            failed_count=failed_count,
+            reason=reason,
+        )
+
         # Log to mod tracker (pings owner for review)
         if self.bot.mod_tracker and isinstance(interaction.user, discord.Member):
             if self.bot.mod_tracker.is_tracked(interaction.user.id):
@@ -388,6 +399,83 @@ class PurgeCog(commands.Cog):
             description = "messages with mentions"
 
         await self._execute_purge(interaction, amount, check=check, description=description, reason=reason)
+
+    # =========================================================================
+    # Server Logs Integration
+    # =========================================================================
+
+    async def _log_purge_usage(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.abc.GuildChannel,
+        deleted_count: int,
+        purge_type: str,
+        old_deleted: int,
+        failed_count: int,
+        reason: Optional[str],
+    ) -> None:
+        """Log purge usage to server logs."""
+        if not self.bot.logging_service or not self.bot.logging_service.enabled:
+            return
+
+        try:
+            embed = discord.Embed(
+                title="🗑️ Messages Purged",
+                color=EmbedColors.WARNING,
+                timestamp=datetime.now(NY_TZ),
+            )
+
+            embed.add_field(
+                name="Moderator",
+                value=f"{interaction.user.mention}\n`{interaction.user.id}`",
+                inline=True,
+            )
+            embed.add_field(
+                name="Channel",
+                value=f"{channel.mention}\n`{channel.id}`",
+                inline=True,
+            )
+            embed.add_field(
+                name="Deleted",
+                value=f"`{deleted_count}` messages",
+                inline=True,
+            )
+            embed.add_field(
+                name="Type",
+                value=f"`{purge_type}`",
+                inline=True,
+            )
+
+            if old_deleted > 0:
+                embed.add_field(
+                    name="Old (14d+)",
+                    value=f"`{old_deleted}` (individual)",
+                    inline=True,
+                )
+
+            if failed_count > 0:
+                embed.add_field(
+                    name="Failed",
+                    value=f"`{failed_count}` messages",
+                    inline=True,
+                )
+
+            if reason:
+                embed.add_field(
+                    name="Reason",
+                    value=reason,
+                    inline=False,
+                )
+
+            set_footer(embed)
+
+            await self.bot.logging_service._send_log(
+                self.bot.logging_service.LogCategory.MOD_ACTIONS,
+                embed,
+            )
+
+        except Exception as e:
+            logger.debug(f"Failed to log purge usage: {e}")
 
 
 # =============================================================================

@@ -384,6 +384,7 @@ class LoggingService:
         user: discord.User,
         moderator: Optional[discord.Member] = None,
         reason: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log a ban."""
         if not self.enabled:
@@ -393,6 +394,8 @@ class LoggingService:
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
             embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+        if case_id:
+            embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
@@ -403,6 +406,7 @@ class LoggingService:
         user: discord.User,
         moderator: Optional[discord.Member] = None,
         reason: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log an unban."""
         if not self.enabled:
@@ -412,6 +416,8 @@ class LoggingService:
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
             embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+        if case_id:
+            embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
@@ -422,6 +428,7 @@ class LoggingService:
         user: discord.User,
         moderator: Optional[discord.Member] = None,
         reason: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log a kick."""
         if not self.enabled:
@@ -431,6 +438,8 @@ class LoggingService:
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
             embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+        if case_id:
+            embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
@@ -446,6 +455,7 @@ class LoggingService:
         until: Optional[datetime] = None,
         moderator: Optional[discord.Member] = None,
         reason: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log a timeout."""
         if not self._should_log(user.guild.id):
@@ -455,6 +465,8 @@ class LoggingService:
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
             embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+        if case_id:
+            embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
 
         if until:
             timestamp = int(until.timestamp())
@@ -480,6 +492,7 @@ class LoggingService:
         self,
         user: discord.Member,
         moderator: Optional[discord.Member] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log a timeout removal."""
         if not self._should_log(user.guild.id):
@@ -489,6 +502,8 @@ class LoggingService:
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
             embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+        if case_id:
+            embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         self._set_user_thumbnail(embed, user)
 
         await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
@@ -498,6 +513,7 @@ class LoggingService:
         user: discord.Member,
         moderator: Optional[discord.Member] = None,
         reason: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log a mute (role-based)."""
         if not self._should_log(user.guild.id):
@@ -507,6 +523,8 @@ class LoggingService:
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
             embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+        if case_id:
+            embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
@@ -516,6 +534,7 @@ class LoggingService:
         self,
         user: discord.Member,
         moderator: Optional[discord.Member] = None,
+        case_id: Optional[str] = None,
     ) -> None:
         """Log an unmute (role-based)."""
         if not self._should_log(user.guild.id):
@@ -525,6 +544,8 @@ class LoggingService:
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
             embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+        if case_id:
+            embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         self._set_user_thumbnail(embed, user)
 
         await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
@@ -1788,34 +1809,58 @@ class LoggingService:
 
     async def log_message_pin(
         self,
-        message: discord.Message,
-        pinned: bool,
+        message: Optional[discord.Message] = None,
+        pinned: bool = True,
         moderator: Optional[discord.Member] = None,
+        channel: Optional[discord.TextChannel] = None,
+        message_id: Optional[int] = None,
     ) -> None:
-        """Log a message being pinned or unpinned."""
+        """
+        Log a message being pinned or unpinned.
+
+        Args:
+            message: The message object (if available)
+            pinned: True for pin, False for unpin
+            moderator: The moderator who performed the action
+            channel: Fallback channel when message can't be fetched
+            message_id: Fallback message ID when message can't be fetched
+        """
         if not self.enabled:
             return
 
+        user_id = message.author.id if message else None
+
         if pinned:
-            embed = self._create_embed("📌 Message Pinned", EmbedColors.SUCCESS, category="Pin", user_id=message.author.id)
+            embed = self._create_embed("📌 Message Pinned", EmbedColors.SUCCESS, category="Pin", user_id=user_id)
         else:
-            embed = self._create_embed("📌 Message Unpinned", EmbedColors.WARNING, category="Unpin", user_id=message.author.id)
+            embed = self._create_embed("📌 Message Unpinned", EmbedColors.WARNING, category="Unpin", user_id=user_id)
 
-        embed.add_field(name="Author", value=self._format_user_field(message.author), inline=True)
-        embed.add_field(name="Channel", value=self._format_channel(message.channel), inline=True)
-        if moderator:
-            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
+        if message:
+            embed.add_field(name="Author", value=self._format_user_field(message.author), inline=True)
+            embed.add_field(name="Channel", value=self._format_channel(message.channel), inline=True)
+            if moderator:
+                embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
-        embed.add_field(name="Message", value=f"[Jump to message]({message.jump_url})", inline=True)
+            embed.add_field(name="Message", value=f"[Jump to message]({message.jump_url})", inline=True)
 
-        # Show message preview
-        if message.content:
-            preview = message.content[:200] + "..." if len(message.content) > 200 else message.content
-            embed.add_field(name="Content Preview", value=f"```{preview}```", inline=False)
+            # Show message preview
+            if message.content:
+                preview = message.content[:200] + "..." if len(message.content) > 200 else message.content
+                embed.add_field(name="Content Preview", value=f"```{preview}```", inline=False)
 
-        self._set_user_thumbnail(embed, message.author)
+            self._set_user_thumbnail(embed, message.author)
+        else:
+            # Fallback when message can't be fetched
+            if channel:
+                embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
+            if moderator:
+                embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
+            if message_id:
+                embed.add_field(name="Message ID", value=f"`{message_id}`", inline=True)
+            if not pinned:
+                embed.add_field(name="Note", value="*Message may have been deleted*", inline=False)
 
-        await self._send_log(LogCategory.MESSAGES, embed, user_id=message.author.id)
+        await self._send_log(LogCategory.MESSAGES, embed, user_id=user_id)
 
     # =========================================================================
     # Server Boosts
@@ -2436,6 +2481,51 @@ class LoggingService:
             thread = await self._get_or_create_thread(LogCategory.ALERTS)
             if thread:
                 await thread.send(f"<@{self.config.developer_id}> ⚠️ **Server lockdown initiated**")
+
+    async def log_auto_lockdown(
+        self,
+        join_count: int,
+        time_window: int,
+        auto_unlock_in: int,
+    ) -> None:
+        """
+        Log an automatic raid lockdown.
+
+        Args:
+            join_count: Number of joins that triggered the lockdown.
+            time_window: Time window in seconds.
+            auto_unlock_in: Seconds until auto-unlock.
+        """
+        if not self.enabled:
+            return
+
+        embed = self._create_embed("🚨 AUTO-LOCKDOWN TRIGGERED", 0xFF0000, category="Lockdown")
+        embed.add_field(name="Status", value="**Server automatically locked - RAID DETECTED**", inline=False)
+        embed.add_field(name="Trigger", value=f"`{join_count}` joins in `{time_window}s`", inline=True)
+        embed.add_field(name="Auto-Unlock", value=f"In `{auto_unlock_in}s`", inline=True)
+        embed.add_field(name="Action", value="Use `/unlock` to unlock manually", inline=False)
+
+        await self._send_log(LogCategory.ALERTS, embed)
+
+        # Ping developer for raid alert
+        if self.config.developer_id:
+            thread = await self._get_or_create_thread(LogCategory.ALERTS)
+            if thread:
+                await thread.send(
+                    f"<@{self.config.developer_id}> 🚨 **RAID DETECTED - AUTO-LOCKDOWN TRIGGERED!**\n"
+                    f"Detected {join_count} joins in {time_window}s. Auto-unlock in {auto_unlock_in}s."
+                )
+
+    async def log_auto_unlock(self) -> None:
+        """Log an automatic unlock after raid lockdown expires."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed("🔓 AUTO-UNLOCK", EmbedColors.SUCCESS, category="Lockdown")
+        embed.add_field(name="Status", value="**Raid lockdown has expired**", inline=False)
+        embed.add_field(name="Action", value="Server permissions restored automatically", inline=False)
+
+        await self._send_log(LogCategory.ALERTS, embed)
 
 
 # =============================================================================

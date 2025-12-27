@@ -132,6 +132,15 @@ class MessageEvents(commands.Cog):
             }
 
         # -----------------------------------------------------------------
+        # Anti-Spam Check (early exit if spam detected)
+        # -----------------------------------------------------------------
+        if self.bot.antispam_service and message.guild:
+            spam_type = await self.bot.antispam_service.check_message(message)
+            if spam_type:
+                await self.bot.antispam_service.handle_spam(message, spam_type)
+                return  # Don't process spam messages further
+
+        # -----------------------------------------------------------------
         # Skip: Bots and empty messages
         # -----------------------------------------------------------------
         if message.author.bot:
@@ -460,6 +469,25 @@ class MessageEvents(commands.Cog):
         if message.author.bot:
             return
 
+        # -----------------------------------------------------------------
+        # Snipe Cache: Store deleted messages (database + memory)
+        # -----------------------------------------------------------------
+        channel_id = message.channel.id
+        deleted_at = datetime.now(NY_TZ).timestamp()
+        attachment_names = [a.filename for a in message.attachments] if message.attachments else []
+
+        # Save to database (persists across restarts)
+        self.bot.db.save_snipe(
+            channel_id=channel_id,
+            author_id=message.author.id,
+            author_name=str(message.author),
+            author_display=message.author.display_name,
+            author_avatar=message.author.display_avatar.url,
+            content=message.content,
+            attachment_names=attachment_names,
+            deleted_at=deleted_at,
+        )
+
         # Tree logging for message deletions
         content_preview = "(empty)"
         if message.content:
@@ -517,6 +545,30 @@ class MessageEvents(commands.Cog):
 
         if before.content == after.content:
             return
+
+        # -----------------------------------------------------------------
+        # Edit Snipe Cache: Store last 10 edits per channel
+        # -----------------------------------------------------------------
+        channel_id = before.channel.id
+
+        # Initialize deque if not exists
+        if channel_id not in self.bot._editsnipe_cache:
+            self.bot._editsnipe_cache[channel_id] = deque(maxlen=self.bot._editsnipe_limit)
+
+        edit_data = {
+            "author_id": before.author.id,
+            "author_name": str(before.author),
+            "author_display": before.author.display_name,
+            "author_avatar": before.author.display_avatar.url,
+            "before_content": before.content,
+            "after_content": after.content,
+            "edited_at": datetime.now(NY_TZ).timestamp(),
+            "message_id": before.id,
+            "jump_url": after.jump_url,
+        }
+
+        # Add to front of deque (most recent first)
+        self.bot._editsnipe_cache[channel_id].appendleft(edit_data)
 
         # Tree logging for message edits
         before_preview = (before.content[:30] + "...") if len(before.content) > 30 else (before.content or "(empty)")

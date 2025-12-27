@@ -665,6 +665,7 @@ class MuteCog(commands.Cog):
                     target=target_member,
                     duration=duration_display,
                     reason=reason,
+                    case_id=case_info["case_id"] if case_info else None,
                 )
 
         # Run all post-response operations concurrently
@@ -971,6 +972,7 @@ class MuteCog(commands.Cog):
                     mod=interaction.user,
                     target=target_member,
                     reason=reason,
+                    case_id=case_info["case_id"] if case_info else None,
                 )
 
         # Run all post-response operations concurrently

@@ -13,6 +13,7 @@ from enum import Enum
 
 class LogCategory(Enum):
     """Log category enum mapping to thread names."""
+    MOD_ACTIONS = "📋 Mod Actions"
     BANS_KICKS = "🔨 Bans & Kicks"
     MUTES_TIMEOUTS = "🔇 Mutes & Timeouts"
     MESSAGES = "📝 Message Logs"
@@ -40,6 +41,7 @@ class LogCategory(Enum):
 
 # Thread descriptions for each category
 THREAD_DESCRIPTIONS = {
+    LogCategory.MOD_ACTIONS: "Logs for mod command usage: snipe, history, purge, forbid, warn, etc.",
     LogCategory.BANS_KICKS: "Logs for bans, unbans, and kicks",
     LogCategory.MUTES_TIMEOUTS: "Logs for mutes, unmutes, timeouts, and timeout removals",
     LogCategory.MESSAGES: "Logs for message edits, deletes, and bulk deletes",

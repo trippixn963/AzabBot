@@ -404,14 +404,6 @@ class BanCog(commands.Cog):
             log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
         logger.tree(log_type, log_items, emoji="🔨")
 
-        # Server logs
-        if self.bot.logging_service and self.bot.logging_service.enabled:
-            await self.bot.logging_service.log_ban(
-                user=user,
-                reason=reason,
-                moderator=interaction.user,
-            )
-
         # -----------------------------------------------------------------
         # Log to Case Forum (creates per-action case)
         # -----------------------------------------------------------------
@@ -423,6 +415,15 @@ class BanCog(commands.Cog):
                 moderator=interaction.user,
                 reason=f"[SOFTBAN] {reason}" if is_softban else reason,
                 evidence=evidence,
+            )
+
+        # Server logs (after case creation to include case_id)
+        if self.bot.logging_service and self.bot.logging_service.enabled:
+            await self.bot.logging_service.log_ban(
+                user=user,
+                reason=reason,
+                moderator=interaction.user,
+                case_id=case_info["case_id"] if case_info else None,
             )
 
         # -----------------------------------------------------------------
@@ -667,13 +668,6 @@ class BanCog(commands.Cog):
             log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
         logger.tree("USER UNBANNED", log_items, emoji="🔓")
 
-        # Server logs
-        if self.bot.logging_service and self.bot.logging_service.enabled:
-            await self.bot.logging_service.log_unban(
-                user=target_user,
-                moderator=interaction.user,
-            )
-
         # -----------------------------------------------------------------
         # Log to Case Forum (finds active ban case and resolves it)
         # -----------------------------------------------------------------
@@ -685,6 +679,14 @@ class BanCog(commands.Cog):
                 username=str(target_user),
                 moderator=interaction.user,
                 reason=reason,
+            )
+
+        # Server logs (after case creation to include case_id)
+        if self.bot.logging_service and self.bot.logging_service.enabled:
+            await self.bot.logging_service.log_unban(
+                user=target_user,
+                moderator=interaction.user,
+                case_id=case_info["case_id"] if case_info else None,
             )
 
         # Get ban duration from history

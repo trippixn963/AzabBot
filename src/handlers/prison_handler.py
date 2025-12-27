@@ -98,6 +98,12 @@ class PrisonHandler:
         # Start daily cleanup task
         asyncio.create_task(self._daily_cleanup_loop())
 
+        logger.tree("Prison Handler Loaded", [
+            ("Features", "Welcome, release, VC kick"),
+            ("VC Timeout", "1st warn, 2nd 5m, 3rd+ 30m"),
+            ("AI Service", "Enabled" if ai_service else "Disabled"),
+        ], emoji="⛓️")
+
     # =========================================================================
     # Main Event Handlers
     # =========================================================================

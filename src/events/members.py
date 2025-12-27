@@ -107,7 +107,22 @@ class MemberEvents(commands.Cog):
             added_roles = [r for r in after.roles if r not in before.roles]
             removed_roles = [r for r in before.roles if r not in after.roles]
             if added_roles or removed_roles:
-                await self.bot.mod_tracker.log_role_change(after, added_roles, removed_roles)
+                # Try to find who made the change from audit log
+                changed_by_id = None
+                try:
+                    async for entry in after.guild.audit_logs(
+                        action=discord.AuditLogAction.member_role_update,
+                        limit=5,
+                    ):
+                        if entry.target and entry.target.id == after.id:
+                            changed_by_id = entry.user.id if entry.user else None
+                            break
+                except discord.Forbidden:
+                    pass  # No audit log access
+
+                await self.bot.mod_tracker.log_role_change(
+                    after, added_roles, removed_roles, changed_by_id=changed_by_id
+                )
 
         # -----------------------------------------------------------------
         # Logging Service: Role Changes
@@ -294,6 +309,80 @@ class MemberEvents(commands.Cog):
 
         if before.name != after.name:
             await self.bot.logging_service.log_username_change(after, before.name, after.name)
+
+    @commands.Cog.listener()
+    async def on_member_ban(self, guild: discord.Guild, user: discord.User) -> None:
+        """
+        Handle member ban for real-time detection.
+
+        Faster than audit log polling for immediate ban logging.
+        Fetches moderator from audit log for complete info.
+        """
+        if self.bot.disabled:
+            return
+
+        logger.tree("MEMBER BANNED", [
+            ("User", f"{user} ({user.id})"),
+            ("Guild", guild.name),
+        ], emoji="🔨")
+
+        # Try to get moderator and reason from audit log
+        moderator = None
+        reason = None
+        try:
+            async for entry in guild.audit_logs(
+                action=discord.AuditLogAction.ban,
+                limit=5,
+            ):
+                if entry.target and entry.target.id == user.id:
+                    moderator = entry.user
+                    reason = entry.reason
+                    break
+        except discord.Forbidden:
+            pass
+
+        # Log to server logs
+        if self.bot.logging_service and self.bot.logging_service.enabled:
+            await self.bot.logging_service.log_ban(user, moderator, reason)
+
+    @commands.Cog.listener()
+    async def on_member_unban(self, guild: discord.Guild, user: discord.User) -> None:
+        """
+        Handle member unban for real-time detection.
+
+        Faster than audit log polling for immediate unban logging.
+        Fetches moderator from audit log for complete info.
+        """
+        if self.bot.disabled:
+            return
+
+        logger.tree("MEMBER UNBANNED", [
+            ("User", f"{user} ({user.id})"),
+            ("Guild", guild.name),
+        ], emoji="🔓")
+
+        # Try to get moderator and reason from audit log
+        moderator = None
+        reason = None
+        try:
+            async for entry in guild.audit_logs(
+                action=discord.AuditLogAction.unban,
+                limit=5,
+            ):
+                if entry.target and entry.target.id == user.id:
+                    moderator = entry.user
+                    reason = entry.reason
+                    break
+        except discord.Forbidden:
+            pass
+
+        # Log to server logs
+        if self.bot.logging_service and self.bot.logging_service.enabled:
+            await self.bot.logging_service.log_unban(user, moderator, reason)
+
+        # Clear any mute records for this user
+        db = get_db()
+        db.clear_mute(user.id, guild.id)
 
     @commands.Cog.listener()
     async def on_resumed(self) -> None:

@@ -41,11 +41,47 @@ class AuditLogEvents(commands.Cog):
         DESIGN: Uses audit log to identify which mod performed actions.
         Routes events to both mod_tracker and logging_service.
         """
+        # Route to anti-nuke service
+        await self._check_antinuke(entry)
+
         # Route to logging service
         await self._log_audit_event(entry)
 
         # Route to mod tracker
         await self._track_mod_action(entry)
+
+    # =========================================================================
+    # Anti-Nuke Detection
+    # =========================================================================
+
+    async def _check_antinuke(self, entry: discord.AuditLogEntry) -> None:
+        """Route audit log events to anti-nuke service for detection."""
+        if not self.bot.antinuke_service:
+            return
+
+        if not entry.user_id or not entry.guild:
+            return
+
+        try:
+            # Track bans
+            if entry.action == discord.AuditLogAction.ban:
+                await self.bot.antinuke_service.track_ban(entry.guild, entry.user_id)
+
+            # Track kicks
+            elif entry.action == discord.AuditLogAction.kick:
+                await self.bot.antinuke_service.track_kick(entry.guild, entry.user_id)
+
+            # Track channel deletions
+            elif entry.action == discord.AuditLogAction.channel_delete:
+                await self.bot.antinuke_service.track_channel_delete(entry.guild, entry.user_id)
+
+            # Track role deletions
+            elif entry.action == discord.AuditLogAction.role_delete:
+                await self.bot.antinuke_service.track_role_delete(entry.guild, entry.user_id)
+
+        except Exception as e:
+            from src.core.logger import logger
+            logger.debug(f"Anti-nuke check failed: {e}")
 
     # =========================================================================
     # Mod Tracker Routing
@@ -273,26 +309,34 @@ class AuditLogEvents(commands.Cog):
 
             # Message pin/unpin
             elif entry.action == discord.AuditLogAction.message_pin:
-                if entry.target and hasattr(entry.extra, 'channel'):
+                if hasattr(entry.extra, 'channel'):
+                    channel = entry.extra.channel
+                    message_id = entry.extra.message_id if hasattr(entry.extra, 'message_id') else None
                     try:
-                        channel = entry.extra.channel
-                        message = await channel.fetch_message(entry.extra.message_id)
+                        message = await channel.fetch_message(message_id)
                         await self.bot.mod_tracker.log_message_pin(
                             mod_id=mod_id, channel=channel, message=message, pinned=True,
                         )
                     except Exception:
-                        pass
+                        # Fallback when message can't be fetched
+                        await self.bot.mod_tracker.log_message_pin(
+                            mod_id=mod_id, channel=channel, pinned=True, message_id=message_id,
+                        )
 
             elif entry.action == discord.AuditLogAction.message_unpin:
-                if entry.target and hasattr(entry.extra, 'channel'):
+                if hasattr(entry.extra, 'channel'):
+                    channel = entry.extra.channel
+                    message_id = entry.extra.message_id if hasattr(entry.extra, 'message_id') else None
                     try:
-                        channel = entry.extra.channel
-                        message = await channel.fetch_message(entry.extra.message_id)
+                        message = await channel.fetch_message(message_id)
                         await self.bot.mod_tracker.log_message_pin(
                             mod_id=mod_id, channel=channel, message=message, pinned=False,
                         )
                     except Exception:
-                        pass
+                        # Fallback when message can't be fetched (deleted message)
+                        await self.bot.mod_tracker.log_message_pin(
+                            mod_id=mod_id, channel=channel, pinned=False, message_id=message_id,
+                        )
 
             # Emoji create/delete
             elif entry.action == discord.AuditLogAction.emoji_create:
@@ -434,16 +478,10 @@ class AuditLogEvents(commands.Cog):
                     before_roles = set(entry.before.roles) if entry.before.roles else set()
                     after_roles = set(entry.after.roles) if entry.after.roles else set()
 
-                    if entry.target and entry.target.id == mod_id:
-                        for role in after_roles - before_roles:
-                            await self.bot.mod_tracker.alert_self_role_change(
-                                mod_id=mod_id, role=role, action="added",
-                            )
-                        for role in before_roles - after_roles:
-                            await self.bot.mod_tracker.alert_self_role_change(
-                                mod_id=mod_id, role=role, action="removed",
-                            )
-                    else:
+                    # Self-role changes are handled by members.py via log_role_change
+                    # which now detects self-changes and uses alert styling with ping
+                    if entry.target and entry.target.id != mod_id:
+                        # Only log when mod assigns roles to OTHERS (not self)
                         for role in after_roles - before_roles:
                             await self.bot.mod_tracker.log_role_assign(
                                 mod_id=mod_id, target=entry.target, role=role, action="added",
@@ -632,19 +670,10 @@ class AuditLogEvents(commands.Cog):
                     moderator = guild.get_member(entry.user_id)
 
             # Bans & Kicks
-            if entry.action == discord.AuditLogAction.ban:
-                if entry.target:
-                    await self.bot.logging_service.log_ban(
-                        entry.target, moderator=moderator, reason=entry.reason,
-                    )
+            # Note: log_ban and log_unban are now handled by on_member_ban/on_member_unban
+            # in members.py for faster real-time detection (direct events vs audit polling)
 
-            elif entry.action == discord.AuditLogAction.unban:
-                if entry.target:
-                    await self.bot.logging_service.log_unban(
-                        entry.target, moderator=moderator, reason=entry.reason,
-                    )
-
-            elif entry.action == discord.AuditLogAction.kick:
+            if entry.action == discord.AuditLogAction.kick:
                 if entry.target and not entry.target.bot:
                     await self.bot.logging_service.log_kick(
                         entry.target, moderator=moderator, reason=entry.reason,
@@ -932,25 +961,33 @@ class AuditLogEvents(commands.Cog):
             # Message pin/unpin
             elif entry.action == discord.AuditLogAction.message_pin:
                 if entry.extra and hasattr(entry.extra, 'channel'):
+                    channel = entry.extra.channel
+                    message_id = entry.extra.message_id if hasattr(entry.extra, 'message_id') else None
                     try:
-                        channel = entry.extra.channel
-                        message = await channel.fetch_message(entry.extra.message_id)
+                        message = await channel.fetch_message(message_id)
                         await self.bot.logging_service.log_message_pin(
                             message=message, pinned=True, moderator=moderator,
                         )
                     except Exception:
-                        pass
+                        # Fallback when message can't be fetched
+                        await self.bot.logging_service.log_message_pin(
+                            pinned=True, moderator=moderator, channel=channel, message_id=message_id,
+                        )
 
             elif entry.action == discord.AuditLogAction.message_unpin:
                 if entry.extra and hasattr(entry.extra, 'channel'):
+                    channel = entry.extra.channel
+                    message_id = entry.extra.message_id if hasattr(entry.extra, 'message_id') else None
                     try:
-                        channel = entry.extra.channel
-                        message = await channel.fetch_message(entry.extra.message_id)
+                        message = await channel.fetch_message(message_id)
                         await self.bot.logging_service.log_message_pin(
                             message=message, pinned=False, moderator=moderator,
                         )
                     except Exception:
-                        pass
+                        # Fallback when message can't be fetched (deleted message)
+                        await self.bot.logging_service.log_message_pin(
+                            pinned=False, moderator=moderator, channel=channel, message_id=message_id,
+                        )
 
         except Exception as e:
             logger.debug(f"Logging Service: Audit event failed: {e}")

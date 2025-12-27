@@ -56,6 +56,11 @@ class MuteHandler:
         """
         self.prison_handler = prison_handler
 
+        logger.tree("Mute Handler Loaded", [
+            ("Purpose", "Parse mute embeds from logs"),
+            ("Storage", "prison_handler.mute_reasons"),
+        ], emoji="🔒")
+
     # =========================================================================
     # Embed Processing
     # =========================================================================

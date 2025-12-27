@@ -23,6 +23,13 @@ Available Commands:
     /unban: Unban a user by ID (moderator)
     /warn: Issue a warning to a user (moderator)
     /purge: Bulk delete messages from channel (moderator)
+    /lockdown: Lock server during emergency (admin)
+    /unlock: Unlock server after lockdown (admin)
+    /history: View moderation history for a user (moderator)
+    /snipe: View last deleted message in channel (moderator)
+    /forbid: Restrict specific permissions for a user (moderator)
+    /unforbid: Remove restrictions from a user (moderator)
+    /forbidden: View a user's active restrictions (moderator)
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -38,6 +45,9 @@ COMMAND_COGS = [
     "src.commands.warn",
     "src.commands.purge",
     "src.commands.lockdown",
+    "src.commands.history",
+    "src.commands.snipe",
+    "src.commands.forbid",
 ]
 """
 List of command cog module paths for dynamic loading.

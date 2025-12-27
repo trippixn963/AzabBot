@@ -39,6 +39,11 @@ class VoiceHandler:
         self.config = get_config()
         self.db = get_db()
 
+        logger.tree("Voice Handler Loaded", [
+            ("Features", "VC restriction, voice logging"),
+            ("Muted Penalty", "Disconnect + 1h timeout"),
+        ], emoji="🔊")
+
     async def handle_voice_state_update(
         self,
         member: discord.Member,
