@@ -15,7 +15,9 @@ Server: discord.gg/syria
 from datetime import datetime, timedelta, time
 from typing import TYPE_CHECKING, Optional, List, Tuple, Callable, Any, Dict
 from collections import defaultdict
+from dataclasses import dataclass, field
 import asyncio
+import heapq
 import io
 import re
 
@@ -44,12 +46,35 @@ from .constants import (
     BAN_HISTORY_TTL,
     MASS_PERMISSION_WINDOW,
     MASS_PERMISSION_THRESHOLD,
+    PRIORITY_CRITICAL,
+    PRIORITY_HIGH,
+    PRIORITY_NORMAL,
+    PRIORITY_LOW,
+    QUEUE_PROCESS_INTERVAL,
+    QUEUE_BATCH_SIZE,
+    QUEUE_MAX_SIZE,
 )
 from .helpers import CachedMessage, strip_emojis, retry_async
 from .logs import ModTrackerLogsMixin
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
+
+
+# =============================================================================
+# Queue Item for Priority Processing
+# =============================================================================
+
+@dataclass(order=True)
+class QueueItem:
+    """Item in the priority queue for mod tracker messages."""
+    priority: int
+    timestamp: float = field(compare=False)
+    thread_id: int = field(compare=False)
+    content: Optional[str] = field(compare=False, default=None)
+    embed: discord.Embed = field(compare=False, default=None)
+    view: Optional[discord.ui.View] = field(compare=False, default=None)
+    is_alert: bool = field(compare=False, default=False)
 
 
 # =============================================================================
@@ -113,6 +138,12 @@ class ModTrackerService(ModTrackerLogsMixin):
             lambda: defaultdict(list)
         )
 
+        # Priority queue for message sending
+        self._message_queue: List[QueueItem] = []
+        self._queue_lock = asyncio.Lock()
+        self._queue_processor_task: Optional[asyncio.Task] = None
+        self._queue_running = False
+
         logger.tree("Mod Tracker Service Created", [
             ("Enabled", str(self.enabled)),
         ], emoji="👁️")
@@ -129,6 +160,163 @@ class ModTrackerService(ModTrackerLogsMixin):
             self.config.mod_tracker_forum_id is not None and
             self.config.moderation_role_id is not None
         )
+
+    # =========================================================================
+    # Priority Queue System
+    # =========================================================================
+
+    def start_queue_processor(self) -> None:
+        """Start the background queue processor task."""
+        if self._queue_processor_task is None or self._queue_processor_task.done():
+            self._queue_running = True
+            self._queue_processor_task = asyncio.create_task(self._process_queue())
+            logger.debug("Mod Tracker: Queue processor started")
+
+    def stop_queue_processor(self) -> None:
+        """Stop the background queue processor task."""
+        self._queue_running = False
+        if self._queue_processor_task and not self._queue_processor_task.done():
+            self._queue_processor_task.cancel()
+            logger.debug("Mod Tracker: Queue processor stopped")
+
+    async def _enqueue(
+        self,
+        thread_id: int,
+        embed: discord.Embed,
+        priority: int = PRIORITY_NORMAL,
+        content: Optional[str] = None,
+        view: Optional[discord.ui.View] = None,
+        is_alert: bool = False,
+    ) -> None:
+        """
+        Add a message to the priority queue.
+
+        Args:
+            thread_id: Thread ID to send to.
+            embed: Embed to send.
+            priority: Priority level (lower = higher priority).
+            content: Optional text content (for pings).
+            view: Optional view with buttons.
+            is_alert: Whether this is a security alert.
+        """
+        async with self._queue_lock:
+            # Check queue size and drop low priority if full
+            if len(self._message_queue) >= QUEUE_MAX_SIZE:
+                # Remove lowest priority items (highest number)
+                if priority < PRIORITY_LOW:
+                    # Drop a low priority item to make room
+                    self._message_queue = [
+                        item for item in self._message_queue
+                        if item.priority < PRIORITY_LOW
+                    ][:QUEUE_MAX_SIZE - 1]
+                    heapq.heapify(self._message_queue)
+                else:
+                    # This is low priority and queue is full, drop it
+                    logger.warning("Mod Tracker: Queue full, dropping low priority item")
+                    return
+
+            item = QueueItem(
+                priority=priority,
+                timestamp=datetime.now(NY_TZ).timestamp(),
+                thread_id=thread_id,
+                content=content,
+                embed=embed,
+                view=view,
+                is_alert=is_alert,
+            )
+            heapq.heappush(self._message_queue, item)
+
+        # Ensure processor is running
+        self.start_queue_processor()
+
+    async def _process_queue(self) -> None:
+        """Background task to process the message queue with priority."""
+        while self._queue_running:
+            try:
+                items_to_send: List[QueueItem] = []
+
+                async with self._queue_lock:
+                    # Get up to QUEUE_BATCH_SIZE items, prioritizing alerts
+                    for _ in range(min(QUEUE_BATCH_SIZE, len(self._message_queue))):
+                        if self._message_queue:
+                            items_to_send.append(heapq.heappop(self._message_queue))
+
+                if items_to_send:
+                    for item in items_to_send:
+                        await self._send_queued_item(item)
+                        # Small delay between sends to avoid rate limits
+                        await asyncio.sleep(RATE_LIMIT_DELAY / 2)
+
+                # Wait before next batch
+                await asyncio.sleep(QUEUE_PROCESS_INTERVAL)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Mod Tracker: Queue processor error", [
+                    ("Error", str(e)[:100]),
+                ])
+                await asyncio.sleep(1)
+
+    async def _send_queued_item(self, item: QueueItem) -> bool:
+        """Send a single queued item to Discord."""
+        try:
+            thread = await self._get_mod_thread(item.thread_id)
+            if not thread:
+                return False
+
+            # Unarchive if needed
+            if thread.archived:
+                try:
+                    await thread.edit(archived=False)
+                    await asyncio.sleep(RATE_LIMIT_DELAY)
+                except discord.HTTPException:
+                    pass
+
+            await thread.send(
+                content=item.content,
+                embed=item.embed,
+                view=item.view,
+            )
+
+            if item.is_alert:
+                logger.tree("Mod Tracker: Priority Alert Sent", [
+                    ("Thread", str(item.thread_id)),
+                    ("Priority", str(item.priority)),
+                ], emoji="🚨")
+
+            return True
+
+        except Exception as e:
+            logger.error("Mod Tracker: Failed to send queued item", [
+                ("Thread", str(item.thread_id)),
+                ("Error", str(e)[:50]),
+            ])
+            return False
+
+    def get_queue_status(self) -> Dict[str, Any]:
+        """Get current queue status for monitoring."""
+        priority_counts = {
+            "critical": 0,
+            "high": 0,
+            "normal": 0,
+            "low": 0,
+        }
+        for item in self._message_queue:
+            if item.priority == PRIORITY_CRITICAL:
+                priority_counts["critical"] += 1
+            elif item.priority == PRIORITY_HIGH:
+                priority_counts["high"] += 1
+            elif item.priority == PRIORITY_NORMAL:
+                priority_counts["normal"] += 1
+            else:
+                priority_counts["low"] += 1
+
+        return {
+            "total": len(self._message_queue),
+            "running": self._queue_running,
+            "by_priority": priority_counts,
+        }
 
     # =========================================================================
     # Health Check
@@ -369,25 +557,26 @@ class ModTrackerService(ModTrackerLogsMixin):
         alert_type: str,
         description: str,
         color: int = EmbedColors.WARNING,
+        priority: int = PRIORITY_CRITICAL,
     ) -> None:
         """
-        Send an alert to a mod's thread with ping.
+        Send an alert to a mod's thread with ping via priority queue.
+
+        Security alerts are sent with PRIORITY_CRITICAL to ensure they
+        are processed before regular logs during mass events/raids.
 
         Args:
             mod_id: The moderator's ID.
             alert_type: Type of alert for the title.
             description: Alert description.
             color: Embed color.
+            priority: Queue priority (default CRITICAL).
         """
         if not self.enabled:
             return
 
         tracked = self.db.get_tracked_mod(mod_id)
         if not tracked:
-            return
-
-        thread = await self._get_mod_thread(tracked["thread_id"])
-        if not thread:
             return
 
         embed = discord.Embed(
@@ -398,26 +587,20 @@ class ModTrackerService(ModTrackerLogsMixin):
         )
         embed.set_footer(text=f"Alert • Mod ID: {mod_id}")
 
-        try:
-            if thread.archived:
-                await thread.edit(archived=False)
-                await asyncio.sleep(RATE_LIMIT_DELAY)
+        # Queue with high priority - alerts bypass regular log queue
+        await self._enqueue(
+            thread_id=tracked["thread_id"],
+            embed=embed,
+            priority=priority,
+            content=f"<@{self.config.developer_id}>",
+            is_alert=True,
+        )
 
-            await thread.send(
-                content=f"<@{self.config.developer_id}>",
-                embed=embed,
-            )
-
-            logger.tree("Mod Tracker: Alert Sent", [
-                ("Mod ID", str(mod_id)),
-                ("Type", alert_type),
-            ], emoji="⚠️")
-
-        except Exception as e:
-            logger.error("Mod Tracker: Failed To Send Alert", [
-                ("Mod ID", str(mod_id)),
-                ("Error", str(e)[:50]),
-            ])
+        logger.tree("Mod Tracker: Alert Queued", [
+            ("Mod ID", str(mod_id)),
+            ("Type", alert_type),
+            ("Priority", "CRITICAL" if priority == PRIORITY_CRITICAL else "HIGH"),
+        ], emoji="⚠️")
 
     # =========================================================================
     # Inactivity Checker
@@ -1182,20 +1365,23 @@ class ModTrackerService(ModTrackerLogsMixin):
         embed: discord.Embed,
         action_name: str,
         view: Optional[discord.ui.View] = None,
+        priority: int = PRIORITY_NORMAL,
     ) -> bool:
         """
-        Send a log embed to a mod's tracking thread.
+        Queue a log embed to a mod's tracking thread.
 
-        Automatically unarchives threads if needed and updates thread title.
+        Uses the priority queue system so that security alerts can
+        bypass regular logs during mass events/raids.
 
         Args:
             mod_id: The moderator's ID.
             embed: The embed to send.
             action_name: Name of the action for logging.
             view: Optional view with buttons.
+            priority: Queue priority (default NORMAL).
 
         Returns:
-            True if sent successfully, False otherwise.
+            True if queued successfully, False otherwise.
         """
         if not self.enabled:
             return False
@@ -1204,70 +1390,22 @@ class ModTrackerService(ModTrackerLogsMixin):
         if not tracked:
             return False
 
-        thread = await self._get_mod_thread(tracked["thread_id"])
-        if not thread:
-            return False
+        # Queue the message for priority processing
+        await self._enqueue(
+            thread_id=tracked["thread_id"],
+            embed=embed,
+            priority=priority,
+            view=view,
+            is_alert=False,
+        )
 
-        try:
-            # Unarchive if thread is archived
-            if thread.archived:
-                try:
-                    await thread.edit(archived=False)
-                    logger.debug(f"Mod Tracker: Unarchived thread for mod {mod_id}")
-                    await asyncio.sleep(RATE_LIMIT_DELAY)
-                except discord.HTTPException as e:
-                    logger.warning("Mod Tracker: Failed To Unarchive Thread", [
-                        ("Mod ID", str(mod_id)),
-                        ("Error", str(e)[:50]),
-                    ])
-                    # Continue anyway - might still work
+        # Increment action count immediately (stats tracking)
+        self.db.increment_mod_action_count(mod_id)
 
-            await thread.send(embed=embed, view=view)
+        # Track hourly activity
+        current_hour = datetime.now(NY_TZ).hour
+        self.db.increment_hourly_activity(mod_id, current_hour)
 
-            # Increment action count and update thread title
-            new_count = self.db.increment_mod_action_count(mod_id)
-
-            # Track hourly activity
-            current_hour = datetime.now(NY_TZ).hour
-            self.db.increment_hourly_activity(mod_id, current_hour)
-
-            # Get mod member to build new thread name
-            main_guild_id = self.config.logging_guild_id or self.config.mod_server_id
-            main_guild = self.bot.get_guild(main_guild_id)
-            if main_guild:
-                mod_member = main_guild.get_member(mod_id)
-                if mod_member:
-                    # Check if mod still has mod role
-                    mod_role = main_guild.get_role(self.config.moderation_role_id)
-                    is_active = mod_role in mod_member.roles if mod_role else True
-
-                    new_name = self._build_thread_name(mod_member, new_count, is_active)
-                    if thread.name != new_name:
-                        try:
-                            await thread.edit(name=new_name)
-                        except discord.HTTPException:
-                            pass  # Ignore rate limits on title updates
-
-            logger.debug(f"Mod Tracker: Log Sent - Mod {mod_id}, Action: {action_name}")
-            return True
-        except discord.Forbidden:
-            logger.error("Mod Tracker: No Permission To Send Log", [
-                ("Mod ID", str(mod_id)),
-                ("Action", action_name),
-            ])
-            return False
-        except discord.HTTPException as e:
-            logger.error("Mod Tracker: HTTP Error Sending Log", [
-                ("Mod ID", str(mod_id)),
-                ("Action", action_name),
-                ("Error", str(e)[:50]),
-            ])
-            return False
-        except Exception as e:
-            logger.error("Mod Tracker: Failed To Send Log", [
-                ("Mod ID", str(mod_id)),
-                ("Action", action_name),
-                ("Error", str(e)[:50]),
-            ])
-            return False
+        logger.debug(f"Mod Tracker: Log Queued - Mod {mod_id}, Action: {action_name}")
+        return True
 

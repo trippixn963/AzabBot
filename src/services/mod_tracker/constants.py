@@ -60,3 +60,18 @@ MASS_PERMISSION_THRESHOLD = 5  # Permission changes in window to trigger alert
 TARGET_HARASSMENT_WINDOW = 300  # 5 minutes
 TARGET_HARASSMENT_THRESHOLD = 3  # Actions on same user in window to trigger alert
 TARGET_HARASSMENT_TTL = 3600  # 1 hour - how long to keep target action history
+
+# =============================================================================
+# Priority Queue Configuration
+# =============================================================================
+
+# Priority levels (lower = higher priority)
+PRIORITY_CRITICAL = 0  # Security alerts, raid detection
+PRIORITY_HIGH = 1      # Harassment alerts, bulk action warnings
+PRIORITY_NORMAL = 2    # Regular mod action logs
+PRIORITY_LOW = 3       # Informational logs (avatar changes, etc.)
+
+# Queue processing
+QUEUE_PROCESS_INTERVAL = 0.5  # Seconds between processing items
+QUEUE_BATCH_SIZE = 5  # Max items to process per batch (prioritized)
+QUEUE_MAX_SIZE = 500  # Max queue size before dropping low priority
