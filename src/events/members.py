@@ -203,6 +203,10 @@ class MemberEvents(commands.Cog):
 
         await self._check_mute_evasion(member)
 
+        # Check for potential ban evasion (username similarity with banned users)
+        if self.bot.mod_tracker:
+            await self.bot.mod_tracker.check_ban_evasion_on_join(member)
+
     async def _check_mute_evasion(self, member: discord.Member) -> None:
         """Check if rejoining member has an active mute and re-apply it."""
         db = get_db()

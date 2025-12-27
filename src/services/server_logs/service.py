@@ -396,6 +396,15 @@ class LoggingService:
             embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
         if case_id:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
+
+        # Add prior actions context
+        if self.config.main_guild_id:
+            db = get_db()
+            counts = db.get_user_case_counts(user.id, self.config.main_guild_id)
+            if counts["mute_count"] or counts["ban_count"] or counts["warn_count"]:
+                prior = f"🔇 `{counts['mute_count']}` mutes · 🔨 `{counts['ban_count']}` bans · ⚠️ `{counts['warn_count']}` warns"
+                embed.add_field(name="Prior Actions", value=prior, inline=False)
+
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
@@ -434,12 +443,21 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("👢 Member Kicked", EmbedColors.WARNING, category="Kick", user_id=user.id)
+        embed = self._create_embed("👢 Member Kicked", EmbedColors.ERROR, category="Kick", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
             embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
         if case_id:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
+
+        # Add prior actions context
+        if self.config.main_guild_id:
+            db = get_db()
+            counts = db.get_user_case_counts(user.id, self.config.main_guild_id)
+            if counts["mute_count"] or counts["ban_count"] or counts["warn_count"]:
+                prior = f"🔇 `{counts['mute_count']}` mutes · 🔨 `{counts['ban_count']}` bans · ⚠️ `{counts['warn_count']}` warns"
+                embed.add_field(name="Prior Actions", value=prior, inline=False)
+
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
@@ -483,6 +501,13 @@ class LoggingService:
                 embed.add_field(name="Duration", value=f"`{duration_str}`", inline=True)
             embed.add_field(name="Expires", value=f"<t:{timestamp}:R>", inline=True)
 
+        # Add prior actions context
+        db = get_db()
+        counts = db.get_user_case_counts(user.id, user.guild.id)
+        if counts["mute_count"] or counts["ban_count"] or counts["warn_count"]:
+            prior = f"🔇 `{counts['mute_count']}` mutes · 🔨 `{counts['ban_count']}` bans · ⚠️ `{counts['warn_count']}` warns"
+            embed.add_field(name="Prior Actions", value=prior, inline=False)
+
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
@@ -525,6 +550,14 @@ class LoggingService:
             embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
         if case_id:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
+
+        # Add prior actions context
+        db = get_db()
+        counts = db.get_user_case_counts(user.id, user.guild.id)
+        if counts["mute_count"] or counts["ban_count"] or counts["warn_count"]:
+            prior = f"🔇 `{counts['mute_count']}` mutes · 🔨 `{counts['ban_count']}` bans · ⚠️ `{counts['warn_count']}` warns"
+            embed.add_field(name="Prior Actions", value=prior, inline=False)
+
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
@@ -733,7 +766,7 @@ class LoggingService:
         db = get_db()
         leave_count = db.record_member_leave(member.id, member.guild.id)
 
-        embed = self._create_embed("📤 Member Left", EmbedColors.ERROR, category="Leave", user_id=member.id)
+        embed = self._create_embed("📤 Member Left", EmbedColors.WARNING, category="Leave", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
 
         # Account created
@@ -922,7 +955,7 @@ class LoggingService:
         if self.config.moderator_ids and member.id in self.config.moderator_ids:
             return
 
-        embed = self._create_embed("🔇 Voice Leave", EmbedColors.ERROR, category="Voice Leave", user_id=member.id)
+        embed = self._create_embed("🔇 Voice Leave", EmbedColors.WARNING, category="Voice Leave", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
         embed.add_field(name="Channel", value=f"🔊 {channel.name}", inline=True)
         self._set_user_thumbnail(embed, member)
@@ -2258,7 +2291,7 @@ class LoggingService:
             return
 
         if locked:
-            embed = self._create_embed("🔒 Thread Locked", EmbedColors.ERROR, category="Thread Lock")
+            embed = self._create_embed("🔒 Thread Locked", EmbedColors.WARNING, category="Thread Lock")
         else:
             embed = self._create_embed("🔓 Thread Unlocked", EmbedColors.SUCCESS, category="Thread Unlock")
 
@@ -2588,6 +2621,115 @@ class LoggingService:
         embed.add_field(name="Action", value="Server permissions restored automatically", inline=False)
 
         await self._send_log(LogCategory.ALERTS, embed)
+
+    # =========================================================================
+    # Log Retention / Cleanup
+    # =========================================================================
+
+    async def start_retention_cleanup(self) -> None:
+        """Start the scheduled log retention cleanup task."""
+        if not self.enabled or self.config.log_retention_days <= 0:
+            logger.debug("Log retention cleanup disabled")
+            return
+
+        asyncio.create_task(self._retention_cleanup_loop())
+        logger.tree("Log Retention Started", [
+            ("Retention", f"{self.config.log_retention_days} days"),
+            ("Schedule", "Daily at 3:00 AM EST"),
+        ], emoji="🗑️")
+
+    async def _retention_cleanup_loop(self) -> None:
+        """Loop that runs retention cleanup daily at 3 AM EST."""
+        from datetime import timedelta
+
+        while True:
+            try:
+                # Calculate time until 3 AM EST
+                now = datetime.now(NY_TZ)
+                target = now.replace(hour=3, minute=0, second=0, microsecond=0)
+                if now >= target:
+                    target = target + timedelta(days=1)
+
+                wait_seconds = (target - now).total_seconds()
+                await asyncio.sleep(wait_seconds)
+
+                # Run cleanup
+                await self._cleanup_old_logs()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Log Retention Loop Error", [("Error", str(e))])
+                await asyncio.sleep(3600)  # Wait 1 hour on error
+
+    async def _cleanup_old_logs(self) -> None:
+        """Delete log messages older than retention period."""
+        from datetime import timedelta
+
+        if not self.enabled or self.config.log_retention_days <= 0:
+            return
+
+        if not self._forum_channel:
+            return
+
+        retention_days = self.config.log_retention_days
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+        total_deleted = 0
+        threads_cleaned = 0
+
+        try:
+            # Get all threads in the forum
+            threads = []
+            for thread in self._forum_channel.threads:
+                threads.append(thread)
+
+            # Also get archived threads
+            async for thread in self._forum_channel.archived_threads(limit=50):
+                threads.append(thread)
+
+            for thread in threads:
+                try:
+                    deleted_in_thread = 0
+
+                    # Iterate messages older than cutoff
+                    async for message in thread.history(limit=500, before=cutoff, oldest_first=True):
+                        # Skip pinned messages
+                        if message.pinned:
+                            continue
+
+                        try:
+                            await message.delete()
+                            deleted_in_thread += 1
+                            total_deleted += 1
+
+                            # Rate limit - batch pause every 10 deletes
+                            if deleted_in_thread % 10 == 0:
+                                await asyncio.sleep(5)
+                            else:
+                                await asyncio.sleep(0.5)
+
+                        except (discord.NotFound, discord.Forbidden):
+                            pass
+                        except Exception as e:
+                            logger.debug(f"Retention delete failed: {e}")
+
+                    if deleted_in_thread > 0:
+                        threads_cleaned += 1
+                        logger.debug(f"Retention: Cleaned {deleted_in_thread} from #{thread.name}")
+
+                except Exception as e:
+                    logger.debug(f"Retention thread error ({thread.name}): {e}")
+
+            if total_deleted > 0:
+                logger.tree("Log Retention Cleanup Complete", [
+                    ("Threads", str(threads_cleaned)),
+                    ("Messages Deleted", str(total_deleted)),
+                    ("Retention", f"{retention_days} days"),
+                ], emoji="🗑️")
+
+        except Exception as e:
+            logger.error("Log Retention Cleanup Failed", [("Error", str(e))])
 
 
 # =============================================================================

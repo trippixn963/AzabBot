@@ -3015,6 +3015,259 @@ class DatabaseManager:
         )
         return [dict(row) for row in rows]
 
+    def get_repeat_ban_offenders(
+        self,
+        guild_id: int,
+        min_bans: int = 2,
+        days: int = 90,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get users with multiple bans in the specified time window.
+
+        Args:
+            guild_id: Guild ID.
+            min_bans: Minimum number of bans to qualify.
+            days: Look back this many days.
+
+        Returns:
+            List of {user_id, ban_count, last_ban} for repeat offenders.
+        """
+        cutoff = time.time() - (days * 86400)
+        rows = self.fetchall(
+            """SELECT user_id, COUNT(*) as ban_count, MAX(timestamp) as last_ban
+               FROM ban_history
+               WHERE guild_id = ? AND action = 'ban' AND timestamp > ?
+               GROUP BY user_id
+               HAVING ban_count >= ?
+               ORDER BY ban_count DESC""",
+            (guild_id, cutoff, min_bans)
+        )
+        return [dict(row) for row in rows] if rows else []
+
+    def get_quick_unban_patterns(
+        self,
+        guild_id: int,
+        max_hours: int = 24,
+        days: int = 30,
+    ) -> List[Dict[str, Any]]:
+        """
+        Find suspicious patterns where users were unbanned quickly after ban.
+
+        Args:
+            guild_id: Guild ID.
+            max_hours: Unban within this many hours is suspicious.
+            days: Look back this many days.
+
+        Returns:
+            List of {user_id, ban_time, unban_time, hours_between}.
+        """
+        cutoff = time.time() - (days * 86400)
+        max_seconds = max_hours * 3600
+
+        rows = self.fetchall(
+            """SELECT
+                b.user_id,
+                b.timestamp as ban_time,
+                u.timestamp as unban_time,
+                (u.timestamp - b.timestamp) / 3600.0 as hours_between,
+                b.moderator_id as ban_mod,
+                u.moderator_id as unban_mod
+               FROM ban_history b
+               INNER JOIN ban_history u ON b.user_id = u.user_id
+                   AND b.guild_id = u.guild_id
+                   AND u.action = 'unban'
+                   AND u.timestamp > b.timestamp
+                   AND u.timestamp - b.timestamp < ?
+               WHERE b.guild_id = ? AND b.action = 'ban' AND b.timestamp > ?
+               ORDER BY hours_between ASC""",
+            (max_seconds, guild_id, cutoff)
+        )
+        return [dict(row) for row in rows] if rows else []
+
+    # =========================================================================
+    # Voice Activity Pattern Detection
+    # =========================================================================
+
+    def detect_voice_channel_hopping(
+        self,
+        guild_id: int,
+        window_minutes: int = 5,
+        min_channels: int = 4,
+    ) -> List[Dict[str, Any]]:
+        """
+        Detect users rapidly switching between voice channels.
+
+        Args:
+            guild_id: Guild ID.
+            window_minutes: Time window in minutes.
+            min_channels: Minimum unique channels to qualify as hopping.
+
+        Returns:
+            List of {user_id, channel_count, actions} for channel hoppers.
+        """
+        cutoff = time.time() - (window_minutes * 60)
+
+        rows = self.fetchall(
+            """SELECT user_id, COUNT(DISTINCT channel_id) as channel_count,
+                      COUNT(*) as action_count
+               FROM voice_activity
+               WHERE guild_id = ? AND timestamp > ? AND action = 'join'
+               GROUP BY user_id
+               HAVING channel_count >= ?
+               ORDER BY channel_count DESC""",
+            (guild_id, cutoff, min_channels)
+        )
+        return [dict(row) for row in rows] if rows else []
+
+    def detect_voice_following(
+        self,
+        target_user_id: int,
+        guild_id: int,
+        window_minutes: int = 30,
+        min_follows: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """
+        Detect if someone is following a specific user between voice channels.
+
+        Args:
+            target_user_id: The user being potentially stalked.
+            guild_id: Guild ID.
+            window_minutes: Time window in minutes.
+            min_follows: Minimum follows to qualify.
+
+        Returns:
+            List of {follower_id, follow_count, channels} for potential stalkers.
+        """
+        cutoff = time.time() - (window_minutes * 60)
+
+        # Get target's channel history
+        target_channels = self.fetchall(
+            """SELECT channel_id, timestamp FROM voice_activity
+               WHERE user_id = ? AND guild_id = ? AND action = 'join' AND timestamp > ?
+               ORDER BY timestamp""",
+            (target_user_id, guild_id, cutoff)
+        )
+
+        if not target_channels:
+            return []
+
+        # Check each other user's joins within 60s of target's joins
+        followers = {}
+        for tc in target_channels:
+            channel_id = tc["channel_id"]
+            target_time = tc["timestamp"]
+
+            # Find users who joined same channel within 60 seconds after target
+            rows = self.fetchall(
+                """SELECT user_id FROM voice_activity
+                   WHERE guild_id = ? AND channel_id = ? AND action = 'join'
+                   AND user_id != ? AND timestamp > ? AND timestamp < ?""",
+                (guild_id, channel_id, target_user_id, target_time, target_time + 60)
+            )
+
+            for row in rows:
+                uid = row["user_id"]
+                if uid not in followers:
+                    followers[uid] = {"follower_id": uid, "follow_count": 0, "channels": []}
+                followers[uid]["follow_count"] += 1
+                followers[uid]["channels"].append(channel_id)
+
+        # Filter by min_follows
+        return [f for f in followers.values() if f["follow_count"] >= min_follows]
+
+    # =========================================================================
+    # Username Cross-Reference for Ban Evasion
+    # =========================================================================
+
+    def find_banned_user_matches(
+        self,
+        guild_id: int,
+        similarity_threshold: float = 0.7,
+    ) -> List[Dict[str, Any]]:
+        """
+        Find current members with usernames similar to banned users.
+
+        Args:
+            guild_id: Guild ID.
+            similarity_threshold: Minimum similarity score (0-1).
+
+        Returns:
+            List of {current_user_id, current_name, banned_user_id, banned_name, similarity}.
+        """
+        # Get all unique banned user IDs
+        banned_rows = self.fetchall(
+            """SELECT DISTINCT user_id FROM ban_history
+               WHERE guild_id = ? AND action = 'ban'""",
+            (guild_id,)
+        )
+        banned_ids = {row["user_id"] for row in banned_rows}
+
+        if not banned_ids:
+            return []
+
+        # Get username history for banned users
+        banned_names = {}
+        for uid in banned_ids:
+            rows = self.fetchall(
+                """SELECT username, display_name FROM username_history
+                   WHERE user_id = ? ORDER BY changed_at DESC LIMIT 5""",
+                (uid,)
+            )
+            for row in rows:
+                if row["username"]:
+                    banned_names[row["username"].lower()] = uid
+                if row["display_name"]:
+                    banned_names[row["display_name"].lower()] = uid
+
+        # Get recent username changes (potential evaders)
+        recent_names = self.fetchall(
+            """SELECT user_id, username, display_name FROM username_history
+               WHERE guild_id = ? AND user_id NOT IN ({})
+               AND changed_at > ?
+               ORDER BY changed_at DESC""".format(",".join("?" * len(banned_ids))),
+            (guild_id, *banned_ids, time.time() - 86400 * 7)  # Last 7 days
+        )
+
+        matches = []
+        for row in recent_names:
+            current_id = row["user_id"]
+            for name_field in ["username", "display_name"]:
+                current_name = row.get(name_field)
+                if not current_name:
+                    continue
+                current_lower = current_name.lower()
+
+                for banned_name, banned_id in banned_names.items():
+                    similarity = self._calculate_name_similarity(current_lower, banned_name)
+                    if similarity >= similarity_threshold:
+                        matches.append({
+                            "current_user_id": current_id,
+                            "current_name": current_name,
+                            "banned_user_id": banned_id,
+                            "banned_name": banned_name,
+                            "similarity": similarity,
+                        })
+
+        return matches
+
+    def _calculate_name_similarity(self, name1: str, name2: str) -> float:
+        """Calculate similarity between two names (0-1)."""
+        if name1 == name2:
+            return 1.0
+
+        # Exact substring match
+        if name1 in name2 or name2 in name1:
+            return 0.9
+
+        # Character-based similarity (Jaccard)
+        set1 = set(name1.replace(" ", ""))
+        set2 = set(name2.replace(" ", ""))
+        if not set1 or not set2:
+            return 0.0
+        intersection = len(set1 & set2)
+        union = len(set1 | set2)
+        return intersection / union if union > 0 else 0.0
+
     # =========================================================================
     # Extend Mute Operation
     # =========================================================================

@@ -168,6 +168,12 @@ class AuditLogEvents(commands.Cog):
                     target=entry.target,
                     reason=entry.reason,
                 )
+                # Check if repeat offender
+                if entry.target and entry.guild:
+                    await self.bot.mod_tracker.check_repeat_offender_on_ban(
+                        user_id=entry.target.id,
+                        guild_id=entry.guild.id,
+                    )
 
             # Unban
             elif entry.action == discord.AuditLogAction.unban:
@@ -176,6 +182,13 @@ class AuditLogEvents(commands.Cog):
                     target=entry.target,
                     reason=entry.reason,
                 )
+                # Check for quick unban pattern
+                if entry.target and entry.guild:
+                    await self.bot.mod_tracker.check_quick_unban_pattern(
+                        user_id=entry.target.id,
+                        guild_id=entry.guild.id,
+                        unban_mod_id=mod_id,
+                    )
 
             # Channel create
             elif entry.action == discord.AuditLogAction.channel_create:

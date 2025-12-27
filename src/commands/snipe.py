@@ -87,9 +87,13 @@ class SnipeCog(commands.Cog):
                 )
                 return
 
-            # Filter out stale messages
+            # Filter out stale messages and developer messages
             now = datetime.now(NY_TZ).timestamp()
-            fresh_snipes = [s for s in snipes if (now - s["deleted_at"]) <= SNIPE_MAX_AGE]
+            fresh_snipes = [
+                s for s in snipes
+                if (now - s["deleted_at"]) <= SNIPE_MAX_AGE
+                and s.get("author_id") != self.config.developer_id
+            ]
 
             if not fresh_snipes:
                 await interaction.response.send_message(
@@ -129,15 +133,15 @@ class SnipeCog(commands.Cog):
             ], emoji="🎯")
 
             # Build plain text message (public, not embed)
-            # Format: Name (username): content
+            # Format: @mention: content
             #         -# metadata underneath
             if content:
                 # Truncate if too long
                 if len(content) > 1500:
                     content = content[:1497] + "..."
-                main_line = f"**{author_display}** ({author_name}): {content}"
+                main_line = f"<@{author_id}>: {content}"
             else:
-                main_line = f"**{author_display}** ({author_name}): *(No text content)*"
+                main_line = f"<@{author_id}>: *(No text content)*"
 
             message_lines = [main_line]
 

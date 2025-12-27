@@ -303,6 +303,8 @@ class AzabBot(commands.Bot):
                     ("Forum ID", str(self.config.server_logs_forum_id)),
                     ("Threads", "15 categories"),
                 ], emoji="📋")
+                # Start log retention cleanup
+                await self.logging_service.start_retention_cleanup()
             else:
                 logger.info("Logging Service Disabled (no forum configured)")
 
@@ -354,25 +356,48 @@ class AzabBot(commands.Bot):
     async def _cleanup_polls_channel(self) -> None:
         """Clean up non-poll messages from polls-only channel."""
         if not self.config.permanent_polls_channel_id:
+            logger.debug("Polls cleanup skipped: no channel configured")
             return
 
         channel = self.get_channel(self.config.permanent_polls_channel_id)
         if not channel:
+            logger.warning(f"Polls cleanup: channel {self.config.permanent_polls_channel_id} not found")
             return
+
+        logger.info(f"Starting polls cleanup in #{channel.name}")
 
         try:
             deleted = 0
-            async for message in channel.history(limit=self.config.polls_cleanup_limit):
-                if getattr(message, 'poll', None) is None:
+            checked = 0
+            non_poll_count = 0
+            system_msg_count = 0
+            async for message in channel.history(limit=500):
+                checked += 1
+                # Skip system messages (poll closed notifications, etc.)
+                if message.type != discord.MessageType.default:
+                    system_msg_count += 1
+                    continue
+                has_poll = getattr(message, 'poll', None) is not None
+                if not has_poll:
+                    non_poll_count += 1
                     try:
                         await message.delete()
                         deleted += 1
-                        await asyncio.sleep(self.config.rate_limit_delay)
-                    except (discord.NotFound, discord.Forbidden):
+                        await asyncio.sleep(0.5)  # Rate limit
+                    except discord.NotFound:
                         pass
+                    except discord.Forbidden as e:
+                        logger.warning(f"Polls cleanup: no permission to delete message {message.id}")
+                    except Exception as e:
+                        logger.debug(f"Polls cleanup delete failed: {e}")
 
-            if deleted > 0:
-                logger.tree("Polls Channel Cleaned", [("Deleted", str(deleted))], emoji="🗑️")
+            logger.tree("Polls Channel Cleaned", [
+                ("Channel", channel.name),
+                ("Checked", str(checked)),
+                ("System Msgs", str(system_msg_count)),
+                ("Non-Polls Found", str(non_poll_count)),
+                ("Deleted", str(deleted)),
+            ], emoji="🗑️")
         except Exception as e:
             logger.tree("Polls Cleanup Failed", [("Error", str(e))], emoji="⚠️")
 

@@ -161,6 +161,7 @@ class Config:
     prison_message_scan_limit: int = 500
     polls_cleanup_limit: int = 100
     message_history_size: int = 10
+    log_retention_days: int = 30  # Auto-delete logs older than this (0 = disabled)
 
     # -------------------------------------------------------------------------
     # Optional: Display

@@ -3081,6 +3081,245 @@ class ModTrackerLogsMixin:
                 ("Role", role.name),
             ], emoji="🎨")
 
+    # =========================================================================
+    # Pattern Analysis (Ban History, Voice Activity, Username Cross-Reference)
+    # =========================================================================
+
+    async def analyze_voice_channel_hopping(self, guild_id: int) -> None:
+        """
+        Check for users rapidly switching between voice channels.
+        Should be called periodically or on voice events.
+        """
+        if not self.enabled or not self.config.alert_channel_id:
+            return
+
+        try:
+            db = get_db()
+            hoppers = db.detect_voice_channel_hopping(guild_id, window_minutes=5, min_channels=4)
+
+            if not hoppers:
+                return
+
+            for hopper in hoppers:
+                user_id = hopper["user_id"]
+                channel_count = hopper["channel_count"]
+
+                # Send to alert channel
+                alert_channel = self.bot.get_channel(self.config.alert_channel_id)
+                if not alert_channel:
+                    continue
+
+                embed = discord.Embed(
+                    title="🔀 Voice Channel Hopping Detected",
+                    description=f"User <@{user_id}> switched between **{channel_count} channels** "
+                               f"in the last 5 minutes.\n\n"
+                               f"This could indicate:\n"
+                               f"• Scanning for targets\n"
+                               f"• Disruptive behavior\n"
+                               f"• Raid reconnaissance",
+                    color=EmbedColors.WARNING,
+                    timestamp=datetime.now(NY_TZ),
+                )
+                embed.add_field(name="User ID", value=f"`{user_id}`", inline=True)
+                embed.add_field(name="Channels", value=f"`{channel_count}`", inline=True)
+                set_footer(embed)
+
+                await alert_channel.send(embed=embed)
+
+                logger.tree("Pattern Alert: Voice Hopping", [
+                    ("User ID", str(user_id)),
+                    ("Channels", str(channel_count)),
+                ], emoji="🔀")
+
+        except Exception as e:
+            logger.debug(f"Voice hopping analysis failed: {e}")
+
+    async def check_ban_evasion_on_join(
+        self,
+        member: discord.Member,
+    ) -> None:
+        """
+        Check if a newly joined member might be a banned user evading.
+        Called on member join events.
+        """
+        if not self.enabled or not self.config.alert_channel_id:
+            return
+
+        try:
+            db = get_db()
+
+            # Check for username similarity with banned users
+            matches = db.find_banned_user_matches(member.guild.id, similarity_threshold=0.7)
+
+            # Filter for this specific member
+            member_matches = [m for m in matches if m["current_user_id"] == member.id]
+
+            if not member_matches:
+                return
+
+            # Get the best match
+            best_match = max(member_matches, key=lambda m: m["similarity"])
+
+            alert_channel = self.bot.get_channel(self.config.alert_channel_id)
+            if not alert_channel:
+                return
+
+            similarity_pct = int(best_match["similarity"] * 100)
+
+            embed = discord.Embed(
+                title="🚨 Potential Ban Evasion Detected",
+                description=f"New member {member.mention} has a username similar to a banned user.\n\n"
+                           f"**Current Name:** `{best_match['current_name']}`\n"
+                           f"**Banned Name:** `{best_match['banned_name']}`\n"
+                           f"**Similarity:** `{similarity_pct}%`\n\n"
+                           f"**Banned User ID:** `{best_match['banned_user_id']}`\n\n"
+                           f"Recommend verifying this is not the same person.",
+                color=EmbedColors.ERROR,
+                timestamp=datetime.now(NY_TZ),
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+            embed.add_field(name="New Member", value=f"{member.mention}\n`{member.id}`", inline=True)
+            embed.add_field(name="Account Age", value=f"<t:{int(member.created_at.timestamp())}:R>", inline=True)
+            set_footer(embed)
+
+            await alert_channel.send(
+                content=f"<@{self.config.developer_id}>" if self.config.developer_id else None,
+                embed=embed,
+            )
+
+            logger.tree("Pattern Alert: Ban Evasion Suspect", [
+                ("Member", str(member)),
+                ("Matched", best_match["banned_name"]),
+                ("Similarity", f"{similarity_pct}%"),
+            ], emoji="🚨")
+
+        except Exception as e:
+            logger.debug(f"Ban evasion check failed: {e}")
+
+    async def check_repeat_offender_on_ban(
+        self,
+        user_id: int,
+        guild_id: int,
+    ) -> None:
+        """
+        Check if a user being banned is a repeat offender.
+        Called after a ban is logged.
+        """
+        if not self.enabled or not self.config.alert_channel_id:
+            return
+
+        try:
+            db = get_db()
+
+            # Get this user's ban history
+            history = db.get_ban_history(user_id, guild_id, limit=10)
+
+            # Count actual bans (not unbans)
+            ban_count = sum(1 for h in history if h.get("action") == "ban")
+
+            if ban_count < 2:
+                return
+
+            alert_channel = self.bot.get_channel(self.config.alert_channel_id)
+            if not alert_channel:
+                return
+
+            # Build history preview
+            history_lines = []
+            for h in history[:5]:
+                action = h.get("action", "unknown")
+                ts = int(h.get("timestamp", 0))
+                emoji = "🔨" if action == "ban" else "🔓"
+                history_lines.append(f"{emoji} {action.title()} - <t:{ts}:R>")
+
+            embed = discord.Embed(
+                title="⚠️ Repeat Offender Banned",
+                description=f"User `{user_id}` has been banned **{ban_count} times**.\n\n"
+                           f"**Recent History:**\n" + "\n".join(history_lines) + "\n\n"
+                           f"Consider a permanent ban or IP-based measures.",
+                color=EmbedColors.WARNING,
+                timestamp=datetime.now(NY_TZ),
+            )
+            embed.add_field(name="User ID", value=f"`{user_id}`", inline=True)
+            embed.add_field(name="Total Bans", value=f"`{ban_count}`", inline=True)
+            set_footer(embed)
+
+            await alert_channel.send(embed=embed)
+
+            logger.tree("Pattern Alert: Repeat Offender", [
+                ("User ID", str(user_id)),
+                ("Ban Count", str(ban_count)),
+            ], emoji="⚠️")
+
+        except Exception as e:
+            logger.debug(f"Repeat offender check failed: {e}")
+
+    async def check_quick_unban_pattern(
+        self,
+        user_id: int,
+        guild_id: int,
+        unban_mod_id: int,
+    ) -> None:
+        """
+        Check if a user was unbanned suspiciously quickly after ban.
+        Called after an unban is logged.
+        """
+        if not self.enabled or not self.config.alert_channel_id:
+            return
+
+        try:
+            db = get_db()
+
+            # Get this user's recent ban/unban history
+            history = db.get_ban_history(user_id, guild_id, limit=5)
+
+            if len(history) < 2:
+                return
+
+            # Check if last action was unban and previous was ban
+            if history[0].get("action") != "unban" or history[1].get("action") != "ban":
+                return
+
+            unban_time = history[0].get("timestamp", 0)
+            ban_time = history[1].get("timestamp", 0)
+            hours_between = (unban_time - ban_time) / 3600
+
+            # Alert if unbanned within 24 hours
+            if hours_between > 24:
+                return
+
+            ban_mod_id = history[1].get("moderator_id")
+
+            alert_channel = self.bot.get_channel(self.config.alert_channel_id)
+            if not alert_channel:
+                return
+
+            embed = discord.Embed(
+                title="🔓 Quick Unban Alert",
+                description=f"User `{user_id}` was unbanned **{hours_between:.1f} hours** after being banned.\n\n"
+                           f"**Banned by:** <@{ban_mod_id}> (<t:{int(ban_time)}:R>)\n"
+                           f"**Unbanned by:** <@{unban_mod_id}> (<t:{int(unban_time)}:R>)\n\n"
+                           f"Quick unbans may indicate:\n"
+                           f"• Ban reversal due to error\n"
+                           f"• Mod override without consultation\n"
+                           f"• Potential abuse",
+                color=EmbedColors.WARNING,
+                timestamp=datetime.now(NY_TZ),
+            )
+            embed.add_field(name="User ID", value=f"`{user_id}`", inline=True)
+            embed.add_field(name="Hours Between", value=f"`{hours_between:.1f}h`", inline=True)
+            set_footer(embed)
+
+            await alert_channel.send(embed=embed)
+
+            logger.tree("Pattern Alert: Quick Unban", [
+                ("User ID", str(user_id)),
+                ("Hours", f"{hours_between:.1f}"),
+            ], emoji="🔓")
+
+        except Exception as e:
+            logger.debug(f"Quick unban check failed: {e}")
+
 
 # =============================================================================
 # Module Export
