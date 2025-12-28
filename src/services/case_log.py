@@ -2079,7 +2079,27 @@ class CaseLogService:
                 is_mute_embed=False,
                 case_id=case["case_id"],
             )
-            await safe_send(case_thread, embed=embed, view=view)
+            embed_message = await safe_send(case_thread, embed=embed, view=view)
+
+            # If no reason provided, ping moderator to add one
+            if not reason and embed_message:
+                warning_message = await safe_send(
+                    case_thread,
+                    f"⚠️ {moderator.mention} No reason was provided for this forbid.\n\n"
+                    f"**Reply to this message** with the reason.\n\n"
+                    f"You have **1 hour** or the owner will be notified.\n"
+                    f"_Only replies from you will be accepted._"
+                )
+                # Track pending reason in database
+                if warning_message:
+                    self.db.create_pending_reason(
+                        thread_id=case_thread.id,
+                        warning_message_id=warning_message.id,
+                        embed_message_id=embed_message.id,
+                        moderator_id=moderator.id,
+                        target_user_id=user.id,
+                        action_type="forbid",
+                    )
 
             logger.tree("Case Log: Forbid", [
                 ("User", f"{user} ({user.id})"),

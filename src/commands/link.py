@@ -299,207 +299,240 @@ class LinkCog(commands.Cog):
     @app_commands.command(name="link", description="Link an alliance message to a member")
     @app_commands.describe(
         message_id="The message ID to link",
-        member="The member to link the message to",
+        member_id="The member ID to link the message to",
     )
     async def link(
         self,
         interaction: discord.Interaction,
         message_id: str,
-        member: discord.Member,
+        member_id: str,
     ) -> None:
         """Link a message to a member for auto-deletion on leave."""
-        # Permission check - only specific user IDs can use this command
-        allowed_ids = {self.config.developer_id}
-        if self.config.link_allowed_user_ids:
-            allowed_ids |= self.config.link_allowed_user_ids
-        if interaction.user.id not in allowed_ids:
-            logger.tree("Link Command Denied", [
-                ("User", f"{interaction.user} ({interaction.user.id})"),
-                ("Reason", "Not in allowed user list"),
-            ], emoji="🚫")
-            await interaction.response.send_message(
-                "You don't have permission to use this command.",
-                ephemeral=True,
-            )
-            return
-
-        # Check if alliances channel is configured
-        if not self.config.alliances_channel_id:
-            logger.error("Link Command Failed", [
-                ("User", str(interaction.user)),
-                ("Reason", "ALLIANCES_CHANNEL_ID not configured"),
-            ])
-            await interaction.response.send_message(
-                "Alliance channel is not configured.",
-                ephemeral=True,
-            )
-            return
-
-        # Parse message ID
         try:
-            msg_id = int(message_id)
-        except ValueError:
-            logger.tree("Link Command Failed", [
-                ("User", str(interaction.user)),
-                ("Message ID", message_id),
-                ("Reason", "Invalid message ID format"),
-            ], emoji="⚠️")
-            await interaction.response.send_message(
-                "Invalid message ID. Please provide a valid number.",
-                ephemeral=True,
-            )
-            return
+            # Permission check - only specific user IDs can use this command
+            allowed_ids = {self.config.developer_id}
+            if self.config.link_allowed_user_ids:
+                allowed_ids |= self.config.link_allowed_user_ids
+            if interaction.user.id not in allowed_ids:
+                logger.tree("Link Command Denied", [
+                    ("User", f"{interaction.user} ({interaction.user.id})"),
+                    ("Reason", "Not in allowed user list"),
+                ], emoji="🚫")
+                await interaction.response.send_message(
+                    "You don't have permission to use this command.",
+                    ephemeral=True,
+                )
+                return
 
-        # Get target guild (supports cross-server)
-        target_guild = self._get_target_guild(interaction)
-        is_cross_server = self._is_cross_server(interaction)
+            # Check if alliances channel is configured
+            if not self.config.alliances_channel_id:
+                logger.error("Link Command Failed", [
+                    ("User", str(interaction.user)),
+                    ("Reason", "ALLIANCES_CHANNEL_ID not configured"),
+                ])
+                await interaction.response.send_message(
+                    "Alliance channel is not configured.",
+                    ephemeral=True,
+                )
+                return
 
-        logger.tree("Link Command Started", [
-            ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-            ("Message ID", str(msg_id)),
-            ("Target Member", f"{member} ({member.id})"),
-            ("Target Guild", target_guild.name),
-            ("Cross-Server", "Yes" if is_cross_server else "No"),
-        ], emoji="🔗")
-
-        # Get the alliances channel from target guild
-        channel = target_guild.get_channel(self.config.alliances_channel_id)
-        if not channel:
-            logger.error("Link Command Failed", [
-                ("User", str(interaction.user)),
-                ("Reason", "Alliance channel not found"),
-                ("Guild", target_guild.name),
-            ])
-            await interaction.response.send_message(
-                f"Alliance channel not found in {target_guild.name}.",
-                ephemeral=True,
-            )
-            return
-
-        # Verify message exists
-        try:
-            message = await channel.fetch_message(msg_id)
-        except discord.NotFound:
-            logger.tree("Link Command Failed", [
-                ("User", str(interaction.user)),
-                ("Message ID", str(msg_id)),
-                ("Reason", "Message not found"),
-            ], emoji="⚠️")
-            await interaction.response.send_message(
-                "Message not found in the alliance channel.",
-                ephemeral=True,
-            )
-            return
-        except discord.HTTPException as e:
-            logger.error("Link Command Failed", [
-                ("User", str(interaction.user)),
-                ("Message ID", str(msg_id)),
-                ("Error", str(e)[:50]),
-            ])
-            await interaction.response.send_message(
-                f"Failed to fetch message: {e}",
-                ephemeral=True,
-            )
-            return
-
-        # For cross-server, resolve member from target guild
-        if is_cross_server:
-            target_member = target_guild.get_member(member.id)
-            if not target_member:
+            # Parse message ID
+            try:
+                msg_id = int(message_id)
+            except ValueError:
                 logger.tree("Link Command Failed", [
                     ("User", str(interaction.user)),
-                    ("Member", f"{member} ({member.id})"),
+                    ("Message ID", message_id),
+                    ("Reason", "Invalid message ID format"),
+                ], emoji="⚠️")
+                await interaction.response.send_message(
+                    "Invalid message ID. Please provide a valid number.",
+                    ephemeral=True,
+                )
+                return
+
+            # Parse member ID
+            try:
+                parsed_member_id = int(member_id)
+            except ValueError:
+                logger.tree("Link Command Failed", [
+                    ("User", str(interaction.user)),
+                    ("Member ID", member_id),
+                    ("Reason", "Invalid member ID format"),
+                ], emoji="⚠️")
+                await interaction.response.send_message(
+                    "Invalid member ID. Please provide a valid number.",
+                    ephemeral=True,
+                )
+                return
+
+            # Get target guild (supports cross-server)
+            target_guild = self._get_target_guild(interaction)
+            is_cross_server = self._is_cross_server(interaction)
+
+            # Fetch member from target guild
+            member = target_guild.get_member(parsed_member_id)
+            if not member:
+                logger.tree("Link Command Failed", [
+                    ("User", str(interaction.user)),
+                    ("Member ID", str(parsed_member_id)),
                     ("Reason", "Member not found in target guild"),
                     ("Target Guild", target_guild.name),
                 ], emoji="⚠️")
                 await interaction.response.send_message(
-                    f"Member not found in {target_guild.name}.",
+                    f"Member with ID `{parsed_member_id}` not found in {target_guild.name}.",
                     ephemeral=True,
                 )
                 return
-            member = target_member
 
-        # Check if already linked
-        existing = self.db.get_linked_message(msg_id, channel.id)
-        if existing:
-            logger.tree("Link Command Failed", [
-                ("User", str(interaction.user)),
+            logger.tree("Link Command Started", [
+                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
                 ("Message ID", str(msg_id)),
-                ("Reason", "Message already linked"),
-                ("Linked To", str(existing['member_id'])),
-            ], emoji="⚠️")
-            await interaction.response.send_message(
-                f"This message is already linked to <@{existing['member_id']}>.",
-                ephemeral=True,
+                ("Target Member", f"{member} ({member.id})"),
+                ("Target Guild", target_guild.name),
+                ("Cross-Server", "Yes" if is_cross_server else "No"),
+            ], emoji="🔗")
+
+            # Get the alliances channel from target guild
+            channel = target_guild.get_channel(self.config.alliances_channel_id)
+            if not channel:
+                logger.error("Link Command Failed", [
+                    ("User", str(interaction.user)),
+                    ("Reason", "Alliance channel not found"),
+                    ("Guild", target_guild.name),
+                ])
+                await interaction.response.send_message(
+                    f"Alliance channel not found in {target_guild.name}.",
+                    ephemeral=True,
+                )
+                return
+
+            # Verify message exists
+            try:
+                message = await channel.fetch_message(msg_id)
+            except discord.NotFound:
+                logger.tree("Link Command Failed", [
+                    ("User", str(interaction.user)),
+                    ("Message ID", str(msg_id)),
+                    ("Reason", "Message not found"),
+                ], emoji="⚠️")
+                await interaction.response.send_message(
+                    "Message not found in the alliance channel.",
+                    ephemeral=True,
+                )
+                return
+            except discord.HTTPException as e:
+                logger.error("Link Command Failed", [
+                    ("User", str(interaction.user)),
+                    ("Message ID", str(msg_id)),
+                    ("Error", str(e)[:50]),
+                ])
+                await interaction.response.send_message(
+                    f"Failed to fetch message: {e}",
+                    ephemeral=True,
+                )
+                return
+
+            # Check if already linked
+            existing = self.db.get_linked_message(msg_id, channel.id)
+            if existing:
+                logger.tree("Link Command Failed", [
+                    ("User", str(interaction.user)),
+                    ("Message ID", str(msg_id)),
+                    ("Reason", "Message already linked"),
+                    ("Linked To", str(existing['member_id'])),
+                ], emoji="⚠️")
+                await interaction.response.send_message(
+                    f"This message is already linked to <@{existing['member_id']}>.",
+                    ephemeral=True,
+                )
+                return
+
+            # Create confirmation embed
+            confirm_embed = discord.Embed(
+                title="Confirm Message Link",
+                description="Review the details below and click **Approve** to link this message.",
+                color=EmbedColors.GOLD,
+                timestamp=datetime.now(NY_TZ),
             )
-            return
 
-        # Create confirmation embed
-        confirm_embed = discord.Embed(
-            title="Confirm Message Link",
-            description="Review the details below and click **Approve** to link this message.",
-            color=EmbedColors.GOLD,
-            timestamp=datetime.now(NY_TZ),
-        )
-
-        confirm_embed.add_field(
-            name="Member",
-            value=f"{member.mention}\n`{member.id}`",
-            inline=True,
-        )
-        confirm_embed.add_field(
-            name="Message",
-            value=f"[Jump to Message]({message.jump_url})",
-            inline=True,
-        )
-
-        if is_cross_server:
             confirm_embed.add_field(
-                name="Server",
-                value=target_guild.name,
+                name="Member",
+                value=f"{member.mention}\n`{member.id}`",
+                inline=True,
+            )
+            confirm_embed.add_field(
+                name="Message",
+                value=f"[Jump to Message]({message.jump_url})",
                 inline=True,
             )
 
-        # Show message preview
-        if message.content:
-            preview = message.content[:300]
-            if len(message.content) > 300:
-                preview += "..."
-            confirm_embed.add_field(
-                name="Message Preview",
-                value=f"```{preview}```",
-                inline=False,
-            )
-        elif message.attachments:
-            confirm_embed.add_field(
-                name="Message Content",
-                value=f"*{len(message.attachments)} attachment(s)*",
-                inline=False,
-            )
-        elif message.embeds:
-            confirm_embed.add_field(
-                name="Message Content",
-                value=f"*{len(message.embeds)} embed(s)*",
-                inline=False,
+            if is_cross_server:
+                confirm_embed.add_field(
+                    name="Server",
+                    value=target_guild.name,
+                    inline=True,
+                )
+
+            # Show message preview
+            if message.content:
+                preview = message.content[:300]
+                if len(message.content) > 300:
+                    preview += "..."
+                confirm_embed.add_field(
+                    name="Message Preview",
+                    value=f"```{preview}```",
+                    inline=False,
+                )
+            elif message.attachments:
+                confirm_embed.add_field(
+                    name="Message Content",
+                    value=f"*{len(message.attachments)} attachment(s)*",
+                    inline=False,
+                )
+            elif message.embeds:
+                confirm_embed.add_field(
+                    name="Message Content",
+                    value=f"*{len(message.embeds)} embed(s)*",
+                    inline=False,
+                )
+
+            confirm_embed.set_footer(text="This will auto-delete the message if the member leaves")
+
+            # Create view with buttons
+            view = LinkConfirmView(
+                bot=self.bot,
+                message=message,
+                member=member,
+                moderator=interaction.user,
+                target_guild=target_guild,
+                is_cross_server=is_cross_server,
             )
 
-        confirm_embed.set_footer(text="This will auto-delete the message if the member leaves")
+            await interaction.response.send_message(
+                embed=confirm_embed,
+                view=view,
+                ephemeral=True,
+            )
 
-        # Create view with buttons
-        view = LinkConfirmView(
-            bot=self.bot,
-            message=message,
-            member=member,
-            moderator=interaction.user,
-            target_guild=target_guild,
-            is_cross_server=is_cross_server,
-        )
-
-        await interaction.response.send_message(
-            embed=confirm_embed,
-            view=view,
-            ephemeral=True,
-        )
+        except Exception as e:
+            logger.error("Link Command Failed", [
+                ("User", str(interaction.user)),
+                ("Error", str(e)[:100]),
+            ])
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        f"An error occurred: {e}",
+                        ephemeral=True,
+                    )
+                else:
+                    await interaction.followup.send(
+                        f"An error occurred: {e}",
+                        ephemeral=True,
+                    )
+            except Exception:
+                pass
 
 
 # =============================================================================
