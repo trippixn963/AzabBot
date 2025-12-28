@@ -126,7 +126,7 @@ class ForbidCog(commands.Cog):
 
     async def _ensure_forbid_roles(self, guild: discord.Guild) -> dict:
         """
-        Ensure all forbid roles exist in the guild.
+        Ensure all forbid roles exist in the guild with proper channel overwrites.
 
         Returns dict mapping restriction type to role.
         """
@@ -139,26 +139,20 @@ class ForbidCog(commands.Cog):
             role = discord.utils.get(guild.roles, name=role_name)
 
             if not role:
-                # Create the role with denied permissions
-                perms = discord.Permissions()
-
-                # Handle single or multiple permissions
-                if "permissions" in config:
-                    for perm in config["permissions"]:
-                        setattr(perms, perm, False)
-                else:
-                    setattr(perms, config["permission"], False)
-
                 try:
+                    # Create the role (minimal permissions)
                     role = await guild.create_role(
                         name=role_name,
-                        permissions=perms,
+                        permissions=discord.Permissions.none(),
                         color=discord.Color.dark_grey(),
                         reason="Forbid system: Creating restriction role",
                     )
 
                     # Move role to bottom (just above @everyone)
                     await role.edit(position=1)
+
+                    # Set channel overwrites to DENY the permission in all channels
+                    await self._apply_channel_overwrites(guild, role, restriction)
 
                     logger.tree("Forbid Role Created", [
                         ("Role", role_name),
@@ -175,6 +169,56 @@ class ForbidCog(commands.Cog):
             roles[restriction] = role
 
         return roles
+
+    async def _apply_channel_overwrites(
+        self,
+        guild: discord.Guild,
+        role: discord.Role,
+        restriction: str,
+    ) -> None:
+        """Apply permission overwrites to all channels for a forbid role."""
+        config = RESTRICTIONS.get(restriction)
+        if not config:
+            return
+
+        # Build the permission overwrite kwargs
+        overwrite_kwargs = {}
+
+        if "permissions" in config:
+            for perm in config["permissions"]:
+                overwrite_kwargs[perm] = False
+        else:
+            overwrite_kwargs[config["permission"]] = False
+
+        overwrite = discord.PermissionOverwrite(**overwrite_kwargs)
+
+        # Apply to all text channels (for embed_links, attach_files, etc.)
+        text_perms = {"embed_links", "attach_files", "add_reactions",
+                      "use_external_emojis", "use_external_stickers",
+                      "create_public_threads", "create_private_threads"}
+
+        # Apply to all voice channels (for connect, stream)
+        voice_perms = {"connect", "stream"}
+
+        # Determine which channel types need the overwrite
+        perm_names = set(overwrite_kwargs.keys())
+        apply_to_text = bool(perm_names & text_perms)
+        apply_to_voice = bool(perm_names & voice_perms)
+
+        for channel in guild.channels:
+            try:
+                if isinstance(channel, discord.TextChannel) and apply_to_text:
+                    await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
+                elif isinstance(channel, discord.VoiceChannel) and apply_to_voice:
+                    await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
+                elif isinstance(channel, discord.StageChannel) and apply_to_voice:
+                    await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
+                elif isinstance(channel, discord.ForumChannel) and apply_to_text:
+                    await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
+            except discord.Forbidden:
+                continue
+            except discord.HTTPException:
+                continue
 
     async def _get_or_create_role(self, guild: discord.Guild, restriction: str) -> Optional[discord.Role]:
         """Get or create a specific forbid role."""
@@ -659,6 +703,96 @@ class ForbidCog(commands.Cog):
 
         except Exception as e:
             logger.debug(f"Failed to log forbid action: {e}")
+
+    # =========================================================================
+    # Channel Creation Listener
+    # =========================================================================
+
+    @commands.Cog.listener()
+    async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> None:
+        """Apply forbid role overwrites to newly created channels."""
+        if not channel.guild:
+            return
+
+        guild = channel.guild
+
+        # Find all existing forbid roles and apply their overwrites
+        for restriction, config in RESTRICTIONS.items():
+            role_name = self._get_role_name(restriction)
+            role = discord.utils.get(guild.roles, name=role_name)
+
+            if not role:
+                continue
+
+            # Build the permission overwrite
+            overwrite_kwargs = {}
+            if "permissions" in config:
+                for perm in config["permissions"]:
+                    overwrite_kwargs[perm] = False
+            else:
+                overwrite_kwargs[config["permission"]] = False
+
+            overwrite = discord.PermissionOverwrite(**overwrite_kwargs)
+
+            # Determine if this channel type needs the overwrite
+            text_perms = {"embed_links", "attach_files", "add_reactions",
+                          "use_external_emojis", "use_external_stickers",
+                          "create_public_threads", "create_private_threads"}
+            voice_perms = {"connect", "stream"}
+            perm_names = set(overwrite_kwargs.keys())
+
+            try:
+                if isinstance(channel, (discord.TextChannel, discord.ForumChannel)) and (perm_names & text_perms):
+                    await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system: new channel")
+                elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)) and (perm_names & voice_perms):
+                    await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system: new channel")
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+
+    # =========================================================================
+    # Refresh Command
+    # =========================================================================
+
+    @app_commands.command(name="forbid-refresh", description="Refresh forbid role permissions on all channels")
+    @app_commands.default_permissions(administrator=True)
+    async def forbid_refresh(self, interaction: discord.Interaction) -> None:
+        """Refresh all forbid role channel overwrites."""
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "This command can only be used in a server.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        guild = interaction.guild
+        refreshed = []
+
+        for restriction, config in RESTRICTIONS.items():
+            role_name = self._get_role_name(restriction)
+            role = discord.utils.get(guild.roles, name=role_name)
+
+            if role:
+                await self._apply_channel_overwrites(guild, role, restriction)
+                refreshed.append(restriction)
+
+        if refreshed:
+            await interaction.followup.send(
+                f"Refreshed channel overwrites for: `{', '.join(refreshed)}`",
+                ephemeral=True,
+            )
+        else:
+            await interaction.followup.send(
+                "No forbid roles found to refresh.",
+                ephemeral=True,
+            )
+
+        logger.tree("Forbid Roles Refreshed", [
+            ("Guild", guild.name),
+            ("Roles", ", ".join(refreshed) if refreshed else "None"),
+            ("By", str(interaction.user)),
+        ], emoji="🔄")
 
 
 # =============================================================================
