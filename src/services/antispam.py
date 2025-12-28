@@ -83,27 +83,105 @@ CHAR_REPEAT_LIMIT = 30
 # Arabic script: U+0600 to U+06FF
 ARABIC_RANGE = range(0x0600, 0x06FF + 1)
 
+# Arabic tashkeel (diacritical marks) to strip for normalization
+# These are: fatha, kasra, damma, sukun, shadda, tanween, etc.
+ARABIC_TASHKEEL = frozenset([
+    '\u064B',  # tanween fatha
+    '\u064C',  # tanween damma
+    '\u064D',  # tanween kasra
+    '\u064E',  # fatha
+    '\u064F',  # damma
+    '\u0650',  # kasra
+    '\u0651',  # shadda
+    '\u0652',  # sukun
+    '\u0653',  # maddah
+    '\u0654',  # hamza above
+    '\u0655',  # hamza below
+    '\u0656',  # subscript alef
+    '\u0670',  # superscript alef
+])
+
 # Common Arabic/Islamic greetings (always exempt from spam detection)
+# Stored WITHOUT tashkeel - input is normalized before comparison
 EXEMPT_ARABIC_GREETINGS = {
+    # Salam variations
     "السلام عليكم",
     "السلام عليكم ورحمة الله",
     "السلام عليكم ورحمة الله وبركاته",
+    "سلام عليكم",
+    "سلام",
+    # Wa alaykum salam variations
     "وعليكم السلام",
     "وعليكم السلام ورحمة الله",
     "وعليكم السلام ورحمة الله وبركاته",
+    "عليكم السلام",
+    "عليكم السلام ورحمة الله وبركاته",
+    # General greetings
     "صباح الخير",
+    "صباح النور",
     "مساء الخير",
+    "مساء النور",
     "مرحبا",
+    "مرحبا بك",
+    "مرحبا بكم",
     "اهلا",
+    "اهلا بك",
+    "اهلا بكم",
     "اهلا وسهلا",
+    "اهلا وسهلا بك",
+    "اهلا وسهلا بكم",
+    "هلا",
+    "هلا والله",
+    "يا هلا",
+    # Islamic phrases
     "الحمد لله",
+    "الحمدلله",
     "سبحان الله",
+    "سبحانه وتعالى",
     "الله اكبر",
+    "لا اله الا الله",
     "ماشاء الله",
+    "ما شاء الله",
+    "تبارك الله",
     "استغفر الله",
+    "استغفرالله",
     "بسم الله",
+    "بسم الله الرحمن الرحيم",
+    "ان شاء الله",
+    "انشاء الله",
+    "لا حول ولا قوة الا بالله",
+    # Duas/blessings
     "جزاك الله خيرا",
+    "جزاك الله خير",
+    "جزاكم الله خيرا",
+    "جزاكم الله خير",
     "بارك الله فيك",
+    "بارك الله فيكم",
+    "الله يبارك فيك",
+    "الله يبارك فيكم",
+    "الله يعطيك العافية",
+    "الله يعافيك",
+    "الله يحفظك",
+    "الله يحفظكم",
+    "الله يسلمك",
+    "الله يسعدك",
+    "الله يوفقك",
+    "الله يرحمك",
+    "رحمه الله",
+    "رحمها الله",
+    "يرحمك الله",
+    "الله يهديك",
+    "هداك الله",
+    "الله يكرمك",
+    "الله يعينك",
+    "الله معك",
+    "الله معاك",
+    "توكلت على الله",
+    "حسبي الله ونعم الوكيل",
+    "صلى الله عليه وسلم",
+    "عليه السلام",
+    "رضي الله عنه",
+    "رضي الله عنها",
 }
 
 # Minimum length for duplicate detection (short messages ignored)
@@ -408,12 +486,17 @@ class AntiSpamService:
 
         return False
 
+    def _strip_arabic_tashkeel(self, text: str) -> str:
+        """Remove Arabic diacritical marks (tashkeel) from text."""
+        return ''.join(c for c in text if c not in ARABIC_TASHKEEL)
+
     def _is_exempt_greeting(self, text: str) -> bool:
         """Check if text is a common Arabic/Islamic greeting (always exempt)."""
         if not text:
             return False
-        # Normalize: strip whitespace and common punctuation
-        normalized = text.strip().rstrip('!.،؟')
+        # Normalize: strip whitespace, punctuation, and tashkeel
+        normalized = text.strip().rstrip('!.،؟؛:')
+        normalized = self._strip_arabic_tashkeel(normalized)
         return normalized in EXEMPT_ARABIC_GREETINGS
 
     def _is_mostly_arabic(self, text: str) -> bool:
