@@ -404,6 +404,18 @@ class ForbidCog(commands.Cog):
                 action="forbid",
             )
 
+            # Create case log
+            if applied and self.bot.case_log_service:
+                try:
+                    await self.bot.case_log_service.log_forbid(
+                        user=user,
+                        moderator=moderator,
+                        restrictions=applied,
+                        reason=reason,
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to create forbid case: {e}")
+
         except discord.HTTPException as e:
             logger.error("Forbid Command Failed (HTTP)", [
                 ("Error", str(e)),
@@ -552,6 +564,17 @@ class ForbidCog(commands.Cog):
                 reason=None,
                 action="unforbid",
             )
+
+            # Create case log
+            if removed and self.bot.case_log_service:
+                try:
+                    await self.bot.case_log_service.log_unforbid(
+                        user=user,
+                        moderator=moderator,
+                        restrictions=removed,
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to create unforbid case: {e}")
 
         except Exception as e:
             logger.error("Unforbid Command Failed", [

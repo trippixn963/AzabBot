@@ -2024,6 +2024,259 @@ class CaseLogService:
             ])
 
     # =========================================================================
+    # Forbid Logging
+    # =========================================================================
+
+    async def log_forbid(
+        self,
+        user: discord.Member,
+        moderator: discord.Member,
+        restrictions: list,
+        reason: Optional[str] = None,
+    ) -> Optional[dict]:
+        """
+        Log a forbid action - creates a case for the restriction.
+
+        Args:
+            user: The user being restricted.
+            moderator: The moderator who issued the restriction.
+            restrictions: List of restriction types applied.
+            reason: Optional reason for the restriction.
+
+        Returns:
+            Dict with case_id and thread_id, or None if disabled/failed.
+        """
+        if not self.enabled:
+            return None
+
+        if not restrictions:
+            return None
+
+        try:
+            # Create per-action case
+            case = await self._create_action_case(
+                user=user,
+                moderator=moderator,
+                action_type="forbid",
+                reason=reason,
+            )
+
+            case_thread = await self._get_case_thread(case["thread_id"])
+
+            if not case_thread:
+                logger.warning(f"log_forbid: Thread {case['thread_id']} not found")
+                return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+
+            # Build and send forbid embed
+            embed = self._build_forbid_embed(user, moderator, restrictions, reason)
+            view = CaseLogView(
+                user_id=user.id,
+                guild_id=user.guild.id,
+                message_url=None,
+                case_thread_id=case["thread_id"],
+                is_mute_embed=False,
+                case_id=case["case_id"],
+            )
+            await safe_send(case_thread, embed=embed, view=view)
+
+            logger.tree("Case Log: Forbid", [
+                ("User", f"{user} ({user.id})"),
+                ("Case ID", case['case_id']),
+                ("Restrictions", ", ".join(restrictions)),
+            ], emoji="🚫")
+
+            return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+
+        except Exception as e:
+            logger.error("Case Log: Failed To Log Forbid", [
+                ("User ID", str(user.id)),
+                ("Error", str(e)[:100]),
+            ])
+            return None
+
+    def _build_forbid_embed(
+        self,
+        user: discord.Member,
+        moderator: discord.Member,
+        restrictions: list,
+        reason: Optional[str] = None,
+    ) -> discord.Embed:
+        """Build a forbid action embed."""
+        # Restriction display info
+        restriction_info = {
+            "reactions": ("🚫", "Add Reactions"),
+            "attachments": ("📎", "Send Attachments"),
+            "voice": ("🔇", "Join Voice"),
+            "streaming": ("📺", "Stream/Screenshare"),
+            "embeds": ("🔗", "Embed Links"),
+            "threads": ("🧵", "Create Threads"),
+            "external_emojis": ("😀", "External Emojis"),
+            "stickers": ("🎨", "Stickers"),
+        }
+
+        embed = discord.Embed(
+            title="🚫 User Restricted",
+            color=EmbedColors.WARNING,
+            timestamp=datetime.now(NY_TZ),
+        )
+
+        embed.set_thumbnail(url=user.display_avatar.url)
+
+        embed.add_field(
+            name="User",
+            value=f"{user.mention}\n`{user.id}`",
+            inline=True,
+        )
+        embed.add_field(
+            name="Moderator",
+            value=f"{moderator.mention}\n`{moderator.id}`",
+            inline=True,
+        )
+
+        # Build restrictions list
+        restrictions_text = []
+        for r in restrictions:
+            if r in restriction_info:
+                emoji, display = restriction_info[r]
+                restrictions_text.append(f"{emoji} {display}")
+            else:
+                restrictions_text.append(f"• {r}")
+
+        embed.add_field(
+            name="Restrictions Applied",
+            value="\n".join(restrictions_text) or "None",
+            inline=False,
+        )
+
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
+        else:
+            embed.add_field(name="Reason", value="_No reason provided_", inline=False)
+
+        set_footer(embed)
+        return embed
+
+    async def log_unforbid(
+        self,
+        user: discord.Member,
+        moderator: discord.Member,
+        restrictions: list,
+    ) -> Optional[dict]:
+        """
+        Log an unforbid action - creates a case for the removal.
+
+        Args:
+            user: The user being unrestricted.
+            moderator: The moderator who removed the restriction.
+            restrictions: List of restriction types removed.
+
+        Returns:
+            Dict with case_id and thread_id, or None if disabled/failed.
+        """
+        if not self.enabled:
+            return None
+
+        if not restrictions:
+            return None
+
+        try:
+            # Create per-action case
+            case = await self._create_action_case(
+                user=user,
+                moderator=moderator,
+                action_type="unforbid",
+                reason=f"Removed: {', '.join(restrictions)}",
+            )
+
+            case_thread = await self._get_case_thread(case["thread_id"])
+
+            if not case_thread:
+                logger.warning(f"log_unforbid: Thread {case['thread_id']} not found")
+                return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+
+            # Build and send unforbid embed
+            embed = self._build_unforbid_embed(user, moderator, restrictions)
+            view = CaseLogView(
+                user_id=user.id,
+                guild_id=user.guild.id,
+                message_url=None,
+                case_thread_id=case["thread_id"],
+                is_mute_embed=False,
+                case_id=case["case_id"],
+            )
+            await safe_send(case_thread, embed=embed, view=view)
+
+            logger.tree("Case Log: Unforbid", [
+                ("User", f"{user} ({user.id})"),
+                ("Case ID", case['case_id']),
+                ("Removed", ", ".join(restrictions)),
+            ], emoji="✅")
+
+            return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+
+        except Exception as e:
+            logger.error("Case Log: Failed To Log Unforbid", [
+                ("User ID", str(user.id)),
+                ("Error", str(e)[:100]),
+            ])
+            return None
+
+    def _build_unforbid_embed(
+        self,
+        user: discord.Member,
+        moderator: discord.Member,
+        restrictions: list,
+    ) -> discord.Embed:
+        """Build an unforbid action embed."""
+        restriction_info = {
+            "reactions": ("🚫", "Add Reactions"),
+            "attachments": ("📎", "Send Attachments"),
+            "voice": ("🔇", "Join Voice"),
+            "streaming": ("📺", "Stream/Screenshare"),
+            "embeds": ("🔗", "Embed Links"),
+            "threads": ("🧵", "Create Threads"),
+            "external_emojis": ("😀", "External Emojis"),
+            "stickers": ("🎨", "Stickers"),
+        }
+
+        embed = discord.Embed(
+            title="✅ Restrictions Removed",
+            color=EmbedColors.SUCCESS,
+            timestamp=datetime.now(NY_TZ),
+        )
+
+        embed.set_thumbnail(url=user.display_avatar.url)
+
+        embed.add_field(
+            name="User",
+            value=f"{user.mention}\n`{user.id}`",
+            inline=True,
+        )
+        embed.add_field(
+            name="Moderator",
+            value=f"{moderator.mention}\n`{moderator.id}`",
+            inline=True,
+        )
+
+        # Build restrictions list
+        restrictions_text = []
+        for r in restrictions:
+            if r in restriction_info:
+                emoji, display = restriction_info[r]
+                restrictions_text.append(f"{emoji} {display}")
+            else:
+                restrictions_text.append(f"• {r}")
+
+        embed.add_field(
+            name="Restrictions Removed",
+            value="\n".join(restrictions_text) or "None",
+            inline=False,
+        )
+
+        set_footer(embed)
+        return embed
+
+    # =========================================================================
     # Case Management
     # =========================================================================
 
