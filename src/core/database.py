@@ -189,6 +189,10 @@ class DatabaseManager:
         self._db_lock: threading.Lock = threading.Lock()
         self._conn: Optional[sqlite3.Connection] = None
 
+        # Cache for expensive queries (TTL-based)
+        self._prisoner_stats_cache: Dict[int, tuple] = {}  # user_id -> (stats, timestamp)
+        self._prisoner_stats_ttl: int = 60  # 60 seconds
+
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         self._connect()
         self._init_tables()
@@ -425,6 +429,9 @@ class DatabaseManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id)"
         )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_user_guild_time ON messages(user_id, guild_id, timestamp DESC)"
+        )
 
         # -----------------------------------------------------------------
         # Prisoner History Table
@@ -537,6 +544,9 @@ class DatabaseManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_mute_history_time ON mute_history(timestamp)"
         )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mute_history_user_time ON mute_history(user_id, guild_id, timestamp DESC)"
+        )
 
         # -----------------------------------------------------------------
         # Case Logs Table
@@ -633,6 +643,12 @@ class DatabaseManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_cases_case_id ON cases(case_id)"
         )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cases_guild_status ON cases(guild_id, status)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cases_created ON cases(created_at DESC)"
+        )
 
         # -----------------------------------------------------------------
         # Mod Tracker Table
@@ -692,6 +708,9 @@ class DatabaseManager:
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_nickname_time ON nickname_history(changed_at)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_nickname_user_guild_time ON nickname_history(user_id, guild_id, changed_at DESC)"
         )
 
         # -----------------------------------------------------------------
@@ -831,6 +850,9 @@ class DatabaseManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_ban_history_time ON ban_history(timestamp)"
         )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ban_history_user_time ON ban_history(user_id, guild_id, timestamp DESC)"
+        )
 
         # -----------------------------------------------------------------
         # Username History Table
@@ -874,6 +896,9 @@ class DatabaseManager:
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_warnings_time ON warnings(created_at)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_warnings_user_time ON warnings(user_id, guild_id, created_at DESC)"
         )
 
         # -----------------------------------------------------------------
@@ -1051,6 +1076,27 @@ class DatabaseManager:
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_appeals_status ON appeals(status)"
+        )
+
+        # -----------------------------------------------------------------
+        # Linked Messages Table
+        # DESIGN: Links messages to members for auto-deletion on leave
+        # Used for alliance channel posts that should be removed when member leaves
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS linked_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                member_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                linked_by INTEGER NOT NULL,
+                linked_at REAL NOT NULL,
+                UNIQUE(message_id, channel_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_linked_messages_member ON linked_messages(member_id, guild_id)"
         )
 
         conn.commit()
@@ -1281,10 +1327,18 @@ class DatabaseManager:
     async def get_prisoner_stats(self, user_id: int) -> Dict[str, Any]:
         """
         Get comprehensive prisoner stats in a single optimized query.
+        Uses TTL-based caching (60 seconds) to avoid repeated expensive queries.
 
         Returns:
             Dict with total_mutes, total_minutes, last_mute, etc.
         """
+        # Check cache first
+        now = time.time()
+        if user_id in self._prisoner_stats_cache:
+            cached_stats, cached_at = self._prisoner_stats_cache[user_id]
+            if now - cached_at < self._prisoner_stats_ttl:
+                return cached_stats
+
         def _get():
             with metrics.timer("db.get_prisoner_stats"):
                 # Single query with all stats using subqueries
@@ -1321,7 +1375,18 @@ class DatabaseManager:
                     "current_reason": row["current_reason"],
                 }
 
-        return await asyncio.to_thread(_get)
+        stats = await asyncio.to_thread(_get)
+
+        # Cache the result
+        self._prisoner_stats_cache[user_id] = (stats, now)
+
+        # Evict old cache entries (keep max 1000)
+        if len(self._prisoner_stats_cache) > 1000:
+            oldest_key = min(self._prisoner_stats_cache.keys(),
+                           key=lambda k: self._prisoner_stats_cache[k][1])
+            del self._prisoner_stats_cache[oldest_key]
+
+        return stats
 
     async def get_current_mute_session_id(self, user_id: int) -> Optional[int]:
         """Get current active mute session ID."""
@@ -3491,6 +3556,7 @@ class DatabaseManager:
         Get combined mute, ban, and note history for a user.
 
         Returns a unified list sorted by timestamp, with type indicators.
+        Uses single UNION ALL query for efficiency.
 
         Args:
             user_id: Discord user ID.
@@ -3501,52 +3567,41 @@ class DatabaseManager:
         Returns:
             List of history records with 'type' field indicating category.
         """
-        # Get mute history
-        mutes = self.fetchall(
+        # Single UNION ALL query - sorted and paginated in SQL
+        rows = self.fetchall(
             """SELECT id, user_id, guild_id, moderator_id, action, reason,
                       duration_seconds, timestamp, 'mute' as type
                FROM mute_history
-               WHERE user_id = ? AND guild_id = ?""",
-            (user_id, guild_id)
-        )
-
-        # Get ban history
-        bans = self.fetchall(
-            """SELECT id, user_id, guild_id, moderator_id, action, reason,
+               WHERE user_id = ? AND guild_id = ?
+               UNION ALL
+               SELECT id, user_id, guild_id, moderator_id, action, reason,
                       NULL as duration_seconds, timestamp, 'ban' as type
                FROM ban_history
-               WHERE user_id = ? AND guild_id = ?""",
-            (user_id, guild_id)
-        )
-
-        # Get warning history
-        warnings = self.fetchall(
-            """SELECT id, user_id, guild_id, moderator_id, 'warn' as action, reason,
+               WHERE user_id = ? AND guild_id = ?
+               UNION ALL
+               SELECT id, user_id, guild_id, moderator_id, 'warn' as action, reason,
                       NULL as duration_seconds, created_at as timestamp, 'warn' as type
                FROM warnings
-               WHERE user_id = ? AND guild_id = ?""",
-            (user_id, guild_id)
+               WHERE user_id = ? AND guild_id = ?
+               ORDER BY timestamp DESC
+               LIMIT ? OFFSET ?""",
+            (user_id, guild_id, user_id, guild_id, user_id, guild_id, limit, offset)
         )
 
-        # Combine and sort
-        combined = [dict(row) for row in mutes] + [dict(row) for row in bans] + [dict(row) for row in warnings]
-        combined.sort(key=lambda x: x["timestamp"], reverse=True)
+        combined = [dict(row) for row in rows]
 
         # Log history query
         logger.tree("HISTORY QUERIED", [
             ("User ID", str(user_id)),
-            ("Mutes", str(len(mutes))),
-            ("Bans", str(len(bans))),
-            ("Warnings", str(len(warnings))),
             ("Total", str(len(combined))),
         ], emoji="📋")
 
-        # Apply pagination
-        return combined[offset:offset + limit]
+        return combined
 
     def get_history_count(self, user_id: int, guild_id: int) -> int:
         """
         Get total count of history records (mutes + bans + warnings).
+        Uses single query with subqueries for efficiency.
 
         Args:
             user_id: Discord user ID.
@@ -3555,23 +3610,14 @@ class DatabaseManager:
         Returns:
             Total count.
         """
-        mute_count = self.fetchone(
-            "SELECT COUNT(*) as count FROM mute_history WHERE user_id = ? AND guild_id = ?",
-            (user_id, guild_id)
+        row = self.fetchone(
+            """SELECT
+                (SELECT COUNT(*) FROM mute_history WHERE user_id = ? AND guild_id = ?) +
+                (SELECT COUNT(*) FROM ban_history WHERE user_id = ? AND guild_id = ?) +
+                (SELECT COUNT(*) FROM warnings WHERE user_id = ? AND guild_id = ?) as total""",
+            (user_id, guild_id, user_id, guild_id, user_id, guild_id)
         )
-        ban_count = self.fetchone(
-            "SELECT COUNT(*) as count FROM ban_history WHERE user_id = ? AND guild_id = ?",
-            (user_id, guild_id)
-        )
-        warn_count = self.fetchone(
-            "SELECT COUNT(*) as count FROM warnings WHERE user_id = ? AND guild_id = ?",
-            (user_id, guild_id)
-        )
-
-        mc = mute_count["count"] if mute_count else 0
-        bc = ban_count["count"] if ban_count else 0
-        wc = warn_count["count"] if warn_count else 0
-        return mc + bc + wc
+        return row["total"] if row else 0
 
     # =========================================================================
     # Username History Operations
@@ -4609,6 +4655,118 @@ class DatabaseManager:
             "approved": approved["c"] if approved else 0,
             "denied": denied["c"] if denied else 0,
         }
+
+    # =========================================================================
+    # Linked Messages Operations
+    # =========================================================================
+
+    def save_linked_message(
+        self,
+        message_id: int,
+        channel_id: int,
+        member_id: int,
+        guild_id: int,
+        linked_by: int,
+    ) -> bool:
+        """
+        Link a message to a member for auto-deletion on leave.
+
+        Args:
+            message_id: Discord message ID.
+            channel_id: Channel where message is.
+            member_id: Member to link the message to.
+            guild_id: Guild ID.
+            linked_by: Moderator who created the link.
+
+        Returns:
+            True if saved, False if already linked.
+        """
+        try:
+            self.execute(
+                """INSERT INTO linked_messages
+                   (message_id, channel_id, member_id, guild_id, linked_by, linked_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (message_id, channel_id, member_id, guild_id, linked_by, time.time())
+            )
+            return True
+        except sqlite3.IntegrityError:
+            return False  # Already linked
+
+    def get_linked_messages_by_member(
+        self,
+        member_id: int,
+        guild_id: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all messages linked to a member.
+
+        Args:
+            member_id: Member ID.
+            guild_id: Guild ID.
+
+        Returns:
+            List of linked message records.
+        """
+        rows = self.fetchall(
+            """SELECT message_id, channel_id, linked_by, linked_at
+               FROM linked_messages
+               WHERE member_id = ? AND guild_id = ?""",
+            (member_id, guild_id)
+        )
+        return [dict(row) for row in rows]
+
+    def delete_linked_message(self, message_id: int, channel_id: int) -> bool:
+        """
+        Remove a linked message record.
+
+        Args:
+            message_id: Discord message ID.
+            channel_id: Channel ID.
+
+        Returns:
+            True if deleted, False if not found.
+        """
+        cursor = self.execute(
+            "DELETE FROM linked_messages WHERE message_id = ? AND channel_id = ?",
+            (message_id, channel_id)
+        )
+        return cursor.rowcount > 0
+
+    def delete_linked_messages_by_member(self, member_id: int, guild_id: int) -> int:
+        """
+        Remove all linked messages for a member.
+
+        Args:
+            member_id: Member ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Number of records deleted.
+        """
+        cursor = self.execute(
+            "DELETE FROM linked_messages WHERE member_id = ? AND guild_id = ?",
+            (member_id, guild_id)
+        )
+        return cursor.rowcount
+
+    def get_linked_message(self, message_id: int, channel_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a linked message record.
+
+        Args:
+            message_id: Discord message ID.
+            channel_id: Channel ID.
+
+        Returns:
+            Linked message record or None.
+        """
+        row = self.fetchone(
+            """SELECT message_id, channel_id, member_id, guild_id, linked_by, linked_at
+               FROM linked_messages
+               WHERE message_id = ? AND channel_id = ?""",
+            (message_id, channel_id)
+        )
+        return dict(row) if row else None
 
 
 # =============================================================================

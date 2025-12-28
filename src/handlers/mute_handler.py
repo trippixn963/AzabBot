@@ -130,6 +130,10 @@ class MuteHandler:
             # -----------------------------------------------------------------
 
             if reason:
+                # LRU eviction if at limit
+                while len(self.prison_handler.mute_reasons) >= self.prison_handler._mute_reasons_limit:
+                    self.prison_handler.mute_reasons.popitem(last=False)
+
                 if user_id:
                     self.prison_handler.mute_reasons[user_id] = reason
                     logger.tree("Mute Reason Captured", [

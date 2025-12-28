@@ -30,6 +30,7 @@ Available Commands:
     /forbid: Restrict specific permissions for a user (moderator)
     /unforbid: Remove restrictions from a user (moderator)
     /forbidden: View a user's active restrictions (moderator)
+    /link: Link alliance message to member for auto-deletion (moderator)
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -48,6 +49,7 @@ COMMAND_COGS = [
     "src.commands.history",
     "src.commands.snipe",
     "src.commands.forbid",
+    "src.commands.link",
 ]
 """
 List of command cog module paths for dynamic loading.

@@ -141,7 +141,7 @@ class AppealService:
     # Appeal Eligibility
     # =========================================================================
 
-    def can_appeal(self, case_id: str) -> tuple[bool, Optional[str]]:
+    def can_appeal(self, case_id: str) -> tuple[bool, Optional[str], Optional[dict]]:
         """
         Check if a case can be appealed.
 
@@ -149,21 +149,22 @@ class AppealService:
             case_id: Case ID to check.
 
         Returns:
-            Tuple of (can_appeal, reason_if_not).
+            Tuple of (can_appeal, reason_if_not, case_data).
+            case_data is returned to avoid redundant queries.
         """
         # Check if appeals are enabled
         if not self.enabled:
-            return (False, "Appeal system is not enabled")
+            return (False, "Appeal system is not enabled", None)
 
         # Check if case exists
         case = self.db.get_appealable_case(case_id)
         if not case:
-            return (False, "Case not found")
+            return (False, "Case not found", None)
 
         # Check action type
         action_type = case.get("action_type", "")
         if action_type not in ("ban", "mute"):
-            return (False, f"Cannot appeal {action_type} actions")
+            return (False, f"Cannot appeal {action_type} actions", None)
 
         # For mutes, check duration (must be >= 6 hours)
         if action_type == "mute":
@@ -174,14 +175,14 @@ class AppealService:
             elif duration < MIN_APPEALABLE_MUTE_DURATION:
                 hours = duration // 3600
                 minutes = (duration % 3600) // 60
-                return (False, f"Mutes under 6 hours cannot be appealed (this mute: {hours}h {minutes}m)")
+                return (False, f"Mutes under 6 hours cannot be appealed (this mute: {hours}h {minutes}m)", None)
 
         # Check if already appealed
-        can_appeal, reason = self.db.can_appeal_case(case_id)
-        if not can_appeal:
-            return (False, reason)
+        can_appeal_db, reason = self.db.can_appeal_case(case_id)
+        if not can_appeal_db:
+            return (False, reason, None)
 
-        return (True, None)
+        return (True, None, case)
 
     # =========================================================================
     # Create Appeal
@@ -207,13 +208,12 @@ class AppealService:
         if not self.enabled:
             return (False, "Appeal system is not enabled", None)
 
-        # Check eligibility
-        can_appeal, deny_reason = self.can_appeal(case_id)
-        if not can_appeal:
+        # Check eligibility (also returns case data to avoid redundant query)
+        can_appeal_result, deny_reason, case = self.can_appeal(case_id)
+        if not can_appeal_result:
             return (False, deny_reason, None)
 
-        # Get case info
-        case = self.db.get_appealable_case(case_id)
+        # case is already fetched by can_appeal
         if not case:
             return (False, "Case not found", None)
 
@@ -998,7 +998,7 @@ class SubmitAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"s
             return
 
         # Check eligibility
-        can_appeal, reason = bot.appeal_service.can_appeal(self.case_id)
+        can_appeal, reason, _ = bot.appeal_service.can_appeal(self.case_id)
         if not can_appeal:
             await interaction.response.send_message(
                 f"Cannot submit appeal: {reason}",

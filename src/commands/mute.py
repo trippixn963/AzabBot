@@ -829,9 +829,9 @@ class MuteCog(commands.Cog):
             )
             return
 
-        # Defer and execute unmute
+        # Defer and execute unmute (validation already done)
         await interaction.response.defer(ephemeral=False)
-        await self.execute_unmute(interaction, user, reason=None)
+        await self.execute_unmute(interaction, user, reason=None, skip_validation=True)
 
     # =========================================================================
     # Shared Unmute Logic
@@ -842,6 +842,7 @@ class MuteCog(commands.Cog):
         interaction: discord.Interaction,
         user: discord.User,
         reason: Optional[str] = None,
+        skip_validation: bool = False,
     ) -> None:
         """
         Execute unmute logic (shared by /unmute command and context menu).
@@ -853,6 +854,7 @@ class MuteCog(commands.Cog):
             interaction: Discord interaction (must be deferred).
             user: User to unmute.
             reason: Optional reason for unmute.
+            skip_validation: Skip validation if already done by caller.
         """
         # -----------------------------------------------------------------
         # Get Target Guild (for cross-server moderation)
@@ -863,28 +865,30 @@ class MuteCog(commands.Cog):
 
         # Get member from target guild
         target_member = target_guild.get_member(user.id)
-        if not target_member:
-            guild_name = target_guild.name if is_cross_server else "this server"
-            await interaction.followup.send(
-                f"User is not a member of {guild_name}.",
-                ephemeral=True,
-            )
-            return
+        if not skip_validation:
+            if not target_member:
+                guild_name = target_guild.name if is_cross_server else "this server"
+                await interaction.followup.send(
+                    f"User is not a member of {guild_name}.",
+                    ephemeral=True,
+                )
+                return
 
         muted_role = target_guild.get_role(self.config.muted_role_id)
-        if not muted_role:
-            await interaction.followup.send(
-                f"Muted role not found (ID: {self.config.muted_role_id}).",
-                ephemeral=True,
-            )
-            return
+        if not skip_validation:
+            if not muted_role:
+                await interaction.followup.send(
+                    f"Muted role not found (ID: {self.config.muted_role_id}).",
+                    ephemeral=True,
+                )
+                return
 
-        if muted_role not in target_member.roles:
-            await interaction.followup.send(
-                f"**{target_member.display_name}** is not muted.",
-                ephemeral=True,
-            )
-            return
+            if muted_role not in target_member.roles:
+                await interaction.followup.send(
+                    f"**{target_member.display_name}** is not muted.",
+                    ephemeral=True,
+                )
+                return
 
         # ---------------------------------------------------------------------
         # Get Mute Info (before removing)
@@ -1047,8 +1051,36 @@ class MuteCog(commands.Cog):
         reason: Optional[str] = None,
     ) -> None:
         """Unmute a user by removing the muted role (supports cross-server from mod server)."""
+        # Pre-validate before deferring (so errors can be ephemeral)
+        target_guild = self._get_target_guild(interaction)
+        target_member = target_guild.get_member(user.id)
+
+        if not target_member:
+            guild_name = target_guild.name if self._is_cross_server(interaction) else "this server"
+            await interaction.response.send_message(
+                f"User is not a member of {guild_name}.",
+                ephemeral=True,
+            )
+            return
+
+        muted_role = target_guild.get_role(self.config.muted_role_id)
+        if not muted_role:
+            await interaction.response.send_message(
+                f"Muted role not found (ID: {self.config.muted_role_id}).",
+                ephemeral=True,
+            )
+            return
+
+        if muted_role not in target_member.roles:
+            await interaction.response.send_message(
+                f"**{target_member.display_name}** is not muted.",
+                ephemeral=True,
+            )
+            return
+
+        # All validation passed - now defer and execute
         await interaction.response.defer(ephemeral=False)
-        await self.execute_unmute(interaction, user, reason)
+        await self.execute_unmute(interaction, user, reason, skip_validation=True)
 
     # =========================================================================
     # Helper Methods

@@ -37,6 +37,7 @@ class LogCategory(Enum):
     BOOSTS = "💎 Server Boosts"
     INVITES = "🔗 Invite Activity"
     ALERTS = "🚨 Security Alerts"
+    ALLIANCES = "🤝 Alliances"
 
 
 # Thread descriptions for each category
@@ -65,4 +66,5 @@ THREAD_DESCRIPTIONS = {
     LogCategory.BOOSTS: "Logs for server boost and unboost events",
     LogCategory.INVITES: "Logs for invite creates, deletes, and usage details",
     LogCategory.ALERTS: "Security alerts for raids, suspicious activity, and threats",
+    LogCategory.ALLIANCES: "Logs for alliance message links and auto-deletions on member leave",
 }

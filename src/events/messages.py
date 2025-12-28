@@ -112,13 +112,12 @@ class MessageEvents(commands.Cog):
             asyncio.create_task(self.bot._cache_message_attachments(message))
 
         # -----------------------------------------------------------------
-        # Cache message content for mod delete logging
+        # Cache message content for mod delete logging (OrderedDict LRU)
         # -----------------------------------------------------------------
         if not message.author.bot and message.guild:
-            if len(self.bot._message_cache) >= self.bot._message_cache_limit:
-                oldest = list(self.bot._message_cache.keys())[:100]
-                for key in oldest:
-                    self.bot._message_cache.pop(key, None)
+            # Evict oldest entries if at limit (O(1) with OrderedDict)
+            while len(self.bot._message_cache) >= self.bot._message_cache_limit:
+                self.bot._message_cache.popitem(last=False)  # Remove oldest
 
             self.bot._message_cache[message.id] = {
                 "author": message.author,
@@ -233,10 +232,19 @@ class MessageEvents(commands.Cog):
                 if self.config.moderation_role_id:
                     is_mod = any(r.id == self.config.moderation_role_id for r in message.author.roles)
 
-                # If prisoner (not mod) and has mentions, delete the message
+                # If prisoner (not mod) and has explicit pings, delete the message
+                # Note: Replies are allowed - only block explicit @mentions
                 if is_prisoner and not is_mod:
+                    # Get mentions that are NOT from a reply
+                    explicit_mentions = list(message.mentions)
+                    if message.reference and message.reference.resolved:
+                        # Remove the replied-to user from mentions (replies are allowed)
+                        replied_to = getattr(message.reference.resolved, 'author', None)
+                        if replied_to and replied_to in explicit_mentions:
+                            explicit_mentions.remove(replied_to)
+
                     has_pings = (
-                        message.mentions or  # @user mentions
+                        explicit_mentions or  # @user mentions (excluding reply)
                         message.role_mentions or  # @role mentions
                         message.mention_everyone  # @everyone/@here
                     )
@@ -272,12 +280,18 @@ class MessageEvents(commands.Cog):
                 message.guild.id,
             )
 
-            # Track message history for AI context
+            # Track message history for AI context (OrderedDict LRU)
             if message.author.id not in self.bot.last_messages:
+                # Evict oldest user if at limit
+                while len(self.bot.last_messages) >= self.bot._last_messages_limit:
+                    self.bot.last_messages.popitem(last=False)
                 self.bot.last_messages[message.author.id] = {
                     "messages": deque(maxlen=self.config.message_history_size),
                     "channel_id": message.channel.id,
                 }
+            else:
+                # Move to end (most recently used)
+                self.bot.last_messages.move_to_end(message.author.id)
             self.bot.last_messages[message.author.id]["messages"].append(message.content)
             self.bot.last_messages[message.author.id]["channel_id"] = message.channel.id
 
@@ -590,13 +604,19 @@ class MessageEvents(commands.Cog):
             return
 
         # -----------------------------------------------------------------
-        # Edit Snipe Cache: Store last 10 edits per channel
+        # Edit Snipe Cache: Store last 10 edits per channel (OrderedDict LRU)
         # -----------------------------------------------------------------
         channel_id = before.channel.id
 
-        # Initialize deque if not exists
+        # Initialize deque if not exists, with LRU eviction
         if channel_id not in self.bot._editsnipe_cache:
+            # Evict oldest channel if at limit
+            while len(self.bot._editsnipe_cache) >= self.bot._editsnipe_channel_limit:
+                self.bot._editsnipe_cache.popitem(last=False)
             self.bot._editsnipe_cache[channel_id] = deque(maxlen=self.bot._editsnipe_limit)
+        else:
+            # Move to end (most recently used)
+            self.bot._editsnipe_cache.move_to_end(channel_id)
 
         edit_data = {
             "author_id": before.author.id,

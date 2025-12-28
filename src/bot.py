@@ -20,7 +20,7 @@ Server: discord.gg/syria
 import asyncio
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
-from collections import deque
+from collections import deque, OrderedDict
 
 import discord
 from discord.ext import commands
@@ -105,18 +105,19 @@ class AzabBot(commands.Bot):
         self.prisoner_message_buffer: Dict[int, List[str]] = {}
         self.prisoner_pending_response: Dict[int, bool] = {}
 
-        # Message history tracking
-        self.last_messages: Dict[int, dict] = {}
+        # Message history tracking (LRU cache with limit)
+        self.last_messages: OrderedDict[int, dict] = OrderedDict()
+        self._last_messages_limit: int = 5000
 
         # Invite cache
         self._invite_cache: Dict[str, int] = {}
 
-        # Message attachment cache
-        self._attachment_cache: Dict[int, List[tuple]] = {}
+        # Message attachment cache (OrderedDict for O(1) LRU eviction)
+        self._attachment_cache: OrderedDict[int, List[tuple]] = OrderedDict()
         self._attachment_cache_limit: int = 500
 
-        # Message content cache
-        self._message_cache: Dict[int, dict] = {}
+        # Message content cache (OrderedDict for O(1) LRU eviction)
+        self._message_cache: OrderedDict[int, dict] = OrderedDict()
         self._message_cache_limit: int = 5000
 
         # Snipe cache (channel_id -> deque of last 10 deleted messages)
@@ -124,8 +125,9 @@ class AzabBot(commands.Bot):
         self._snipe_limit: int = 10
 
         # Edit snipe cache (channel_id -> deque of last 10 edits)
-        self._editsnipe_cache: Dict[int, deque] = {}
+        self._editsnipe_cache: OrderedDict[int, deque] = OrderedDict()
         self._editsnipe_limit: int = 10
+        self._editsnipe_channel_limit: int = 500  # Max channels to track
 
         # Raid detection
         self._recent_joins: deque = deque(maxlen=50)
@@ -492,10 +494,9 @@ class AzabBot(commands.Bot):
         if not message.attachments:
             return
 
-        if len(self._attachment_cache) >= self._attachment_cache_limit:
-            oldest = list(self._attachment_cache.keys())[:100]
-            for key in oldest:
-                self._attachment_cache.pop(key, None)
+        # Evict oldest entries if at limit (O(1) with OrderedDict)
+        while len(self._attachment_cache) >= self._attachment_cache_limit:
+            self._attachment_cache.popitem(last=False)
 
         attachments = []
         for att in message.attachments:
@@ -507,11 +508,6 @@ class AzabBot(commands.Bot):
                     pass
 
         if attachments:
-            if len(self._attachment_cache) >= self._attachment_cache_limit:
-                oldest = list(self._attachment_cache.keys())[:50]
-                for key in oldest:
-                    self._attachment_cache.pop(key, None)
-
             self._attachment_cache[message.id] = attachments
 
     async def _check_raid_detection(self, member: discord.Member) -> None:

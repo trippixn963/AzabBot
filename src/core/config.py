@@ -98,6 +98,8 @@ class Config:
     permanent_polls_channel_id: Optional[int] = None
     case_log_forum_id: Optional[int] = None
     links_allowed_channel_id: Optional[int] = None
+    alliances_channel_id: Optional[int] = None  # Channel for alliance posts (auto-delete on leave)
+    verification_role_id: Optional[int] = None  # Role given to verified members
 
     # -------------------------------------------------------------------------
     # Optional: Roles
@@ -131,6 +133,12 @@ class Config:
     # -------------------------------------------------------------------------
 
     lockdown_exclude_ids: Set[int] = None  # Channel/category IDs to exclude from lockdown
+
+    # -------------------------------------------------------------------------
+    # Optional: Command Permissions
+    # -------------------------------------------------------------------------
+
+    link_allowed_user_ids: Set[int] = None  # User IDs allowed to use /link command
 
     # -------------------------------------------------------------------------
     # Optional: AI Settings
@@ -443,6 +451,8 @@ def load_config() -> Config:
     permanent_polls_channel_id = _parse_int_optional(os.getenv("PERMANENT_POLLS_CHANNEL_ID"))
     case_log_forum_id = _parse_int_optional(os.getenv("CASE_LOG_FORUM_ID"))
     links_allowed_channel_id = _parse_int_optional(os.getenv("LINKS_ALLOWED_CHANNEL_ID"))
+    alliances_channel_id = _parse_int_optional(os.getenv("ALLIANCES_CHANNEL_ID"))
+    verification_role_id = _parse_int_optional(os.getenv("VERIFICATION_ROLE_ID"))
     moderation_role_id = _parse_int_optional(os.getenv("MODERATION_ROLE_ID"))
     mod_server_id = _parse_int_optional(os.getenv("MOD_SERVER_ID"))
     mod_tracker_forum_id = _parse_int_optional(os.getenv("MOD_TRACKER_FORUM_ID"))
@@ -453,6 +463,7 @@ def load_config() -> Config:
     moderator_ids = _parse_int_set(os.getenv("MODERATOR_IDS"))
     ignored_bot_ids = _parse_int_set(os.getenv("IGNORED_BOT_IDS"))
     lockdown_exclude_ids = _parse_int_set(os.getenv("LOCKDOWN_EXCLUDE_IDS"))
+    link_allowed_user_ids = _parse_int_set(os.getenv("LINK_ALLOWED_USER_IDS"))
 
     # -------------------------------------------------------------------------
     # Build Config Object
@@ -470,6 +481,8 @@ def load_config() -> Config:
         permanent_polls_channel_id=permanent_polls_channel_id,
         case_log_forum_id=case_log_forum_id,
         links_allowed_channel_id=links_allowed_channel_id,
+        alliances_channel_id=alliances_channel_id,
+        verification_role_id=verification_role_id,
         moderation_role_id=moderation_role_id,
         mod_server_id=mod_server_id,
         mod_tracker_forum_id=mod_tracker_forum_id,
@@ -509,6 +522,7 @@ def load_config() -> Config:
         error_webhook_url=_validate_url(os.getenv("ERROR_WEBHOOK_URL"), "ERROR_WEBHOOK_URL"),
         ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,
         lockdown_exclude_ids=lockdown_exclude_ids if lockdown_exclude_ids else None,
+        link_allowed_user_ids=link_allowed_user_ids if link_allowed_user_ids else None,
     )
 
 

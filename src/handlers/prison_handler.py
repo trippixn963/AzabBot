@@ -19,6 +19,7 @@ import discord
 import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
+from collections import OrderedDict
 
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ, EmbedColors
@@ -85,10 +86,11 @@ class PrisonHandler:
         self.config = get_config()
 
         # =================================================================
-        # Mute Reason Tracking
+        # Mute Reason Tracking (OrderedDict with LRU eviction)
         # DESIGN: Stores mute reasons by user_id or username for AI context
         # =================================================================
-        self.mute_reasons: Dict[Any, str] = {}
+        self.mute_reasons: OrderedDict[Any, str] = OrderedDict()
+        self._mute_reasons_limit: int = 1000  # Max entries
 
         # =================================================================
         # VC Kick Tracking

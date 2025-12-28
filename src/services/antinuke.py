@@ -48,11 +48,6 @@ TIME_WINDOW = 60  # seconds
 # Exempt users (owner is always exempt)
 EXEMPT_ROLE_NAMES = ["Owner", "Admin", "Administrator"]
 
-# Exempt bot IDs (trusted bots that manage channels/roles)
-EXEMPT_BOT_IDS = {
-    762217899355013120,  # VC Channel Creator bot
-}
-
 
 # =============================================================================
 # Data Classes
@@ -108,8 +103,8 @@ class AntiNukeService:
         if member.id == self.config.developer_id:
             return True
 
-        # Trusted bots are exempt
-        if member.id in EXEMPT_BOT_IDS:
+        # Trusted bots are exempt (from config)
+        if self.config.ignored_bot_ids and member.id in self.config.ignored_bot_ids:
             return True
 
         # Check exempt roles
@@ -171,8 +166,8 @@ class AntiNukeService:
 
         Returns True if nuke detected.
         """
-        # Skip tracking for exempt bots
-        if user_id in EXEMPT_BOT_IDS:
+        # Skip tracking for exempt bots (from config)
+        if self.config.ignored_bot_ids and user_id in self.config.ignored_bot_ids:
             return False
 
         now = datetime.now(NY_TZ)

@@ -15,16 +15,10 @@ import discord
 from discord.ext import commands
 
 from src.core.logger import logger
-from src.core.config import EmbedColors, NY_TZ
+from src.core.config import get_config, EmbedColors, NY_TZ
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
-
-
-# Bot IDs to ignore when logging moderation actions
-IGNORED_BOT_IDS = {
-    491769129318088714,  # StatBot
-}
 
 
 class AuditLogEvents(commands.Cog):
@@ -32,6 +26,7 @@ class AuditLogEvents(commands.Cog):
 
     def __init__(self, bot: "AzabBot") -> None:
         self.bot = bot
+        self.config = get_config()
 
     @commands.Cog.listener()
     async def on_audit_log_entry_create(self, entry: discord.AuditLogEntry) -> None:
@@ -671,8 +666,8 @@ class AuditLogEvents(commands.Cog):
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
             return
 
-        # Skip actions taken by ignored bots
-        if entry.user_id in IGNORED_BOT_IDS:
+        # Skip actions taken by ignored bots (from config)
+        if self.config.ignored_bot_ids and entry.user_id in self.config.ignored_bot_ids:
             return
 
         try:

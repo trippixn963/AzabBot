@@ -69,6 +69,29 @@ class ModTrackerLogsMixin:
     """
 
     # =========================================================================
+    # Helper Methods
+    # =========================================================================
+
+    def _format_role(self, role: discord.Role) -> str:
+        """
+        Format role for display in cross-server logs.
+
+        Uses role name instead of mention since mentions don't work
+        when logging to a different server (mod server).
+        """
+        if role is None:
+            return "`unknown role`"
+        try:
+            if hasattr(role, 'name') and role.name:
+                return f"**@{role.name}**"
+            elif hasattr(role, 'id'):
+                return f"`role-{role.id}`"
+            else:
+                return "`unknown role`"
+        except Exception:
+            return "`unknown role`"
+
+    # =========================================================================
     # Activity Logging - Personal
     # =========================================================================
 
@@ -481,11 +504,11 @@ class ModTrackerLogsMixin:
         self._add_mod_field(embed, mod)
 
         if added_roles:
-            roles_str = ", ".join([f"{r.mention}" for r in added_roles])
+            roles_str = ", ".join([self._format_role(r) for r in added_roles])
             embed.add_field(name="Added", value=roles_str, inline=False)
 
         if removed_roles:
-            roles_str = ", ".join([f"{r.mention}" for r in removed_roles])
+            roles_str = ", ".join([self._format_role(r) for r in removed_roles])
             embed.add_field(name="Removed", value=roles_str, inline=False)
 
         # Add warning for self-changes with elevated permissions
@@ -1891,7 +1914,7 @@ class ModTrackerLogsMixin:
             value=f"{target.mention}\n`{target.name}` ({target.id})",
             inline=False,
         )
-        embed.add_field(name="Role", value=f"{role.mention} (`{role.name}`)", inline=True)
+        embed.add_field(name="Role", value=self._format_role(role), inline=True)
 
         if hasattr(target, 'display_avatar'):
             embed.set_thumbnail(url=target.display_avatar.url)
@@ -2267,7 +2290,7 @@ class ModTrackerLogsMixin:
         if not self.enabled:
             return
 
-        description = f"Mod {action} a role to/from themselves.\n\n**Role:** {role.mention} (`{role.name}`)"
+        description = f"Mod {action} a role to/from themselves.\n\n**Role:** {self._format_role(role)}"
 
         if role.permissions.administrator or role.permissions.manage_guild:
             description += "\n\n**⚠️ This role has elevated permissions!**"
@@ -3070,7 +3093,7 @@ class ModTrackerLogsMixin:
             title=f"Role Icon {action.title()}",
             color=color_map.get(action, EmbedColors.WARNING),
         )
-        embed.add_field(name="Role", value=f"{role.mention} (`{role.name}`)", inline=True)
+        embed.add_field(name="Role", value=self._format_role(role), inline=True)
 
         # Show new icon if available
         if role.icon and action != "removed":

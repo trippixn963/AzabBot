@@ -18,9 +18,7 @@ from src.core.logger import logger
 from src.core.config import get_config
 from src.core.database import get_db
 
-# Verification role that should be given to all members on join
-# Another bot handles this, but we act as failsafe backup
-VERIFICATION_ROLE_ID = 1236824194722041876
+# Verification role delay - another bot handles this, but we act as failsafe backup
 VERIFICATION_DELAY = 5  # seconds to wait before checking
 
 if TYPE_CHECKING:
@@ -254,6 +252,10 @@ class MemberEvents(commands.Cog):
         Another bot is primary for assigning this role, but sometimes misses.
         We wait a few seconds then check if the member has the role.
         """
+        # Check if verification role is configured
+        if not self.config.verification_role_id:
+            return
+
         await asyncio.sleep(VERIFICATION_DELAY)
 
         # Re-fetch member in case they left or state changed
@@ -265,11 +267,11 @@ class MemberEvents(commands.Cog):
             return
 
         # Check if they already have the role
-        if any(r.id == VERIFICATION_ROLE_ID for r in member.roles):
+        if any(r.id == self.config.verification_role_id for r in member.roles):
             return  # Already has it, other bot worked
 
         # Get the verification role
-        role = member.guild.get_role(VERIFICATION_ROLE_ID)
+        role = member.guild.get_role(self.config.verification_role_id)
         if not role:
             return  # Role doesn't exist in this guild
 
@@ -287,11 +289,14 @@ class MemberEvents(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
-        """Log member leaves and track muted users leaving."""
+        """Log member leaves, track muted users leaving, delete linked messages."""
         # Clean up prisoner buffers
         self.bot.prisoner_cooldowns.pop(member.id, None)
         self.bot.prisoner_message_buffer.pop(member.id, None)
         self.bot.prisoner_pending_response.pop(member.id, None)
+
+        # Delete linked messages (alliance channel posts)
+        await self._delete_linked_messages(member)
 
         # Calculate membership duration
         membership_duration = "Unknown"
@@ -351,6 +356,117 @@ class MemberEvents(commands.Cog):
                 muted_at=active_mute["muted_at"],
                 avatar_url=member.display_avatar.url,
             )
+
+    async def _delete_linked_messages(self, member: discord.Member) -> None:
+        """Delete all messages linked to a leaving member."""
+        from datetime import datetime
+        from src.core.config import EmbedColors, NY_TZ
+        from src.utils.footer import set_footer
+
+        db = get_db()
+
+        linked_messages = db.get_linked_messages_by_member(member.id, member.guild.id)
+        if not linked_messages:
+            return
+
+        deleted_count = 0
+        failed_count = 0
+        deleted_message_ids = []
+
+        for record in linked_messages:
+            channel = self.bot.get_channel(record["channel_id"])
+            if not channel:
+                failed_count += 1
+                continue
+
+            try:
+                message = await channel.fetch_message(record["message_id"])
+                await message.delete(reason=f"Linked member left: {member} ({member.id})")
+                deleted_count += 1
+                deleted_message_ids.append(str(record["message_id"]))
+            except discord.NotFound:
+                # Message already deleted
+                pass
+            except discord.HTTPException:
+                failed_count += 1
+
+        # Clean up database records
+        db.delete_linked_messages_by_member(member.id, member.guild.id)
+
+        if deleted_count > 0 or failed_count > 0:
+            logger.tree("LINKED MESSAGES DELETED", [
+                ("Member", f"{member} ({member.id})"),
+                ("Deleted", str(deleted_count)),
+                ("Failed", str(failed_count)),
+            ], emoji="🗑️")
+
+            # Log to server logs
+            await self._log_linked_messages_deleted(
+                member=member,
+                deleted_count=deleted_count,
+                failed_count=failed_count,
+                message_ids=deleted_message_ids,
+            )
+
+    async def _log_linked_messages_deleted(
+        self,
+        member: discord.Member,
+        deleted_count: int,
+        failed_count: int,
+        message_ids: list,
+    ) -> None:
+        """Log linked message deletion to server logs."""
+        from datetime import datetime
+        from src.core.config import EmbedColors, NY_TZ
+        from src.utils.footer import set_footer
+
+        if not self.bot.logging_service or not self.bot.logging_service.enabled:
+            return
+
+        try:
+            embed = discord.Embed(
+                title="🗑️ Linked Messages Deleted",
+                description=f"Messages linked to {member.mention} were deleted because they left the server.",
+                color=EmbedColors.RED,
+                timestamp=datetime.now(NY_TZ),
+            )
+
+            embed.add_field(
+                name="Member",
+                value=f"{member}\n`{member.id}`",
+                inline=True,
+            )
+            embed.add_field(
+                name="Messages Deleted",
+                value=f"`{deleted_count}`",
+                inline=True,
+            )
+            if failed_count > 0:
+                embed.add_field(
+                    name="Failed",
+                    value=f"`{failed_count}`",
+                    inline=True,
+                )
+
+            if message_ids:
+                ids_text = "\n".join(message_ids[:10])  # Show first 10
+                if len(message_ids) > 10:
+                    ids_text += f"\n... and {len(message_ids) - 10} more"
+                embed.add_field(
+                    name="Message IDs",
+                    value=f"```{ids_text}```",
+                    inline=False,
+                )
+
+            set_footer(embed)
+
+            await self.bot.logging_service._send_log(
+                self.bot.logging_service.LogCategory.ALLIANCES,
+                embed,
+            )
+
+        except Exception as e:
+            logger.debug(f"Failed to log linked message deletion: {e}")
 
     @commands.Cog.listener()
     async def on_user_update(self, before: discord.User, after: discord.User) -> None:
