@@ -137,7 +137,10 @@ class MessageEvents(commands.Cog):
         if self.bot.antispam_service and message.guild:
             spam_type = await self.bot.antispam_service.check_message(message)
             if spam_type:
-                await self.bot.antispam_service.handle_spam(message, spam_type)
+                if spam_type == "webhook_spam":
+                    await self.bot.antispam_service.handle_webhook_spam(message)
+                else:
+                    await self.bot.antispam_service.handle_spam(message, spam_type)
                 return  # Don't process spam messages further
 
         # -----------------------------------------------------------------
