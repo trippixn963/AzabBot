@@ -562,7 +562,8 @@ class MemberEvents(commands.Cog):
 
         # Clear any mute records for this user
         db = get_db()
-        db.clear_mute(user.id, guild.id)
+        moderator_id = moderator.id if moderator else self.bot.user.id
+        db.remove_mute(user.id, guild.id, moderator_id, "User unbanned")
 
     @commands.Cog.listener()
     async def on_resumed(self) -> None:

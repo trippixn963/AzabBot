@@ -139,6 +139,7 @@ class Config:
     # -------------------------------------------------------------------------
 
     link_allowed_user_ids: Set[int] = None  # User IDs allowed to use /link command
+    appeal_allowed_user_ids: Set[int] = None  # User IDs allowed to approve/deny appeals
 
     # -------------------------------------------------------------------------
     # Optional: AI Settings
@@ -464,6 +465,7 @@ def load_config() -> Config:
     ignored_bot_ids = _parse_int_set(os.getenv("IGNORED_BOT_IDS"))
     lockdown_exclude_ids = _parse_int_set(os.getenv("LOCKDOWN_EXCLUDE_IDS"))
     link_allowed_user_ids = _parse_int_set(os.getenv("LINK_ALLOWED_USER_IDS"))
+    appeal_allowed_user_ids = _parse_int_set(os.getenv("APPEAL_ALLOWED_USER_IDS"))
 
     # -------------------------------------------------------------------------
     # Build Config Object
@@ -523,6 +525,7 @@ def load_config() -> Config:
         ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,
         lockdown_exclude_ids=lockdown_exclude_ids if lockdown_exclude_ids else None,
         link_allowed_user_ids=link_allowed_user_ids if link_allowed_user_ids else None,
+        appeal_allowed_user_ids=appeal_allowed_user_ids if appeal_allowed_user_ids else None,
     )
 
 

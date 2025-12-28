@@ -136,6 +136,12 @@ class MuteScheduler:
                 logger.error("Mute Scheduler Error", [
                     ("Error", str(e)[:100]),
                 ])
+                # Send error alert to webhook
+                if self.bot.webhook_alert_service:
+                    await self.bot.webhook_alert_service.send_error_alert(
+                        "Mute Scheduler Error",
+                        str(e)[:500]
+                    )
                 await asyncio.sleep(self.config.mute_check_interval)
 
     # =========================================================================

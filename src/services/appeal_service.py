@@ -479,7 +479,7 @@ class AppealService:
                             pass
 
                 # Clear mute from database
-                self.db.clear_mute(user_id, guild.id)
+                self.db.remove_mute(user_id, guild.id, moderator.id, "Appeal approved")
 
             # Resolve the original case
             case = self.db.get_case(case_id)
@@ -487,7 +487,7 @@ class AppealService:
                 self.db.resolve_case(
                     case_id=case_id,
                     resolved_by=moderator.id,
-                    resolved_reason=f"Appeal approved: {reason}" if reason else "Appeal approved",
+                    reason=f"Appeal approved: {reason}" if reason else "Appeal approved",
                 )
 
             # Update thread
@@ -808,8 +808,18 @@ class ApproveAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"
         return cls(appeal_id, case_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        # Check permissions
-        if not interaction.user.guild_permissions.moderate_members:
+        # Check permissions - must have moderate_members OR be in allowed user list
+        config = get_config()
+        allowed_ids = {config.developer_id}
+        if config.appeal_allowed_user_ids:
+            allowed_ids |= config.appeal_allowed_user_ids
+
+        has_permission = (
+            interaction.user.guild_permissions.moderate_members or
+            interaction.user.id in allowed_ids
+        )
+
+        if not has_permission:
             await interaction.response.send_message(
                 "You don't have permission to approve appeals.",
                 ephemeral=True,
@@ -848,8 +858,18 @@ class DenyAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"app
         return cls(appeal_id, case_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        # Check permissions
-        if not interaction.user.guild_permissions.moderate_members:
+        # Check permissions - must have moderate_members OR be in allowed user list
+        config = get_config()
+        allowed_ids = {config.developer_id}
+        if config.appeal_allowed_user_ids:
+            allowed_ids |= config.appeal_allowed_user_ids
+
+        has_permission = (
+            interaction.user.guild_permissions.moderate_members or
+            interaction.user.id in allowed_ids
+        )
+
+        if not has_permission:
             await interaction.response.send_message(
                 "You don't have permission to deny appeals.",
                 ephemeral=True,
@@ -861,17 +881,29 @@ class DenyAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"app
         await interaction.response.send_modal(modal)
 
 
-class ViewCaseButton(discord.ui.Button):
-    """Button to view the original case thread."""
+class ViewCaseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"appeal_viewcase:(?P<case_id>[A-Z0-9]+)"):
+    """Persistent button to view the original case thread."""
 
     def __init__(self, case_id: str):
         super().__init__(
-            label="View Case",
-            style=discord.ButtonStyle.secondary,
-            emoji=CASE_EMOJI,
-            custom_id=f"appeal_viewcase:{case_id}",
+            discord.ui.Button(
+                label="View Case",
+                style=discord.ButtonStyle.secondary,
+                emoji=CASE_EMOJI,
+                custom_id=f"appeal_viewcase:{case_id}",
+            )
         )
         self.case_id = case_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match,
+    ) -> "ViewCaseButton":
+        case_id = match.group("case_id")
+        return cls(case_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
         # Get case info
@@ -1066,6 +1098,7 @@ def setup_appeal_views(bot: "AzabBot") -> None:
     bot.add_dynamic_items(
         ApproveAppealButton,
         DenyAppealButton,
+        ViewCaseButton,
         SubmitAppealButton,
     )
     logger.debug("Appeal Views Registered")

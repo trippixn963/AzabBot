@@ -1143,29 +1143,45 @@ class ForbidCog(commands.Cog):
 # Appeal View
 # =============================================================================
 
+class ForbidAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"forbid_appeal:(?P<guild_id>\d+):(?P<user_id>\d+)"):
+    """Persistent appeal button for forbid DMs."""
+
+    def __init__(self, guild_id: int, user_id: int):
+        super().__init__(
+            discord.ui.Button(
+                label="Appeal Restriction",
+                style=discord.ButtonStyle.secondary,
+                emoji=APPEAL_EMOJI,
+                custom_id=f"forbid_appeal:{guild_id}:{user_id}",
+            )
+        )
+        self.guild_id = guild_id
+        self.user_id = user_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match,
+    ) -> "ForbidAppealButton":
+        guild_id = int(match.group("guild_id"))
+        user_id = int(match.group("user_id"))
+        return cls(guild_id, user_id)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle appeal button click."""
+        # Show appeal modal
+        modal = ForbidAppealModal(self.guild_id)
+        await interaction.response.send_modal(modal)
+
+
 class ForbidAppealView(discord.ui.View):
     """View with appeal button for forbid DMs."""
 
     def __init__(self, guild_id: int, user_id: int) -> None:
         super().__init__(timeout=None)
-        self.guild_id = guild_id
-        self.user_id = user_id
-
-    @discord.ui.button(
-        label="Appeal Restriction",
-        style=discord.ButtonStyle.secondary,
-        emoji=APPEAL_EMOJI,
-        custom_id="forbid_appeal",
-    )
-    async def appeal_button(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button,
-    ) -> None:
-        """Handle appeal button click."""
-        # Show appeal modal
-        modal = ForbidAppealModal(self.guild_id)
-        await interaction.response.send_modal(modal)
+        self.add_item(ForbidAppealButton(guild_id, user_id))
 
 
 class ForbidAppealModal(discord.ui.Modal):
@@ -1281,4 +1297,5 @@ class ForbidAppealModal(discord.ui.Modal):
 
 async def setup(bot: "AzabBot") -> None:
     """Load the Forbid cog."""
+    bot.add_dynamic_items(ForbidAppealButton)
     await bot.add_cog(ForbidCog(bot))

@@ -405,9 +405,9 @@ class LoggingService:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
 
         # Add prior actions context
-        if self.config.main_guild_id:
+        if self.config.logging_guild_id:
             db = get_db()
-            counts = db.get_user_case_counts(user.id, self.config.main_guild_id)
+            counts = db.get_user_case_counts(user.id, self.config.logging_guild_id)
             if counts["mute_count"] or counts["ban_count"] or counts["warn_count"]:
                 prior = f"🔇 `{counts['mute_count']}` mutes · 🔨 `{counts['ban_count']}` bans · ⚠️ `{counts['warn_count']}` warns"
                 embed.add_field(name="Prior Actions", value=prior, inline=False)
@@ -458,9 +458,9 @@ class LoggingService:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
 
         # Add prior actions context
-        if self.config.main_guild_id:
+        if self.config.logging_guild_id:
             db = get_db()
-            counts = db.get_user_case_counts(user.id, self.config.main_guild_id)
+            counts = db.get_user_case_counts(user.id, self.config.logging_guild_id)
             if counts["mute_count"] or counts["ban_count"] or counts["warn_count"]:
                 prior = f"🔇 `{counts['mute_count']}` mutes · 🔨 `{counts['ban_count']}` bans · ⚠️ `{counts['warn_count']}` warns"
                 embed.add_field(name="Prior Actions", value=prior, inline=False)
@@ -2688,7 +2688,7 @@ class LoggingService:
 
         # Ping developer for dangerous lockdown command
         if action == "lock" and self.config.developer_id:
-            thread = await self._get_or_create_thread(LogCategory.ALERTS)
+            thread = self._threads.get(LogCategory.ALERTS)
             if thread:
                 await thread.send(f"<@{self.config.developer_id}> ⚠️ **Server lockdown initiated**")
 
@@ -2719,7 +2719,7 @@ class LoggingService:
 
         # Ping developer for raid alert
         if self.config.developer_id:
-            thread = await self._get_or_create_thread(LogCategory.ALERTS)
+            thread = self._threads.get(LogCategory.ALERTS)
             if thread:
                 await thread.send(
                     f"<@{self.config.developer_id}> 🚨 **RAID DETECTED - AUTO-LOCKDOWN TRIGGERED!**\n"
@@ -2784,7 +2784,7 @@ class LoggingService:
         if not self.enabled or self.config.log_retention_days <= 0:
             return
 
-        if not self._forum_channel:
+        if not self._forum:
             return
 
         retention_days = self.config.log_retention_days
@@ -2796,11 +2796,11 @@ class LoggingService:
         try:
             # Get all threads in the forum
             threads = []
-            for thread in self._forum_channel.threads:
+            for thread in self._forum.threads:
                 threads.append(thread)
 
             # Also get archived threads
-            async for thread in self._forum_channel.archived_threads(limit=50):
+            async for thread in self._forum.archived_threads(limit=50):
                 threads.append(thread)
 
             for thread in threads:

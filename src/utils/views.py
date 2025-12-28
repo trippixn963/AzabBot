@@ -537,45 +537,85 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
         return embed
 
 
+class PaginationPrevButton(discord.ui.DynamicItem[discord.ui.Button], template=r"hist_prev:(?P<user_id>\d+):(?P<guild_id>\d+):(?P<page>\d+):(?P<total>\d+)"):
+    """Persistent Previous button for pagination."""
+
+    def __init__(self, user_id: int, guild_id: int, page: int, total: int):
+        total_pages = (total + 4) // 5
+        super().__init__(
+            discord.ui.Button(
+                label="Previous",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"hist_prev:{user_id}:{guild_id}:{page}:{total}",
+                disabled=(page == 0),
+            )
+        )
+        self.user_id = user_id
+        self.guild_id = guild_id
+        self.page = page
+        self.total = total
+        self.total_pages = total_pages
+
+    @classmethod
+    async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match) -> "PaginationPrevButton":
+        return cls(int(match.group("user_id")), int(match.group("guild_id")), int(match.group("page")), int(match.group("total")))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        new_page = max(0, self.page - 1)
+        view = HistoryPaginationView(self.user_id, self.guild_id, new_page, self.total)
+        embed = await view._build_embed(interaction.client)
+        await interaction.response.edit_message(embed=embed, view=view)
+
+
+class PaginationNextButton(discord.ui.DynamicItem[discord.ui.Button], template=r"hist_next:(?P<user_id>\d+):(?P<guild_id>\d+):(?P<page>\d+):(?P<total>\d+)"):
+    """Persistent Next button for pagination."""
+
+    def __init__(self, user_id: int, guild_id: int, page: int, total: int):
+        total_pages = (total + 4) // 5
+        super().__init__(
+            discord.ui.Button(
+                label="Next",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"hist_next:{user_id}:{guild_id}:{page}:{total}",
+                disabled=(page >= total_pages - 1),
+            )
+        )
+        self.user_id = user_id
+        self.guild_id = guild_id
+        self.page = page
+        self.total = total
+        self.total_pages = total_pages
+
+    @classmethod
+    async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match) -> "PaginationNextButton":
+        return cls(int(match.group("user_id")), int(match.group("guild_id")), int(match.group("page")), int(match.group("total")))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        new_page = min(self.total_pages - 1, self.page + 1)
+        view = HistoryPaginationView(self.user_id, self.guild_id, new_page, self.total)
+        embed = await view._build_embed(interaction.client)
+        await interaction.response.edit_message(embed=embed, view=view)
+
+
 class HistoryPaginationView(discord.ui.View):
     """Pagination view for history display."""
 
     def __init__(self, user_id: int, guild_id: int, page: int, total: int):
-        super().__init__(timeout=300)  # 5 minute timeout
+        super().__init__(timeout=None)
         self.user_id = user_id
         self.guild_id = guild_id
         self.page = page
         self.total = total
         self.total_pages = (total + 4) // 5
 
-        # Disable buttons appropriately
-        self.prev_button.disabled = page == 0
-        self.next_button.disabled = page >= self.total_pages - 1
+        # Add persistent pagination buttons
+        self.add_item(PaginationPrevButton(user_id, guild_id, page, total))
+        self.add_item(PaginationNextButton(user_id, guild_id, page, total))
 
-    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary)
-    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.page = max(0, self.page - 1)
-        await self._update_page(interaction)
-
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
-    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.page = min(self.total_pages - 1, self.page + 1)
-        await self._update_page(interaction)
-
-    async def _update_page(self, interaction: discord.Interaction):
+    async def _build_embed(self, client) -> discord.Embed:
         db = get_db()
         history = db.get_combined_history(self.user_id, self.guild_id, limit=5, offset=self.page * 5)
 
-        # Build new embed
-        embed = await self._build_embed(interaction.client, history)
-
-        # Update button states
-        self.prev_button.disabled = self.page == 0
-        self.next_button.disabled = self.page >= self.total_pages - 1
-
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    async def _build_embed(self, client, history: list) -> discord.Embed:
         embed = discord.Embed(
             title="Moderation History",
             color=EmbedColors.INFO,
@@ -830,7 +870,7 @@ class ExtendButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_ext
                 )
             return
 
-        if active_mute.get("expires_at") is None:
+        if active_mute["expires_at"] is None:
             await interaction.response.send_message(
                 "Cannot extend a permanent mute.",
                 ephemeral=True,
@@ -892,7 +932,7 @@ class UnmuteModal(discord.ui.Modal, title="Unmute User"):
             )
             return
 
-        mute_role = guild.get_role(config.MUTED_ROLE_ID)
+        mute_role = guild.get_role(config.muted_role_id)
         if not mute_role:
             await interaction.response.send_message(
                 "Muted role not found.",
@@ -1195,18 +1235,49 @@ class NotesButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_note
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
-class NotesDisplayView(discord.ui.View):
-    """View for displaying notes with an Add Note button."""
+class AddNoteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"add_note:(?P<user_id>\d+):(?P<guild_id>\d+)(?::(?P<case_id>\w+))?"):
+    """Persistent Add Note button."""
 
     def __init__(self, user_id: int, guild_id: int, case_id: Optional[str] = None):
-        super().__init__(timeout=300)
+        # Build custom_id with optional case_id
+        custom_id = f"add_note:{user_id}:{guild_id}"
+        if case_id:
+            custom_id += f":{case_id}"
+
+        super().__init__(
+            discord.ui.Button(
+                label="Add Note",
+                style=discord.ButtonStyle.secondary,
+                emoji=NOTE_EMOJI,
+                custom_id=custom_id,
+            )
+        )
         self.user_id = user_id
         self.guild_id = guild_id
         self.case_id = case_id
 
-    @discord.ui.button(label="Add Note", style=discord.ButtonStyle.secondary, emoji=NOTE_EMOJI)
-    async def add_note_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match: re.Match[str],
+    ) -> "AddNoteButton":
+        user_id = int(match.group("user_id"))
+        guild_id = int(match.group("guild_id"))
+        case_id = match.group("case_id")  # May be None
+        return cls(user_id, guild_id, case_id)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_modal(NoteModal(self.user_id, self.guild_id, self.case_id))
+
+
+class NotesDisplayView(discord.ui.View):
+    """View for displaying notes with an Add Note button."""
+
+    def __init__(self, user_id: int, guild_id: int, case_id: Optional[str] = None):
+        super().__init__(timeout=None)
+        self.add_item(AddNoteButton(user_id, guild_id, case_id))
 
 
 # =============================================================================
@@ -1369,9 +1440,12 @@ def setup_moderation_views(bot: "AzabBot") -> None:
         InfoButton,
         DownloadButton,
         HistoryButton,
+        PaginationPrevButton,
+        PaginationNextButton,
         ExtendButton,
         UnmuteButton,
         NotesButton,
+        AddNoteButton,
         ApproveButton,
     )
 

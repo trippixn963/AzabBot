@@ -418,6 +418,8 @@ class PrisonHandler:
         logs_channel: discord.TextChannel,
     ) -> None:
         """Scan logs channel for mute reason in recent embeds."""
+        if not self.bot.mute_handler:
+            return
         try:
             async for message in logs_channel.history(limit=50):
                 if message.embeds:

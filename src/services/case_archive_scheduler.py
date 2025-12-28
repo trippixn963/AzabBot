@@ -135,6 +135,12 @@ class CaseArchiveScheduler:
                 logger.error("Case Archive Scheduler Error", [
                     ("Error", str(e)[:100]),
                 ])
+                # Send error alert to webhook
+                if self.bot.webhook_alert_service:
+                    await self.bot.webhook_alert_service.send_error_alert(
+                        "Case Archive Scheduler Error",
+                        str(e)[:500]
+                    )
                 await asyncio.sleep(CHECK_INTERVAL_HOURS * 3600)
 
     # =========================================================================

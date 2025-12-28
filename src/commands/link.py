@@ -50,47 +50,53 @@ DENY_EMOJI = discord.PartialEmoji(name="deny", id=1454788303567065242)
 # Link Confirmation View
 # =============================================================================
 
-class LinkConfirmView(discord.ui.View):
-    """View with approve/deny buttons for link confirmation."""
+class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"link_approve:(?P<msg_id>\d+):(?P<chan_id>\d+):(?P<member_id>\d+):(?P<guild_id>\d+):(?P<mod_id>\d+)"):
+    """Persistent approve button for link confirmation."""
 
-    def __init__(
-        self,
-        bot: "AzabBot",
-        message: discord.Message,
-        member: discord.Member,
-        moderator: discord.Member,
-        target_guild: discord.Guild,
-        is_cross_server: bool,
-    ):
-        super().__init__(timeout=60)
-        self.bot = bot
-        self.message = message
-        self.member = member
-        self.moderator = moderator
-        self.target_guild = target_guild
-        self.is_cross_server = is_cross_server
-        self.db = get_db()
+    def __init__(self, message_id: int, channel_id: int, member_id: int, guild_id: int, moderator_id: int):
+        super().__init__(
+            discord.ui.Button(
+                label="Approve",
+                style=discord.ButtonStyle.secondary,
+                emoji=APPROVE_EMOJI,
+                custom_id=f"link_approve:{message_id}:{channel_id}:{member_id}:{guild_id}:{moderator_id}",
+            )
+        )
+        self.message_id = message_id
+        self.channel_id = channel_id
+        self.member_id = member_id
+        self.guild_id = guild_id
+        self.moderator_id = moderator_id
 
-    @discord.ui.button(label="Approve", style=discord.ButtonStyle.secondary, emoji=APPROVE_EMOJI)
-    async def approve_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
-        """Handle approve button click."""
+    @classmethod
+    async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match) -> "LinkApproveButton":
+        return cls(
+            int(match.group("msg_id")),
+            int(match.group("chan_id")),
+            int(match.group("member_id")),
+            int(match.group("guild_id")),
+            int(match.group("mod_id")),
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
         # Only the original moderator can approve
-        if interaction.user.id != self.moderator.id:
+        if interaction.user.id != self.moderator_id:
             await interaction.response.send_message(
                 "Only the moderator who initiated this can approve.",
                 ephemeral=True,
             )
             return
 
+        db = get_db()
+        bot = interaction.client
+
         # Save the link
-        saved = self.db.save_linked_message(
-            message_id=self.message.id,
-            channel_id=self.message.channel.id,
-            member_id=self.member.id,
-            guild_id=self.target_guild.id,
-            linked_by=self.moderator.id,
+        saved = db.save_linked_message(
+            message_id=self.message_id,
+            channel_id=self.channel_id,
+            member_id=self.member_id,
+            guild_id=self.guild_id,
+            linked_by=self.moderator_id,
         )
 
         if not saved:
@@ -101,20 +107,24 @@ class LinkConfirmView(discord.ui.View):
             )
             return
 
-        log_items = [
-            ("Message ID", str(self.message.id)),
-            ("Member", f"{self.member} ({self.member.id})"),
-            ("Linked By", str(self.moderator)),
-        ]
-        if self.is_cross_server:
-            log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {self.target_guild.name}"))
-        logger.tree("Message Linked", log_items, emoji="🔗")
+        # Get member for display
+        guild = bot.get_guild(self.guild_id)
+        member = guild.get_member(self.member_id) if guild else None
+        member_mention = f"<@{self.member_id}>"
 
-        # Update the confirmation message
+        # Get message URL
+        message_url = f"https://discord.com/channels/{self.guild_id}/{self.channel_id}/{self.message_id}"
+
+        logger.tree("Message Linked", [
+            ("Message ID", str(self.message_id)),
+            ("Member", f"{member} ({self.member_id})" if member else str(self.member_id)),
+            ("Linked By", str(interaction.user)),
+        ], emoji="🔗")
+
         success_embed = discord.Embed(
             title="Message Linked",
             description=(
-                f"Successfully linked message to {self.member.mention}.\n"
+                f"Successfully linked message to {member_mention}.\n"
                 f"The message will be deleted if they leave the server."
             ),
             color=EmbedColors.GREEN,
@@ -122,20 +132,14 @@ class LinkConfirmView(discord.ui.View):
         )
         success_embed.add_field(
             name="Message",
-            value=f"[Jump to Message]({self.message.jump_url})",
+            value=f"[Jump to Message]({message_url})",
             inline=True,
         )
         success_embed.add_field(
             name="Member",
-            value=f"{self.member.mention}\n`{self.member.id}`",
+            value=f"{member_mention}\n`{self.member_id}`",
             inline=True,
         )
-        if self.is_cross_server:
-            success_embed.add_field(
-                name="Server",
-                value=self.target_guild.name,
-                inline=True,
-            )
         set_footer(success_embed)
 
         await interaction.response.edit_message(
@@ -143,18 +147,33 @@ class LinkConfirmView(discord.ui.View):
             view=None,
         )
 
-        # Log to server logs
-        await self._log_link_created(interaction)
 
-        self.stop()
+class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"link_deny:(?P<msg_id>\d+):(?P<member_id>\d+):(?P<mod_id>\d+)"):
+    """Persistent deny button for link confirmation."""
 
-    @discord.ui.button(label="Deny", style=discord.ButtonStyle.secondary, emoji=DENY_EMOJI)
-    async def deny_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
-        """Handle deny button click."""
-        # Only the original moderator can deny
-        if interaction.user.id != self.moderator.id:
+    def __init__(self, message_id: int, member_id: int, moderator_id: int):
+        super().__init__(
+            discord.ui.Button(
+                label="Deny",
+                style=discord.ButtonStyle.secondary,
+                emoji=DENY_EMOJI,
+                custom_id=f"link_deny:{message_id}:{member_id}:{moderator_id}",
+            )
+        )
+        self.message_id = message_id
+        self.member_id = member_id
+        self.moderator_id = moderator_id
+
+    @classmethod
+    async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match) -> "LinkDenyButton":
+        return cls(
+            int(match.group("msg_id")),
+            int(match.group("member_id")),
+            int(match.group("mod_id")),
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self.moderator_id:
             await interaction.response.send_message(
                 "Only the moderator who initiated this can deny.",
                 ephemeral=True,
@@ -162,12 +181,11 @@ class LinkConfirmView(discord.ui.View):
             return
 
         logger.tree("Link Denied", [
-            ("Message ID", str(self.message.id)),
-            ("Member", f"{self.member} ({self.member.id})"),
-            ("Denied By", str(self.moderator)),
+            ("Message ID", str(self.message_id)),
+            ("Member ID", str(self.member_id)),
+            ("Denied By", str(interaction.user)),
         ], emoji="❌")
 
-        # Update the confirmation message
         deny_embed = discord.Embed(
             title="Link Cancelled",
             description="The link request was cancelled.",
@@ -181,11 +199,32 @@ class LinkConfirmView(discord.ui.View):
             view=None,
         )
 
-        self.stop()
 
-    async def on_timeout(self) -> None:
-        """Handle view timeout."""
-        pass
+class LinkConfirmView(discord.ui.View):
+    """View with approve/deny buttons for link confirmation."""
+
+    def __init__(
+        self,
+        bot: "AzabBot",
+        message: discord.Message,
+        member: discord.Member,
+        moderator: discord.Member,
+        target_guild: discord.Guild,
+        is_cross_server: bool,
+    ):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.message = message
+        self.member = member
+        self.moderator = moderator
+        self.target_guild = target_guild
+        self.is_cross_server = is_cross_server
+
+        # Add persistent buttons
+        self.add_item(LinkApproveButton(
+            message.id, message.channel.id, member.id, target_guild.id, moderator.id
+        ))
+        self.add_item(LinkDenyButton(message.id, member.id, moderator.id))
 
     async def _log_link_created(self, interaction: discord.Interaction) -> None:
         """Log link creation to server logs."""
@@ -541,5 +580,6 @@ class LinkCog(commands.Cog):
 
 async def setup(bot: "AzabBot") -> None:
     """Add the link cog to the bot."""
+    bot.add_dynamic_items(LinkApproveButton, LinkDenyButton)
     await bot.add_cog(LinkCog(bot))
     logger.debug("Link Cog Loaded")

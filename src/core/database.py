@@ -3432,7 +3432,7 @@ class DatabaseManager:
         for row in recent_names:
             current_id = row["user_id"]
             for name_field in ["username", "display_name"]:
-                current_name = row.get(name_field)
+                current_name = row[name_field]
                 if not current_name:
                     continue
                 current_lower = current_name.lower()
