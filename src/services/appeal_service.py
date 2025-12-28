@@ -26,6 +26,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.retry import safe_fetch_channel, safe_send, safe_edit
+from src.utils.views import CASE_EMOJI, APPROVE_EMOJI, APPEAL_EMOJI, DENY_EMOJI
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -787,9 +788,9 @@ class ApproveAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"
         super().__init__(
             discord.ui.Button(
                 label="Approve",
-                style=discord.ButtonStyle.success,
+                style=discord.ButtonStyle.secondary,
                 custom_id=f"appeal_approve:{appeal_id}:{case_id}",
-                emoji="✅",
+                emoji=APPROVE_EMOJI,
             )
         )
         self.appeal_id = appeal_id
@@ -827,9 +828,9 @@ class DenyAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"app
         super().__init__(
             discord.ui.Button(
                 label="Deny",
-                style=discord.ButtonStyle.danger,
+                style=discord.ButtonStyle.secondary,
                 custom_id=f"appeal_deny:{appeal_id}:{case_id}",
-                emoji="❌",
+                emoji=DENY_EMOJI,
             )
         )
         self.appeal_id = appeal_id
@@ -867,7 +868,7 @@ class ViewCaseButton(discord.ui.Button):
         super().__init__(
             label="View Case",
             style=discord.ButtonStyle.secondary,
-            emoji="📂",
+            emoji=CASE_EMOJI,
             custom_id=f"appeal_viewcase:{case_id}",
         )
         self.case_id = case_id
@@ -958,9 +959,9 @@ class SubmitAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"s
         super().__init__(
             discord.ui.Button(
                 label="Appeal",
-                style=discord.ButtonStyle.primary,
+                style=discord.ButtonStyle.secondary,
                 custom_id=f"submit_appeal:{case_id}:{user_id}",
-                emoji="📝",
+                emoji=APPEAL_EMOJI,
             )
         )
         self.case_id = case_id

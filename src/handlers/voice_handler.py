@@ -261,3 +261,19 @@ class VoiceHandler:
             # Stopped being a speaker (suppress changed from False to True)
             elif not before.suppress and after.suppress:
                 await self.bot.logging_service.log_stage_speaker(member, after.channel, False)
+
+        # Self-mute changes (only if in a channel)
+        if after.channel and before.self_mute != after.self_mute:
+            await self.bot.logging_service.log_voice_self_mute(member, after.channel, after.self_mute)
+
+        # Self-deafen changes (only if in a channel)
+        if after.channel and before.self_deaf != after.self_deaf:
+            await self.bot.logging_service.log_voice_self_deafen(member, after.channel, after.self_deaf)
+
+        # Stream start/stop (only if in a channel)
+        if after.channel and before.self_stream != after.self_stream:
+            await self.bot.logging_service.log_voice_stream(member, after.channel, after.self_stream)
+
+        # Camera on/off (only if in a channel)
+        if after.channel and before.self_video != after.self_video:
+            await self.bot.logging_service.log_voice_video(member, after.channel, after.self_video)

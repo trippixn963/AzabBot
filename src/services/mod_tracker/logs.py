@@ -24,7 +24,8 @@ from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.views import CASE_EMOJI, MESSAGE_EMOJI, CaseButtonView, MessageButtonView
-from src.utils.footer import set_footer
+from src.utils.rate_limiter import rate_limit
+# Internal logs don't use public footer
 
 from .constants import (
     RATE_LIMIT_DELAY,
@@ -367,7 +368,7 @@ class ModTrackerLogsMixin:
             if thread.archived:
                 try:
                     await thread.edit(archived=False)
-                    await asyncio.sleep(RATE_LIMIT_DELAY)
+                    await rate_limit("thread_edit")
                 except discord.HTTPException:
                     pass
 
@@ -2215,7 +2216,7 @@ class ModTrackerLogsMixin:
         try:
             if thread.archived:
                 await thread.edit(archived=False)
-                await asyncio.sleep(RATE_LIMIT_DELAY)
+                await rate_limit("thread_edit")
 
             await thread.send(embed=embed)
 
@@ -3122,7 +3123,7 @@ class ModTrackerLogsMixin:
                 )
                 embed.add_field(name="User ID", value=f"`{user_id}`", inline=True)
                 embed.add_field(name="Channels", value=f"`{channel_count}`", inline=True)
-                set_footer(embed)
+                # Internal log - no public footer
 
                 await alert_channel.send(embed=embed)
 
@@ -3180,7 +3181,7 @@ class ModTrackerLogsMixin:
             embed.set_thumbnail(url=member.display_avatar.url)
             embed.add_field(name="New Member", value=f"{member.mention}\n`{member.id}`", inline=True)
             embed.add_field(name="Account Age", value=f"<t:{int(member.created_at.timestamp())}:R>", inline=True)
-            set_footer(embed)
+            # Internal log - no public footer
 
             await alert_channel.send(
                 content=f"<@{self.config.developer_id}>" if self.config.developer_id else None,
@@ -3242,7 +3243,7 @@ class ModTrackerLogsMixin:
             )
             embed.add_field(name="User ID", value=f"`{user_id}`", inline=True)
             embed.add_field(name="Total Bans", value=f"`{ban_count}`", inline=True)
-            set_footer(embed)
+            # Internal log - no public footer
 
             await alert_channel.send(embed=embed)
 
@@ -3308,7 +3309,7 @@ class ModTrackerLogsMixin:
             )
             embed.add_field(name="User ID", value=f"`{user_id}`", inline=True)
             embed.add_field(name="Hours Between", value=f"`{hours_between:.1f}h`", inline=True)
-            set_footer(embed)
+            # Internal log - no public footer
 
             await alert_channel.send(embed=embed)
 

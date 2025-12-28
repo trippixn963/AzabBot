@@ -286,6 +286,79 @@ class DatabaseManager:
                 logger.info("Database Connection Closed")
 
     # =========================================================================
+    # Transaction Support
+    # =========================================================================
+
+    class Transaction:
+        """
+        Context manager for atomic database transactions.
+
+        Usage:
+            with db.transaction() as tx:
+                tx.execute("INSERT INTO ...", (...))
+                tx.execute("UPDATE ...", (...))
+            # Commits on success, rolls back on exception
+        """
+
+        def __init__(self, db: "DatabaseManager"):
+            self._db = db
+            self._cursor: Optional[sqlite3.Cursor] = None
+
+        def __enter__(self) -> "DatabaseManager.Transaction":
+            self._db._db_lock.acquire()
+            conn = self._db._ensure_connection()
+            conn.execute("BEGIN IMMEDIATE")
+            self._cursor = conn.cursor()
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            conn = self._db._ensure_connection()
+            try:
+                if exc_type is None:
+                    conn.commit()
+                else:
+                    conn.rollback()
+                    logger.warning("Database Transaction Rolled Back", [
+                        ("Error", str(exc_val)[:100] if exc_val else "Unknown"),
+                    ])
+            finally:
+                self._db._db_lock.release()
+            return False  # Don't suppress exceptions
+
+        def execute(self, query: str, params: Tuple = ()) -> sqlite3.Cursor:
+            """Execute a query within this transaction."""
+            self._cursor.execute(query, params)
+            return self._cursor
+
+        def fetchone(self) -> Optional[sqlite3.Row]:
+            """Fetch one result from the last query."""
+            return self._cursor.fetchone() if self._cursor else None
+
+        def fetchall(self) -> List[sqlite3.Row]:
+            """Fetch all results from the last query."""
+            return self._cursor.fetchall() if self._cursor else []
+
+        @property
+        def lastrowid(self) -> int:
+            """Get the last inserted row ID."""
+            return self._cursor.lastrowid if self._cursor else 0
+
+    def transaction(self) -> "DatabaseManager.Transaction":
+        """
+        Create a new transaction context manager.
+
+        Returns:
+            Transaction context manager for atomic operations.
+
+        Example:
+            with db.transaction() as tx:
+                tx.execute("INSERT INTO users ...", (user_id,))
+                tx.execute("INSERT INTO logs ...", (user_id, action))
+            # Both inserts succeed or both are rolled back
+        """
+        return self.Transaction(self)
+
+    # =========================================================================
     # Table Initialization
     # =========================================================================
 
@@ -927,11 +1000,22 @@ class DatabaseManager:
                 moderator_id INTEGER NOT NULL,
                 reason TEXT,
                 created_at REAL NOT NULL,
+                expires_at REAL,
                 removed_at REAL,
                 removed_by INTEGER,
+                case_id TEXT,
                 UNIQUE(user_id, guild_id, restriction_type)
             )
         """)
+        # Add expires_at column if it doesn't exist (migration)
+        try:
+            cursor.execute("ALTER TABLE forbid_history ADD COLUMN expires_at REAL")
+        except Exception:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE forbid_history ADD COLUMN case_id TEXT")
+        except Exception:
+            pass  # Column already exists
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_forbid_user ON forbid_history(user_id, guild_id)"
         )
@@ -4021,6 +4105,8 @@ class DatabaseManager:
         restriction_type: str,
         moderator_id: int,
         reason: Optional[str] = None,
+        expires_at: Optional[float] = None,
+        case_id: Optional[str] = None,
     ) -> bool:
         """
         Add a restriction to a user.
@@ -4031,13 +4117,39 @@ class DatabaseManager:
         try:
             self.execute(
                 """INSERT OR REPLACE INTO forbid_history
-                   (user_id, guild_id, restriction_type, moderator_id, reason, created_at, removed_at, removed_by)
-                   VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)""",
-                (user_id, guild_id, restriction_type, moderator_id, reason, now)
+                   (user_id, guild_id, restriction_type, moderator_id, reason, created_at, expires_at, removed_at, removed_by, case_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)""",
+                (user_id, guild_id, restriction_type, moderator_id, reason, now, expires_at, case_id)
             )
             return True
         except Exception:
             return False
+
+    def get_expired_forbids(self) -> List[Dict[str, Any]]:
+        """Get all forbids that have expired but not yet removed."""
+        now = time.time()
+        rows = self.fetchall(
+            """SELECT id, user_id, guild_id, restriction_type, moderator_id, reason, created_at, expires_at
+               FROM forbid_history
+               WHERE expires_at IS NOT NULL AND expires_at <= ? AND removed_at IS NULL""",
+            (now,)
+        )
+        return [dict(row) for row in rows]
+
+    def update_forbid_case_id(
+        self,
+        user_id: int,
+        guild_id: int,
+        restriction_type: str,
+        case_id: str,
+    ) -> bool:
+        """Update the case_id for a forbid entry."""
+        cursor = self.execute(
+            """UPDATE forbid_history SET case_id = ?
+               WHERE user_id = ? AND guild_id = ? AND restriction_type = ? AND removed_at IS NULL""",
+            (case_id, user_id, guild_id, restriction_type)
+        )
+        return cursor.rowcount > 0
 
     def remove_forbid(
         self,

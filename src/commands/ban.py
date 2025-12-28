@@ -26,7 +26,7 @@ from discord.ext import commands
 from typing import Optional, List, TYPE_CHECKING
 
 from src.core.logger import logger
-from src.core.config import get_config, is_developer, EmbedColors
+from src.core.config import get_config, is_developer, has_mod_role, EmbedColors
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
@@ -148,6 +148,20 @@ class BanCog(commands.Cog):
         )
         self.bot.tree.add_command(self.ban_user_ctx)
         self.bot.tree.add_command(self.ban_message_ctx)
+
+        logger.tree("Ban Cog Loaded", [
+            ("Commands", "/ban, /unban, /massban"),
+            ("Context Menus", "Ban User, Ban Author"),
+            ("Cross-Server", "Enabled"),
+        ], emoji="🔨")
+
+    # =========================================================================
+    # Permission Check
+    # =========================================================================
+
+    async def cog_check(self, interaction: discord.Interaction) -> bool:
+        """Check if user has permission to use ban commands."""
+        return has_mod_role(interaction.user)
 
     async def cog_unload(self) -> None:
         """Remove context menus when cog unloads."""
@@ -533,13 +547,19 @@ class BanCog(commands.Cog):
     # Context Menu Handlers
     # =========================================================================
 
-    @app_commands.default_permissions(ban_members=True)
     async def _ban_from_user(
         self,
         interaction: discord.Interaction,
         user: discord.Member,
     ) -> None:
         """Ban a user directly (context menu handler)."""
+        if not has_mod_role(interaction.user):
+            await interaction.response.send_message(
+                "❌ You don't have permission to use this command.",
+                ephemeral=True,
+            )
+            return
+
         if user.bot and not is_developer(interaction.user.id):
             await interaction.response.send_message(
                 "You cannot ban bots.",
@@ -550,13 +570,19 @@ class BanCog(commands.Cog):
         modal = BanModal(target=user, cog=self, evidence=None)
         await interaction.response.send_modal(modal)
 
-    @app_commands.default_permissions(ban_members=True)
     async def _ban_from_message(
         self,
         interaction: discord.Interaction,
         message: discord.Message,
     ) -> None:
         """Ban the author of a message (context menu handler)."""
+        if not has_mod_role(interaction.user):
+            await interaction.response.send_message(
+                "❌ You don't have permission to use this command.",
+                ephemeral=True,
+            )
+            return
+
         if message.author.bot and not is_developer(interaction.user.id):
             await interaction.response.send_message(
                 "You cannot ban bots.",
@@ -587,7 +613,6 @@ class BanCog(commands.Cog):
     # =========================================================================
 
     @app_commands.command(name="ban", description="Ban a user from the server")
-    @app_commands.default_permissions(ban_members=True)
     @app_commands.describe(
         user="The user to ban",
         reason="Reason for the ban (required)",
@@ -626,7 +651,6 @@ class BanCog(commands.Cog):
     # =========================================================================
 
     @app_commands.command(name="unban", description="Unban a user from the server")
-    @app_commands.default_permissions(ban_members=True)
     @app_commands.describe(
         user="The banned user to unban",
         reason="Reason for the unban",
@@ -704,6 +728,34 @@ class BanCog(commands.Cog):
             moderator_id=interaction.user.id,
             reason=reason,
         )
+
+        # -----------------------------------------------------------------
+        # DM User About Unban
+        # -----------------------------------------------------------------
+
+        try:
+            dm_embed = discord.Embed(
+                title="You've Been Unbanned",
+                description=f"Your ban from **{target_guild.name}** has been lifted.",
+                color=EmbedColors.SUCCESS,
+                timestamp=datetime.now(NY_TZ),
+            )
+            dm_embed.add_field(name="Server", value=target_guild.name, inline=True)
+            if reason:
+                dm_embed.add_field(name="Reason", value=reason, inline=False)
+            dm_embed.add_field(
+                name="What's Next?",
+                value="You can now rejoin the server if you have an invite link.",
+                inline=False,
+            )
+            dm_embed.set_footer(text=f"Server ID: {target_guild.id}")
+
+            await target_user.send(embed=dm_embed)
+            logger.debug(f"Unban DM sent to {target_user}")
+        except discord.Forbidden:
+            logger.debug(f"Cannot DM {target_user} - DMs disabled")
+        except discord.HTTPException as e:
+            logger.debug(f"Failed to DM {target_user}: {e}")
 
         # -----------------------------------------------------------------
         # Logging

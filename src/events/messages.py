@@ -221,6 +221,46 @@ class MessageEvents(commands.Cog):
                 return
 
         # -----------------------------------------------------------------
+        # Prison ping blocking: Prisoners cannot ping anyone
+        # -----------------------------------------------------------------
+        if self.config.prison_channel_ids and message.channel.id in self.config.prison_channel_ids:
+            # Check if author is a prisoner (has muted role)
+            if isinstance(message.author, discord.Member) and self.config.muted_role_id:
+                is_prisoner = any(r.id == self.config.muted_role_id for r in message.author.roles)
+
+                # Check if they're a mod (bypass)
+                is_mod = False
+                if self.config.moderation_role_id:
+                    is_mod = any(r.id == self.config.moderation_role_id for r in message.author.roles)
+
+                # If prisoner (not mod) and has mentions, delete the message
+                if is_prisoner and not is_mod:
+                    has_pings = (
+                        message.mentions or  # @user mentions
+                        message.role_mentions or  # @role mentions
+                        message.mention_everyone  # @everyone/@here
+                    )
+                    if has_pings:
+                        try:
+                            await message.delete()
+                            logger.tree("PRISONER PING BLOCKED", [
+                                ("User", f"{message.author} ({message.author.id})"),
+                                ("Channel", f"#{message.channel.name}"),
+                                ("Mentions", str(len(message.mentions) + len(message.role_mentions))),
+                            ], emoji="🚫")
+
+                            # Send warning (ephemeral-like, delete after a few seconds)
+                            warning = await message.channel.send(
+                                f"{message.author.mention} Prisoners cannot ping others.",
+                                delete_after=5.0,
+                            )
+                        except discord.Forbidden:
+                            pass
+                        except discord.HTTPException:
+                            pass
+                        return  # Stop processing this message
+
+        # -----------------------------------------------------------------
         # Log message to database for context
         # -----------------------------------------------------------------
         if message.guild:

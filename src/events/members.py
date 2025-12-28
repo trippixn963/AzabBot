@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import discord
@@ -16,6 +17,11 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config
 from src.core.database import get_db
+
+# Verification role that should be given to all members on join
+# Another bot handles this, but we act as failsafe backup
+VERIFICATION_ROLE_ID = 1236824194722041876
+VERIFICATION_DELAY = 5  # seconds to wait before checking
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -207,6 +213,9 @@ class MemberEvents(commands.Cog):
         if self.bot.mod_tracker:
             await self.bot.mod_tracker.check_ban_evasion_on_join(member)
 
+        # Failsafe: Check verification role after delay (backup for other bot)
+        asyncio.create_task(self._check_verification_role(member))
+
     async def _check_mute_evasion(self, member: discord.Member) -> None:
         """Check if rejoining member has an active mute and re-apply it."""
         db = get_db()
@@ -238,6 +247,44 @@ class MemberEvents(commands.Cog):
                 ("Error", str(e)[:50]),
             ])
 
+    async def _check_verification_role(self, member: discord.Member) -> None:
+        """
+        Failsafe backup for verification role assignment.
+
+        Another bot is primary for assigning this role, but sometimes misses.
+        We wait a few seconds then check if the member has the role.
+        """
+        await asyncio.sleep(VERIFICATION_DELAY)
+
+        # Re-fetch member in case they left or state changed
+        try:
+            member = await member.guild.fetch_member(member.id)
+        except discord.NotFound:
+            return  # Member left
+        except discord.HTTPException:
+            return
+
+        # Check if they already have the role
+        if any(r.id == VERIFICATION_ROLE_ID for r in member.roles):
+            return  # Already has it, other bot worked
+
+        # Get the verification role
+        role = member.guild.get_role(VERIFICATION_ROLE_ID)
+        if not role:
+            return  # Role doesn't exist in this guild
+
+        # Assign the role as backup
+        try:
+            await member.add_roles(role, reason="Verification role failsafe (backup)")
+            logger.tree("VERIFICATION ROLE BACKUP", [
+                ("User", f"{member} ({member.id})"),
+                ("Action", "Assigned verification role (other bot missed)"),
+            ], emoji="✅")
+        except discord.Forbidden:
+            logger.debug(f"Cannot assign verification role to {member} - missing permissions")
+        except discord.HTTPException as e:
+            logger.debug(f"Failed to assign verification role to {member}: {e}")
+
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
         """Log member leaves and track muted users leaving."""
@@ -260,14 +307,27 @@ class MemberEvents(commands.Cog):
         # Get role count (excluding @everyone)
         role_count = len([r for r in member.roles if r.name != "@everyone"])
 
-        logger.tree("MEMBER LEFT", [
+        # Check if this was a ban (check recent audit log)
+        was_banned = False
+        try:
+            async for entry in member.guild.audit_logs(action=discord.AuditLogAction.ban, limit=5):
+                if entry.target and entry.target.id == member.id:
+                    # Ban happened within last 5 seconds = this removal was a ban
+                    if (discord.utils.utcnow() - entry.created_at).total_seconds() < 5:
+                        was_banned = True
+                    break
+        except discord.Forbidden:
+            pass
+
+        leave_type = "BANNED" if was_banned else "MEMBER LEFT"
+        logger.tree(leave_type, [
             ("User", f"{member} ({member.id})"),
             ("Membership", membership_duration),
             ("Roles", str(role_count)),
-        ], emoji="📤")
+        ], emoji="🔨" if was_banned else "📤")
 
         if self.bot.logging_service and self.bot.logging_service.enabled:
-            await self.bot.logging_service.log_member_leave(member)
+            await self.bot.logging_service.log_member_leave(member, was_banned=was_banned)
 
         await self._check_muted_member_left(member)
 

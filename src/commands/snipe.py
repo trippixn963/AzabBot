@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
 from src.core.logger import logger
-from src.core.config import get_config, EmbedColors, NY_TZ
+from src.core.config import get_config, has_mod_role, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 
@@ -54,12 +54,19 @@ class SnipeCog(commands.Cog):
         ], emoji="🎯")
 
     # =========================================================================
+    # Permission Check
+    # =========================================================================
+
+    async def cog_check(self, interaction: discord.Interaction) -> bool:
+        """Check if user has permission to use snipe commands."""
+        return has_mod_role(interaction.user)
+
+    # =========================================================================
     # Snipe Command
     # =========================================================================
 
     @app_commands.command(name="snipe", description="View deleted messages in this channel")
     @app_commands.describe(number="Which deleted message to view (1=most recent, up to 10)")
-    @app_commands.default_permissions(moderate_members=True)
     async def snipe(
         self,
         interaction: discord.Interaction,
@@ -209,7 +216,6 @@ class SnipeCog(commands.Cog):
     @app_commands.describe(
         target="Clear snipes from a specific user, or leave empty for all",
     )
-    @app_commands.default_permissions(moderate_members=True)
     async def clearsnipe(
         self,
         interaction: discord.Interaction,

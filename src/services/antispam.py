@@ -54,6 +54,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
+from src.utils.views import CASE_EMOJI
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -1472,7 +1473,7 @@ class AntiSpamService:
                     label="Case",
                     url=case_url,
                     style=discord.ButtonStyle.link,
-                    emoji="📋",
+                    emoji=CASE_EMOJI,
                 ))
 
             await channel.send(embed=embed, view=view, delete_after=15)

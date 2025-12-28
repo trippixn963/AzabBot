@@ -28,7 +28,7 @@ from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 
 from src.core.logger import logger
-from src.core.config import get_config, is_developer, EmbedColors, NY_TZ
+from src.core.config import get_config, is_developer, has_mod_role, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
@@ -135,6 +135,14 @@ class WarnCog(commands.Cog):
         logger.tree("Warn Cog Loaded", [
             ("Commands", "/warn, context menus"),
         ], emoji="⚠️")
+
+    # =========================================================================
+    # Permission Check
+    # =========================================================================
+
+    async def cog_check(self, interaction: discord.Interaction) -> bool:
+        """Check if user has permission to use warn commands."""
+        return has_mod_role(interaction.user)
 
     # =========================================================================
     # Cross-Server Helpers
@@ -298,14 +306,29 @@ class WarnCog(commands.Cog):
 
         case_info = None
         if self.bot.case_log_service:
-            case_info = await self.bot.case_log_service.log_warn(
-                user=target_member or user,
-                moderator=interaction.user,
-                reason=reason,
-                evidence=evidence,
-                active_warns=active_warns,
-                total_warns=total_warns,
-            )
+            try:
+                case_info = await asyncio.wait_for(
+                    self.bot.case_log_service.log_warn(
+                        user=target_member or user,
+                        moderator=interaction.user,
+                        reason=reason,
+                        evidence=evidence,
+                        active_warns=active_warns,
+                        total_warns=total_warns,
+                    ),
+                    timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Case Log Timeout", [
+                    ("Action", "Warn"),
+                    ("User", f"{user} ({user.id})"),
+                ])
+            except Exception as e:
+                logger.error("Case Log Failed", [
+                    ("Action", "Warn"),
+                    ("User", f"{user} ({user.id})"),
+                    ("Error", str(e)[:100]),
+                ])
 
         # ---------------------------------------------------------------------
         # Build & Send Embed
@@ -409,7 +432,6 @@ class WarnCog(commands.Cog):
         reason="Reason for the warning (required)",
         evidence="Screenshot or video evidence (image/video only)",
     )
-    @app_commands.default_permissions(manage_messages=True)
     @app_commands.autocomplete(reason=reason_autocomplete)
     async def warn(
         self,
@@ -444,6 +466,13 @@ class WarnCog(commands.Cog):
         message: discord.Message,
     ) -> None:
         """Warn the author of a message (context menu handler)."""
+        if not has_mod_role(interaction.user):
+            await interaction.response.send_message(
+                "❌ You don't have permission to use this command.",
+                ephemeral=True,
+            )
+            return
+
         if message.author.bot:
             await interaction.response.send_message(
                 "I cannot warn bots.",
@@ -475,6 +504,13 @@ class WarnCog(commands.Cog):
         user: discord.Member,
     ) -> None:
         """Warn a user directly (context menu handler)."""
+        if not has_mod_role(interaction.user):
+            await interaction.response.send_message(
+                "❌ You don't have permission to use this command.",
+                ephemeral=True,
+            )
+            return
+
         if user.bot:
             await interaction.response.send_message(
                 "I cannot warn bots.",

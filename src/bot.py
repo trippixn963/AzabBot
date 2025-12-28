@@ -28,6 +28,7 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
+from src.utils.rate_limiter import rate_limit
 
 
 # =============================================================================
@@ -171,8 +172,17 @@ class AzabBot(commands.Bot):
         from src.services.appeal_service import setup_appeal_views
         setup_appeal_views(self)
 
-        # Sync commands
+        # Sync commands globally
         try:
+            # Clear any guild-specific commands first (to remove duplicates)
+            config = get_config()
+            if config.logging_guild_id:
+                guild = discord.Object(id=config.logging_guild_id)
+                self.tree.clear_commands(guild=guild)
+                await self.tree.sync(guild=guild)
+                logger.debug("Cleared guild-specific commands")
+
+            # Global sync
             synced = await self.tree.sync()
             logger.tree("Commands Synced", [("Count", str(len(synced)))], emoji="✅")
         except Exception as e:
@@ -212,9 +222,6 @@ class AzabBot(commands.Bot):
 
         self.disabled = not self.db.is_active()
         logger.tree("Bot State Loaded", [("Active", str(not self.disabled))], emoji="ℹ️")
-
-        if self.config.error_webhook_url:
-            logger.set_webhook(self.config.error_webhook_url)
 
         if self.presence_handler:
             asyncio.create_task(self.presence_handler.start_presence_loop())
@@ -398,7 +405,7 @@ class AzabBot(commands.Bot):
                     try:
                         await message.delete()
                         deleted += 1
-                        await asyncio.sleep(0.5)  # Rate limit
+                        await rate_limit("bulk_operation")
                     except discord.NotFound:
                         pass
                     except discord.Forbidden as e:

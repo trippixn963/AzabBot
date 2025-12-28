@@ -21,6 +21,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.views import DownloadButton, CASE_EMOJI
+from src.utils.rate_limiter import rate_limit
 
 # Import from local package
 from .categories import LogCategory, THREAD_DESCRIPTIONS
@@ -34,6 +35,12 @@ if TYPE_CHECKING:
 # =============================================================================
 
 USERID_EMOJI = "<:userid:1452512424354643969>"
+
+# =============================================================================
+# Cache Constants
+# =============================================================================
+
+MAX_JOIN_MESSAGES_CACHE = 500  # Max join messages to track for verification editing
 
 
 # =============================================================================
@@ -255,7 +262,7 @@ class LoggingService:
                         content=THREAD_DESCRIPTIONS.get(category, "Server activity logs"),
                     )
                     self._threads[category] = thread.thread
-                    await asyncio.sleep(self.config.rate_limit_delay / 2)  # Rate limit
+                    await rate_limit("thread_create")
                 except Exception as e:
                     logger.warning(f"Logging Service: Failed to create thread {thread_name}: {e}")
 
@@ -390,10 +397,10 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🔨 Member Banned", EmbedColors.ERROR, category="Ban", user_id=user.id)
+        embed = self._create_embed("🔨 Member Banned", EmbedColors.LOG_NEGATIVE, category="Ban", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         if case_id:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
 
@@ -424,7 +431,7 @@ class LoggingService:
         embed = self._create_embed("🔓 Member Unbanned", EmbedColors.SUCCESS, category="Unban", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         if case_id:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
@@ -443,10 +450,10 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("👢 Member Kicked", EmbedColors.ERROR, category="Kick", user_id=user.id)
+        embed = self._create_embed("👢 Member Kicked", EmbedColors.LOG_NEGATIVE, category="Kick", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         if case_id:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
 
@@ -482,7 +489,7 @@ class LoggingService:
         embed = self._create_embed("⏰ Member Timed Out", EmbedColors.WARNING, category="Timeout", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         if case_id:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
 
@@ -526,7 +533,7 @@ class LoggingService:
         embed = self._create_embed("⏰ Timeout Removed", EmbedColors.SUCCESS, category="Timeout Remove", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         if case_id:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         self._set_user_thumbnail(embed, user)
@@ -544,10 +551,10 @@ class LoggingService:
         if not self._should_log(user.guild.id):
             return
 
-        embed = self._create_embed("🔇 Member Muted", EmbedColors.ERROR, category="Mute", user_id=user.id)
+        embed = self._create_embed("🔇 Member Muted", EmbedColors.LOG_NEGATIVE, category="Mute", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         if case_id:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
 
@@ -576,7 +583,7 @@ class LoggingService:
         embed = self._create_embed("🔊 Member Unmuted", EmbedColors.SUCCESS, category="Unmute", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         if case_id:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         self._set_user_thumbnail(embed, user)
@@ -631,7 +638,7 @@ class LoggingService:
         if not self._should_log(message.guild.id if message.guild else None, message.author.id):
             return
 
-        embed = self._create_embed("🗑️ Message Deleted", EmbedColors.ERROR, category="Message Delete", user_id=message.author.id)
+        embed = self._create_embed("🗑️ Message Deleted", EmbedColors.LOG_NEGATIVE, category="Message Delete", user_id=message.author.id)
         embed.add_field(name="Author", value=self._format_user_field(message.author), inline=True)
         embed.add_field(name="Channel", value=self._format_channel(message.channel), inline=True)
 
@@ -698,11 +705,11 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🗑️ Bulk Delete", EmbedColors.ERROR, category="Bulk Delete")
+        embed = self._create_embed("🗑️ Bulk Delete", EmbedColors.LOG_NEGATIVE, category="Bulk Delete")
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         embed.add_field(name="Messages", value=f"**{count}**", inline=True)
         if moderator:
-            embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.MESSAGES, embed)
 
@@ -740,12 +747,19 @@ class LoggingService:
         if join_count > 1:
             embed.add_field(name="Join #", value=f"`{join_count}`", inline=True)
 
+        # Member count after join
+        embed.add_field(name="Members", value=f"`{member.guild.member_count:,}`", inline=True)
+
         self._set_user_thumbnail(embed, member)
 
         message = await self._send_log(LogCategory.JOINS, embed, user_id=member.id)
         # Store message ID for later editing when member verifies
         if message:
             self._join_messages[member.id] = message.id
+            # Evict oldest entries if cache is too large (simple FIFO via dict order)
+            while len(self._join_messages) > MAX_JOIN_MESSAGES_CACHE:
+                oldest_key = next(iter(self._join_messages))
+                del self._join_messages[oldest_key]
 
     # =========================================================================
     # Member Leaves
@@ -754,6 +768,7 @@ class LoggingService:
     async def log_member_leave(
         self,
         member: discord.Member,
+        was_banned: bool = False,
     ) -> None:
         """Log a member leave with detailed info."""
         # Clean up join message cache
@@ -766,7 +781,15 @@ class LoggingService:
         db = get_db()
         leave_count = db.record_member_leave(member.id, member.guild.id)
 
-        embed = self._create_embed("📤 Member Left", EmbedColors.WARNING, category="Leave", user_id=member.id)
+        # Change title if banned
+        if was_banned:
+            title = "📤 Member Left [Banned]"
+            color = EmbedColors.LOG_NEGATIVE
+        else:
+            title = "📤 Member Left"
+            color = EmbedColors.WARNING
+
+        embed = self._create_embed(title, color, category="Leave", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
 
         # Account created
@@ -784,6 +807,9 @@ class LoggingService:
         if leave_count > 1:
             embed.add_field(name="Leave #", value=f"`{leave_count}`", inline=True)
 
+        # Member count after leave
+        embed.add_field(name="Members", value=f"`{member.guild.member_count:,}`", inline=True)
+
         # Role list with count
         roles = [r for r in member.roles if r.name != "@everyone"]
         role_count = len(roles)
@@ -796,6 +822,7 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, member)
 
+        # LogView automatically adds Case button if user has a case
         await self._send_log(LogCategory.LEAVES, embed, user_id=member.id)
 
     # =========================================================================
@@ -831,7 +858,7 @@ class LoggingService:
         if not self._should_log(member.guild.id, member.id):
             return
 
-        embed = self._create_embed("➖ Role Removed", EmbedColors.ERROR, category="Role Remove", user_id=member.id)
+        embed = self._create_embed("➖ Role Removed", EmbedColors.LOG_NEGATIVE, category="Role Remove", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
         embed.add_field(name="Role", value=self._format_role(role), inline=True)
         if moderator:
@@ -1028,6 +1055,94 @@ class LoggingService:
 
         await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
 
+    async def log_voice_self_mute(
+        self,
+        member: discord.Member,
+        channel: discord.VoiceChannel,
+        muted: bool,
+    ) -> None:
+        """Log a user self-muting/unmuting."""
+        if not self._should_log(member.guild.id, member.id):
+            return
+
+        # Skip mods (too spammy)
+        if self.config.moderator_ids and member.id in self.config.moderator_ids:
+            return
+
+        if muted:
+            embed = self._create_embed("🔇 Self Muted", EmbedColors.INFO, category="Self Mute", user_id=member.id)
+        else:
+            embed = self._create_embed("🔊 Self Unmuted", EmbedColors.INFO, category="Self Unmute", user_id=member.id)
+
+        embed.add_field(name="User", value=self._format_user_field(member), inline=True)
+        embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
+
+        await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
+
+    async def log_voice_self_deafen(
+        self,
+        member: discord.Member,
+        channel: discord.VoiceChannel,
+        deafened: bool,
+    ) -> None:
+        """Log a user self-deafening/undeafening."""
+        if not self._should_log(member.guild.id, member.id):
+            return
+
+        # Skip mods (too spammy)
+        if self.config.moderator_ids and member.id in self.config.moderator_ids:
+            return
+
+        if deafened:
+            embed = self._create_embed("🔇 Self Deafened", EmbedColors.INFO, category="Self Deafen", user_id=member.id)
+        else:
+            embed = self._create_embed("🔊 Self Undeafened", EmbedColors.INFO, category="Self Undeafen", user_id=member.id)
+
+        embed.add_field(name="User", value=self._format_user_field(member), inline=True)
+        embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
+
+        await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
+
+    async def log_voice_stream(
+        self,
+        member: discord.Member,
+        channel: discord.VoiceChannel,
+        streaming: bool,
+    ) -> None:
+        """Log a user starting/stopping a stream."""
+        if not self._should_log(member.guild.id, member.id):
+            return
+
+        if streaming:
+            embed = self._create_embed("📺 Started Streaming", EmbedColors.SUCCESS, category="Stream Start", user_id=member.id)
+        else:
+            embed = self._create_embed("📺 Stopped Streaming", EmbedColors.WARNING, category="Stream Stop", user_id=member.id)
+
+        embed.add_field(name="User", value=self._format_user_field(member), inline=True)
+        embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
+
+        await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
+
+    async def log_voice_video(
+        self,
+        member: discord.Member,
+        channel: discord.VoiceChannel,
+        video_on: bool,
+    ) -> None:
+        """Log a user turning camera on/off."""
+        if not self._should_log(member.guild.id, member.id):
+            return
+
+        if video_on:
+            embed = self._create_embed("📹 Camera On", EmbedColors.SUCCESS, category="Camera On", user_id=member.id)
+        else:
+            embed = self._create_embed("📹 Camera Off", EmbedColors.WARNING, category="Camera Off", user_id=member.id)
+
+        embed.add_field(name="User", value=self._format_user_field(member), inline=True)
+        embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
+
+        await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
+
     # =========================================================================
     # Channel Changes
     # =========================================================================
@@ -1059,7 +1174,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("📁 Channel Deleted", EmbedColors.ERROR, category="Channel Delete")
+        embed = self._create_embed("📁 Channel Deleted", EmbedColors.LOG_NEGATIVE, category="Channel Delete")
         embed.add_field(name="Channel", value=f"`{channel_name}`", inline=True)
         embed.add_field(name="Type", value=channel_type.title(), inline=True)
         if moderator:
@@ -1115,7 +1230,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🎭 Role Deleted", EmbedColors.ERROR, category="Role Delete")
+        embed = self._create_embed("🎭 Role Deleted", EmbedColors.LOG_NEGATIVE, category="Role Delete")
         role_display = f"`{role_name}`" if role_name else "unknown role"
         embed.add_field(name="Role", value=role_display, inline=True)
         if moderator:
@@ -1172,7 +1287,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("😀 Emoji Deleted", EmbedColors.ERROR, category="Emoji Delete")
+        embed = self._create_embed("😀 Emoji Deleted", EmbedColors.LOG_NEGATIVE, category="Emoji Delete")
         embed.add_field(name="Emoji", value=f"`:{emoji_name}:`", inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
@@ -1206,7 +1321,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🎨 Sticker Deleted", EmbedColors.ERROR, category="Sticker Delete")
+        embed = self._create_embed("🎨 Sticker Deleted", EmbedColors.LOG_NEGATIVE, category="Sticker Delete")
         embed.add_field(name="Sticker", value=sticker_name, inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
@@ -1345,7 +1460,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🤖 Bot Removed", EmbedColors.ERROR, category="Bot Remove", user_id=bot_id)
+        embed = self._create_embed("🤖 Bot Removed", EmbedColors.LOG_NEGATIVE, category="Bot Remove", user_id=bot_id)
         embed.add_field(name="Bot", value=f"`{bot_name}`", inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
@@ -1379,7 +1494,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🔗 Integration Removed", EmbedColors.ERROR, category="Integration Remove")
+        embed = self._create_embed("🔗 Integration Removed", EmbedColors.LOG_NEGATIVE, category="Integration Remove")
         embed.add_field(name="Name", value=name, inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
@@ -1418,7 +1533,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🪝 Webhook Deleted", EmbedColors.ERROR, category="Webhook Delete")
+        embed = self._create_embed("🪝 Webhook Deleted", EmbedColors.LOG_NEGATIVE, category="Webhook Delete")
         embed.add_field(name="Name", value=f"`{webhook_name}`", inline=True)
         embed.add_field(name="Channel", value=f"`{channel_name}`", inline=True)
         if moderator:
@@ -1458,7 +1573,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🧵 Thread Deleted", EmbedColors.ERROR, category="Thread Delete")
+        embed = self._create_embed("🧵 Thread Deleted", EmbedColors.LOG_NEGATIVE, category="Thread Delete")
         embed.add_field(name="Thread", value=f"`{thread_name}`", inline=True)
         embed.add_field(name="Parent", value=f"`{parent_name}`", inline=True)
         if moderator:
@@ -1537,7 +1652,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🛡️ Message Blocked", EmbedColors.ERROR, category="AutoMod Block", user_id=user.id)
+        embed = self._create_embed("🛡️ Message Blocked", EmbedColors.LOG_NEGATIVE, category="AutoMod Block", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         embed.add_field(name="Rule", value=f"`{rule_name}`", inline=True)
 
@@ -1581,7 +1696,7 @@ class LoggingService:
             embed.add_field(name="Channel", value=self._format_channel(event.channel), inline=True)
 
         if creator:
-            embed.add_field(name="Created By", value=self._format_user_field(creator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(creator), inline=True)
 
         if event.description:
             desc = event.description[:200] if len(event.description) > 200 else event.description
@@ -1619,7 +1734,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("📅 Event Deleted", EmbedColors.ERROR, category="Event Delete")
+        embed = self._create_embed("📅 Event Deleted", EmbedColors.LOG_NEGATIVE, category="Event Delete")
         embed.add_field(name="Event", value=f"`{event_name}`", inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
@@ -1745,7 +1860,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🗑️ Reactions Cleared", EmbedColors.ERROR, category="Reaction Clear")
+        embed = self._create_embed("🗑️ Reactions Cleared", EmbedColors.LOG_NEGATIVE, category="Reaction Clear")
         embed.add_field(name="Channel", value=self._format_channel(message.channel), inline=True)
         embed.add_field(name="Message", value=f"[Jump]({message.jump_url})", inline=True)
         if moderator:
@@ -1773,7 +1888,7 @@ class LoggingService:
             embed.add_field(name="Channel", value=self._format_channel(stage.channel), inline=True)
 
         if moderator:
-            embed.add_field(name="Started By", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.STAGE, embed)
 
@@ -1787,11 +1902,11 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🎤 Stage Ended", EmbedColors.ERROR, category="Stage End")
+        embed = self._create_embed("🎤 Stage Ended", EmbedColors.LOG_NEGATIVE, category="Stage End")
         embed.add_field(name="Topic", value=f"`{topic}`", inline=True)
         embed.add_field(name="Channel", value=f"`{channel_name}`", inline=True)
         if moderator:
-            embed.add_field(name="Ended By", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.STAGE, embed)
 
@@ -1935,7 +2050,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("💔 Boost Removed", EmbedColors.ERROR, category="Unboost", user_id=member.id)
+        embed = self._create_embed("💔 Boost Removed", EmbedColors.LOG_NEGATIVE, category="Unboost", user_id=member.id)
         embed.add_field(name="Former Booster", value=self._format_user_field(member), inline=True)
 
         # Get server boost count
@@ -1975,9 +2090,9 @@ class LoggingService:
             embed.add_field(name="Channel", value=self._format_channel(invite.channel), inline=True)
 
         if moderator:
-            embed.add_field(name="Created By", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         elif invite.inviter:
-            embed.add_field(name="Created By", value=self._format_user_field(invite.inviter), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(invite.inviter), inline=True)
 
         # Max uses
         if invite.max_uses:
@@ -2017,7 +2132,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🔗 Invite Deleted", EmbedColors.ERROR, category="Invite Delete")
+        embed = self._create_embed("🔗 Invite Deleted", EmbedColors.LOG_NEGATIVE, category="Invite Delete")
         embed.add_field(name="Code", value=f"`{invite_code}`", inline=True)
         embed.add_field(name="Channel", value=f"`{channel_name}`", inline=True)
 
@@ -2025,7 +2140,7 @@ class LoggingService:
             embed.add_field(name="Times Used", value=str(uses), inline=True)
 
         if moderator:
-            embed.add_field(name="Deleted By", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.INVITES, embed)
 
@@ -2134,7 +2249,7 @@ class LoggingService:
         embed = self._create_embed("✏️ Nickname Force Changed", EmbedColors.WARNING, category="Nickname Force", user_id=target.id)
         embed.add_field(name="Target", value=self._format_user_field(target), inline=True)
         if moderator:
-            embed.add_field(name="Changed By", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         embed.add_field(name="Before", value=f"`{old_nick}`" if old_nick else "*(none)*", inline=True)
         embed.add_field(name="After", value=f"`{new_nick}`" if new_nick else "*(none)*", inline=True)
@@ -2157,7 +2272,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🔌 Voice Disconnected", EmbedColors.ERROR, category="Voice Disconnect", user_id=target.id)
+        embed = self._create_embed("🔌 Voice Disconnected", EmbedColors.LOG_NEGATIVE, category="Voice Disconnect", user_id=target.id)
         embed.add_field(name="User", value=self._format_user_field(target), inline=True)
         embed.add_field(name="From Channel", value=f"🔊 {channel_name}", inline=True)
         if moderator:
@@ -2187,11 +2302,11 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🗑️ Message Deleted by Mod", EmbedColors.ERROR, category="Mod Delete", user_id=author.id)
+        embed = self._create_embed("🗑️ Message Deleted by Mod", EmbedColors.LOG_NEGATIVE, category="Mod Delete", user_id=author.id)
         embed.add_field(name="Author", value=self._format_user_field(author), inline=True)
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         if moderator:
-            embed.add_field(name="Deleted By", value=self._format_user_field(moderator), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         if content:
             truncated = content[:900] if len(content) > 900 else content
@@ -2322,7 +2437,7 @@ class LoggingService:
         embed.add_field(name="Thread", value=f"#{thread.name}", inline=True)
         embed.add_field(name="User Added", value=self._format_user_field(user), inline=True)
         if added_by:
-            embed.add_field(name="Added By", value=self._format_user_field(added_by), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(added_by), inline=True)
         if thread.parent:
             embed.add_field(name="Parent Channel", value=self._format_channel(thread.parent), inline=True)
 
@@ -2351,7 +2466,7 @@ class LoggingService:
         embed.add_field(name="Thread", value=f"#{thread.name}", inline=True)
         embed.add_field(name="User Removed", value=self._format_user_field(user), inline=True)
         if removed_by:
-            embed.add_field(name="Removed By", value=self._format_user_field(removed_by), inline=True)
+            embed.add_field(name="By", value=self._format_user_field(removed_by), inline=True)
         if thread.parent:
             embed.add_field(name="Parent Channel", value=self._format_channel(thread.parent), inline=True)
 
@@ -2397,7 +2512,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🏷️ Forum Tag Deleted", EmbedColors.ERROR, category="Tag Delete")
+        embed = self._create_embed("🏷️ Forum Tag Deleted", EmbedColors.LOG_NEGATIVE, category="Tag Delete")
         embed.add_field(name="Forum", value=self._format_channel(forum), inline=True)
         embed.add_field(name="Tag", value=f"`{tag_name}`", inline=True)
         if moderator:
@@ -2502,7 +2617,7 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🚨 POTENTIAL RAID DETECTED", EmbedColors.ERROR, category="Raid Alert")
+        embed = self._create_embed("🚨 POTENTIAL RAID DETECTED", EmbedColors.LOG_NEGATIVE, category="Raid Alert")
         embed.add_field(
             name="Joins Detected",
             value=f"**{join_count}** members in **{time_window}** seconds",
@@ -2557,13 +2672,13 @@ class LoggingService:
             return
 
         if action == "lock":
-            embed = self._create_embed("🔒 SERVER LOCKED", EmbedColors.ERROR, category="Lockdown")
+            embed = self._create_embed("🔒 SERVER LOCKED", EmbedColors.LOG_NEGATIVE, category="Lockdown")
             embed.add_field(name="Status", value="**All channels locked**", inline=False)
         else:
             embed = self._create_embed("🔓 SERVER UNLOCKED", EmbedColors.SUCCESS, category="Lockdown")
             embed.add_field(name="Status", value="**All channels restored**", inline=False)
 
-        embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+        embed.add_field(name="By", value=moderator.mention, inline=True)
         embed.add_field(name="Channels", value=f"`{channel_count}`", inline=True)
 
         if reason:
@@ -2703,11 +2818,8 @@ class LoggingService:
                             deleted_in_thread += 1
                             total_deleted += 1
 
-                            # Rate limit - batch pause every 10 deletes
-                            if deleted_in_thread % 10 == 0:
-                                await asyncio.sleep(5)
-                            else:
-                                await asyncio.sleep(0.5)
+                            # Rate limit - use bulk_operation bucket
+                            await rate_limit("bulk_operation")
 
                         except (discord.NotFound, discord.Forbidden):
                             pass

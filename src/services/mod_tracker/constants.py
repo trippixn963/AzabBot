@@ -29,6 +29,7 @@ INACTIVITY_DAYS = 7  # Days before alerting about inactive mod
 
 MESSAGE_CACHE_SIZE = 50  # Messages to cache per mod
 MESSAGE_CACHE_TTL = 3600  # 1 hour cache for messages
+MESSAGE_CACHE_MAX_MODS = 100  # Max number of mods to cache messages for (LRU)
 
 # =============================================================================
 # Bulk Action Detection

@@ -23,6 +23,7 @@ from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ, EmbedColors
 from src.utils.footer import set_footer
+from src.utils.rate_limiter import rate_limit
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -513,7 +514,7 @@ class PrisonHandler:
                         try:
                             await message.delete()
                             count += 1
-                            await asyncio.sleep(self.config.rate_limit_delay)
+                            await rate_limit("bulk_operation")
                         except Exception:
                             pass
                     return count
@@ -571,11 +572,11 @@ class PrisonHandler:
                                     batch = messages_to_delete[i:i + 100]
                                     await prison_channel.delete_messages(batch)
                                     deleted_count += len(batch)
-                                    await asyncio.sleep(self.config.rate_limit_delay)
+                                    await rate_limit("bulk_operation")
                             except discord.HTTPException:
                                 break
 
-                            await asyncio.sleep(self.config.rate_limit_delay * 2)
+                            await rate_limit("bulk_operation")
 
                         logger.tree("Daily Cleanup Complete", [
                             ("Channel", f"#{prison_channel.name}"),

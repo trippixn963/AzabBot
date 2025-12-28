@@ -27,7 +27,7 @@ from typing import Optional, List, Callable, TYPE_CHECKING
 import re
 
 from src.core.logger import logger
-from src.core.config import get_config, EmbedColors, NY_TZ
+from src.core.config import get_config, has_mod_role, EmbedColors, NY_TZ
 from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
@@ -105,6 +105,14 @@ class PurgeCog(commands.Cog):
             ("Filters", "all, user, bots, humans, contains, attachments, embeds, links, reactions, mentions"),
             ("Max Amount", str(MAX_PURGE_AMOUNT)),
         ], emoji="🗑️")
+
+    # =========================================================================
+    # Permission Check
+    # =========================================================================
+
+    async def cog_check(self, interaction: discord.Interaction) -> bool:
+        """Check if user has permission to use purge commands."""
+        return has_mod_role(interaction.user)
 
     # =========================================================================
     # Core Purge Logic
@@ -312,7 +320,6 @@ class PurgeCog(commands.Cog):
         reason="Reason for the purge",
     )
     @app_commands.choices(filter_type=FILTER_CHOICES)
-    @app_commands.default_permissions(manage_messages=True)
     async def purge(
         self,
         interaction: discord.Interaction,

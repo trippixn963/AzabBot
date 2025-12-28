@@ -109,7 +109,7 @@ def _has_valid_media_evidence(evidence: Optional[str]) -> bool:
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
-from src.utils.footer import set_footer
+# Internal logs don't use public footer
 from src.utils.views import (
     CASE_EMOJI,
     MESSAGE_EMOJI,
@@ -936,7 +936,7 @@ class CaseLogService:
         if evidence:
             embed.add_field(name="Evidence", value=f"[View Evidence]({evidence})", inline=False)
 
-        set_footer(embed)
+        # Internal log - no public footer
         return embed
 
     # =========================================================================
@@ -2033,6 +2033,7 @@ class CaseLogService:
         moderator: discord.Member,
         restrictions: list,
         reason: Optional[str] = None,
+        duration: Optional[str] = None,
     ) -> Optional[dict]:
         """
         Log a forbid action - creates a case for the restriction.
@@ -2042,6 +2043,7 @@ class CaseLogService:
             moderator: The moderator who issued the restriction.
             restrictions: List of restriction types applied.
             reason: Optional reason for the restriction.
+            duration: Optional duration string (e.g., "7d", "Permanent").
 
         Returns:
             Dict with case_id and thread_id, or None if disabled/failed.
@@ -2068,7 +2070,7 @@ class CaseLogService:
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             # Build and send forbid embed
-            embed = self._build_forbid_embed(user, moderator, restrictions, reason)
+            embed = self._build_forbid_embed(user, moderator, restrictions, reason, duration)
             view = CaseLogView(
                 user_id=user.id,
                 guild_id=user.guild.id,
@@ -2083,6 +2085,7 @@ class CaseLogService:
                 ("User", f"{user} ({user.id})"),
                 ("Case ID", case['case_id']),
                 ("Restrictions", ", ".join(restrictions)),
+                ("Duration", duration or "Permanent"),
             ], emoji="🚫")
 
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
@@ -2100,6 +2103,7 @@ class CaseLogService:
         moderator: discord.Member,
         restrictions: list,
         reason: Optional[str] = None,
+        duration: Optional[str] = None,
     ) -> discord.Embed:
         """Build a forbid action embed."""
         # Restriction display info
@@ -2132,6 +2136,11 @@ class CaseLogService:
             value=f"{moderator.mention}\n`{moderator.id}`",
             inline=True,
         )
+        embed.add_field(
+            name="Duration",
+            value=duration or "Permanent",
+            inline=True,
+        )
 
         # Build restrictions list
         restrictions_text = []
@@ -2153,7 +2162,7 @@ class CaseLogService:
         else:
             embed.add_field(name="Reason", value="_No reason provided_", inline=False)
 
-        set_footer(embed)
+        # Internal log - no public footer
         return embed
 
     async def log_unforbid(
@@ -2273,7 +2282,7 @@ class CaseLogService:
             inline=False,
         )
 
-        set_footer(embed)
+        # Internal log - no public footer
         return embed
 
     # =========================================================================
@@ -2412,7 +2421,7 @@ class CaseLogService:
             names_str = ", ".join(f"`{name}`" for name in previous_names)
             user_embed.add_field(name="Previous Names", value=names_str, inline=False)
 
-        set_footer(user_embed)
+        # Internal log - no public footer
 
         # Create thread with action-specific naming
         action_display = action_type.title()  # "Mute", "Ban", "Warn"
@@ -2549,7 +2558,7 @@ class CaseLogService:
             names_str = ", ".join(f"`{name}`" for name in previous_names)
             user_embed.add_field(name="Previous Names", value=names_str, inline=False)
 
-        set_footer(user_embed)
+        # Internal log - no public footer
 
         # Create thread with user profile only
         thread_name = f"[{case_id}] | {user.display_name}"
@@ -2681,7 +2690,7 @@ class CaseLogService:
                 names_str = ", ".join(f"`{name}`" for name in previous_names)
                 embed.add_field(name="Previous Names", value=names_str, inline=False)
 
-            set_footer(embed)
+            # Internal log - no public footer
 
             # Edit the message with retry
             await safe_edit(profile_msg, embed=embed)
@@ -2767,7 +2776,7 @@ class CaseLogService:
         if evidence:
             embed.add_field(name="Evidence", value=f"[View Evidence]({evidence})", inline=False)
 
-        set_footer(embed)
+        # Internal log - no public footer
         return embed
 
     def _build_timeout_embed(
@@ -2833,7 +2842,7 @@ class CaseLogService:
         if evidence_url:
             embed.add_field(name="Evidence", value=f"[View Evidence]({evidence_url})", inline=False)
 
-        set_footer(embed)
+        # Internal log - no public footer
         return embed
 
     def _build_unmute_embed(
@@ -2884,7 +2893,7 @@ class CaseLogService:
         if reason:
             embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
 
-        set_footer(embed)
+        # Internal log - no public footer
         return embed
 
     def _build_expired_embed(
@@ -2908,7 +2917,7 @@ class CaseLogService:
         if user_avatar_url:
             embed.set_thumbnail(url=user_avatar_url)
 
-        set_footer(embed)
+        # Internal log - no public footer
         return embed
 
     # =========================================================================

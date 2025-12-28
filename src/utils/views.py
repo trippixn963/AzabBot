@@ -40,6 +40,8 @@ HISTORY_EMOJI = discord.PartialEmoji(name="history", id=1452963786427469894)
 EXTEND_EMOJI = discord.PartialEmoji(name="extend", id=1452963975150174410)
 UNMUTE_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon3", id=1452964296572272703)
 NOTE_EMOJI = discord.PartialEmoji(name="note", id=1452964649271037974)
+APPEAL_EMOJI = discord.PartialEmoji(name="appeal", id=1454788569594859726)
+DENY_EMOJI = discord.PartialEmoji(name="deny", id=1454788303567065242)
 
 
 # =============================================================================
@@ -772,7 +774,7 @@ class ExtendButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_ext
         super().__init__(
             discord.ui.Button(
                 label="Extend",
-                style=discord.ButtonStyle.primary,
+                style=discord.ButtonStyle.secondary,
                 emoji=EXTEND_EMOJI,
                 custom_id=f"mod_extend:{user_id}:{guild_id}",
             )
@@ -949,7 +951,7 @@ class UnmuteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_unm
         super().__init__(
             discord.ui.Button(
                 label="Unmute",
-                style=discord.ButtonStyle.success,
+                style=discord.ButtonStyle.secondary,
                 emoji=UNMUTE_EMOJI,
                 custom_id=f"mod_unmute:{user_id}:{guild_id}",
             )
@@ -1202,7 +1204,7 @@ class NotesDisplayView(discord.ui.View):
         self.guild_id = guild_id
         self.case_id = case_id
 
-    @discord.ui.button(label="Add Note", style=discord.ButtonStyle.primary, emoji=NOTE_EMOJI)
+    @discord.ui.button(label="Add Note", style=discord.ButtonStyle.secondary, emoji=NOTE_EMOJI)
     async def add_note_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(NoteModal(self.user_id, self.guild_id, self.case_id))
 
@@ -1211,7 +1213,7 @@ class NotesDisplayView(discord.ui.View):
 # Approve Button (Owner Only)
 # =============================================================================
 
-APPROVE_EMOJI = discord.PartialEmoji(name="✅")
+APPROVE_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon18", id=1454788180485345341)
 
 
 class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approve_case:(?P<thread_id>\d+):(?P<case_id>\w+)"):
@@ -1226,7 +1228,7 @@ class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approv
         super().__init__(
             discord.ui.Button(
                 label="Approve",
-                style=discord.ButtonStyle.success,
+                style=discord.ButtonStyle.secondary,
                 emoji=APPROVE_EMOJI,
                 custom_id=f"approve_case:{thread_id}:{case_id}",
             )
@@ -1388,6 +1390,8 @@ __all__ = [
     "UNMUTE_EMOJI",
     "NOTE_EMOJI",
     "APPROVE_EMOJI",
+    "APPEAL_EMOJI",
+    "DENY_EMOJI",
     "InfoButton",
     "DownloadButton",
     "HistoryButton",

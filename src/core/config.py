@@ -204,21 +204,31 @@ class EmbedColors:
     """
     Standardized color palette for Discord embeds.
 
-    Matches TahaBot/OthmanBot color scheme for consistency across all bots.
-    Uses two primary colors: GREEN for positive/success, GOLD for warnings/info.
+    Public embeds: GREEN and GOLD only (matches TahaBot/OthmanBot)
+    Internal logs: Can use full palette including RED
     """
 
-    # Primary colors (TahaBot/OthmanBot color scheme)
+    # Primary colors (TahaBot/OthmanBot color scheme - for public embeds)
     GREEN = 0x1F5E2E    # #1F5E2E - Primary success/positive
     GOLD = 0xE6B84A     # #E6B84A - Warnings/info/neutral
 
+    # Extended colors (for internal logs only)
+    RED = 0xDC3545      # #DC3545 - Negative actions (bans, kicks, deletes)
+    BLUE = 0x3498DB     # #3498DB - Informational logs
+
     # Semantic aliases for clarity
     SUCCESS = GREEN     # ✅ Operation completed, positive actions
-    ERROR = GOLD        # ⚠️ Errors, failures (using gold for visibility)
+    ERROR = GOLD        # ⚠️ Errors, failures (using gold for visibility on public)
     WARNING = GOLD      # ⚠️ Caution, warnings
     INFO = GREEN        # ℹ️ Informational
     PRISON = GOLD       # 🔒 Prisoner context, mutes
     RELEASE = GREEN     # 🔓 Freedom, unmutes
+
+    # Log-specific colors (internal use)
+    LOG_NEGATIVE = RED  # 🔴 Bans, kicks, deletes, leaves
+    LOG_WARNING = GOLD  # 🟡 Timeouts, edits, warnings
+    LOG_POSITIVE = GREEN  # 🟢 Joins, unbans, boosts
+    LOG_INFO = BLUE     # 🔵 Channel updates, role changes
 
 
 # =============================================================================
@@ -298,6 +308,59 @@ def _parse_int_set(value: Optional[str]) -> Set[int]:
             except ValueError:
                 pass  # Skip invalid entries silently
     return result
+
+
+def _parse_int_with_default(value: Optional[str], default: int, name: str, min_val: int = None, max_val: int = None) -> int:
+    """
+    Parse optional integer with default and range validation.
+
+    Args:
+        value: String value from environment variable.
+        default: Default value if not set or invalid.
+        name: Variable name for warning messages.
+        min_val: Minimum allowed value (inclusive).
+        max_val: Maximum allowed value (inclusive).
+
+    Returns:
+        Parsed integer within valid range, or default.
+    """
+    if not value:
+        return default
+    try:
+        parsed = int(value)
+        if min_val is not None and parsed < min_val:
+            from src.core.logger import logger
+            logger.warning(f"Config {name}={parsed} below min {min_val}, using {min_val}")
+            return min_val
+        if max_val is not None and parsed > max_val:
+            from src.core.logger import logger
+            logger.warning(f"Config {name}={parsed} above max {max_val}, using {max_val}")
+            return max_val
+        return parsed
+    except ValueError:
+        from src.core.logger import logger
+        logger.warning(f"Config {name}='{value}' invalid, using default {default}")
+        return default
+
+
+def _validate_url(value: Optional[str], name: str) -> Optional[str]:
+    """
+    Validate URL format for webhooks.
+
+    Args:
+        value: URL string to validate.
+        name: Variable name for warning messages.
+
+    Returns:
+        URL if valid, None if invalid or empty.
+    """
+    if not value:
+        return None
+    if not value.startswith(("https://", "http://")):
+        from src.core.logger import logger
+        logger.warning(f"Config {name} invalid URL format, ignoring")
+        return None
+    return value
 
 
 # =============================================================================
@@ -415,19 +478,35 @@ def load_config() -> Config:
         server_logs_forum_id=server_logs_forum_id,
         logging_guild_id=logging_guild_id,
         ai_model=os.getenv("AI_MODEL", "gpt-4o-mini"),
-        response_probability=int(os.getenv("RESPONSE_PROBABILITY", "70")),
-        max_response_length=int(os.getenv("MAX_RESPONSE_LENGTH", "150")),
-        cooldown_seconds=int(os.getenv("COOLDOWN_SECONDS", "10")),
-        prisoner_cooldown_seconds=int(os.getenv("PRISONER_COOLDOWN_SECONDS", "30")),
-        mute_reason_max_length=int(os.getenv("MUTE_REASON_MAX_LENGTH", "100")),
-        message_content_max_length=int(os.getenv("MESSAGE_CONTENT_MAX_LENGTH", "500")),
-        log_truncate_length=int(os.getenv("LOG_TRUNCATE_LENGTH", "50")),
-        prison_message_scan_limit=int(os.getenv("PRISON_MESSAGE_SCAN_LIMIT", "500")),
+        response_probability=_parse_int_with_default(
+            os.getenv("RESPONSE_PROBABILITY"), 70, "RESPONSE_PROBABILITY", min_val=0, max_val=100
+        ),
+        max_response_length=_parse_int_with_default(
+            os.getenv("MAX_RESPONSE_LENGTH"), 150, "MAX_RESPONSE_LENGTH", min_val=10, max_val=2000
+        ),
+        cooldown_seconds=_parse_int_with_default(
+            os.getenv("COOLDOWN_SECONDS"), 10, "COOLDOWN_SECONDS", min_val=0, max_val=300
+        ),
+        prisoner_cooldown_seconds=_parse_int_with_default(
+            os.getenv("PRISONER_COOLDOWN_SECONDS"), 30, "PRISONER_COOLDOWN_SECONDS", min_val=0, max_val=600
+        ),
+        mute_reason_max_length=_parse_int_with_default(
+            os.getenv("MUTE_REASON_MAX_LENGTH"), 100, "MUTE_REASON_MAX_LENGTH", min_val=10, max_val=500
+        ),
+        message_content_max_length=_parse_int_with_default(
+            os.getenv("MESSAGE_CONTENT_MAX_LENGTH"), 500, "MESSAGE_CONTENT_MAX_LENGTH", min_val=50, max_val=2000
+        ),
+        log_truncate_length=_parse_int_with_default(
+            os.getenv("LOG_TRUNCATE_LENGTH"), 50, "LOG_TRUNCATE_LENGTH", min_val=10, max_val=500
+        ),
+        prison_message_scan_limit=_parse_int_with_default(
+            os.getenv("PRISON_MESSAGE_SCAN_LIMIT"), 500, "PRISON_MESSAGE_SCAN_LIMIT", min_val=10, max_val=1000
+        ),
         developer_name=os.getenv("DEVELOPER_NAME", "حَـــــنَّـــــا"),
         server_name=os.getenv("SERVER_NAME", "discord.gg/syria"),
         moderator_ids=moderator_ids if moderator_ids else None,
-        alert_webhook_url=os.getenv("ALERT_WEBHOOK_URL"),
-        error_webhook_url=os.getenv("ERROR_WEBHOOK_URL"),
+        alert_webhook_url=_validate_url(os.getenv("ALERT_WEBHOOK_URL"), "ALERT_WEBHOOK_URL"),
+        error_webhook_url=_validate_url(os.getenv("ERROR_WEBHOOK_URL"), "ERROR_WEBHOOK_URL"),
         ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,
         lockdown_exclude_ids=lockdown_exclude_ids if lockdown_exclude_ids else None,
     )
@@ -544,6 +623,60 @@ def is_moderator(user_id: int) -> bool:
     return False
 
 
+def has_mod_role(member) -> bool:
+    """
+    Check if a member has the moderation role.
+
+    Args:
+        member: Discord member object to check.
+
+    Returns:
+        True if member has the moderation role or is developer/admin.
+    """
+    if member is None:
+        return False
+
+    # Developer always has access
+    if is_developer(member.id):
+        return True
+
+    # Check moderator IDs list
+    if is_moderator(member.id):
+        return True
+
+    # Check for administrator permission
+    if member.guild_permissions.administrator:
+        return True
+
+    # Check for moderation role
+    config = get_config()
+    if config.moderation_role_id:
+        for role in member.roles:
+            if role.id == config.moderation_role_id:
+                return True
+
+    return False
+
+
+async def check_mod_permission(interaction) -> bool:
+    """
+    Check mod permission and send error if not authorized.
+
+    Args:
+        interaction: Discord interaction to check.
+
+    Returns:
+        True if authorized, False if not (error already sent).
+    """
+    if not has_mod_role(interaction.user):
+        await interaction.response.send_message(
+            "❌ You don't have permission to use this command.",
+            ephemeral=True
+        )
+        return False
+    return True
+
+
 # =============================================================================
 # Module Export
 # =============================================================================
@@ -562,4 +695,6 @@ __all__ = [
     # Permission helpers
     "is_developer",
     "is_moderator",
+    "has_mod_role",
+    "check_mod_permission",
 ]

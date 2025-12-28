@@ -32,7 +32,7 @@ from typing import Optional, List, TYPE_CHECKING
 import re
 
 from src.core.logger import logger
-from src.core.config import get_config, is_developer, EmbedColors, NY_TZ
+from src.core.config import get_config, is_developer, has_mod_role, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
@@ -271,6 +271,12 @@ class MuteCog(commands.Cog):
         self.config = get_config()
         self.db = get_db()
 
+        logger.tree("Mute Cog Loaded", [
+            ("Commands", "/mute, /unmute"),
+            ("Context Menus", "Mute Author, Unmute Author"),
+            ("Cross-Server", "Enabled"),
+        ], emoji="🔇")
+
     # =========================================================================
     # Cross-Server Helpers
     # =========================================================================
@@ -305,7 +311,8 @@ class MuteCog(commands.Cog):
         Check if user has permission to use mute commands.
 
         DESIGN:
-            Allows developers, admins, and users with manage_roles permission.
+            Uses role-based permission check (has_mod_role).
+            Allows developers, admins, moderator IDs, and moderation role.
 
         Args:
             interaction: Discord interaction to check.
@@ -313,19 +320,7 @@ class MuteCog(commands.Cog):
         Returns:
             True if user has permission.
         """
-        if is_developer(interaction.user.id):
-            return True
-
-        if isinstance(interaction.user, discord.Member):
-            # Check for admin or manage roles permission
-            if interaction.user.guild_permissions.administrator:
-                return True
-            if interaction.user.guild_permissions.manage_roles:
-                return True
-            if interaction.user.guild_permissions.moderate_members:
-                return True
-
-        return False
+        return has_mod_role(interaction.user)
 
     # =========================================================================
     # Autocomplete Handlers
@@ -1102,7 +1097,8 @@ class MuteCog(commands.Cog):
         )
 
         embed.set_thumbnail(url=user.display_avatar.url)
-        embed.set_footer(text=f"User ID: {user.id}")
+        set_footer(embed)
+        embed.set_footer(text=f"User ID: {user.id} • {embed.footer.text}" if embed.footer and embed.footer.text else f"User ID: {user.id}")
 
         try:
             await log_channel.send(embed=embed)
@@ -1126,6 +1122,13 @@ async def mute_author_context(interaction: discord.Interaction, message: discord
         Right-click a message -> Apps -> Mute Author
         Opens modal with duration/reason, auto-fills evidence with message link.
     """
+    if not has_mod_role(interaction.user):
+        await interaction.response.send_message(
+            "❌ You don't have permission to use this command.",
+            ephemeral=True,
+        )
+        return
+
     cog = interaction.client.get_cog("MuteCog")
     if cog:
         await cog._mute_from_message(interaction, message)
@@ -1145,6 +1148,13 @@ async def unmute_author_context(interaction: discord.Interaction, message: disco
         Right-click a message -> Apps -> Unmute Author
         Immediately unmutes if user is muted.
     """
+    if not has_mod_role(interaction.user):
+        await interaction.response.send_message(
+            "❌ You don't have permission to use this command.",
+            ephemeral=True,
+        )
+        return
+
     cog = interaction.client.get_cog("MuteCog")
     if cog:
         await cog._unmute_from_message(interaction, message)

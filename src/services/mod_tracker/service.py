@@ -28,6 +28,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.views import CASE_EMOJI, MESSAGE_EMOJI, CaseButtonView, MessageButtonView
+from src.utils.rate_limiter import rate_limit
 
 # Import from local package modules
 from .constants import (
@@ -38,6 +39,7 @@ from .constants import (
     INACTIVITY_DAYS,
     MESSAGE_CACHE_SIZE,
     MESSAGE_CACHE_TTL,
+    MESSAGE_CACHE_MAX_MODS,
     BULK_ACTION_WINDOW,
     BULK_BAN_THRESHOLD,
     BULK_DELETE_THRESHOLD,
@@ -54,7 +56,7 @@ from .constants import (
     QUEUE_BATCH_SIZE,
     QUEUE_MAX_SIZE,
 )
-from .helpers import CachedMessage, strip_emojis, retry_async
+from .helpers import CachedMessage, strip_emojis
 from .logs import ModTrackerLogsMixin
 
 if TYPE_CHECKING:
@@ -172,12 +174,46 @@ class ModTrackerService(ModTrackerLogsMixin):
             self._queue_processor_task = asyncio.create_task(self._process_queue())
             logger.debug("Mod Tracker: Queue processor started")
 
-    def stop_queue_processor(self) -> None:
-        """Stop the background queue processor task."""
+    async def stop_queue_processor(self, drain_timeout: float = 10.0) -> int:
+        """
+        Gracefully stop the queue processor, draining remaining items.
+
+        Args:
+            drain_timeout: Max seconds to wait for queue to drain.
+
+        Returns:
+            Number of items that were still in queue (0 = fully drained).
+        """
         self._queue_running = False
+        remaining = len(self._message_queue)
+
+        if remaining > 0:
+            logger.info(f"Mod Tracker: Draining {remaining} queued items...")
+            start = asyncio.get_event_loop().time()
+
+            # Process remaining items with timeout
+            while self._message_queue and (asyncio.get_event_loop().time() - start) < drain_timeout:
+                async with self._queue_lock:
+                    if self._message_queue:
+                        item = heapq.heappop(self._message_queue)
+                        await self._send_queued_item(item)
+                        await rate_limit("mod_tracker")  # Brief delay between sends
+
+            remaining = len(self._message_queue)
+            if remaining > 0:
+                logger.warning(f"Mod Tracker: {remaining} items lost on shutdown (timeout)")
+            else:
+                logger.info("Mod Tracker: Queue fully drained")
+
         if self._queue_processor_task and not self._queue_processor_task.done():
             self._queue_processor_task.cancel()
-            logger.debug("Mod Tracker: Queue processor stopped")
+            try:
+                await self._queue_processor_task
+            except asyncio.CancelledError:
+                pass
+
+        logger.debug("Mod Tracker: Queue processor stopped")
+        return remaining
 
     async def _enqueue(
         self,
@@ -245,7 +281,7 @@ class ModTrackerService(ModTrackerLogsMixin):
                     for item in items_to_send:
                         await self._send_queued_item(item)
                         # Small delay between sends to avoid rate limits
-                        await asyncio.sleep(RATE_LIMIT_DELAY / 2)
+                        await rate_limit("mod_tracker")
 
                 # Wait before next batch
                 await asyncio.sleep(QUEUE_PROCESS_INTERVAL)
@@ -269,7 +305,7 @@ class ModTrackerService(ModTrackerLogsMixin):
             if thread.archived:
                 try:
                     await thread.edit(archived=False)
-                    await asyncio.sleep(RATE_LIMIT_DELAY)
+                    await rate_limit("thread_edit")
                 except discord.HTTPException:
                     pass
 
@@ -428,6 +464,19 @@ class ModTrackerService(ModTrackerLogsMixin):
             m for m in self._message_cache[message.author.id]
             if m.cached_at > cutoff
         ]
+
+        # Evict oldest mod's cache if we have too many mods cached (LRU)
+        if len(self._message_cache) > MESSAGE_CACHE_MAX_MODS:
+            oldest_mod = None
+            oldest_time = None
+            for mod_id, msgs in self._message_cache.items():
+                if msgs:
+                    msg_time = msgs[0].cached_at
+                    if oldest_time is None or msg_time < oldest_time:
+                        oldest_time = msg_time
+                        oldest_mod = mod_id
+            if oldest_mod and oldest_mod != message.author.id:
+                del self._message_cache[oldest_mod]
 
     def get_cached_message(self, message_id: int) -> Optional[CachedMessage]:
         """Get a cached message by ID."""
@@ -683,7 +732,7 @@ class ModTrackerService(ModTrackerLogsMixin):
                 color=EmbedColors.ERROR,
             )
             inactive_count += 1
-            await asyncio.sleep(RATE_LIMIT_DELAY)
+            await rate_limit("mod_tracker")
 
         if inactive_count > 0:
             logger.tree("Mod Tracker: Inactivity Check Complete", [
@@ -912,7 +961,7 @@ class ModTrackerService(ModTrackerLogsMixin):
                             added_count += 1
                         else:
                             failed_count += 1
-                        await asyncio.sleep(self.config.rate_limit_delay)  # Rate limit
+                        await rate_limit("thread_create")
                 except Exception as e:
                     failed_count += 1
                     logger.warning("Mod Tracker: Failed To Add New Mod", [
@@ -958,7 +1007,7 @@ class ModTrackerService(ModTrackerLogsMixin):
                             recreated_count += 1
                         else:
                             failed_count += 1
-                        await asyncio.sleep(self.config.rate_limit_delay)
+                        await rate_limit("thread_create")
                         continue
 
                     # Build expected name with action count and active status
@@ -979,7 +1028,7 @@ class ModTrackerService(ModTrackerLogsMixin):
                             ("New Title", expected_name[:30]),
                         ], emoji="✏️")
 
-                        await asyncio.sleep(self.config.rate_limit_delay)  # Rate limit
+                        await rate_limit("thread_edit")
                     else:
                         verified_count += 1
 

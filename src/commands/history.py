@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
 from src.core.logger import logger
-from src.core.config import get_config, EmbedColors, NY_TZ
+from src.core.config import get_config, has_mod_role, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.views import CASE_EMOJI, InfoButton, DownloadButton
@@ -49,6 +49,18 @@ FALLBACK_EMOJIS = {
     "kick": "👢",
 }
 
+# Forbid restriction emojis
+FORBID_EMOJIS = {
+    "reactions": "🚫",
+    "attachments": "📎",
+    "voice": "🔇",
+    "streaming": "📺",
+    "embeds": "🔗",
+    "threads": "🧵",
+    "external_emojis": "😀",
+    "stickers": "🎨",
+}
+
 
 # =============================================================================
 # History Cog
@@ -64,8 +76,16 @@ class HistoryCog(commands.Cog):
 
         logger.tree("History Cog Loaded", [
             ("Command", "/history @user"),
-            ("Shows", "Cases, warns, mutes, bans"),
+            ("Shows", "Cases, warns, mutes, bans, forbids"),
         ], emoji="📜")
+
+    # =========================================================================
+    # Permission Check
+    # =========================================================================
+
+    async def cog_check(self, interaction: discord.Interaction) -> bool:
+        """Check if user has permission to use history command."""
+        return has_mod_role(interaction.user)
 
     def _get_emoji(self, action: str) -> str:
         """Get emoji for action type, falling back to unicode if custom not available."""
@@ -73,7 +93,6 @@ class HistoryCog(commands.Cog):
 
     @app_commands.command(name="history", description="View moderation history for a user")
     @app_commands.describe(user="The user to view history for")
-    @app_commands.default_permissions(moderate_members=True)
     async def history(
         self,
         interaction: discord.Interaction,
@@ -107,6 +126,14 @@ class HistoryCog(commands.Cog):
             # Get recent warnings
             warnings = self.db.get_user_warnings(user.id, guild_id, limit=5)
 
+            # Get active forbids and forbid history
+            active_forbids = self.db.get_user_forbids(user.id, guild_id)
+            forbid_history = self.db.get_forbid_history(user.id, guild_id, limit=10)
+
+            # Get mod notes
+            mod_notes = self.db.get_mod_notes(user.id, guild_id, limit=5)
+            note_count = self.db.get_note_count(user.id, guild_id)
+
             # Tree logging
             logger.tree("HISTORY VIEWED", [
                 ("Moderator", f"{interaction.user} ({interaction.user.id})"),
@@ -114,6 +141,8 @@ class HistoryCog(commands.Cog):
                 ("Mutes", str(mute_count)),
                 ("Bans", str(ban_count)),
                 ("Warns", f"{active_warns} active / {total_warns} total"),
+                ("Forbids", f"{len(active_forbids)} active / {len(forbid_history)} total"),
+                ("Notes", str(note_count)),
                 ("Cases", str(len(cases))),
             ], emoji="📜")
 
@@ -139,6 +168,10 @@ class HistoryCog(commands.Cog):
                 summary_lines.append(f"{self._get_emoji('ban')} **Bans:** `{ban_count}`")
             if total_warns > 0:
                 summary_lines.append(f"{self._get_emoji('warn')} **Warns:** `{active_warns}` active / `{total_warns}` total")
+            if len(forbid_history) > 0:
+                summary_lines.append(f"🚫 **Forbids:** `{len(active_forbids)}` active / `{len(forbid_history)}` total")
+            if note_count > 0:
+                summary_lines.append(f"📝 **Notes:** `{note_count}`")
 
             if summary_lines:
                 embed.add_field(
@@ -222,8 +255,95 @@ class HistoryCog(commands.Cog):
                         inline=False,
                     )
 
-            # Footer with user ID
-            embed.set_footer(text=f"User ID: {user.id}")
+            # Recent Mod Notes
+            if mod_notes:
+                note_lines = []
+                for note in mod_notes[:3]:
+                    created_at = note.get("created_at", 0)
+                    content = note.get("note", "No content")
+                    mod_id = note.get("moderator_id")
+
+                    # Truncate content
+                    if len(content) > 50:
+                        content = content[:47] + "..."
+
+                    # Format timestamp
+                    if created_at:
+                        ts = f"<t:{int(created_at)}:R>"
+                    else:
+                        ts = "Unknown"
+
+                    # Include moderator if available
+                    if mod_id:
+                        note_lines.append(f"• {ts} by <@{mod_id}>:\n  └ {content}")
+                    else:
+                        note_lines.append(f"• {ts}: {content}")
+
+                if note_lines:
+                    embed.add_field(
+                        name="📝 Recent Notes",
+                        value="\n".join(note_lines),
+                        inline=False,
+                    )
+
+            # Active Forbids
+            if active_forbids:
+                forbid_lines = []
+                for forbid in active_forbids[:5]:
+                    restriction = forbid.get("restriction_type", "unknown")
+                    created_at = forbid.get("created_at", 0)
+                    reason = forbid.get("reason", "")
+
+                    emoji = FORBID_EMOJIS.get(restriction, "🚫")
+
+                    # Format timestamp
+                    if created_at:
+                        ts = f"<t:{int(created_at)}:R>"
+                    else:
+                        ts = "Unknown"
+
+                    line = f"{emoji} **{restriction}** • {ts}"
+                    if reason:
+                        reason_short = reason[:30] + "..." if len(reason) > 30 else reason
+                        line += f"\n  └ {reason_short}"
+                    forbid_lines.append(line)
+
+                embed.add_field(
+                    name="Active Restrictions",
+                    value="\n".join(forbid_lines),
+                    inline=False,
+                )
+
+            # Recent Forbid History (show removed ones too)
+            elif forbid_history:
+                # Only show history if no active forbids
+                history_lines = []
+                for forbid in forbid_history[:3]:
+                    restriction = forbid.get("restriction_type", "unknown")
+                    created_at = forbid.get("created_at", 0)
+                    removed_at = forbid.get("removed_at")
+
+                    emoji = FORBID_EMOJIS.get(restriction, "🚫")
+                    status = "✅" if removed_at else "🔴"
+
+                    # Format timestamp
+                    if created_at:
+                        ts = f"<t:{int(created_at)}:R>"
+                    else:
+                        ts = "Unknown"
+
+                    history_lines.append(f"{status} {emoji} {restriction} • {ts}")
+
+                if history_lines:
+                    embed.add_field(
+                        name="Forbid History",
+                        value="\n".join(history_lines),
+                        inline=False,
+                    )
+
+            # Footer with user ID and branding
+            set_footer(embed)
+            embed.set_footer(text=f"User ID: {user.id} • {embed.footer.text}" if embed.footer and embed.footer.text else f"User ID: {user.id}")
 
             # Build view with buttons
             view = discord.ui.View(timeout=None)
@@ -257,6 +377,8 @@ class HistoryCog(commands.Cog):
                 ban_count=ban_count,
                 warn_count=total_warns,
                 case_count=len(cases),
+                forbid_count=len(forbid_history),
+                note_count=note_count,
             )
 
         except discord.HTTPException as e:
@@ -306,6 +428,8 @@ class HistoryCog(commands.Cog):
         ban_count: int,
         warn_count: int,
         case_count: int,
+        forbid_count: int = 0,
+        note_count: int = 0,
     ) -> None:
         """Log history command usage to server logs."""
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
@@ -342,6 +466,10 @@ class HistoryCog(commands.Cog):
                 summary.append(f"Bans: `{ban_count}`")
             if warn_count > 0:
                 summary.append(f"Warns: `{warn_count}`")
+            if forbid_count > 0:
+                summary.append(f"Forbids: `{forbid_count}`")
+            if note_count > 0:
+                summary.append(f"Notes: `{note_count}`")
             if case_count > 0:
                 summary.append(f"Cases: `{case_count}`")
 
