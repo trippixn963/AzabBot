@@ -7,7 +7,6 @@ Restrict specific permissions for users without fully muting them.
 Features:
     /forbid @user <restriction> [reason] - Add a restriction
     /unforbid @user <restriction> - Remove a restriction
-    /forbidden @user - View user's active restrictions
 
 Restrictions:
     - reactions: Can't add reactions
@@ -19,14 +18,19 @@ Restrictions:
     - external_emojis: Can't use external emojis
     - stickers: Can't use stickers
 
+Automation:
+    - New channels automatically get forbid role overwrites
+    - Nightly scan at 3 AM fixes any missing overwrites
+
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List, TYPE_CHECKING
 
 from src.core.logger import logger
@@ -110,9 +114,13 @@ class ForbidCog(commands.Cog):
         self.config = get_config()
         self.db = get_db()
 
+        # Start the nightly scan task
+        self._scan_task = asyncio.create_task(self._start_nightly_scan())
+
         logger.tree("Forbid Cog Loaded", [
-            ("Commands", "/forbid, /unforbid, /forbidden"),
+            ("Commands", "/forbid, /unforbid"),
             ("Restrictions", str(len(RESTRICTIONS))),
+            ("Nightly Scan", "3 AM NY Time"),
         ], emoji="🚫")
 
     # =========================================================================
@@ -566,73 +574,6 @@ class ForbidCog(commands.Cog):
                 pass
 
     # =========================================================================
-    # Forbidden Command (View)
-    # =========================================================================
-
-    @app_commands.command(name="forbidden", description="View a user's active restrictions")
-    @app_commands.describe(user="The user to check")
-    @app_commands.default_permissions(moderate_members=True)
-    async def forbidden(
-        self,
-        interaction: discord.Interaction,
-        user: discord.Member,
-    ) -> None:
-        """View active restrictions for a user."""
-        if not interaction.guild:
-            await interaction.response.send_message(
-                "This command can only be used in a server.",
-                ephemeral=True,
-            )
-            return
-
-        try:
-            forbids = self.db.get_user_forbids(user.id, interaction.guild.id)
-
-            embed = discord.Embed(
-                title=f"Restrictions for {user.display_name}",
-                color=EmbedColors.GOLD if forbids else EmbedColors.SUCCESS,
-                timestamp=datetime.now(NY_TZ),
-            )
-            embed.set_thumbnail(url=user.display_avatar.url)
-
-            if forbids:
-                for forbid in forbids:
-                    r = forbid["restriction_type"]
-                    if r in RESTRICTIONS:
-                        config = RESTRICTIONS[r]
-                        moderator = interaction.guild.get_member(forbid["moderator_id"])
-                        mod_text = moderator.mention if moderator else f"<@{forbid['moderator_id']}>"
-
-                        value = f"By: {mod_text}\n"
-                        value += f"Since: <t:{int(forbid['created_at'])}:R>"
-                        if forbid.get("reason"):
-                            value += f"\nReason: {forbid['reason'][:100]}"
-
-                        embed.add_field(
-                            name=f"{config['emoji']} {config['display']}",
-                            value=value,
-                            inline=True,
-                        )
-
-                embed.description = f"**{len(forbids)}** active restriction(s)"
-            else:
-                embed.description = "No active restrictions"
-
-            set_footer(embed)
-
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-
-        except Exception as e:
-            logger.error("Forbidden Command Failed", [
-                ("Error", str(e)),
-                ("Type", type(e).__name__),
-            ])
-            await interaction.response.send_message(
-                "An error occurred.",
-                ephemeral=True,
-            )
-
-    # =========================================================================
     # Server Logs Integration
     # =========================================================================
 
@@ -750,49 +691,112 @@ class ForbidCog(commands.Cog):
                 pass
 
     # =========================================================================
-    # Refresh Command
+    # Nightly Scan Task
     # =========================================================================
 
-    @app_commands.command(name="forbid-refresh", description="Refresh forbid role permissions on all channels")
-    @app_commands.default_permissions(administrator=True)
-    async def forbid_refresh(self, interaction: discord.Interaction) -> None:
-        """Refresh all forbid role channel overwrites."""
-        if not interaction.guild:
-            await interaction.response.send_message(
-                "This command can only be used in a server.",
-                ephemeral=True,
-            )
-            return
+    async def _start_nightly_scan(self) -> None:
+        """Start the nightly scan loop."""
+        await self.bot.wait_until_ready()
 
-        await interaction.response.defer(ephemeral=True)
+        while not self.bot.is_closed():
+            try:
+                # Calculate time until 3 AM NY time
+                now = datetime.now(NY_TZ)
+                target = now.replace(hour=3, minute=0, second=0, microsecond=0)
 
-        guild = interaction.guild
-        refreshed = []
+                # If it's past 3 AM today, schedule for tomorrow
+                if now >= target:
+                    target = target + timedelta(days=1)
+
+                seconds_until = (target - now).total_seconds()
+
+                # Wait until 3 AM
+                await asyncio.sleep(seconds_until)
+
+                # Run the scan
+                await self._run_forbid_scan()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"Forbid nightly scan error: {e}")
+                # Wait an hour before retrying on error
+                await asyncio.sleep(3600)
+
+    async def _run_forbid_scan(self) -> None:
+        """Scan all guilds and ensure forbid roles have correct overwrites."""
+        logger.tree("Forbid Nightly Scan Started", [], emoji="🔍")
+
+        total_fixed = 0
+
+        for guild in self.bot.guilds:
+            try:
+                fixed = await self._scan_guild_forbids(guild)
+                total_fixed += fixed
+            except Exception as e:
+                logger.debug(f"Forbid scan error for {guild.name}: {e}")
+
+        logger.tree("Forbid Nightly Scan Complete", [
+            ("Guilds Scanned", str(len(self.bot.guilds))),
+            ("Overwrites Fixed", str(total_fixed)),
+        ], emoji="✅")
+
+    async def _scan_guild_forbids(self, guild: discord.Guild) -> int:
+        """Scan a single guild for missing forbid overwrites. Returns count of fixes."""
+        fixed = 0
 
         for restriction, config in RESTRICTIONS.items():
             role_name = self._get_role_name(restriction)
             role = discord.utils.get(guild.roles, name=role_name)
 
-            if role:
-                await self._apply_channel_overwrites(guild, role, restriction)
-                refreshed.append(restriction)
+            if not role:
+                continue
 
-        if refreshed:
-            await interaction.followup.send(
-                f"Refreshed channel overwrites for: `{', '.join(refreshed)}`",
-                ephemeral=True,
-            )
-        else:
-            await interaction.followup.send(
-                "No forbid roles found to refresh.",
-                ephemeral=True,
-            )
+            # Build expected overwrite
+            overwrite_kwargs = {}
+            if "permissions" in config:
+                for perm in config["permissions"]:
+                    overwrite_kwargs[perm] = False
+            else:
+                overwrite_kwargs[config["permission"]] = False
 
-        logger.tree("Forbid Roles Refreshed", [
-            ("Guild", guild.name),
-            ("Roles", ", ".join(refreshed) if refreshed else "None"),
-            ("By", str(interaction.user)),
-        ], emoji="🔄")
+            expected_overwrite = discord.PermissionOverwrite(**overwrite_kwargs)
+
+            # Check text/voice channels based on permission type
+            text_perms = {"embed_links", "attach_files", "add_reactions",
+                          "use_external_emojis", "use_external_stickers",
+                          "create_public_threads", "create_private_threads"}
+            voice_perms = {"connect", "stream"}
+            perm_names = set(overwrite_kwargs.keys())
+
+            for channel in guild.channels:
+                try:
+                    needs_fix = False
+
+                    # Check if this channel type needs the overwrite
+                    if isinstance(channel, (discord.TextChannel, discord.ForumChannel)) and (perm_names & text_perms):
+                        current = channel.overwrites_for(role)
+                        for perm_name in overwrite_kwargs:
+                            if getattr(current, perm_name) is not False:
+                                needs_fix = True
+                                break
+                    elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)) and (perm_names & voice_perms):
+                        current = channel.overwrites_for(role)
+                        for perm_name in overwrite_kwargs:
+                            if getattr(current, perm_name) is not False:
+                                needs_fix = True
+                                break
+
+                    if needs_fix:
+                        await channel.set_permissions(role, overwrite=expected_overwrite, reason="Forbid system: nightly scan fix")
+                        fixed += 1
+                        # Small delay to avoid rate limits
+                        await asyncio.sleep(0.5)
+
+                except (discord.Forbidden, discord.HTTPException):
+                    continue
+
+        return fixed
 
 
 # =============================================================================
