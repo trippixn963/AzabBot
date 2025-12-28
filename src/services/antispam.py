@@ -83,6 +83,29 @@ CHAR_REPEAT_LIMIT = 30
 # Arabic script: U+0600 to U+06FF
 ARABIC_RANGE = range(0x0600, 0x06FF + 1)
 
+# Common Arabic/Islamic greetings (always exempt from spam detection)
+EXEMPT_ARABIC_GREETINGS = {
+    "السلام عليكم",
+    "السلام عليكم ورحمة الله",
+    "السلام عليكم ورحمة الله وبركاته",
+    "وعليكم السلام",
+    "وعليكم السلام ورحمة الله",
+    "وعليكم السلام ورحمة الله وبركاته",
+    "صباح الخير",
+    "مساء الخير",
+    "مرحبا",
+    "اهلا",
+    "اهلا وسهلا",
+    "الحمد لله",
+    "سبحان الله",
+    "الله اكبر",
+    "ماشاء الله",
+    "استغفر الله",
+    "بسم الله",
+    "جزاك الله خيرا",
+    "بارك الله فيك",
+}
+
 # Minimum length for duplicate detection (short messages ignored)
 DUPLICATE_MIN_LENGTH = 80  # ignore short/casual repeated messages
 
@@ -385,6 +408,14 @@ class AntiSpamService:
 
         return False
 
+    def _is_exempt_greeting(self, text: str) -> bool:
+        """Check if text is a common Arabic/Islamic greeting (always exempt)."""
+        if not text:
+            return False
+        # Normalize: strip whitespace and common punctuation
+        normalized = text.strip().rstrip('!.،؟')
+        return normalized in EXEMPT_ARABIC_GREETINGS
+
     def _is_mostly_arabic(self, text: str) -> bool:
         """Check if text is mostly Arabic (exempt from some spam checks)."""
         if not text:
@@ -500,6 +531,10 @@ class AntiSpamService:
 
         # Track channel messages for auto-slowmode
         await self._check_auto_slowmode(message)
+
+        # Skip all spam checks for common Arabic/Islamic greetings
+        if self._is_exempt_greeting(content):
+            return None
 
         # Check for various spam types (ordered by severity/frequency)
         spam_type = None
