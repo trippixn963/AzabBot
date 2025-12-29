@@ -99,6 +99,9 @@ class AzabBot(commands.Bot):
         self.antinuke_service = None
         self.raid_lockdown_service = None
         self.appeal_service = None
+        self.ticket_service = None
+        self.modmail_service = None
+        self.interaction_logger = None
 
         # Prisoner rate limiting
         self.prisoner_cooldowns: Dict[int, datetime] = {}
@@ -173,6 +176,12 @@ class AzabBot(commands.Bot):
 
         from src.services.appeal_service import setup_appeal_views
         setup_appeal_views(self)
+
+        from src.services.ticket_service import setup_ticket_views
+        setup_ticket_views(self)
+
+        from src.services.modmail_service import setup_modmail_views
+        setup_modmail_views(self)
 
         # Sync commands globally
         try:
@@ -350,6 +359,33 @@ class AzabBot(commands.Bot):
             else:
                 logger.info("Appeal Service Disabled (no forum configured)")
 
+            from src.services.ticket_service import TicketService
+            self.ticket_service = TicketService(self)
+            await self.ticket_service.start()
+            if self.ticket_service.enabled:
+                logger.tree("Ticket Service Initialized", [
+                    ("Channel ID", str(self.config.ticket_channel_id)),
+                    ("Auto-close", "Enabled"),
+                ], emoji="🎫")
+            else:
+                logger.info("Ticket Service Disabled (no channel configured)")
+
+            from src.services.modmail_service import ModmailService
+            self.modmail_service = ModmailService(self)
+            if self.modmail_service.enabled:
+                logger.tree("Modmail Service Initialized", [
+                    ("Forum ID", str(self.config.modmail_forum_id)),
+                    ("For", "Banned users only"),
+                ], emoji="📬")
+            else:
+                logger.info("Modmail Service Disabled (no forum configured)")
+
+            from src.services.interaction_logger import InteractionLogger
+            self.interaction_logger = InteractionLogger(self)
+            logger.tree("Interaction Logger Initialized", [
+                ("Webhook", "Configured"),
+            ], emoji="📝")
+
             # Summary of all initialized services
             logger.tree("ALL SERVICES INITIALIZED", [
                 ("AI Service", "✓ Ready"),
@@ -360,6 +396,9 @@ class AzabBot(commands.Bot):
                 ("Mod Tracker", "✓ Enabled" if self.mod_tracker.enabled else "✗ Disabled"),
                 ("Server Logs", "✓ Enabled" if self.logging_service.enabled else "✗ Disabled"),
                 ("Appeals", "✓ Enabled" if self.appeal_service.enabled else "✗ Disabled"),
+                ("Tickets", "✓ Enabled" if self.ticket_service.enabled else "✗ Disabled"),
+                ("Modmail", "✓ Enabled" if self.modmail_service.enabled else "✗ Disabled"),
+                ("Interaction Logger", "✓ Ready"),
                 ("Voice Handler", "✓ Ready"),
                 ("Anti-Spam", "✓ Ready"),
                 ("Anti-Nuke", "✓ Ready"),
@@ -597,6 +636,9 @@ class AzabBot(commands.Bot):
 
         if self.case_archive_scheduler:
             await self.case_archive_scheduler.stop()
+
+        if self.ticket_service:
+            await self.ticket_service.stop()
 
         if self.health_server:
             await self.health_server.stop()

@@ -2738,6 +2738,498 @@ class LoggingService:
         await self._send_log(LogCategory.ALERTS, embed)
 
     # =========================================================================
+    # Tickets
+    # =========================================================================
+
+    async def log_ticket_created(
+        self,
+        ticket_id: str,
+        user: discord.User,
+        category: str,
+        subject: str,
+        thread_id: int,
+        guild_id: int,
+    ) -> None:
+        """Log a ticket creation."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            "🎫 Ticket Created",
+            EmbedColors.SUCCESS,
+            category="Ticket",
+            user_id=user.id,
+        )
+        embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
+        embed.add_field(name="Category", value=category.title(), inline=True)
+        embed.add_field(name="User", value=self._format_user_field(user), inline=True)
+        embed.add_field(name="Subject", value=subject[:200] if subject else "No subject", inline=False)
+        embed.add_field(name="Thread", value=f"<#{thread_id}>", inline=True)
+        self._set_user_thumbnail(embed, user)
+
+        await self._send_log(LogCategory.TICKETS, embed, user_id=user.id)
+
+    async def log_ticket_claimed(
+        self,
+        ticket_id: str,
+        user: discord.User,
+        staff: discord.Member,
+        category: str,
+    ) -> None:
+        """Log a ticket claim."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            "✋ Ticket Claimed",
+            EmbedColors.GOLD,
+            category="Ticket",
+            user_id=user.id,
+        )
+        embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
+        embed.add_field(name="Category", value=category.title(), inline=True)
+        embed.add_field(name="Opened By", value=self._format_user_field(user), inline=True)
+        embed.add_field(name="Claimed By", value=self._format_user_field(staff), inline=True)
+        self._set_user_thumbnail(embed, staff)
+
+        await self._send_log(LogCategory.TICKETS, embed, user_id=user.id)
+
+    async def log_ticket_closed(
+        self,
+        ticket_id: str,
+        user: discord.User,
+        closed_by: discord.Member,
+        category: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Log a ticket close."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            "🔒 Ticket Closed",
+            EmbedColors.LOG_NEGATIVE,
+            category="Ticket",
+            user_id=user.id,
+        )
+        embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
+        embed.add_field(name="Category", value=category.title(), inline=True)
+        embed.add_field(name="Opened By", value=self._format_user_field(user), inline=True)
+        embed.add_field(name="Closed By", value=self._format_user_field(closed_by), inline=True)
+        if reason:
+            embed.add_field(name="Reason", value=reason[:500], inline=False)
+        self._set_user_thumbnail(embed, closed_by)
+
+        await self._send_log(LogCategory.TICKETS, embed, user_id=user.id)
+
+    async def log_ticket_reopened(
+        self,
+        ticket_id: str,
+        user: discord.User,
+        reopened_by: discord.Member,
+        category: str,
+    ) -> None:
+        """Log a ticket reopen."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            "🔓 Ticket Reopened",
+            EmbedColors.SUCCESS,
+            category="Ticket",
+            user_id=user.id,
+        )
+        embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
+        embed.add_field(name="Category", value=category.title(), inline=True)
+        embed.add_field(name="Opened By", value=self._format_user_field(user), inline=True)
+        embed.add_field(name="Reopened By", value=self._format_user_field(reopened_by), inline=True)
+        self._set_user_thumbnail(embed, reopened_by)
+
+        await self._send_log(LogCategory.TICKETS, embed, user_id=user.id)
+
+    async def log_ticket_user_added(
+        self,
+        ticket_id: str,
+        ticket_user: discord.User,
+        added_user: discord.User,
+        added_by: discord.Member,
+    ) -> None:
+        """Log a user being added to a ticket."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            "👤 User Added to Ticket",
+            EmbedColors.BLUE,
+            category="Ticket",
+            user_id=added_user.id,
+        )
+        embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
+        embed.add_field(name="Ticket Owner", value=self._format_user_field(ticket_user), inline=True)
+        embed.add_field(name="User Added", value=self._format_user_field(added_user), inline=True)
+        embed.add_field(name="Added By", value=self._format_user_field(added_by), inline=True)
+        self._set_user_thumbnail(embed, added_user)
+
+        await self._send_log(LogCategory.TICKETS, embed, user_id=added_user.id)
+
+    async def log_ticket_transcript(
+        self,
+        ticket_id: str,
+        user: discord.User,
+        category: str,
+        subject: str,
+        messages: list,
+        closed_by: discord.Member,
+        created_at: float,
+        closed_at: float,
+    ) -> None:
+        """Log a ticket transcript when closed."""
+        if not self.enabled:
+            return
+
+        # Format timestamps
+        from datetime import datetime
+        created_dt = datetime.fromtimestamp(created_at, tz=NY_TZ)
+        closed_dt = datetime.fromtimestamp(closed_at, tz=NY_TZ)
+        duration = closed_dt - created_dt
+
+        # Calculate duration string
+        days = duration.days
+        hours, remainder = divmod(duration.seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+        if days > 0:
+            duration_str = f"{days}d {hours}h {minutes}m"
+        elif hours > 0:
+            duration_str = f"{hours}h {minutes}m"
+        else:
+            duration_str = f"{minutes}m"
+
+        embed = self._create_embed(
+            f"📜 Ticket Transcript - {ticket_id}",
+            EmbedColors.BLUE,
+            category="Transcript",
+            user_id=user.id,
+        )
+
+        embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
+        embed.add_field(name="Category", value=category.title(), inline=True)
+        embed.add_field(name="Messages", value=str(len(messages)), inline=True)
+        embed.add_field(name="Opened By", value=self._format_user_field(user), inline=True)
+        embed.add_field(name="Closed By", value=self._format_user_field(closed_by), inline=True)
+        embed.add_field(name="Duration", value=duration_str, inline=True)
+        embed.add_field(name="Subject", value=subject[:200] if subject else "No subject", inline=False)
+
+        # Build transcript text
+        transcript_lines = [
+            f"═══════════════════════════════════════════════════════════════",
+            f"TICKET TRANSCRIPT: {ticket_id}",
+            f"═══════════════════════════════════════════════════════════════",
+            f"Category: {category.title()}",
+            f"Subject: {subject}",
+            f"Opened By: {user} ({user.id})",
+            f"Closed By: {closed_by} ({closed_by.id})",
+            f"Created: {created_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}",
+            f"Closed: {closed_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}",
+            f"Duration: {duration_str}",
+            f"Total Messages: {len(messages)}",
+            f"═══════════════════════════════════════════════════════════════",
+            f"",
+        ]
+
+        for msg in messages:
+            author = msg.get("author", "Unknown")
+            author_id = msg.get("author_id", "0")
+            content = msg.get("content", "")
+            timestamp = msg.get("timestamp", "")
+            attachments = msg.get("attachments", [])
+
+            transcript_lines.append(f"[{timestamp}] {author} ({author_id}):")
+            if content:
+                transcript_lines.append(f"  {content}")
+            for att in attachments:
+                transcript_lines.append(f"  📎 Attachment: {att}")
+            transcript_lines.append("")
+
+        transcript_lines.append("═══════════════════════════════════════════════════════════════")
+        transcript_lines.append("END OF TRANSCRIPT")
+        transcript_lines.append("═══════════════════════════════════════════════════════════════")
+
+        transcript_text = "\n".join(transcript_lines)
+
+        # Create file attachment
+        transcript_file = discord.File(
+            io.BytesIO(transcript_text.encode("utf-8")),
+            filename=f"transcript_{ticket_id}.txt",
+        )
+
+        self._set_user_thumbnail(embed, user)
+
+        await self._send_log(LogCategory.TICKET_TRANSCRIPTS, embed, files=[transcript_file], user_id=user.id)
+
+    # =========================================================================
+    # Appeal Logging
+    # =========================================================================
+
+    async def log_appeal_created(
+        self,
+        appeal_id: str,
+        case_id: str,
+        user: discord.User,
+        action_type: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Log an appeal creation."""
+        if not self.enabled:
+            return
+
+        emoji = "🔨" if action_type == "ban" else "🔇"
+        embed = self._create_embed(
+            f"{emoji} Appeal Created",
+            EmbedColors.GOLD,
+            category="Appeal",
+            user_id=user.id,
+        )
+        embed.add_field(name="Appeal ID", value=f"`{appeal_id}`", inline=True)
+        embed.add_field(name="Case ID", value=f"`{case_id}`", inline=True)
+        embed.add_field(name="Type", value=action_type.title(), inline=True)
+        embed.add_field(name="User", value=self._format_user_field(user), inline=True)
+        if reason:
+            embed.add_field(name="Appeal Reason", value=reason[:500], inline=False)
+        self._set_user_thumbnail(embed, user)
+
+        await self._send_log(LogCategory.APPEALS, embed, user_id=user.id)
+
+    async def log_appeal_approved(
+        self,
+        appeal_id: str,
+        case_id: str,
+        user: discord.User,
+        action_type: str,
+        approved_by: discord.Member,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Log an appeal approval."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            "✅ Appeal Approved",
+            EmbedColors.SUCCESS,
+            category="Appeal",
+            user_id=user.id,
+        )
+        embed.add_field(name="Appeal ID", value=f"`{appeal_id}`", inline=True)
+        embed.add_field(name="Case ID", value=f"`{case_id}`", inline=True)
+        embed.add_field(name="Type", value=action_type.title(), inline=True)
+        embed.add_field(name="User", value=self._format_user_field(user), inline=True)
+        embed.add_field(name="Approved By", value=self._format_user_field(approved_by), inline=True)
+        if reason:
+            embed.add_field(name="Reason", value=reason[:500], inline=False)
+        self._set_user_thumbnail(embed, approved_by)
+
+        await self._send_log(LogCategory.APPEALS, embed, user_id=user.id)
+
+    async def log_appeal_denied(
+        self,
+        appeal_id: str,
+        case_id: str,
+        user: discord.User,
+        action_type: str,
+        denied_by: discord.Member,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Log an appeal denial."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            "❌ Appeal Denied",
+            EmbedColors.LOG_NEGATIVE,
+            category="Appeal",
+            user_id=user.id,
+        )
+        embed.add_field(name="Appeal ID", value=f"`{appeal_id}`", inline=True)
+        embed.add_field(name="Case ID", value=f"`{case_id}`", inline=True)
+        embed.add_field(name="Type", value=action_type.title(), inline=True)
+        embed.add_field(name="User", value=self._format_user_field(user), inline=True)
+        embed.add_field(name="Denied By", value=self._format_user_field(denied_by), inline=True)
+        if reason:
+            embed.add_field(name="Reason", value=reason[:500], inline=False)
+        self._set_user_thumbnail(embed, denied_by)
+
+        await self._send_log(LogCategory.APPEALS, embed, user_id=user.id)
+
+    # =========================================================================
+    # Modmail Logging
+    # =========================================================================
+
+    async def log_modmail_created(
+        self,
+        user: discord.User,
+        thread_id: int,
+    ) -> None:
+        """Log a modmail thread creation."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            "📬 Modmail Created",
+            EmbedColors.SUCCESS,
+            category="Modmail",
+            user_id=user.id,
+        )
+        embed.add_field(name="User", value=self._format_user_field(user), inline=True)
+        embed.add_field(name="Status", value="Banned User", inline=True)
+        embed.add_field(name="Thread", value=f"<#{thread_id}>", inline=True)
+        self._set_user_thumbnail(embed, user)
+
+        await self._send_log(LogCategory.MODMAIL, embed, user_id=user.id)
+
+    async def log_modmail_closed(
+        self,
+        user: discord.User,
+        closed_by: discord.Member,
+        thread_id: int,
+    ) -> None:
+        """Log a modmail thread close."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            "🔒 Modmail Closed",
+            EmbedColors.LOG_NEGATIVE,
+            category="Modmail",
+            user_id=user.id,
+        )
+        embed.add_field(name="User", value=self._format_user_field(user), inline=True)
+        embed.add_field(name="Closed By", value=self._format_user_field(closed_by), inline=True)
+        embed.add_field(name="Thread", value=f"<#{thread_id}>", inline=True)
+        self._set_user_thumbnail(embed, closed_by)
+
+        await self._send_log(LogCategory.MODMAIL, embed, user_id=user.id)
+
+    async def log_modmail_message(
+        self,
+        user: discord.User,
+        direction: str,
+        content: str,
+        staff: Optional[discord.Member] = None,
+    ) -> None:
+        """Log a modmail message relay."""
+        if not self.enabled:
+            return
+
+        if direction == "incoming":
+            title = "📥 Modmail Received"
+            color = EmbedColors.BLUE
+        else:
+            title = "📤 Modmail Sent"
+            color = EmbedColors.SUCCESS
+
+        embed = self._create_embed(
+            title,
+            color,
+            category="Modmail",
+            user_id=user.id,
+        )
+        embed.add_field(name="User", value=self._format_user_field(user), inline=True)
+        if staff:
+            embed.add_field(name="Staff", value=self._format_user_field(staff), inline=True)
+        embed.add_field(name="Content", value=content[:500] if content else "*No content*", inline=False)
+        self._set_user_thumbnail(embed, user)
+
+        await self._send_log(LogCategory.MODMAIL, embed, user_id=user.id)
+
+    # =========================================================================
+    # Warning Logging
+    # =========================================================================
+
+    async def log_warning_issued(
+        self,
+        user: discord.User,
+        moderator: discord.Member,
+        reason: str,
+        warning_count: int,
+        guild_id: int,
+    ) -> None:
+        """Log a warning issued to a user."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            "⚠️ Warning Issued",
+            EmbedColors.GOLD,
+            category="Warning",
+            user_id=user.id,
+        )
+        embed.add_field(name="User", value=self._format_user_field(user), inline=True)
+        embed.add_field(name="Moderator", value=self._format_user_field(moderator), inline=True)
+        embed.add_field(name="Total Warnings", value=str(warning_count), inline=True)
+        embed.add_field(name="Reason", value=reason[:500] if reason else "No reason provided", inline=False)
+        self._set_user_thumbnail(embed, user)
+
+        await self._send_log(LogCategory.WARNINGS, embed, user_id=user.id)
+
+    async def log_warning_removed(
+        self,
+        user: discord.User,
+        moderator: discord.Member,
+        warning_id: int,
+        remaining_count: int,
+    ) -> None:
+        """Log a warning removal."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            "🗑️ Warning Removed",
+            EmbedColors.SUCCESS,
+            category="Warning",
+            user_id=user.id,
+        )
+        embed.add_field(name="User", value=self._format_user_field(user), inline=True)
+        embed.add_field(name="Removed By", value=self._format_user_field(moderator), inline=True)
+        embed.add_field(name="Warning ID", value=f"`#{warning_id}`", inline=True)
+        embed.add_field(name="Remaining", value=str(remaining_count), inline=True)
+        self._set_user_thumbnail(embed, moderator)
+
+        await self._send_log(LogCategory.WARNINGS, embed, user_id=user.id)
+
+    # =========================================================================
+    # Audit Raw Logging
+    # =========================================================================
+
+    async def log_audit_raw(
+        self,
+        action: str,
+        user: Optional[discord.User],
+        target: Optional[discord.User],
+        details: str,
+        audit_id: Optional[int] = None,
+    ) -> None:
+        """Log an uncategorized audit log event."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            f"🔍 {action}",
+            EmbedColors.BLUE,
+            category="Audit",
+            user_id=user.id if user else None,
+        )
+        if user:
+            embed.add_field(name="Actor", value=self._format_user_field(user), inline=True)
+        if target:
+            embed.add_field(name="Target", value=self._format_user_field(target), inline=True)
+        if audit_id:
+            embed.add_field(name="Audit ID", value=f"`{audit_id}`", inline=True)
+        embed.add_field(name="Details", value=details[:1000], inline=False)
+        if user:
+            self._set_user_thumbnail(embed, user)
+
+        await self._send_log(LogCategory.AUDIT_RAW, embed, user_id=user.id if user else None)
+
+    # =========================================================================
     # Log Retention / Cleanup
     # =========================================================================
 

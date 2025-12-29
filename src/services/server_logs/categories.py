@@ -38,6 +38,12 @@ class LogCategory(Enum):
     INVITES = "🔗 Invite Activity"
     ALERTS = "🚨 Security Alerts"
     ALLIANCES = "🤝 Alliances"
+    TICKETS = "🎫 Tickets"
+    TICKET_TRANSCRIPTS = "📜 Ticket Transcripts"
+    APPEALS = "📨 Appeals"
+    MODMAIL = "📬 Modmail"
+    WARNINGS = "⚠️ Warnings"
+    AUDIT_RAW = "🔍 Audit Raw"
 
 
 # Thread descriptions for each category
@@ -67,4 +73,10 @@ THREAD_DESCRIPTIONS = {
     LogCategory.INVITES: "Logs for invite creates, deletes, and usage details",
     LogCategory.ALERTS: "Security alerts for raids, suspicious activity, and threats",
     LogCategory.ALLIANCES: "Logs for alliance message links and auto-deletions on member leave",
+    LogCategory.TICKETS: "Logs for ticket creates, claims, closes, reopens, and user additions",
+    LogCategory.TICKET_TRANSCRIPTS: "Full conversation transcripts of closed tickets",
+    LogCategory.APPEALS: "Logs for appeal creates, approvals, denials, and reopens",
+    LogCategory.MODMAIL: "Logs for modmail thread creates, closes, and message relays",
+    LogCategory.WARNINGS: "Logs for user warnings issued by moderators",
+    LogCategory.AUDIT_RAW: "Catch-all for uncategorized audit log events",
 }

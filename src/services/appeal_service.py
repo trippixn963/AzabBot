@@ -261,11 +261,16 @@ class AppealService:
                 case_data=case,
             )
 
+            # Build case URL for View Case button
+            case_url = None
+            if case.get("thread_id") and case.get("guild_id"):
+                case_url = f"https://discord.com/channels/{case['guild_id']}/{case['thread_id']}"
+
             # Create forum thread
             thread = await forum.create_thread(
                 name=thread_name,
                 embed=embed,
-                view=AppealActionView(appeal_id, case_id, user.id),
+                view=AppealActionView(appeal_id, case_id, user.id, case_url, action_type),
             )
 
             # Store in database
@@ -709,7 +714,7 @@ class AppealService:
             set_footer(embed)
 
             await self.bot.logging_service._send_log(
-                self.bot.logging_service.LogCategory.MOD_ACTIONS,
+                self.bot.logging_service.LogCategory.APPEALS,
                 embed,
             )
         except Exception as e:
@@ -752,7 +757,7 @@ class AppealService:
             set_footer(embed)
 
             await self.bot.logging_service._send_log(
-                self.bot.logging_service.LogCategory.MOD_ACTIONS,
+                self.bot.logging_service.LogCategory.APPEALS,
                 embed,
             )
         except Exception as e:
@@ -772,13 +777,28 @@ class AppealActionView(discord.ui.View):
         Only moderators can use these buttons.
     """
 
-    def __init__(self, appeal_id: str, case_id: str, user_id: int):
+    def __init__(self, appeal_id: str, case_id: str, user_id: int, case_url: Optional[str] = None, action_type: str = "mute"):
         super().__init__(timeout=None)
 
         # Add buttons
         self.add_item(ApproveAppealButton(appeal_id, case_id))
         self.add_item(DenyAppealButton(appeal_id, case_id))
-        self.add_item(ViewCaseButton(case_id))
+
+        # Add Open Ticket button only for mute appeals (banned users can't be in main server)
+        if action_type == "mute":
+            self.add_item(OpenAppealTicketButton(appeal_id, user_id))
+        # Add Contact User button for ban appeals (initiates modmail with banned user)
+        elif action_type == "ban":
+            self.add_item(ContactBannedUserButton(appeal_id, user_id))
+
+        # Add View Case link button if URL is available
+        if case_url:
+            self.add_item(discord.ui.Button(
+                label="View Case",
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+                url=case_url,
+            ))
 
 
 class ApproveAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"appeal_approve:(?P<appeal_id>[A-Z0-9]+):(?P<case_id>[A-Z0-9]+)"):
@@ -881,19 +901,20 @@ class DenyAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"app
         await interaction.response.send_modal(modal)
 
 
-class ViewCaseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"appeal_viewcase:(?P<case_id>[A-Z0-9]+)"):
-    """Persistent button to view the original case thread."""
+class OpenAppealTicketButton(discord.ui.DynamicItem[discord.ui.Button], template=r"appeal_ticket:(?P<appeal_id>[A-Z0-9]+):(?P<user_id>\d+)"):
+    """Persistent button to open a ticket with the appealing user in the main server."""
 
-    def __init__(self, case_id: str):
+    def __init__(self, appeal_id: str, user_id: int):
         super().__init__(
             discord.ui.Button(
-                label="View Case",
+                label="Open Ticket",
                 style=discord.ButtonStyle.secondary,
-                emoji=CASE_EMOJI,
-                custom_id=f"appeal_viewcase:{case_id}",
+                custom_id=f"appeal_ticket:{appeal_id}:{user_id}",
+                emoji=discord.PartialEmoji(name="ticket", id=1455197399621750876),
             )
         )
-        self.case_id = case_id
+        self.appeal_id = appeal_id
+        self.user_id = user_id
 
     @classmethod
     async def from_custom_id(
@@ -901,26 +922,269 @@ class ViewCaseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"appea
         interaction: discord.Interaction,
         item: discord.ui.Button,
         match,
-    ) -> "ViewCaseButton":
-        case_id = match.group("case_id")
-        return cls(case_id)
+    ) -> "OpenAppealTicketButton":
+        appeal_id = match.group("appeal_id")
+        user_id = int(match.group("user_id"))
+        return cls(appeal_id, user_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        # Get case info
-        db = get_db()
-        case = db.get_case(self.case_id)
+        # Check permissions
+        config = get_config()
+        allowed_ids = {config.developer_id}
+        if config.appeal_allowed_user_ids:
+            allowed_ids |= config.appeal_allowed_user_ids
 
-        if case and case.get("thread_id"):
-            case_url = f"https://discord.com/channels/{case['guild_id']}/{case['thread_id']}"
+        has_permission = (
+            interaction.user.guild_permissions.moderate_members or
+            interaction.user.id in allowed_ids
+        )
+
+        if not has_permission:
             await interaction.response.send_message(
-                f"View case thread: {case_url}",
+                "You don't have permission to open appeal tickets.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        bot = interaction.client
+        if not hasattr(bot, "ticket_service") or not bot.ticket_service:
+            await interaction.followup.send(
+                "Ticket service is not available.",
+                ephemeral=True,
+            )
+            return
+
+        # Get the appeal details
+        db = get_db()
+        appeal = db.get_appeal(self.appeal_id)
+        if not appeal:
+            await interaction.followup.send(
+                "Appeal not found.",
+                ephemeral=True,
+            )
+            return
+
+        # Get the user from the main server
+        main_guild = bot.get_guild(config.logging_guild_id)
+        if not main_guild:
+            await interaction.followup.send(
+                "Main server not found.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            member = await main_guild.fetch_member(self.user_id)
+        except discord.NotFound:
+            await interaction.followup.send(
+                "User is not in the main server. They may have left or been banned.",
+                ephemeral=True,
+            )
+            return
+        except discord.HTTPException as e:
+            await interaction.followup.send(
+                f"Failed to fetch user: {e}",
+                ephemeral=True,
+            )
+            return
+
+        # Create ticket in main server
+        success, message, ticket_id = await bot.ticket_service.create_ticket(
+            user=member,
+            category="support",
+            subject=f"Appeal Discussion - {self.appeal_id}",
+            description=f"This ticket was created to discuss appeal **{self.appeal_id}**.\n\nCase ID: `{appeal['case_id']}`",
+        )
+
+        if success:
+            logger.tree("Appeal Ticket Created", [
+                ("Appeal ID", self.appeal_id),
+                ("Ticket ID", ticket_id),
+                ("User", f"{member} ({member.id})"),
+                ("Created By", f"{interaction.user} ({interaction.user.id})"),
+            ], emoji="🎫")
+
+            # Log to webhook
+            if hasattr(bot, "interaction_logger") and bot.interaction_logger and ticket_id:
+                await bot.interaction_logger.log_appeal_ticket_opened(
+                    interaction.user, self.appeal_id, ticket_id, member
+                )
+
+            await interaction.followup.send(
+                f"✅ {message}\n\nTicket created for appeal discussion.",
                 ephemeral=True,
             )
         else:
-            await interaction.response.send_message(
-                f"Case `{self.case_id}` not found or thread unavailable.",
+            await interaction.followup.send(
+                f"❌ Failed to create ticket: {message}",
                 ephemeral=True,
             )
+
+
+class ContactBannedUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"appeal_contact:(?P<appeal_id>[A-Z0-9]+):(?P<user_id>\d+)"):
+    """Persistent button to contact a banned user via modmail to discuss their appeal."""
+
+    def __init__(self, appeal_id: str, user_id: int):
+        super().__init__(
+            discord.ui.Button(
+                label="Contact User",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"appeal_contact:{appeal_id}:{user_id}",
+                emoji=discord.PartialEmoji(name="transcript", id=1455205892319481916),
+            )
+        )
+        self.appeal_id = appeal_id
+        self.user_id = user_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match,
+    ) -> "ContactBannedUserButton":
+        appeal_id = match.group("appeal_id")
+        user_id = int(match.group("user_id"))
+        return cls(appeal_id, user_id)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        # Check permissions
+        config = get_config()
+        allowed_ids = {config.developer_id}
+        if config.appeal_allowed_user_ids:
+            allowed_ids |= config.appeal_allowed_user_ids
+
+        has_permission = (
+            interaction.user.guild_permissions.moderate_members or
+            interaction.user.id in allowed_ids
+        )
+
+        if not has_permission:
+            await interaction.response.send_message(
+                "You don't have permission to contact banned users.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        bot = interaction.client
+        if not hasattr(bot, "modmail_service") or not bot.modmail_service:
+            await interaction.followup.send(
+                "Modmail service is not available.",
+                ephemeral=True,
+            )
+            return
+
+        if not bot.modmail_service.enabled:
+            await interaction.followup.send(
+                "Modmail service is not enabled.",
+                ephemeral=True,
+            )
+            return
+
+        # Get the appeal details
+        db = get_db()
+        appeal = db.get_appeal(self.appeal_id)
+        if not appeal:
+            await interaction.followup.send(
+                "Appeal not found.",
+                ephemeral=True,
+            )
+            return
+
+        # Fetch the banned user
+        try:
+            user = await bot.fetch_user(self.user_id)
+        except discord.NotFound:
+            await interaction.followup.send(
+                "User not found.",
+                ephemeral=True,
+            )
+            return
+        except discord.HTTPException as e:
+            await interaction.followup.send(
+                f"Failed to fetch user: {e}",
+                ephemeral=True,
+            )
+            return
+
+        # Create or get existing modmail thread
+        thread = await bot.modmail_service.create_thread(user)
+        if not thread:
+            await interaction.followup.send(
+                "Failed to create modmail thread.",
+                ephemeral=True,
+            )
+            return
+
+        # Send initial message to the user
+        appeal_embed = discord.Embed(
+            title="📬 Staff Wants to Discuss Your Appeal",
+            description=(
+                f"A staff member wants to discuss your ban appeal **{self.appeal_id}**.\n\n"
+                "You can reply to this message to communicate with the moderation team. "
+                "All your messages will be forwarded to staff."
+            ),
+            color=EmbedColors.INFO,
+            timestamp=datetime.now(NY_TZ)
+        )
+        set_footer(appeal_embed)
+
+        try:
+            await user.send(embed=appeal_embed)
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "Could not DM the user - they may have DMs disabled.",
+                ephemeral=True,
+            )
+            return
+        except discord.HTTPException as e:
+            await interaction.followup.send(
+                f"Failed to send DM: {e}",
+                ephemeral=True,
+            )
+            return
+
+        # Post notification in the modmail thread
+        thread_embed = discord.Embed(
+            title="Appeal Discussion Started",
+            description=(
+                f"**{interaction.user.mention}** initiated a discussion about appeal **{self.appeal_id}**.\n\n"
+                f"The user has been notified and can now reply via DM."
+            ),
+            color=EmbedColors.SUCCESS,
+            timestamp=datetime.now(NY_TZ)
+        )
+        thread_embed.add_field(name="Appeal ID", value=self.appeal_id, inline=True)
+        thread_embed.add_field(name="Case ID", value=appeal["case_id"], inline=True)
+        set_footer(thread_embed)
+
+        try:
+            await thread.send(embed=thread_embed)
+        except discord.HTTPException:
+            pass
+
+        logger.tree("Appeal Contact Initiated", [
+            ("Appeal ID", self.appeal_id),
+            ("User", f"{user} ({user.id})"),
+            ("Initiated By", f"{interaction.user} ({interaction.user.id})"),
+            ("Thread", str(thread.id)),
+        ], emoji="📬")
+
+        # Log to webhook
+        if hasattr(bot, "interaction_logger") and bot.interaction_logger:
+            await bot.interaction_logger.log_appeal_contact(
+                interaction.user, self.appeal_id, user
+            )
+
+        await interaction.followup.send(
+            f"✅ Modmail initiated with **{user}**.\n\n"
+            f"The user has been DMed and can now reply. Check the modmail thread to continue the conversation.",
+            ephemeral=True,
+        )
 
 
 # =============================================================================
@@ -966,12 +1230,26 @@ class AppealReasonModal(discord.ui.Modal):
                 interaction.user,
                 reason,
             )
+            if success and hasattr(bot, "interaction_logger") and bot.interaction_logger:
+                appeal = bot.appeal_service.db.get_appeal(self.appeal_id)
+                if appeal:
+                    await bot.interaction_logger.log_appeal_approved(
+                        interaction.user, self.appeal_id, self.case_id,
+                        appeal.get("user_id"), appeal.get("action_type", "unknown")
+                    )
         else:
             success, message = await bot.appeal_service.deny_appeal(
                 self.appeal_id,
                 interaction.user,
                 reason,
             )
+            if success and hasattr(bot, "interaction_logger") and bot.interaction_logger:
+                appeal = bot.appeal_service.db.get_appeal(self.appeal_id)
+                if appeal:
+                    await bot.interaction_logger.log_appeal_denied(
+                        interaction.user, self.appeal_id, self.case_id,
+                        appeal.get("user_id"), appeal.get("action_type", "unknown")
+                    )
 
         await interaction.followup.send(message, ephemeral=True)
 
@@ -1098,7 +1376,8 @@ def setup_appeal_views(bot: "AzabBot") -> None:
     bot.add_dynamic_items(
         ApproveAppealButton,
         DenyAppealButton,
-        ViewCaseButton,
         SubmitAppealButton,
+        OpenAppealTicketButton,
+        ContactBannedUserButton,
     )
     logger.debug("Appeal Views Registered")

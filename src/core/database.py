@@ -144,6 +144,25 @@ class PendingReasonRecord(TypedDict, total=False):
     created_at: float
 
 
+class TicketRecord(TypedDict, total=False):
+    """Type for ticket records."""
+    id: int
+    ticket_id: str
+    user_id: int
+    guild_id: int
+    thread_id: int
+    category: str
+    subject: str
+    status: str
+    priority: str
+    claimed_by: Optional[int]
+    assigned_to: Optional[int]
+    created_at: float
+    closed_at: Optional[float]
+    closed_by: Optional[int]
+    close_reason: Optional[str]
+
+
 from src.core.config import NY_TZ
 from src.utils.metrics import metrics
 
@@ -1097,6 +1116,82 @@ class DatabaseManager:
         """)
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_linked_messages_member ON linked_messages(member_id, guild_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # TICKETS TABLE
+        # DESIGN: Tracks support tickets via forum threads
+        # Sequential IDs like T001, T002, etc.
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_id TEXT UNIQUE NOT NULL,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                thread_id INTEGER NOT NULL,
+                category TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                status TEXT DEFAULT 'open',
+                priority TEXT DEFAULT 'normal',
+                claimed_by INTEGER,
+                assigned_to INTEGER,
+                created_at REAL NOT NULL,
+                last_activity_at REAL,
+                warned_at REAL,
+                closed_at REAL,
+                closed_by INTEGER,
+                close_reason TEXT
+            )
+        """)
+        # Migration: Add last_activity_at and warned_at columns if they don't exist
+        try:
+            cursor.execute("ALTER TABLE tickets ADD COLUMN last_activity_at REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE tickets ADD COLUMN warned_at REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_user ON tickets(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_claimed ON tickets(claimed_by)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_thread ON tickets(thread_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # MODMAIL TABLE
+        # DESIGN: Tracks modmail threads for banned users
+        # One thread per banned user
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS modmail (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                thread_id INTEGER NOT NULL,
+                status TEXT DEFAULT 'open',
+                created_at REAL NOT NULL,
+                closed_at REAL,
+                closed_by INTEGER,
+                UNIQUE(user_id, guild_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_modmail_user ON modmail(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_modmail_thread ON modmail(thread_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_modmail_status ON modmail(status)"
         )
 
         conn.commit()
@@ -4620,7 +4715,7 @@ class DatabaseManager:
         """
         row = self.fetchone(
             """SELECT case_id, user_id, guild_id, action_type,
-                      duration_seconds, created_at, status
+                      duration_seconds, created_at, status, thread_id
                FROM cases
                WHERE case_id = ?""",
             (case_id,)
@@ -4767,6 +4862,569 @@ class DatabaseManager:
             (message_id, channel_id)
         )
         return dict(row) if row else None
+
+    # =========================================================================
+    # Ticket Operations
+    # =========================================================================
+
+    def generate_ticket_id(self) -> str:
+        """
+        Generate next sequential ticket ID (T001, T002, etc.).
+
+        Returns:
+            Next available ticket ID.
+        """
+        row = self.fetchone(
+            "SELECT ticket_id FROM tickets ORDER BY id DESC LIMIT 1"
+        )
+        if row and row["ticket_id"]:
+            # Extract number from T001 format
+            try:
+                num = int(row["ticket_id"][1:])
+                return f"T{num + 1:03d}"
+            except (ValueError, IndexError):
+                pass
+        return "T001"
+
+    def create_ticket(
+        self,
+        ticket_id: str,
+        user_id: int,
+        guild_id: int,
+        thread_id: int,
+        category: str,
+        subject: str,
+    ) -> None:
+        """
+        Create a new support ticket.
+
+        Args:
+            ticket_id: Unique ticket ID (T001 format).
+            user_id: User who opened the ticket.
+            guild_id: Guild ID.
+            thread_id: Forum thread ID for this ticket.
+            category: Ticket category (support, partnership, etc.).
+            subject: Ticket subject/title.
+        """
+        now = time.time()
+        self.execute(
+            """INSERT INTO tickets (
+                ticket_id, user_id, guild_id, thread_id,
+                category, subject, status, priority, created_at, last_activity_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 'open', 'normal', ?, ?)""",
+            (ticket_id, user_id, guild_id, thread_id, category, subject, now, now)
+        )
+
+        logger.tree("Ticket Created", [
+            ("Ticket ID", ticket_id),
+            ("Category", category),
+            ("User ID", str(user_id)),
+        ], emoji="🎫")
+
+    def get_ticket(self, ticket_id: str) -> Optional[TicketRecord]:
+        """
+        Get a ticket by its ID.
+
+        Args:
+            ticket_id: Ticket ID.
+
+        Returns:
+            Ticket record or None.
+        """
+        row = self.fetchone(
+            "SELECT * FROM tickets WHERE ticket_id = ?",
+            (ticket_id,)
+        )
+        return dict(row) if row else None
+
+    def get_ticket_by_thread(self, thread_id: int) -> Optional[TicketRecord]:
+        """
+        Get ticket by its forum thread ID.
+
+        Args:
+            thread_id: Discord thread ID.
+
+        Returns:
+            Ticket record or None.
+        """
+        row = self.fetchone(
+            "SELECT * FROM tickets WHERE thread_id = ?",
+            (thread_id,)
+        )
+        return dict(row) if row else None
+
+    def get_user_tickets(self, user_id: int, guild_id: int) -> List[TicketRecord]:
+        """
+        Get all tickets for a user.
+
+        Args:
+            user_id: User ID.
+            guild_id: Guild ID.
+
+        Returns:
+            List of ticket records.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM tickets
+               WHERE user_id = ? AND guild_id = ?
+               ORDER BY created_at DESC""",
+            (user_id, guild_id)
+        )
+        return [dict(row) for row in rows]
+
+    def get_open_tickets(self, guild_id: int) -> List[TicketRecord]:
+        """
+        Get all open tickets for a guild.
+
+        Args:
+            guild_id: Guild ID.
+
+        Returns:
+            List of open ticket records.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM tickets
+               WHERE guild_id = ? AND status IN ('open', 'claimed')
+               ORDER BY
+                   CASE priority
+                       WHEN 'urgent' THEN 1
+                       WHEN 'high' THEN 2
+                       WHEN 'normal' THEN 3
+                       WHEN 'low' THEN 4
+                   END,
+                   created_at ASC""",
+            (guild_id,)
+        )
+        return [dict(row) for row in rows]
+
+    def claim_ticket(self, ticket_id: str, staff_id: int) -> bool:
+        """
+        Claim a ticket for handling.
+
+        Args:
+            ticket_id: Ticket ID to claim.
+            staff_id: Staff member claiming the ticket.
+
+        Returns:
+            True if claimed successfully.
+        """
+        cursor = self.execute(
+            """UPDATE tickets
+               SET status = 'claimed', claimed_by = ?
+               WHERE ticket_id = ? AND status = 'open'""",
+            (staff_id, ticket_id)
+        )
+
+        if cursor.rowcount > 0:
+            logger.tree("Ticket Claimed", [
+                ("Ticket ID", ticket_id),
+                ("Staff ID", str(staff_id)),
+            ], emoji="✋")
+            return True
+        return False
+
+    def unclaim_ticket(self, ticket_id: str) -> bool:
+        """
+        Unclaim a ticket.
+
+        Args:
+            ticket_id: Ticket ID to unclaim.
+
+        Returns:
+            True if unclaimed successfully.
+        """
+        cursor = self.execute(
+            """UPDATE tickets
+               SET status = 'open', claimed_by = NULL
+               WHERE ticket_id = ? AND status = 'claimed'""",
+            (ticket_id,)
+        )
+        return cursor.rowcount > 0
+
+    def assign_ticket(self, ticket_id: str, staff_id: int) -> bool:
+        """
+        Assign a ticket to a staff member.
+
+        Args:
+            ticket_id: Ticket ID to assign.
+            staff_id: Staff member to assign to.
+
+        Returns:
+            True if assigned successfully.
+        """
+        cursor = self.execute(
+            """UPDATE tickets
+               SET assigned_to = ?
+               WHERE ticket_id = ?""",
+            (staff_id, ticket_id)
+        )
+
+        if cursor.rowcount > 0:
+            logger.tree("Ticket Assigned", [
+                ("Ticket ID", ticket_id),
+                ("Assigned To", str(staff_id)),
+            ], emoji="👤")
+            return True
+        return False
+
+    def set_ticket_priority(self, ticket_id: str, priority: str) -> bool:
+        """
+        Set ticket priority.
+
+        Args:
+            ticket_id: Ticket ID.
+            priority: New priority (low, normal, high, urgent).
+
+        Returns:
+            True if updated successfully.
+        """
+        if priority not in ("low", "normal", "high", "urgent"):
+            return False
+
+        cursor = self.execute(
+            "UPDATE tickets SET priority = ? WHERE ticket_id = ?",
+            (priority, ticket_id)
+        )
+
+        if cursor.rowcount > 0:
+            logger.tree("Ticket Priority Set", [
+                ("Ticket ID", ticket_id),
+                ("Priority", priority),
+            ], emoji="🔔")
+            return True
+        return False
+
+    def close_ticket(
+        self,
+        ticket_id: str,
+        closed_by: int,
+        close_reason: Optional[str] = None,
+    ) -> bool:
+        """
+        Close a ticket.
+
+        Args:
+            ticket_id: Ticket ID to close.
+            closed_by: Staff member closing the ticket.
+            close_reason: Optional reason for closing.
+
+        Returns:
+            True if closed successfully.
+        """
+        cursor = self.execute(
+            """UPDATE tickets
+               SET status = 'closed',
+                   closed_at = ?,
+                   closed_by = ?,
+                   close_reason = ?
+               WHERE ticket_id = ? AND status != 'closed'""",
+            (time.time(), closed_by, close_reason, ticket_id)
+        )
+
+        if cursor.rowcount > 0:
+            logger.tree("Ticket Closed", [
+                ("Ticket ID", ticket_id),
+                ("Closed By", str(closed_by)),
+                ("Reason", close_reason or "No reason"),
+            ], emoji="🔒")
+            return True
+        return False
+
+    def reopen_ticket(self, ticket_id: str) -> bool:
+        """
+        Reopen a closed ticket.
+
+        Args:
+            ticket_id: Ticket ID to reopen.
+
+        Returns:
+            True if reopened successfully.
+        """
+        cursor = self.execute(
+            """UPDATE tickets
+               SET status = 'open',
+                   closed_at = NULL,
+                   closed_by = NULL,
+                   close_reason = NULL
+               WHERE ticket_id = ? AND status = 'closed'""",
+            (ticket_id,)
+        )
+
+        if cursor.rowcount > 0:
+            logger.tree("Ticket Reopened", [
+                ("Ticket ID", ticket_id),
+            ], emoji="🔓")
+            return True
+        return False
+
+    def get_ticket_stats(self, guild_id: int) -> Dict[str, int]:
+        """
+        Get ticket statistics for a guild.
+
+        Args:
+            guild_id: Guild ID.
+
+        Returns:
+            Dict with open, claimed, closed counts.
+        """
+        open_count = self.fetchone(
+            "SELECT COUNT(*) as c FROM tickets WHERE guild_id = ? AND status = 'open'",
+            (guild_id,)
+        )
+        claimed_count = self.fetchone(
+            "SELECT COUNT(*) as c FROM tickets WHERE guild_id = ? AND status = 'claimed'",
+            (guild_id,)
+        )
+        closed_count = self.fetchone(
+            "SELECT COUNT(*) as c FROM tickets WHERE guild_id = ? AND status = 'closed'",
+            (guild_id,)
+        )
+
+        return {
+            "open": open_count["c"] if open_count else 0,
+            "claimed": claimed_count["c"] if claimed_count else 0,
+            "closed": closed_count["c"] if closed_count else 0,
+        }
+
+    def get_user_open_ticket_count(self, user_id: int, guild_id: int) -> int:
+        """
+        Count open tickets for a user.
+
+        Args:
+            user_id: User ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Number of open tickets.
+        """
+        row = self.fetchone(
+            """SELECT COUNT(*) as c FROM tickets
+               WHERE user_id = ? AND guild_id = ? AND status IN ('open', 'claimed')""",
+            (user_id, guild_id)
+        )
+        return row["c"] if row else 0
+
+    def update_ticket_activity(self, ticket_id: str) -> bool:
+        """
+        Update last activity timestamp for a ticket.
+
+        Args:
+            ticket_id: Ticket ID.
+
+        Returns:
+            True if updated.
+        """
+        return self.execute(
+            "UPDATE tickets SET last_activity_at = ? WHERE ticket_id = ?",
+            (time.time(), ticket_id)
+        )
+
+    def get_inactive_tickets(
+        self,
+        guild_id: int,
+        inactive_since: float,
+    ) -> List[TicketRecord]:
+        """
+        Get tickets with no activity since a given timestamp.
+
+        Args:
+            guild_id: Guild ID.
+            inactive_since: Unix timestamp - tickets inactive since before this.
+
+        Returns:
+            List of inactive ticket records.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM tickets
+               WHERE guild_id = ? AND status IN ('open', 'claimed')
+               AND (last_activity_at IS NULL OR last_activity_at < ?)
+               AND (created_at < ?)
+               ORDER BY last_activity_at ASC""",
+            (guild_id, inactive_since, inactive_since)
+        )
+        return [TicketRecord(**dict(row)) for row in rows]
+
+    def get_unwarned_inactive_tickets(
+        self,
+        guild_id: int,
+        inactive_since: float,
+    ) -> List[TicketRecord]:
+        """
+        Get inactive tickets that haven't been warned yet.
+
+        Args:
+            guild_id: Guild ID.
+            inactive_since: Unix timestamp - tickets inactive since before this.
+
+        Returns:
+            List of unwarned inactive ticket records.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM tickets
+               WHERE guild_id = ? AND status IN ('open', 'claimed')
+               AND (last_activity_at IS NULL OR last_activity_at < ?)
+               AND (created_at < ?)
+               AND warned_at IS NULL
+               ORDER BY last_activity_at ASC""",
+            (guild_id, inactive_since, inactive_since)
+        )
+        return [TicketRecord(**dict(row)) for row in rows]
+
+    def get_warned_tickets_ready_to_close(
+        self,
+        guild_id: int,
+        warned_before: float,
+    ) -> List[TicketRecord]:
+        """
+        Get tickets that were warned and are now ready to auto-close.
+
+        Args:
+            guild_id: Guild ID.
+            warned_before: Unix timestamp - tickets warned before this time.
+
+        Returns:
+            List of ticket records ready to auto-close.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM tickets
+               WHERE guild_id = ? AND status IN ('open', 'claimed')
+               AND warned_at IS NOT NULL AND warned_at < ?
+               ORDER BY warned_at ASC""",
+            (guild_id, warned_before)
+        )
+        return [TicketRecord(**dict(row)) for row in rows]
+
+    def mark_ticket_warned(self, ticket_id: str) -> bool:
+        """
+        Mark a ticket as warned about inactivity.
+
+        Args:
+            ticket_id: Ticket ID.
+
+        Returns:
+            True if updated.
+        """
+        return self.execute(
+            "UPDATE tickets SET warned_at = ? WHERE ticket_id = ?",
+            (time.time(), ticket_id)
+        )
+
+    def clear_ticket_warning(self, ticket_id: str) -> bool:
+        """
+        Clear inactivity warning (when user responds).
+
+        Args:
+            ticket_id: Ticket ID.
+
+        Returns:
+            True if updated.
+        """
+        return self.execute(
+            "UPDATE tickets SET warned_at = NULL WHERE ticket_id = ?",
+            (ticket_id,)
+        )
+
+    # =========================================================================
+    # Modmail Operations
+    # =========================================================================
+
+    def create_modmail(
+        self,
+        user_id: int,
+        guild_id: int,
+        thread_id: int,
+    ) -> None:
+        """
+        Create a modmail entry for a banned user.
+
+        Args:
+            user_id: Discord user ID (banned user).
+            guild_id: Guild ID they're banned from.
+            thread_id: Forum thread ID for this modmail.
+        """
+        now = time.time()
+        self.execute(
+            """
+            INSERT OR REPLACE INTO modmail
+            (user_id, guild_id, thread_id, status, created_at)
+            VALUES (?, ?, ?, 'open', ?)
+            """,
+            (user_id, guild_id, thread_id, now)
+        )
+
+    def get_modmail_by_user(self, user_id: int, guild_id: int) -> Optional[Dict]:
+        """
+        Get modmail entry for a user.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Modmail record dict or None.
+        """
+        result = self.fetch_one(
+            "SELECT * FROM modmail WHERE user_id = ? AND guild_id = ? AND status = 'open'",
+            (user_id, guild_id)
+        )
+        return dict(result) if result else None
+
+    def get_modmail_by_thread(self, thread_id: int) -> Optional[Dict]:
+        """
+        Get modmail entry by thread ID.
+
+        Args:
+            thread_id: Thread ID.
+
+        Returns:
+            Modmail record dict or None.
+        """
+        result = self.fetch_one(
+            "SELECT * FROM modmail WHERE thread_id = ?",
+            (thread_id,)
+        )
+        return dict(result) if result else None
+
+    def close_modmail(self, thread_id: int, closed_by: int) -> bool:
+        """
+        Close a modmail thread.
+
+        Args:
+            thread_id: Thread ID.
+            closed_by: Staff member who closed it.
+
+        Returns:
+            True if updated.
+        """
+        now = time.time()
+        return self.execute(
+            """
+            UPDATE modmail
+            SET status = 'closed', closed_at = ?, closed_by = ?
+            WHERE thread_id = ?
+            """,
+            (now, closed_by, thread_id)
+        )
+
+    def reopen_modmail(self, user_id: int, guild_id: int) -> bool:
+        """
+        Reopen a closed modmail.
+
+        Args:
+            user_id: User ID.
+            guild_id: Guild ID.
+
+        Returns:
+            True if updated.
+        """
+        return self.execute(
+            """
+            UPDATE modmail
+            SET status = 'open', closed_at = NULL, closed_by = NULL
+            WHERE user_id = ? AND guild_id = ?
+            """,
+            (user_id, guild_id)
+        )
 
 
 # =============================================================================

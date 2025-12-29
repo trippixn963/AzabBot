@@ -377,9 +377,9 @@ CRYPTO_WALLET_PATTERN = r'(?:0x[a-fA-F0-9]{40}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})'
 # Auto-Slowmode Settings
 # =============================================================================
 
-SLOWMODE_TRIGGER_MESSAGES = 15  # Messages in time window to trigger slowmode
+SLOWMODE_TRIGGER_MESSAGES = 25  # Messages in time window to trigger slowmode
 SLOWMODE_TIME_WINDOW = 10  # seconds
-SLOWMODE_DURATION = 30  # seconds of slowmode
+SLOWMODE_DURATION = 5  # seconds of slowmode
 SLOWMODE_COOLDOWN = 300  # 5 minutes before slowmode can trigger again
 
 

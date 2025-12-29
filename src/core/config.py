@@ -122,6 +122,22 @@ class Config:
     appeal_forum_id: Optional[int] = None  # Forum channel for ban/mute appeals
 
     # -------------------------------------------------------------------------
+    # Optional: Tickets
+    # -------------------------------------------------------------------------
+
+    ticket_channel_id: Optional[int] = None  # Text channel for ticket threads
+    ticket_staff_role_id: Optional[int] = None  # Role that can manage tickets
+    ticket_partnership_user_id: Optional[int] = None  # User to assign partnership tickets
+    ticket_suggestion_user_id: Optional[int] = None  # User to assign suggestion tickets
+    ticket_support_user_ids: Set[int] = None  # Users to assign support tickets
+
+    # -------------------------------------------------------------------------
+    # Optional: Modmail (for banned users)
+    # -------------------------------------------------------------------------
+
+    modmail_forum_id: Optional[int] = None  # Forum channel for modmail threads (mods server)
+
+    # -------------------------------------------------------------------------
     # Optional: Server Logs
     # -------------------------------------------------------------------------
 
@@ -459,6 +475,11 @@ def load_config() -> Config:
     mod_tracker_forum_id = _parse_int_optional(os.getenv("MOD_TRACKER_FORUM_ID"))
     alert_channel_id = _parse_int_optional(os.getenv("ALERT_CHANNEL_ID"))
     appeal_forum_id = _parse_int_optional(os.getenv("APPEAL_FORUM_ID"))
+    ticket_channel_id = _parse_int_optional(os.getenv("TICKET_CHANNEL_ID"))
+    ticket_staff_role_id = _parse_int_optional(os.getenv("TICKET_STAFF_ROLE_ID"))
+    ticket_partnership_user_id = _parse_int_optional(os.getenv("TICKET_PARTNERSHIP_USER_ID"))
+    ticket_suggestion_user_id = _parse_int_optional(os.getenv("TICKET_SUGGESTION_USER_ID"))
+    ticket_support_user_ids = _parse_int_set(os.getenv("TICKET_SUPPORT_USER_IDS", ""))
     server_logs_forum_id = _parse_int_optional(os.getenv("SERVER_LOGS_FORUM_ID"))
     logging_guild_id = _parse_int_optional(os.getenv("LOGGING_GUILD_ID"))
     moderator_ids = _parse_int_set(os.getenv("MODERATOR_IDS"))
@@ -466,6 +487,7 @@ def load_config() -> Config:
     lockdown_exclude_ids = _parse_int_set(os.getenv("LOCKDOWN_EXCLUDE_IDS"))
     link_allowed_user_ids = _parse_int_set(os.getenv("LINK_ALLOWED_USER_IDS"))
     appeal_allowed_user_ids = _parse_int_set(os.getenv("APPEAL_ALLOWED_USER_IDS"))
+    modmail_forum_id = _parse_int_optional(os.getenv("MODMAIL_FORUM_ID"))
 
     # -------------------------------------------------------------------------
     # Build Config Object
@@ -490,6 +512,11 @@ def load_config() -> Config:
         mod_tracker_forum_id=mod_tracker_forum_id,
         alert_channel_id=alert_channel_id,
         appeal_forum_id=appeal_forum_id,
+        ticket_channel_id=ticket_channel_id,
+        ticket_staff_role_id=ticket_staff_role_id,
+        ticket_partnership_user_id=ticket_partnership_user_id,
+        ticket_suggestion_user_id=ticket_suggestion_user_id,
+        ticket_support_user_ids=ticket_support_user_ids,
         server_logs_forum_id=server_logs_forum_id,
         logging_guild_id=logging_guild_id,
         ai_model=os.getenv("AI_MODEL", "gpt-4o-mini"),
@@ -526,6 +553,7 @@ def load_config() -> Config:
         lockdown_exclude_ids=lockdown_exclude_ids if lockdown_exclude_ids else None,
         link_allowed_user_ids=link_allowed_user_ids if link_allowed_user_ids else None,
         appeal_allowed_user_ids=appeal_allowed_user_ids if appeal_allowed_user_ids else None,
+        modmail_forum_id=modmail_forum_id,
     )
 
 

@@ -50,39 +50,42 @@ DENY_EMOJI = discord.PartialEmoji(name="deny", id=1454788303567065242)
 # Link Confirmation View
 # =============================================================================
 
-class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"link_approve:(?P<msg_id>\d+):(?P<chan_id>\d+):(?P<member_id>\d+):(?P<guild_id>\d+):(?P<mod_id>\d+)"):
+class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"la:(?P<msg>\d+):(?P<chan>\d+):(?P<mem>\d+):(?P<gid>\d+)"):
     """Persistent approve button for link confirmation."""
 
-    def __init__(self, message_id: int, channel_id: int, member_id: int, guild_id: int, moderator_id: int):
+    def __init__(self, message_id: int, channel_id: int, member_id: int, guild_id: int):
         super().__init__(
             discord.ui.Button(
                 label="Approve",
                 style=discord.ButtonStyle.secondary,
                 emoji=APPROVE_EMOJI,
-                custom_id=f"link_approve:{message_id}:{channel_id}:{member_id}:{guild_id}:{moderator_id}",
+                custom_id=f"la:{message_id}:{channel_id}:{member_id}:{guild_id}",
             )
         )
         self.message_id = message_id
         self.channel_id = channel_id
         self.member_id = member_id
         self.guild_id = guild_id
-        self.moderator_id = moderator_id
 
     @classmethod
     async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match) -> "LinkApproveButton":
         return cls(
-            int(match.group("msg_id")),
-            int(match.group("chan_id")),
-            int(match.group("member_id")),
-            int(match.group("guild_id")),
-            int(match.group("mod_id")),
+            int(match.group("msg")),
+            int(match.group("chan")),
+            int(match.group("mem")),
+            int(match.group("gid")),
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        # Only the original moderator can approve
-        if interaction.user.id != self.moderator_id:
+        # Check if user has permission (developer or in link_allowed_user_ids)
+        config = get_config()
+        allowed_ids = {config.developer_id}
+        if config.link_allowed_user_ids:
+            allowed_ids |= config.link_allowed_user_ids
+
+        if interaction.user.id not in allowed_ids:
             await interaction.response.send_message(
-                "Only the moderator who initiated this can approve.",
+                "You don't have permission to approve links.",
                 ephemeral=True,
             )
             return
@@ -96,7 +99,7 @@ class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"li
             channel_id=self.channel_id,
             member_id=self.member_id,
             guild_id=self.guild_id,
-            linked_by=self.moderator_id,
+            linked_by=interaction.user.id,
         )
 
         if not saved:
@@ -148,34 +151,38 @@ class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"li
         )
 
 
-class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"link_deny:(?P<msg_id>\d+):(?P<member_id>\d+):(?P<mod_id>\d+)"):
+class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ld:(?P<msg>\d+):(?P<mem>\d+)"):
     """Persistent deny button for link confirmation."""
 
-    def __init__(self, message_id: int, member_id: int, moderator_id: int):
+    def __init__(self, message_id: int, member_id: int):
         super().__init__(
             discord.ui.Button(
                 label="Deny",
                 style=discord.ButtonStyle.secondary,
                 emoji=DENY_EMOJI,
-                custom_id=f"link_deny:{message_id}:{member_id}:{moderator_id}",
+                custom_id=f"ld:{message_id}:{member_id}",
             )
         )
         self.message_id = message_id
         self.member_id = member_id
-        self.moderator_id = moderator_id
 
     @classmethod
     async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match) -> "LinkDenyButton":
         return cls(
-            int(match.group("msg_id")),
-            int(match.group("member_id")),
-            int(match.group("mod_id")),
+            int(match.group("msg")),
+            int(match.group("mem")),
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        if interaction.user.id != self.moderator_id:
+        # Check if user has permission
+        config = get_config()
+        allowed_ids = {config.developer_id}
+        if config.link_allowed_user_ids:
+            allowed_ids |= config.link_allowed_user_ids
+
+        if interaction.user.id not in allowed_ids:
             await interaction.response.send_message(
-                "Only the moderator who initiated this can deny.",
+                "You don't have permission to deny links.",
                 ephemeral=True,
             )
             return
@@ -222,9 +229,9 @@ class LinkConfirmView(discord.ui.View):
 
         # Add persistent buttons
         self.add_item(LinkApproveButton(
-            message.id, message.channel.id, member.id, target_guild.id, moderator.id
+            message.id, message.channel.id, member.id, target_guild.id
         ))
-        self.add_item(LinkDenyButton(message.id, member.id, moderator.id))
+        self.add_item(LinkDenyButton(message.id, member.id))
 
     async def _log_link_created(self, interaction: discord.Interaction) -> None:
         """Log link creation to server logs."""
