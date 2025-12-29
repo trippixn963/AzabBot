@@ -302,10 +302,10 @@ class ForbidCog(commands.Cog):
             try:
                 if isinstance(channel, discord.TextChannel) and apply_to_text:
                     await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
-                elif isinstance(channel, discord.VoiceChannel) and apply_to_voice:
-                    await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
-                elif isinstance(channel, discord.StageChannel) and apply_to_voice:
-                    await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
+                elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+                    # Voice channels need both voice AND text permissions (for VC text chat)
+                    if apply_to_voice or apply_to_text:
+                        await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
                 elif isinstance(channel, discord.ForumChannel) and apply_to_text:
                     await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
             except discord.Forbidden:
@@ -835,8 +835,10 @@ class ForbidCog(commands.Cog):
             try:
                 if isinstance(channel, (discord.TextChannel, discord.ForumChannel)) and (perm_names & text_perms):
                     await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system: new channel")
-                elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)) and (perm_names & voice_perms):
-                    await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system: new channel")
+                elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+                    # Voice channels need both voice AND text permissions (for VC text chat)
+                    if perm_names & voice_perms or perm_names & text_perms:
+                        await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system: new channel")
             except (discord.Forbidden, discord.HTTPException):
                 pass
 
@@ -930,12 +932,14 @@ class ForbidCog(commands.Cog):
                             if getattr(current, perm_name) is not False:
                                 needs_fix = True
                                 break
-                    elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)) and (perm_names & voice_perms):
-                        current = channel.overwrites_for(role)
-                        for perm_name in overwrite_kwargs:
-                            if getattr(current, perm_name) is not False:
-                                needs_fix = True
-                                break
+                    elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+                        # Voice channels need both voice AND text permissions (for VC text chat)
+                        if perm_names & voice_perms or perm_names & text_perms:
+                            current = channel.overwrites_for(role)
+                            for perm_name in overwrite_kwargs:
+                                if getattr(current, perm_name) is not False:
+                                    needs_fix = True
+                                    break
 
                     if needs_fix:
                         await channel.set_permissions(role, overwrite=expected_overwrite, reason="Forbid system: nightly scan fix")

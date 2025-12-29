@@ -245,6 +245,8 @@ class DatabaseManager:
             self._conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
             self._conn.execute("PRAGMA temp_store=MEMORY")
             self._conn.execute("PRAGMA foreign_keys=ON")
+            self._conn.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped I/O
+            self._conn.execute("PRAGMA busy_timeout=5000")  # 5s busy timeout
             self._conn.row_factory = sqlite3.Row
         except sqlite3.Error as e:
             logger.error("Database Connection Failed", [("Error", str(e))])
@@ -2851,7 +2853,7 @@ class DatabaseManager:
         Returns:
             ID of the created pending reason.
         """
-        return self.execute(
+        cursor = self.execute(
             """
             INSERT INTO pending_reasons
             (thread_id, warning_message_id, embed_message_id, moderator_id, target_user_id, action_type, created_at)
@@ -2859,6 +2861,7 @@ class DatabaseManager:
             """,
             (thread_id, warning_message_id, embed_message_id, moderator_id, target_user_id, action_type, time.time())
         )
+        return cursor.lastrowid or 0
 
     def get_pending_reason_by_thread(self, thread_id: int, moderator_id: int) -> Optional[Dict]:
         """
@@ -2933,10 +2936,11 @@ class DatabaseManager:
             Number of records deleted.
         """
         cutoff = time.time() - max_age_seconds
-        return self.execute(
+        cursor = self.execute(
             "DELETE FROM pending_reasons WHERE owner_notified = 1 AND created_at < ?",
             (cutoff,)
         )
+        return cursor.rowcount
 
     # =========================================================================
     # Alt Detection Operations
@@ -5214,10 +5218,11 @@ class DatabaseManager:
         Returns:
             True if updated.
         """
-        return self.execute(
+        cursor = self.execute(
             "UPDATE tickets SET last_activity_at = ? WHERE ticket_id = ?",
             (time.time(), ticket_id)
         )
+        return cursor.rowcount > 0
 
     def get_inactive_tickets(
         self,
@@ -5304,10 +5309,11 @@ class DatabaseManager:
         Returns:
             True if updated.
         """
-        return self.execute(
+        cursor = self.execute(
             "UPDATE tickets SET warned_at = ? WHERE ticket_id = ?",
             (time.time(), ticket_id)
         )
+        return cursor.rowcount > 0
 
     def clear_ticket_warning(self, ticket_id: str) -> bool:
         """
@@ -5319,10 +5325,11 @@ class DatabaseManager:
         Returns:
             True if updated.
         """
-        return self.execute(
+        cursor = self.execute(
             "UPDATE tickets SET warned_at = NULL WHERE ticket_id = ?",
             (ticket_id,)
         )
+        return cursor.rowcount > 0
 
     # =========================================================================
     # Modmail Operations
@@ -5397,7 +5404,7 @@ class DatabaseManager:
             True if updated.
         """
         now = time.time()
-        return self.execute(
+        cursor = self.execute(
             """
             UPDATE modmail
             SET status = 'closed', closed_at = ?, closed_by = ?
@@ -5405,6 +5412,7 @@ class DatabaseManager:
             """,
             (now, closed_by, thread_id)
         )
+        return cursor.rowcount > 0
 
     def reopen_modmail(self, user_id: int, guild_id: int) -> bool:
         """
@@ -5417,7 +5425,7 @@ class DatabaseManager:
         Returns:
             True if updated.
         """
-        return self.execute(
+        cursor = self.execute(
             """
             UPDATE modmail
             SET status = 'open', closed_at = NULL, closed_by = NULL
@@ -5425,6 +5433,7 @@ class DatabaseManager:
             """,
             (user_id, guild_id)
         )
+        return cursor.rowcount > 0
 
 
 # =============================================================================

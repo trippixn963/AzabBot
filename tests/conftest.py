@@ -283,3 +283,158 @@ def mock_bot(mock_discord_forum):
     bot.fetch_channel = AsyncMock(return_value=mock_discord_forum)
     bot.wait_until_ready = AsyncMock()
     return bot
+
+
+# =============================================================================
+# Enhanced Mock Discord Objects for Service Testing
+# =============================================================================
+
+@pytest.fixture
+def mock_discord_user():
+    """Create a mock Discord user (not in a guild)."""
+    from datetime import datetime
+    user = MagicMock()
+    user.id = 123456789
+    user.name = "testuser"
+    user.display_name = "Test User"
+    user.display_avatar = MagicMock()
+    user.display_avatar.url = "https://example.com/avatar.png"
+    user.avatar = MagicMock()
+    user.created_at = datetime(2020, 9, 13, 12, 0, 0)
+    user.mention = "<@123456789>"
+    user.send = AsyncMock(return_value=MagicMock(id=111222333))
+    user.bot = False
+    return user
+
+
+@pytest.fixture
+def mock_discord_guild():
+    """Create a mock Discord guild."""
+    guild = MagicMock()
+    guild.id = 987654321
+    guild.name = "Test Server"
+    guild.banner = MagicMock()
+    guild.banner.url = "https://example.com/banner.png"
+    guild.me = MagicMock()
+    guild.me.id = 999888777
+    guild.me.name = "AzabBot"
+    guild.get_member = MagicMock(return_value=None)
+    guild.fetch_member = AsyncMock()
+    guild.fetch_ban = AsyncMock()
+    guild.unban = AsyncMock()
+    guild.get_role = MagicMock(return_value=None)
+    return guild
+
+
+@pytest.fixture
+def mock_discord_text_channel(mock_discord_guild):
+    """Create a mock Discord text channel."""
+    channel = MagicMock()
+    channel.id = 444555666
+    channel.name = "tickets"
+    channel.guild = mock_discord_guild
+    channel.send = AsyncMock(return_value=MagicMock(id=111222333))
+    channel.create_thread = AsyncMock()
+    return channel
+
+
+@pytest.fixture
+def mock_discord_interaction(mock_discord_member, mock_discord_guild):
+    """Create a mock Discord interaction."""
+    interaction = MagicMock()
+    interaction.user = mock_discord_member
+    interaction.guild = mock_discord_guild
+    interaction.channel = MagicMock()
+    interaction.channel.id = 555666777
+    interaction.client = MagicMock()
+    interaction.response = MagicMock()
+    interaction.response.defer = AsyncMock()
+    interaction.response.send_message = AsyncMock()
+    interaction.response.send_modal = AsyncMock()
+    interaction.response.is_done = MagicMock(return_value=False)
+    interaction.followup = MagicMock()
+    interaction.followup.send = AsyncMock()
+    return interaction
+
+
+@pytest.fixture
+def mock_discord_message(mock_discord_user):
+    """Create a mock Discord message."""
+    message = MagicMock()
+    message.id = 111222333
+    message.content = "Test message content"
+    message.author = mock_discord_user
+    message.channel = MagicMock()
+    message.channel.id = 555666777
+    message.channel.send = AsyncMock()
+    message.attachments = []
+    message.embeds = []
+    message.created_at = MagicMock()
+    message.add_reaction = AsyncMock()
+    message.edit = AsyncMock()
+    message.delete = AsyncMock()
+    return message
+
+
+# =============================================================================
+# Service Test Fixtures
+# =============================================================================
+
+@pytest.fixture
+def mock_config():
+    """Create a mock config object."""
+    config = MagicMock()
+    config.developer_id = 111111111
+    config.logging_guild_id = 987654321
+    config.ticket_channel_id = 444555666
+    config.ticket_staff_role_id = 222333444
+    config.ticket_support_user_ids = {111222333}
+    config.ticket_partnership_user_id = 333444555
+    config.ticket_suggestion_user_id = 444555666
+    config.appeal_forum_id = 555666777
+    config.appeal_allowed_user_ids = {111222333}
+    config.modmail_forum_id = 666777888
+    config.muted_role_id = 777888999
+    return config
+
+
+@pytest.fixture
+def mock_ticket_service(test_db, mock_config, mock_bot):
+    """Create a mock TicketService for testing."""
+    from unittest.mock import patch
+
+    with patch('src.services.ticket_service.get_config', return_value=mock_config):
+        with patch('src.services.ticket_service.get_db', return_value=test_db):
+            from src.services.ticket_service import TicketService
+            service = TicketService(mock_bot)
+            service.config = mock_config
+            service.db = test_db
+            yield service
+
+
+@pytest.fixture
+def mock_appeal_service(test_db, mock_config, mock_bot):
+    """Create a mock AppealService for testing."""
+    from unittest.mock import patch
+
+    with patch('src.services.appeal_service.get_config', return_value=mock_config):
+        with patch('src.services.appeal_service.get_db', return_value=test_db):
+            from src.services.appeal_service import AppealService
+            service = AppealService(mock_bot)
+            service.config = mock_config
+            service.db = test_db
+            yield service
+
+
+@pytest.fixture
+def mock_modmail_service(test_db, mock_config, mock_bot):
+    """Create a mock ModmailService for testing."""
+    from unittest.mock import patch
+
+    with patch('src.services.modmail_service.get_config', return_value=mock_config):
+        with patch('src.services.modmail_service.get_db', return_value=test_db):
+            from src.services.modmail_service import ModmailService
+            service = ModmailService(mock_bot)
+            service.config = mock_config
+            service.db = test_db
+            yield service

@@ -59,6 +59,46 @@ class InteractionLogger:
         self.bot = bot
         self._session: Optional[aiohttp.ClientSession] = None
 
+    async def verify_webhook(self) -> bool:
+        """Send a startup verification message to confirm webhook is working."""
+        if not LOG_WEBHOOK_URL:
+            logger.warning("Interaction Logger", [
+                ("Status", "No webhook URL configured"),
+            ])
+            return False
+
+        try:
+            session = await self._get_session()
+            embed = discord.Embed(
+                title="🔔 Interaction Logger Online",
+                description="Webhook verification successful. All button interactions will be logged here.",
+                color=COLOR_SUCCESS,
+            )
+            embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
+            embed.add_field(name="Bot", value=f"`{self.bot.user.name if self.bot.user else 'AzabBot'}`", inline=True)
+
+            payload = {"embeds": [embed.to_dict()]}
+
+            async with session.post(LOG_WEBHOOK_URL, json=payload) as resp:
+                if resp.status in (200, 204):
+                    logger.info("Interaction Logger", [
+                        ("Status", "Webhook verified"),
+                        ("Response", str(resp.status)),
+                    ])
+                    return True
+                else:
+                    logger.warning("Interaction Logger", [
+                        ("Status", "Webhook verification failed"),
+                        ("Response", str(resp.status)),
+                    ])
+                    return False
+        except Exception as e:
+            logger.error("Interaction Logger", [
+                ("Status", "Webhook verification error"),
+                ("Error", str(e)[:100]),
+            ])
+            return False
+
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session with timeout."""
         if self._session is None or self._session.closed:
@@ -76,13 +116,17 @@ class InteractionLogger:
             payload = {"embeds": [embed_dict]}
 
             async with session.post(LOG_WEBHOOK_URL, json=payload) as resp:
-                if resp.status not in (200, 204):
+                if resp.status in (200, 204):
+                    logger.debug(f"Interaction logged: {embed.title}")
+                else:
                     logger.warning("Interaction Webhook Error", [
                         ("Status", str(resp.status)),
+                        ("Title", embed.title or "Unknown"),
                     ])
         except Exception as e:
             logger.warning("Interaction Webhook Failed", [
-                ("Error", str(e)[:50]),
+                ("Error", str(e)[:100]),
+                ("Title", embed.title if hasattr(embed, 'title') else "Unknown"),
             ])
 
     async def close(self) -> None:
