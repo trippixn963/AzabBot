@@ -1497,7 +1497,7 @@ class EditCaseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"edit_
             discord.ui.Button(
                 label="Edit",
                 style=discord.ButtonStyle.secondary,
-                emoji="✏️",
+                emoji=NOTE_EMOJI,
                 custom_id=f"edit_case:{case_id}",
             )
         )
