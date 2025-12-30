@@ -5510,6 +5510,238 @@ class DatabaseManager:
         return cursor.rowcount > 0
 
 
+    # =========================================================================
+    # Stats API Helper Methods
+    # =========================================================================
+
+    def get_mutes_in_range(self, start_ts: float, end_ts: float, guild_id: Optional[int] = None) -> int:
+        """Get count of mutes in a time range."""
+        if guild_id:
+            row = self.fetchone(
+                """SELECT COUNT(*) as count FROM mute_history
+                   WHERE action = 'mute' AND timestamp >= ? AND timestamp <= ? AND guild_id = ?""",
+                (start_ts, end_ts, guild_id)
+            )
+        else:
+            row = self.fetchone(
+                """SELECT COUNT(*) as count FROM mute_history
+                   WHERE action = 'mute' AND timestamp >= ? AND timestamp <= ?""",
+                (start_ts, end_ts)
+            )
+        return row["count"] if row else 0
+
+    def get_bans_in_range(self, start_ts: float, end_ts: float, guild_id: Optional[int] = None) -> int:
+        """Get count of bans in a time range."""
+        if guild_id:
+            row = self.fetchone(
+                """SELECT COUNT(*) as count FROM ban_history
+                   WHERE action = 'ban' AND timestamp >= ? AND timestamp <= ? AND guild_id = ?""",
+                (start_ts, end_ts, guild_id)
+            )
+        else:
+            row = self.fetchone(
+                """SELECT COUNT(*) as count FROM ban_history
+                   WHERE action = 'ban' AND timestamp >= ? AND timestamp <= ?""",
+                (start_ts, end_ts)
+            )
+        return row["count"] if row else 0
+
+    def get_warns_in_range(self, start_ts: float, end_ts: float, guild_id: Optional[int] = None) -> int:
+        """Get count of warnings in a time range."""
+        if guild_id:
+            row = self.fetchone(
+                """SELECT COUNT(*) as count FROM warnings
+                   WHERE created_at >= ? AND created_at <= ? AND guild_id = ?""",
+                (start_ts, end_ts, guild_id)
+            )
+        else:
+            row = self.fetchone(
+                """SELECT COUNT(*) as count FROM warnings
+                   WHERE created_at >= ? AND created_at <= ?""",
+                (start_ts, end_ts)
+            )
+        return row["count"] if row else 0
+
+    def get_total_mutes(self, guild_id: Optional[int] = None) -> int:
+        """Get total mute count."""
+        if guild_id:
+            row = self.fetchone(
+                "SELECT COUNT(*) as count FROM mute_history WHERE action = 'mute' AND guild_id = ?",
+                (guild_id,)
+            )
+        else:
+            row = self.fetchone("SELECT COUNT(*) as count FROM mute_history WHERE action = 'mute'")
+        return row["count"] if row else 0
+
+    def get_total_bans(self, guild_id: Optional[int] = None) -> int:
+        """Get total ban count."""
+        if guild_id:
+            row = self.fetchone(
+                "SELECT COUNT(*) as count FROM ban_history WHERE action = 'ban' AND guild_id = ?",
+                (guild_id,)
+            )
+        else:
+            row = self.fetchone("SELECT COUNT(*) as count FROM ban_history WHERE action = 'ban'")
+        return row["count"] if row else 0
+
+    def get_total_warns(self, guild_id: Optional[int] = None) -> int:
+        """Get total warning count."""
+        if guild_id:
+            row = self.fetchone(
+                "SELECT COUNT(*) as count FROM warnings WHERE guild_id = ?",
+                (guild_id,)
+            )
+        else:
+            row = self.fetchone("SELECT COUNT(*) as count FROM warnings")
+        return row["count"] if row else 0
+
+    def get_total_cases(self, guild_id: Optional[int] = None) -> int:
+        """Get total case count."""
+        if guild_id:
+            row = self.fetchone(
+                "SELECT COUNT(*) as count FROM cases WHERE guild_id = ?",
+                (guild_id,)
+            )
+        else:
+            row = self.fetchone("SELECT COUNT(*) as count FROM cases")
+        return row["count"] if row else 0
+
+    def get_active_prisoners_count(self, guild_id: Optional[int] = None) -> int:
+        """Get count of currently active mutes."""
+        if guild_id:
+            row = self.fetchone(
+                "SELECT COUNT(*) as count FROM active_mutes WHERE unmuted = 0 AND guild_id = ?",
+                (guild_id,)
+            )
+        else:
+            row = self.fetchone("SELECT COUNT(*) as count FROM active_mutes WHERE unmuted = 0")
+        return row["count"] if row else 0
+
+    def get_open_cases_count(self, guild_id: Optional[int] = None) -> int:
+        """Get count of open cases."""
+        if guild_id:
+            row = self.fetchone(
+                "SELECT COUNT(*) as count FROM cases WHERE status = 'open' AND guild_id = ?",
+                (guild_id,)
+            )
+        else:
+            row = self.fetchone("SELECT COUNT(*) as count FROM cases WHERE status = 'open'")
+        return row["count"] if row else 0
+
+    def get_top_offenders(self, limit: int = 10, guild_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get top offenders by total infractions (mutes + bans + warns)."""
+        if guild_id:
+            rows = self.fetchall(
+                """
+                SELECT
+                    user_id,
+                    SUM(mute_count) as mutes,
+                    SUM(ban_count) as bans,
+                    SUM(warn_count) as warns,
+                    (SUM(mute_count) + SUM(ban_count) + SUM(warn_count)) as total
+                FROM (
+                    SELECT user_id, COUNT(*) as mute_count, 0 as ban_count, 0 as warn_count
+                    FROM mute_history WHERE action = 'mute' AND guild_id = ?
+                    GROUP BY user_id
+                    UNION ALL
+                    SELECT user_id, 0 as mute_count, COUNT(*) as ban_count, 0 as warn_count
+                    FROM ban_history WHERE action = 'ban' AND guild_id = ?
+                    GROUP BY user_id
+                    UNION ALL
+                    SELECT user_id, 0 as mute_count, 0 as ban_count, COUNT(*) as warn_count
+                    FROM warnings WHERE guild_id = ?
+                    GROUP BY user_id
+                ) combined
+                GROUP BY user_id
+                ORDER BY total DESC
+                LIMIT ?
+                """,
+                (guild_id, guild_id, guild_id, limit)
+            )
+        else:
+            rows = self.fetchall(
+                """
+                SELECT
+                    user_id,
+                    SUM(mute_count) as mutes,
+                    SUM(ban_count) as bans,
+                    SUM(warn_count) as warns,
+                    (SUM(mute_count) + SUM(ban_count) + SUM(warn_count)) as total
+                FROM (
+                    SELECT user_id, COUNT(*) as mute_count, 0 as ban_count, 0 as warn_count
+                    FROM mute_history WHERE action = 'mute'
+                    GROUP BY user_id
+                    UNION ALL
+                    SELECT user_id, 0 as mute_count, COUNT(*) as ban_count, 0 as warn_count
+                    FROM ban_history WHERE action = 'ban'
+                    GROUP BY user_id
+                    UNION ALL
+                    SELECT user_id, 0 as mute_count, 0 as ban_count, COUNT(*) as warn_count
+                    FROM warnings
+                    GROUP BY user_id
+                ) combined
+                GROUP BY user_id
+                ORDER BY total DESC
+                LIMIT ?
+                """,
+                (limit,)
+            )
+        return [dict(row) for row in rows] if rows else []
+
+    def get_recent_actions(self, limit: int = 10, guild_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get most recent moderation actions."""
+        if guild_id:
+            rows = self.fetchall(
+                """
+                SELECT * FROM (
+                    SELECT 'mute' as type, user_id, moderator_id, reason, timestamp, guild_id
+                    FROM mute_history WHERE action = 'mute' AND guild_id = ?
+                    UNION ALL
+                    SELECT 'ban' as type, user_id, moderator_id, reason, timestamp, guild_id
+                    FROM ban_history WHERE action = 'ban' AND guild_id = ?
+                    UNION ALL
+                    SELECT 'warn' as type, user_id, moderator_id, reason, created_at as timestamp, guild_id
+                    FROM warnings WHERE guild_id = ?
+                ) combined
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (guild_id, guild_id, guild_id, limit)
+            )
+        else:
+            rows = self.fetchall(
+                """
+                SELECT * FROM (
+                    SELECT 'mute' as type, user_id, moderator_id, reason, timestamp, guild_id
+                    FROM mute_history WHERE action = 'mute'
+                    UNION ALL
+                    SELECT 'ban' as type, user_id, moderator_id, reason, timestamp, guild_id
+                    FROM ban_history WHERE action = 'ban'
+                    UNION ALL
+                    SELECT 'warn' as type, user_id, moderator_id, reason, created_at as timestamp, guild_id
+                    FROM warnings
+                ) combined
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (limit,)
+            )
+        return [dict(row) for row in rows] if rows else []
+
+    def get_moderator_leaderboard(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get moderator leaderboard by action count."""
+        rows = self.fetchall(
+            """
+            SELECT mod_id as moderator_id, action_count, last_action_at
+            FROM mod_tracker
+            ORDER BY action_count DESC
+            LIMIT ?
+            """,
+            (limit,)
+        )
+        return [dict(row) for row in rows] if rows else []
+
+
 # =============================================================================
 # Global Instance
 # =============================================================================

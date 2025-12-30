@@ -103,6 +103,7 @@ class AzabBot(commands.Bot):
         self.ticket_service = None
         self.modmail_service = None
         self.interaction_logger = None
+        self.stats_api = None
 
         # Shared HTTP session for all services
         self._http_session: Optional[aiohttp.ClientSession] = None
@@ -314,6 +315,10 @@ class AzabBot(commands.Bot):
             from src.core.health import HealthCheckServer
             self.health_server = HealthCheckServer(self)
             await self.health_server.start()
+
+            from src.services.stats_api import AzabAPI
+            self.stats_api = AzabAPI(self)
+            await self.stats_api.start()
 
             from src.services.mute_scheduler import MuteScheduler
             self.mute_scheduler = MuteScheduler(self)
@@ -695,6 +700,9 @@ class AzabBot(commands.Bot):
 
         if self.health_server:
             await self.health_server.stop()
+
+        if self.stats_api:
+            await self.stats_api.stop()
 
         # Close interaction logger (flushes pending embeds)
         if self.interaction_logger:
