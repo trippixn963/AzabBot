@@ -821,6 +821,44 @@ class LoggingService:
                 oldest_key = next(iter(self._join_messages))
                 del self._join_messages[oldest_key]
 
+    async def _edit_join_message_on_leave(
+        self,
+        message_id: int,
+        member: discord.Member,
+        was_banned: bool,
+    ) -> None:
+        """Edit the original join embed to show they left."""
+        try:
+            thread = self._threads[LogCategory.JOINS]
+            message = await thread.fetch_message(message_id)
+
+            if message.embeds:
+                embed = message.embeds[0]
+
+                # Calculate time in server
+                duration_str = "Unknown"
+                if member.joined_at:
+                    total_seconds = int(datetime.now(timezone.utc).timestamp() - member.joined_at.timestamp())
+                    total_seconds = max(0, total_seconds)
+                    duration_str = self._format_duration_precise(total_seconds)
+
+                # Update title and color based on ban status
+                if was_banned:
+                    embed.title = "📥 Member Joined → 🔨 Banned"
+                    embed.color = EmbedColors.LOG_NEGATIVE
+                else:
+                    embed.title = "📥 Member Joined → 📤 Left"
+                    embed.color = EmbedColors.WARNING
+
+                # Add "Left After" field
+                embed.add_field(name="Left After", value=f"`{duration_str}`", inline=True)
+
+                await message.edit(embed=embed)
+        except discord.NotFound:
+            pass  # Message was deleted
+        except Exception as e:
+            logger.debug(f"Logging Service: Failed to edit join message on leave: {e}")
+
     # =========================================================================
     # Member Leaves
     # =========================================================================
@@ -831,8 +869,10 @@ class LoggingService:
         was_banned: bool = False,
     ) -> None:
         """Log a member leave with detailed info."""
-        # Clean up join message cache
-        self._join_messages.pop(member.id, None)
+        # Edit the original join embed to show they left
+        join_message_id = self._join_messages.pop(member.id, None)
+        if join_message_id and LogCategory.JOINS in self._threads:
+            await self._edit_join_message_on_leave(join_message_id, member, was_banned)
 
         if not self._should_log(member.guild.id, member.id):
             return
