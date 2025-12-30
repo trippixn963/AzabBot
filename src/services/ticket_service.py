@@ -716,6 +716,12 @@ class TicketService:
                 ticket_opener = reopened_by.guild.get_member(ticket["user_id"])
                 if ticket_opener:
                     await thread.set_permissions(ticket_opener, overwrite=None)
+
+                # Remove developer overwrite
+                if self.config.developer_id:
+                    developer = reopened_by.guild.get_member(self.config.developer_id)
+                    if developer:
+                        await thread.set_permissions(developer, overwrite=None)
             except Exception as e:
                 logger.debug(f"Failed to reset thread permissions: {e}")
 
@@ -830,6 +836,16 @@ class TicketService:
                         send_messages=True,
                         reason=f"Ticket opener",
                     )
+
+                # Always allow developer to send messages
+                if self.config.developer_id:
+                    developer = staff.guild.get_member(self.config.developer_id)
+                    if developer:
+                        await thread.set_permissions(
+                            developer,
+                            send_messages=True,
+                            reason=f"Developer override",
+                        )
             except Exception as e:
                 logger.debug(f"Failed to set thread permissions: {e}")
 
