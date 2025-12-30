@@ -1688,8 +1688,36 @@ class TicketCloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tk
             await interaction.response.send_message("Ticket system unavailable.", ephemeral=True)
             return
 
-        # Check permission
-        if not bot.ticket_service.has_staff_permission(interaction.user):
+        # Get ticket to check if user is the opener
+        ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
+        if not ticket:
+            await interaction.response.send_message("Ticket not found.", ephemeral=True)
+            return
+
+        # Check if user is the ticket opener (not staff)
+        is_opener = ticket["user_id"] == interaction.user.id
+        is_staff = bot.ticket_service.has_staff_permission(interaction.user)
+
+        if is_opener and not is_staff:
+            # Ticket opener requests closure - send request to staff
+            logger.tree("Ticket Close Requested", [
+                ("Ticket ID", self.ticket_id),
+                ("Requester", f"{interaction.user} ({interaction.user.id})"),
+            ], emoji="📩")
+
+            request_embed = discord.Embed(
+                title="📩 Close Request",
+                description=f"{interaction.user.mention} has requested to close this ticket.",
+                color=EmbedColors.WARNING,
+            )
+            set_footer(request_embed)
+
+            view = CloseRequestView(self.ticket_id, interaction.user.id)
+            await interaction.response.send_message(embed=request_embed, view=view)
+            return
+
+        # Check staff permission for direct close
+        if not is_staff:
             logger.tree("Ticket Close Denied", [
                 ("Ticket ID", self.ticket_id),
                 ("User", f"{interaction.user} ({interaction.user.id})"),
@@ -2172,6 +2200,130 @@ class TicketAddUserModal(discord.ui.Modal, title="Add User to Ticket"):
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 
+class CloseRequestAcceptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_cr_accept:(?P<ticket_id>T\d+):(?P<requester_id>\d+)"):
+    """Button to accept a close request."""
+
+    def __init__(self, ticket_id: str, requester_id: int):
+        super().__init__(
+            discord.ui.Button(
+                label="Accept",
+                style=discord.ButtonStyle.success,
+                custom_id=f"tkt_cr_accept:{ticket_id}:{requester_id}",
+                emoji="✅",
+            )
+        )
+        self.ticket_id = ticket_id
+        self.requester_id = requester_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match,
+    ) -> "CloseRequestAcceptButton":
+        return cls(match.group("ticket_id"), int(match.group("requester_id")))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        bot = interaction.client
+        if not hasattr(bot, "ticket_service") or not bot.ticket_service:
+            await interaction.response.send_message("Ticket system unavailable.", ephemeral=True)
+            return
+
+        # Only staff can accept
+        if not bot.ticket_service.has_staff_permission(interaction.user):
+            await interaction.response.send_message("Only staff can accept close requests.", ephemeral=True)
+            return
+
+        logger.tree("Close Request Accepted", [
+            ("Ticket ID", self.ticket_id),
+            ("Accepted By", f"{interaction.user} ({interaction.user.id})"),
+            ("Requester ID", str(self.requester_id)),
+        ], emoji="✅")
+
+        # Update the request message
+        try:
+            accepted_embed = discord.Embed(
+                title="✅ Close Request Accepted",
+                description=f"Close request accepted by {interaction.user.mention}.\nClosing ticket...",
+                color=EmbedColors.SUCCESS,
+            )
+            set_footer(accepted_embed)
+            await interaction.response.edit_message(embed=accepted_embed, view=None)
+        except Exception:
+            await interaction.response.defer()
+
+        # Close the ticket
+        success, message = await bot.ticket_service.close_ticket(
+            self.ticket_id,
+            interaction.user,
+            reason="Closed by user request",
+        )
+
+        if not success:
+            await interaction.followup.send(f"Failed to close: {message}", ephemeral=True)
+
+
+class CloseRequestDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_cr_deny:(?P<ticket_id>T\d+):(?P<requester_id>\d+)"):
+    """Button to deny a close request."""
+
+    def __init__(self, ticket_id: str, requester_id: int):
+        super().__init__(
+            discord.ui.Button(
+                label="Deny",
+                style=discord.ButtonStyle.danger,
+                custom_id=f"tkt_cr_deny:{ticket_id}:{requester_id}",
+                emoji="❌",
+            )
+        )
+        self.ticket_id = ticket_id
+        self.requester_id = requester_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match,
+    ) -> "CloseRequestDenyButton":
+        return cls(match.group("ticket_id"), int(match.group("requester_id")))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        bot = interaction.client
+        if not hasattr(bot, "ticket_service") or not bot.ticket_service:
+            await interaction.response.send_message("Ticket system unavailable.", ephemeral=True)
+            return
+
+        # Only staff can deny
+        if not bot.ticket_service.has_staff_permission(interaction.user):
+            await interaction.response.send_message("Only staff can deny close requests.", ephemeral=True)
+            return
+
+        logger.tree("Close Request Denied", [
+            ("Ticket ID", self.ticket_id),
+            ("Denied By", f"{interaction.user} ({interaction.user.id})"),
+            ("Requester ID", str(self.requester_id)),
+        ], emoji="❌")
+
+        # Update the request message
+        denied_embed = discord.Embed(
+            title="❌ Close Request Denied",
+            description=f"Close request denied by {interaction.user.mention}.\nTicket will remain open.",
+            color=EmbedColors.LOG_NEGATIVE,
+        )
+        set_footer(denied_embed)
+        await interaction.response.edit_message(embed=denied_embed, view=None)
+
+
+class CloseRequestView(discord.ui.View):
+    """View for close request with Accept/Deny buttons."""
+
+    def __init__(self, ticket_id: str, requester_id: int):
+        super().__init__(timeout=None)
+        self.add_item(CloseRequestAcceptButton(ticket_id, requester_id))
+        self.add_item(CloseRequestDenyButton(ticket_id, requester_id))
+
+
 # =============================================================================
 # Views Using Dynamic Items (must be after DynamicItem definitions)
 # =============================================================================
@@ -2219,6 +2371,8 @@ def setup_ticket_views(bot: "AzabBot") -> None:
         TicketReopenButton,
         TicketAddUserButton,
         TicketTranscriptButton,
+        CloseRequestAcceptButton,
+        CloseRequestDenyButton,
     )
     logger.debug("Ticket Views Registered")
 
