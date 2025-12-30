@@ -69,15 +69,15 @@ FLOOD_MESSAGE_LIMIT = 8
 FLOOD_TIME_WINDOW = 5  # seconds
 
 # Duplicate spam: Similar messages X times in Y seconds
-DUPLICATE_LIMIT = 4  # need 4 similar messages, not 3
+DUPLICATE_LIMIT = 5  # need 5 similar messages to trigger
 DUPLICATE_TIME_WINDOW = 30  # seconds
-DUPLICATE_SIMILARITY_THRESHOLD = 0.90  # 90% similar = duplicate (stricter matching)
+DUPLICATE_SIMILARITY_THRESHOLD = 0.92  # 92% similar = duplicate (stricter matching)
 
 # Mention spam: X mentions in one message
 MENTION_LIMIT = 6
 
 # Emoji spam: X emojis in one message
-EMOJI_LIMIT = 20  # lenient for expressive chat
+EMOJI_LIMIT = 30  # very lenient for expressive chat
 
 # Link flood: X links in Y seconds
 LINK_LIMIT = 4
@@ -211,7 +211,7 @@ EXEMPT_ARABIC_GREETINGS = {
 }
 
 # Minimum length for duplicate detection (short messages ignored)
-DUPLICATE_MIN_LENGTH = 80  # ignore short/casual repeated messages
+DUPLICATE_MIN_LENGTH = 150  # ignore short/casual repeated messages (incl emoji spam)
 
 # Attachment flood: X attachments in Y seconds
 ATTACHMENT_LIMIT = 5
@@ -812,7 +812,22 @@ class AntiSpamService:
         total_letters = sum(1 for c in text if c.isalpha())
         if total_letters == 0:
             return False
-        return (arabic_chars / total_letters) >= 0.5  # 50%+ Arabic
+        # Lenient threshold - 30% Arabic is enough to be considered Arabic text
+        # This catches Quran verses that may have translations mixed in
+        return (arabic_chars / total_letters) >= 0.3
+
+    def _is_emoji_only(self, text: str) -> bool:
+        """Check if message is mostly emojis (exempt from duplicate detection)."""
+        if not text:
+            return False
+        # Remove custom Discord emojis <:name:id> and <a:name:id>
+        text_no_custom = re.sub(r'<a?:\w+:\d+>', '', text)
+        # Remove standard Unicode emojis
+        text_no_emoji = self._emoji_pattern.sub('', text_no_custom)
+        # Remove whitespace
+        text_clean = text_no_emoji.strip()
+        # If nothing left (or very little), it's emoji-only
+        return len(text_clean) < 10
 
     def _has_char_repeat(self, content: str) -> bool:
         """Check for repeated characters (excluding Arabic)."""
@@ -840,11 +855,20 @@ class AntiSpamService:
         return ratio >= DUPLICATE_SIMILARITY_THRESHOLD
 
     def _count_combining_chars(self, content: str) -> int:
-        """Count Unicode combining characters (used in Zalgo text)."""
-        return sum(1 for c in content if unicodedata.category(c) == 'Mn')
+        """Count Unicode combining characters (used in Zalgo text), excluding Arabic tashkeel."""
+        count = 0
+        for c in content:
+            if unicodedata.category(c) == 'Mn':
+                # Exclude Arabic tashkeel/diacritical marks (U+064B to U+0670)
+                if c not in ARABIC_TASHKEEL:
+                    count += 1
+        return count
 
     def _is_zalgo(self, content: str) -> bool:
         """Check if text contains Zalgo/excessive combining characters."""
+        # Skip Zalgo check entirely for Arabic text (Quran verses have lots of tashkeel)
+        if self._is_mostly_arabic(content):
+            return False
         return self._count_combining_chars(content) >= ZALGO_COMBINING_LIMIT
 
     def _is_scam(self, content: str) -> bool:
@@ -1074,9 +1098,10 @@ class AntiSpamService:
             if len(recent_messages) > flood_limit:
                 spam_type = "message_flood"
 
-        # 5. Duplicate spam (fuzzy matching) - skip short messages and Arabic text
+        # 5. Duplicate spam (fuzzy matching) - skip short messages, Arabic text, and emoji-only
         is_arabic = self._is_mostly_arabic(content)
-        if not spam_type and record.content and len(record.content) >= DUPLICATE_MIN_LENGTH and not is_arabic:
+        is_emoji_only = self._is_emoji_only(content)
+        if not spam_type and record.content and len(record.content) >= DUPLICATE_MIN_LENGTH and not is_arabic and not is_emoji_only:
             similar_count = 0
             for m in state.messages:
                 if m is not record and (now - m.timestamp).total_seconds() < DUPLICATE_TIME_WINDOW:

@@ -2,15 +2,14 @@
 Azab Discord Bot - Presence Handler
 ===================================
 
-Manages dynamic Discord rich presence updates.
+Manages dynamic Discord rich presence updates with rotating status
+and hourly promotional presence.
 
-DESIGN:
-    The bot's presence (status message) provides at-a-glance information
-    about its current state. Active mode shows prisoner counts and taunts,
-    while inactive mode shows sleeping messages.
-
-    Special presence updates trigger on prisoner arrival/release for
-    immediate visual feedback to server members.
+Features:
+- Rotating status showing moderation stats
+- Hourly promotional presence (trippixn.com/azab for 10 mins)
+- Event-triggered presence for prisoner arrivals/releases
+- Clean error handling for connection issues
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -18,15 +17,26 @@ Server: discord.gg/syria
 
 import discord
 import asyncio
-import random
 from datetime import datetime
-from typing import Optional, List, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
+
+
+# =============================================================================
+# Constants
+# =============================================================================
+
+# Presence update interval (seconds)
+PRESENCE_UPDATE_INTERVAL = 60
+
+# Promotional presence settings
+PROMO_TEXT = "🌐 trippixn.com/azab"
+PROMO_DURATION_MINUTES = 10
 
 
 # =============================================================================
@@ -37,218 +47,263 @@ class PresenceHandler:
     """
     Manages Discord rich presence for the bot.
 
-    DESIGN:
-        Rotates through status messages on a 30-second interval.
-        Adapts content based on bot state (active/inactive).
-        Shows special messages for prisoner events.
-
-    Attributes:
-        bot: Reference to the main bot instance.
-        config: Bot configuration.
-        update_task: Background task for presence rotation.
-        last_prisoner_count: Cached count for mass arrest detection.
+    Features:
+    - Rotating status messages about moderation activity
+    - Hourly promotional presence window
+    - Event-triggered presence for prisoner events
     """
 
-    # =========================================================================
-    # Initialization
-    # =========================================================================
-
     def __init__(self, bot: "AzabBot") -> None:
-        """
-        Initialize the presence handler.
-
-        Args:
-            bot: Main bot instance.
-        """
+        """Initialize the presence handler."""
         self.bot = bot
         self.config = get_config()
-        self.update_task: Optional[asyncio.Task] = None
-        self.last_prisoner_count: int = 0
+
+        # Background tasks
+        self._presence_task: Optional[asyncio.Task] = None
+        self._promo_task: Optional[asyncio.Task] = None
+
+        # State tracking
+        self._presence_index: int = 0
+        self._promo_active: bool = False
         self._last_banner_refresh_date: Optional[str] = None
 
-        # -------------------------------------------------------------------------
-        # Active Mode Messages
-        # -------------------------------------------------------------------------
-
-        self.active_messages: List[str] = [
-            "{count} prisoners",
-            "Torturing {count}",
-            "{count} crying",
-            "Locked {count}",
-            "Roasting {count}",
-            "Destroying {count}",
-            "{count} suffering",
-        ]
-
-        # -------------------------------------------------------------------------
-        # Idle Mode Messages
-        # -------------------------------------------------------------------------
-
-        self.idle_messages: List[str] = [
-            "Napping",
-            "Off duty",
-            "Resting",
-            "Dreaming",
-            "Break time",
-            "Sleeping",
-            "Off shift",
-        ]
-
     # =========================================================================
-    # Presence Loop
+    # Lifecycle
     # =========================================================================
 
-    async def start_presence_loop(self) -> None:
-        """
-        Start the automatic presence update loop.
+    async def start(self) -> None:
+        """Start the presence update and promo scheduler loops."""
+        # Start presence update loop
+        self._presence_task = asyncio.create_task(self._presence_loop())
 
-        DESIGN:
-            Cancels any existing loop before starting new one.
-            Runs in background until bot shutdown.
-        """
-        if self.update_task:
-            self.update_task.cancel()
+        # Start promo scheduler
+        self._promo_task = asyncio.create_task(self._promo_loop())
 
-        self.update_task = asyncio.create_task(self._presence_loop())
-
-        logger.tree("Presence Loop Started", [
-            ("Interval", "30 seconds"),
-            ("Active Messages", str(len(self.active_messages))),
-            ("Idle Messages", str(len(self.idle_messages))),
+        logger.tree("Presence Handler Started", [
+            ("Update Interval", f"{PRESENCE_UPDATE_INTERVAL}s"),
+            ("Promo Schedule", "Every hour on the hour"),
+            ("Promo Duration", f"{PROMO_DURATION_MINUTES} minutes"),
         ], emoji="🔄")
 
-    async def _presence_loop(self) -> None:
-        """
-        Main presence update loop.
+    async def stop(self) -> None:
+        """Stop all presence tasks."""
+        if self._presence_task:
+            self._presence_task.cancel()
+            try:
+                await self._presence_task
+            except asyncio.CancelledError:
+                pass
+            self._presence_task = None
 
-        DESIGN:
-            Updates presence every 30 seconds.
-            Refreshes banner daily at midnight EST.
-            Catches and logs errors without crashing.
-            Continues running until explicitly cancelled.
-        """
+        if self._promo_task:
+            self._promo_task.cancel()
+            try:
+                await self._promo_task
+            except asyncio.CancelledError:
+                pass
+            self._promo_task = None
+
+    # =========================================================================
+    # Main Presence Loop
+    # =========================================================================
+
+    async def _presence_loop(self) -> None:
+        """Background task that updates presence periodically."""
         while True:
             try:
-                await self.update_presence()
+                await asyncio.sleep(PRESENCE_UPDATE_INTERVAL)
+                await self._update_rotating_presence()
                 await self._check_midnight_tasks()
-                await asyncio.sleep(self.config.presence_update_interval)
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("Presence Loop Error", [
-                    ("Error", str(e)[:50]),
-                ])
-                await asyncio.sleep(self.config.presence_update_interval)
+                self._log_presence_error("Presence Loop Error", e)
+                await asyncio.sleep(PRESENCE_UPDATE_INTERVAL)
 
-    async def _check_midnight_tasks(self) -> None:
-        """
-        Run daily tasks at midnight EST (banner refresh, etc).
+    async def _update_rotating_presence(self) -> None:
+        """Update presence with rotating status messages."""
+        # Skip during promo window
+        if self._promo_active:
+            return
 
-        DESIGN:
-            Tracks last refresh date to ensure once-daily execution.
-            Refreshes bot banner from server banner.
-        """
         try:
-            now = datetime.now(NY_TZ)
-            today = now.strftime("%Y-%m-%d")
+            status_text = await self._get_rotating_status()
 
-            # Check if it's a new day and within first hour (midnight-1am)
-            if self._last_banner_refresh_date != today and now.hour == 0:
-                self._last_banner_refresh_date = today
+            activity = discord.Activity(
+                type=discord.ActivityType.watching,
+                name=status_text
+            )
 
-                # Refresh banner
-                from src.utils.banner import refresh_banner
-                await refresh_banner()
+            await self.bot.change_presence(
+                status=discord.Status.online,
+                activity=activity
+            )
 
         except Exception as e:
-            logger.error("Midnight Tasks Failed", [
-                ("Error", str(e)[:50]),
-            ])
+            self._log_presence_error("Presence Update Failed", e)
 
-    # =========================================================================
-    # Presence Updates
-    # =========================================================================
-
-    async def update_presence(self) -> None:
+    async def _get_rotating_status(self) -> str:
         """
-        Update bot's Discord presence based on current state.
+        Get the current rotating status text.
 
-        DESIGN:
-            Active mode: Shows prisoner count with random taunts.
-            Mass arrest mode: DND status when 5+ prisoners arrive.
-            Stats mode: 10% chance to show aggregate stats.
-            Inactive mode: Idle status with sleeping messages.
+        Cycles through:
+        0: Current prisoners count
+        1: Today's mutes count
+        2: Open tickets count
+        3: Active cases count
         """
+        self._presence_index = (self._presence_index + 1) % 4
+
+        if self._presence_index == 0:
+            return self._get_prisoners_status()
+        elif self._presence_index == 1:
+            return await self._get_mutes_today_status()
+        elif self._presence_index == 2:
+            return await self._get_tickets_status()
+        else:
+            return await self._get_cases_status()
+
+    def _get_prisoners_status(self) -> str:
+        """Get current prisoners count status."""
+        count = self._count_prisoners()
+        if count == 0:
+            return "🔓 Prison empty"
+        elif count == 1:
+            return "🔒 1 prisoner"
+        else:
+            return f"🔒 {count} prisoners"
+
+    async def _get_mutes_today_status(self) -> str:
+        """Get today's mutes count status."""
         try:
-            if not self.bot.disabled:
-                prisoner_count = self._count_prisoners()
+            today_start = datetime.now(NY_TZ).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ).timestamp()
 
-                # -----------------------------------------------------------------
-                # Emergency Mode for Mass Arrests
-                # -----------------------------------------------------------------
+            row = self.bot.db.fetchone(
+                """SELECT COUNT(*) as count FROM mute_history
+                   WHERE muted_at >= ?""",
+                (today_start,)
+            )
 
-                if prisoner_count >= 5 and prisoner_count > self.last_prisoner_count:
-                    await self.bot.change_presence(
-                        status=discord.Status.dnd,
-                        activity=discord.Activity(
-                            type=discord.ActivityType.competing,
-                            name="Mass arrest",
-                        ),
-                    )
-                    self.last_prisoner_count = prisoner_count
-                    return
-
-                # -----------------------------------------------------------------
-                # Stats Mode (10% Chance)
-                # -----------------------------------------------------------------
-
-                if random.random() < 0.1:
-                    stats_message = await self._get_stats_message()
-                    if stats_message:
-                        await self.bot.change_presence(
-                            status=discord.Status.online,
-                            activity=discord.Activity(
-                                type=discord.ActivityType.playing,
-                                name=stats_message,
-                            ),
-                        )
-                        self.last_prisoner_count = prisoner_count
-                        return
-
-                # -----------------------------------------------------------------
-                # Normal Active Mode
-                # -----------------------------------------------------------------
-
-                message_template = random.choice(self.active_messages)
-                status_text = message_template.format(count=prisoner_count)
-
-                await self.bot.change_presence(
-                    status=discord.Status.online,
-                    activity=discord.Activity(
-                        type=discord.ActivityType.watching,
-                        name=status_text,
-                    ),
-                )
-                self.last_prisoner_count = prisoner_count
-
+            count = row["count"] if row else 0
+            if count == 0:
+                return "✨ No mutes today"
+            elif count == 1:
+                return "⚡ 1 mute today"
             else:
-                # -----------------------------------------------------------------
-                # Inactive Mode
-                # -----------------------------------------------------------------
+                return f"⚡ {count} mutes today"
+        except Exception:
+            return "⚡ Moderation active"
 
-                status_text = random.choice(self.idle_messages)
-                await self.bot.change_presence(
-                    status=discord.Status.idle,
-                    activity=discord.Activity(
-                        type=discord.ActivityType.playing,
-                        name=status_text,
-                    ),
+    async def _get_tickets_status(self) -> str:
+        """Get open tickets count status."""
+        try:
+            if hasattr(self.bot, 'ticket_service') and self.bot.ticket_service:
+                row = self.bot.db.fetchone(
+                    """SELECT COUNT(*) as count FROM tickets
+                       WHERE status IN ('open', 'claimed')"""
                 )
+                count = row["count"] if row else 0
+                if count == 0:
+                    return "🎫 No open tickets"
+                elif count == 1:
+                    return "🎫 1 open ticket"
+                else:
+                    return f"🎫 {count} open tickets"
+        except Exception:
+            pass
+        return "🎫 Ticket support"
+
+    async def _get_cases_status(self) -> str:
+        """Get total cases count status."""
+        try:
+            row = self.bot.db.fetchone(
+                """SELECT COUNT(*) as count FROM cases"""
+            )
+            count = row["count"] if row else 0
+            if count == 0:
+                return "📋 No cases"
+            else:
+                return f"📋 {count} cases logged"
+        except Exception:
+            return "📋 Case logging"
+
+    def _count_prisoners(self) -> int:
+        """Count current prisoners across all servers."""
+        count = 0
+        for guild in self.bot.guilds:
+            muted_role = guild.get_role(self.config.muted_role_id)
+            if muted_role:
+                count += len(muted_role.members)
+        return count
+
+    # =========================================================================
+    # Promotional Presence
+    # =========================================================================
+
+    async def _promo_loop(self) -> None:
+        """Background loop that triggers promo presence on the hour."""
+        while True:
+            try:
+                now = datetime.now(NY_TZ)
+                # Calculate seconds until next hour
+                minutes_until_hour = 60 - now.minute
+                seconds_until_hour = minutes_until_hour * 60 - now.second
+
+                # Wait until next hour
+                await asyncio.sleep(seconds_until_hour)
+
+                # Show promo presence
+                await self._show_promo_presence()
+
+                # Wait for promo duration
+                await asyncio.sleep(PROMO_DURATION_MINUTES * 60)
+
+                # Restore normal presence
+                await self._restore_normal_presence()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._promo_active = False
+                self._log_presence_error("Promo Loop Error", e)
+                await asyncio.sleep(60)
+
+    async def _show_promo_presence(self) -> None:
+        """Show promotional presence."""
+        try:
+            self._promo_active = True
+
+            activity = discord.Activity(
+                type=discord.ActivityType.watching,
+                name=PROMO_TEXT
+            )
+            await self.bot.change_presence(
+                status=discord.Status.online,
+                activity=activity
+            )
+
+            now = datetime.now(NY_TZ)
+            logger.tree("Promo Presence Activated", [
+                ("Text", PROMO_TEXT),
+                ("Duration", f"{PROMO_DURATION_MINUTES} minutes"),
+                ("Time", now.strftime("%I:%M %p EST")),
+            ], emoji="📢")
 
         except Exception as e:
-            logger.error("Presence Update Failed", [
-                ("Error", str(e)[:50]),
-            ])
+            self._log_presence_error("Promo Presence Failed", e)
+            self._promo_active = False
+
+    async def _restore_normal_presence(self) -> None:
+        """Restore normal presence after promo ends."""
+        try:
+            self._promo_active = False
+            await self._update_rotating_presence()
+            logger.info("📢 Promo Presence Ended - Normal Presence Restored")
+        except Exception as e:
+            self._log_presence_error("Restore Presence Failed", e)
+            self._promo_active = False
 
     # =========================================================================
     # Event-Triggered Presence
@@ -263,40 +318,28 @@ class PresenceHandler:
         """
         Temporarily show when a new prisoner arrives.
 
-        DESIGN:
-            DND status signals active enforcement.
-            Repeat offenders get special callout messages.
-            Reverts to normal presence after 5 seconds.
-
         Args:
             username: Prisoner's display name.
             reason: Mute reason for context.
             mute_count: Number of times this user has been muted.
         """
+        # Skip during promo
+        if self._promo_active:
+            return
+
         try:
-            # Special messages for repeat offenders
+            # Build status text
             if mute_count >= 5 and username:
-                repeat_messages = [
-                    f"{username} again",
-                    f"{username} back",
-                    f"Regular: {username}",
-                    f"{username} returned",
-                ]
-                status_text = random.choice(repeat_messages)
-            elif reason and username:
-                max_len = 30
-                if len(reason) > max_len:
-                    reason = reason[:max_len - 3] + "..."
-                status_text = f"{username}: {reason}"
+                status_text = f"🔄 {username} (repeat)"
             elif username:
-                status_text = f"{username} locked"
+                status_text = f"🔒 {username} locked"
             else:
-                status_text = "New prisoner"
+                status_text = "🔒 New prisoner"
 
             await self.bot.change_presence(
                 status=discord.Status.dnd,
                 activity=discord.Activity(
-                    type=discord.ActivityType.playing,
+                    type=discord.ActivityType.watching,
                     name=status_text,
                 ),
             )
@@ -306,14 +349,12 @@ class PresenceHandler:
                 ("Status", status_text),
             ], emoji="🔴")
 
-            await asyncio.sleep(self.config.presence_retry_delay)
-            await self.update_presence()
+            # Revert after delay
+            await asyncio.sleep(5)
+            await self._update_rotating_presence()
 
         except Exception as e:
-            logger.error("Prisoner Arrival Presence Failed", [
-                ("Username", username or "Unknown"),
-                ("Error", str(e)[:50]),
-            ])
+            self._log_presence_error("Prisoner Arrival Presence Failed", e)
 
     async def show_prisoner_released(
         self,
@@ -323,35 +364,35 @@ class PresenceHandler:
         """
         Temporarily show when a prisoner is released.
 
-        DESIGN:
-            Online status signals completion.
-            Duration shown in compact format (d/h/m).
-            Reverts to normal presence after 5 seconds.
-
         Args:
             username: Released user's display name.
             duration_minutes: How long they were muted.
         """
+        # Skip during promo
+        if self._promo_active:
+            return
+
         try:
-            if username and duration_minutes:
-                if duration_minutes >= 1440:
-                    days = duration_minutes // 1440
-                    time_str = f"{days}d"
-                elif duration_minutes >= 60:
-                    hours = duration_minutes // 60
-                    time_str = f"{hours}h"
-                else:
-                    time_str = f"{duration_minutes}m"
-                status_text = f"{username} ({time_str})"
-            elif username:
-                status_text = f"{username} freed"
+            # Format duration
+            if duration_minutes >= 1440:
+                time_str = f"{duration_minutes // 1440}d"
+            elif duration_minutes >= 60:
+                time_str = f"{duration_minutes // 60}h"
             else:
-                status_text = "Released"
+                time_str = f"{duration_minutes}m"
+
+            # Build status text
+            if username and duration_minutes:
+                status_text = f"🔓 {username} freed ({time_str})"
+            elif username:
+                status_text = f"🔓 {username} freed"
+            else:
+                status_text = "🔓 Prisoner released"
 
             await self.bot.change_presence(
                 status=discord.Status.online,
                 activity=discord.Activity(
-                    type=discord.ActivityType.playing,
+                    type=discord.ActivityType.watching,
                     name=status_text,
                 ),
             )
@@ -361,79 +402,54 @@ class PresenceHandler:
                 ("Status", status_text),
             ], emoji="🟢")
 
-            await asyncio.sleep(self.config.presence_retry_delay)
-            await self.update_presence()
+            # Revert after delay
+            await asyncio.sleep(5)
+            await self._update_rotating_presence()
 
         except Exception as e:
-            logger.error("Prisoner Release Presence Failed", [
-                ("Username", username or "Unknown"),
-                ("Error", str(e)[:50]),
-            ])
+            self._log_presence_error("Prisoner Release Presence Failed", e)
 
     # =========================================================================
-    # Helper Methods
+    # Midnight Tasks
     # =========================================================================
 
-    def _count_prisoners(self) -> int:
-        """
-        Count current prisoners across all servers.
-
-        DESIGN:
-            Iterates all guilds looking for muted role members.
-            Returns 0 if muted role doesn't exist in a guild.
-
-        Returns:
-            Total count of muted members across all guilds.
-        """
-        count = 0
-        for guild in self.bot.guilds:
-            muted_role = guild.get_role(self.config.muted_role_id)
-            if muted_role:
-                count += len(muted_role.members)
-        return count
-
-    async def _get_stats_message(self) -> Optional[str]:
-        """
-        Get stats-based presence message from database.
-
-        DESIGN:
-            Queries aggregate stats for varied presence content.
-            Returns None if no stats available.
-
-        Returns:
-            Random stats message or None.
-        """
+    async def _check_midnight_tasks(self) -> None:
+        """Run daily tasks at midnight EST."""
         try:
-            stats_messages: List[str] = []
+            now = datetime.now(NY_TZ)
+            today = now.strftime("%Y-%m-%d")
 
-            row = self.bot.db.fetchone(
-                """SELECT COUNT(*) as total_mutes,
-                   COALESCE(SUM(duration_minutes), 0) as total_minutes
-                   FROM prisoner_history"""
-            )
+            # Check if it's a new day and within first hour
+            if self._last_banner_refresh_date != today and now.hour == 0:
+                self._last_banner_refresh_date = today
 
-            if row:
-                total_mutes = row["total_mutes"] or 0
-                total_minutes = row["total_minutes"] or 0
-
-                if total_mutes > 0:
-                    stats_messages.append(f"{total_mutes} mutes")
-
-                if total_minutes > 0:
-                    hours = total_minutes // 60
-                    if hours >= 24:
-                        days = hours // 24
-                        stats_messages.append(f"{days}d served")
-                    else:
-                        stats_messages.append(f"{hours}h served")
-
-            return random.choice(stats_messages) if stats_messages else None
+                # Refresh banner
+                from src.utils.banner import refresh_banner
+                await refresh_banner()
 
         except Exception as e:
-            logger.error("Stats Message Query Failed", [
+            logger.error("Midnight Tasks Failed", [
                 ("Error", str(e)[:50]),
             ])
-            return None
+
+    # =========================================================================
+    # Error Handling
+    # =========================================================================
+
+    def _log_presence_error(self, context: str, error: Exception) -> None:
+        """Log presence errors appropriately based on type."""
+        error_msg = str(error).lower()
+
+        # Connection errors during shutdown/reconnection - debug level
+        if any(x in error_msg for x in ["transport", "not connected", "closed", "connection"]):
+            logger.debug(f"{context} (Connection Issue)", [
+                ("Error", str(error)[:50]),
+            ])
+        else:
+            logger.warning(context, [
+                ("Error Type", type(error).__name__),
+                ("Error", str(error)[:50]),
+            ])
 
 
 # =============================================================================

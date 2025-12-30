@@ -239,7 +239,7 @@ class AzabBot(commands.Bot):
         logger.tree("Bot State Loaded", [("Active", str(not self.disabled))], emoji="ℹ️")
 
         if self.presence_handler:
-            asyncio.create_task(self.presence_handler.start_presence_loop())
+            asyncio.create_task(self.presence_handler.start())
 
         await self._cleanup_polls_channel()
         await self._cache_invites()
@@ -689,6 +689,9 @@ class AzabBot(commands.Bot):
 
         if self.ticket_service:
             await self.ticket_service.stop()
+
+        if self.presence_handler:
+            await self.presence_handler.stop()
 
         if self.health_server:
             await self.health_server.stop()

@@ -295,9 +295,11 @@ docker-compose.override.yml
 !requirements.txt
 !main.py
 !src/
-!images/
 !scripts/
 !tests/
-!assets/
 !.github/
 CLAUDE.md
+
+# Images and assets (not tracked - too large for git)
+images/
+assets/
