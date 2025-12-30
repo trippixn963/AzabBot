@@ -1,4 +1,19 @@
-# Python
+# ===========================================
+# AzabBot - Comprehensive .gitignore
+# ===========================================
+#
+# This file ensures that only essential project files
+# are tracked in version control while excluding:
+# - Runtime files and caches
+# - Environment-specific configurations
+# - Generated files and logs
+# - System files and IDE settings
+#
+# Server: discord.gg/syria
+# ===========================================
+
+# Python Bytecode and Cache
+# ==========================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -16,58 +31,273 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
 # Virtual Environment
+# ===================
+# Virtual environments should never be committed
 venv/
-env/
 ENV/
-env.bak/
-venv.bak/
+env/
+.venv/
+.ENV/
+.env/
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Environment Variables
+# Environment Configuration
+# =========================
+# Never commit environment variables or secrets
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+config.ini
+secrets.json
 
-# IDE
-.vscode/
-.idea/
-.cursor/
-.cursorignore
-*.swp
-*.swo
-*~
+# Bot Runtime Files
+# =================
+# Files created during bot operation
+bot.lock
+bot_state.json
+ignored_users.json
+*.lock
 
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Logs
+# Logs and Debugging
+# ==================
+# All log files and debugging output
 logs/
 *.log
+*.log.*
+debug.log
+error.log
+access.log
+sync_daemon_*.log
 
-# Database
+# Database Files
+# ==============
+# SQLite databases and related files
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 data/
 
-# Bot State
-bot_state.json
-ignored_users.json
+# IDE and Editor Files
+# ====================
+# Visual Studio Code
+.vscode/
+*.code-workspace
 
-# Temporary files
+# PyCharm
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Cursor
+.cursor/
+.cursorignore
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# System Files
+# ============
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
 *.tmp
 *.temp
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Testing and Coverage
+# ====================
+# Pytest
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+htmlcov/
+.tox/
+.nox/
+pytest.ini
+
+# Type Checking
+# =============
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Ruff linter
+.ruff_cache/
+
+# Jupyter Notebook
+# ================
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# IPython
+# =======
+profile_default/
+ipython_config.py
+
+# pyenv
+# =====
+.python-version
+
+# pipenv
+# ======
+Pipfile.lock
+
+# poetry
+# ======
+poetry.lock
+
+# Celery
+# ======
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+# ====================
+*.sage.py
+
+# Spyder project settings
+# =======================
+.spyderproject
+.spyproject
+
+# Rope project settings
+# =====================
+.ropeproject
+
+# mkdocs documentation
+# ====================
+/site
+
+# Temporary files
+# ===============
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+*.rej
+
+# Archive files
+# =============
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Node.js (if using any JS tools)
+# ================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Docker
+# ======
+.dockerignore
+Dockerfile.local
+docker-compose.override.yml
+
+# Backup files
+# ============
+*.backup
+*.bak
+*.old
+
+# Project-specific exclusions
+# ===========================
+# Add any project-specific files that should be ignored
+
+# Keep important project files
+# ============================
+# These files should always be tracked:
+!README.md
+!LICENSE
+!CODE_OF_CONDUCT.md
+!requirements.txt
+!main.py
+!src/
+!images/
+!scripts/
+!tests/
+!assets/
+!.github/
 CLAUDE.md

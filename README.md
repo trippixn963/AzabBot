@@ -1,155 +1,126 @@
-# 🔥 AzabBot - AI-Powered Discord Prison Bot
+# AzabBot
 
 <div align="center">
 
 ![AzabBot Banner](images/BANNER.gif)
 
-![Python](https://img.shields.io/badge/Python-3.12-blue.svg)
-![Discord.py](https://img.shields.io/badge/Discord.py-2.3.2+-green.svg)
-![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4-orange.svg)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
+![Discord.py](https://img.shields.io/badge/Discord.py-2.3.2+-5865F2?style=flat-square&logo=discord&logoColor=white)
+![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-412991?style=flat-square&logo=openai&logoColor=white)
+![License](https://img.shields.io/badge/License-Source%20Available-red?style=flat-square)
 
-**AI-powered psychological warfare against muted users**
+**AI-Powered Moderation Bot for Discord**
 
-*Built for discord.gg/syria*
+*Built for [discord.gg/syria](https://discord.gg/syria)*
 
-[![Join Discord Server](https://img.shields.io/badge/Join%20Server-discord.gg/syria-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/syria)
+[![Join Server](https://img.shields.io/badge/Join%20Server-discord.gg/syria-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/syria)
 
 </div>
 
 ---
 
-## 🎯 What is AzabBot?
+## Overview
 
-A Discord bot that ragebaits muted users using GPT-4. When someone gets muted, AzabBot welcomes them to prison and responds to their messages with contextual roasts based on their mute reason and conversation history.
+AzabBot is a comprehensive moderation bot featuring AI-powered prison interactions, a full ticketing system, appeal handling, and extensive server logging. When users get muted, the bot welcomes them to "prison" and responds to their messages with contextual AI-generated responses.
 
-**⚠️ Custom-built for discord.gg/syria • No support provided**
-
----
-
-## ✨ Features
-
-- 🧠 **GPT-4 Roasting** - Contextual AI responses with 10-message conversation history
-- 🏰 **Prison System** - Automatic welcomes, daily cleanup, prisoner tracking
-- 🔍 **Smart Detection** - Monitors role changes, timeouts, and moderation logs
-- 🎭 **Dynamic Presence** - 14 rotating status messages showing bot activity
-- 👨‍👩‍👦 **Family Mode** - Special responses for developer and family members
-- 📊 **Analytics** - Tracks mutes, messages, prisoner history with SQLite
-- 🔒 **Security** - Input validation, SQL injection prevention, instance locking
-- 🎮 **Commands** - `/activate`, `/deactivate`, `/ignore`
+> **Note**: This bot was custom-built for **discord.gg/syria** and is provided as-is for educational purposes. **No support will be provided.**
 
 ---
 
-## 🚀 Quick Start
+## Features
 
-```bash
-# Clone and setup
-git clone https://github.com/trippixn963/AzabBot.git
-cd AzabBot
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# Configure
-cp .env.example .env
-# Edit .env with your tokens and IDs
-
-# Run
-python main.py
-```
+| Feature | Description |
+|---------|-------------|
+| **Prison System** | AI-powered responses to muted users with conversation context |
+| **Ticketing System** | Forum-based tickets with categories, claiming, and priority levels |
+| **Appeal System** | DM-based appeals for bans and mutes with staff review |
+| **Server Logging** | Comprehensive logging for joins, leaves, edits, deletes, and mod actions |
+| **Case Management** | Full moderation history with case linking and notes |
+| **Anti-Spam** | Automated spam detection and action |
+| **Anti-Nuke** | Protection against mass deletions and permission changes |
+| **Alt Detection** | Identifies potential alternate accounts |
+| **Modmail** | Private communication channel with users |
+| **Snipe Commands** | View recently deleted and edited messages |
 
 ---
 
-## ⚙️ Configuration
+## Commands
 
-Essential environment variables in `.env`:
-
-```env
-# Discord
-DISCORD_TOKEN=your_bot_token
-DEVELOPER_ID=your_user_id
-
-# OpenAI (optional but recommended)
-OPENAI_API_KEY=your_api_key
-
-# Channels & Roles
-LOGS_CHANNEL_ID=moderation_logs_channel
-PRISON_CHANNEL_ID=prison_channel
-GENERAL_CHANNEL_ID=general_channel
-MUTED_ROLE_ID=muted_role
-
-# Settings (optional)
-PRISON_CLEANUP_HOUR=0
-TIMEZONE_OFFSET_HOURS=-5
-```
-
-**Discord Bot Setup:**
-- Enable "Message Content Intent", "Server Members Intent", and "Reactions Intent"
-- Invite bot with permissions: Send Messages, Manage Messages, View Channels
+| Command | Description |
+|---------|-------------|
+| `/ban <user> [reason]` | Ban a user from the server |
+| `/unban <user>` | Unban a user from the server |
+| `/tempban <user> <duration>` | Temporarily ban a user |
+| `/mute <user> [reason]` | Mute a user (sends to prison) |
+| `/unmute <user>` | Unmute a user |
+| `/tempmute <user> <duration>` | Temporarily mute a user |
+| `/warn <user> <reason>` | Issue a warning to a user |
+| `/purge <amount>` | Bulk delete messages |
+| `/lockdown` | Lock/unlock a channel |
+| `/history <user>` | View moderation history for a user |
+| `/snipe [number]` | View recently deleted messages |
+| `/editsnipe [number]` | View recently edited messages |
+| `/clearsnipe` | Clear snipe caches |
 
 ---
 
-## 🎮 Usage
+## Tech Stack
 
-**Commands:**
-- `/activate` - Enable ragebaiting mode
-- `/deactivate` - Disable ragebaiting mode
-- `/ignore <user>` - Ignore/unignore specific users
-
-**What it does:**
-1. Detects when users get muted
-2. Sends welcome message to prison with mute reason
-3. Responds to their messages with AI-powered roasts
-4. Tracks prisoner history and statistics
-5. Daily cleanup at midnight
-6. Announces releases with time served
-
-**Example:**
-```
-User (muted): "This is so unfair!"
-AzabBot: "Imagine getting muted and still complaining 😂
-         Welcome to prison, enjoy your stay! 🔒"
-```
+- **Python 3.12+** - Async runtime
+- **Discord.py 2.3+** - Discord API wrapper
+- **OpenAI GPT-4o-mini** - AI responses
+- **SQLite** - State persistence with WAL mode
+- **aiohttp** - Async HTTP client
 
 ---
 
-## 🏗️ Structure
+## Architecture
 
 ```
 AzabBot/
 ├── src/
-│   ├── bot.py                    # Main bot
-│   ├── commands/                 # Slash commands
-│   ├── handlers/                 # Prison, mute, presence
-│   ├── services/                 # AI, system knowledge
-│   ├── core/                     # Database, logger
-│   └── utils/                    # Helpers, validators
-├── images/                       # Assets
-├── main.py                       # Entry point
-└── requirements.txt              # Dependencies
+│   ├── core/           # Bot initialization, config, database, logging
+│   ├── services/       # AI, tickets, appeals, logging, protection systems
+│   ├── handlers/       # Event handlers (prison, presence, messages)
+│   ├── commands/       # Slash commands (ban, mute, warn, purge, etc.)
+│   ├── events/         # Discord event listeners
+│   └── utils/          # Helpers, views, validators
+├── scripts/            # Utility scripts
+├── images/             # Bot assets
+└── tests/              # Test suite
 ```
 
-**Tech Stack:** discord.py, OpenAI GPT-4, SQLite, aiohttp
+---
+
+## Database Schema
+
+| Table | Description |
+|-------|-------------|
+| `cases` | Moderation case records (bans, mutes, warns) |
+| `case_notes` | Staff notes attached to cases |
+| `case_links` | Links between related cases |
+| `tickets` | Support ticket records |
+| `appeals` | User appeals for moderation actions |
+| `member_activity` | Join/leave tracking |
+| `mute_history` | Mute records with expiry tracking |
+| `server_logs` | Forum thread IDs for log categories |
 
 ---
 
-## ⚠️ Disclaimer
+## License
 
-Educational purposes only. No support provided. Use at own risk.
+**Source Available** - See [LICENSE](LICENSE) for details.
+
+This code is provided for **educational and viewing purposes only**. You may not run, redistribute, or create derivative works from this code.
 
 ---
-
-## 👨‍💻 Author
 
 <div align="center">
 
-![Developer Avatar](images/AUTHOR.jpg)
+<img src="images/PFP.gif" alt="AzabBot" width="100">
 
-**حَـــــنَّـــــا**
+**AzabBot**
 
-*Built with ❤️ for discord.gg/syria*
-
----
-
-[Report Bug](https://github.com/trippixn963/AzabBot/issues) • [Request Feature](https://github.com/trippixn963/AzabBot/issues) • [Discord Server](https://discord.gg/syria)
+*Built with care for [discord.gg/syria](https://discord.gg/syria)*
 
 </div>
