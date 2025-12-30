@@ -72,29 +72,6 @@ async def retry_async(
     raise last_exception
 
 
-async def with_timeout(
-    coro: Any,
-    timeout: float = 10.0,
-    default: Optional[T] = None,
-) -> Optional[T]:
-    """
-    Run a coroutine with a timeout, returning default on timeout.
-
-    Args:
-        coro: Coroutine to run.
-        timeout: Timeout in seconds.
-        default: Value to return on timeout.
-
-    Returns:
-        Result of coroutine or default on timeout.
-    """
-    try:
-        return await asyncio.wait_for(coro, timeout=timeout)
-    except asyncio.TimeoutError:
-        logger.warning(f"Operation timed out after {timeout}s")
-        return default
-
-
 async def safe_fetch_channel(bot, channel_id: int) -> Optional[discord.abc.GuildChannel]:
     """
     Safely fetch a channel with retry logic.
@@ -251,7 +228,6 @@ async def safe_delete(message: discord.Message) -> bool:
 
 __all__ = [
     "retry_async",
-    "with_timeout",
     "safe_fetch_channel",
     "safe_fetch_message",
     "safe_send",

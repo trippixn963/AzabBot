@@ -4,27 +4,31 @@ Azab Discord Bot - Interaction Logger Service
 
 Logs all button interactions to a Discord webhook in the mods server.
 
+Features:
+- Embed batching (up to 10 embeds per request)
+- Automatic flush on timeout or batch full
+- Centralized colors from EmbedColors
+- Timestamps on all embeds
+
 Tracked interactions:
 - Ticket actions (create, claim, close, reopen, transcript)
 - Appeal actions (approve, deny, contact user)
 - Modmail actions (close)
-- Prison actions (mute, unmute)
+- All button/select menu clicks
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 import aiohttp
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, List
 
 import discord
 
 from src.core.logger import logger
-from src.core.config import NY_TZ
-
-# Webhook request timeout (seconds)
-WEBHOOK_TIMEOUT = aiohttp.ClientTimeout(total=10)
+from src.core.config import get_config, EmbedColors, NY_TZ
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -34,18 +38,13 @@ if TYPE_CHECKING:
 # Constants
 # =============================================================================
 
-# Logging webhook URL for mods server
-LOG_WEBHOOK_URL = "https://discord.com/api/webhooks/1455223536150122578/ArxQNk45yfQjyLXfqN-xK1TsFaOvBaABbpJD0u_kYVRomdty3YxABjsZyjARAORvNkU3"
+# Batch settings
+MAX_EMBEDS_PER_REQUEST = 10  # Discord limit
+BATCH_FLUSH_INTERVAL = 2.0   # Seconds to wait before flushing partial batch
 
-# Colors for different event types
-COLOR_SUCCESS = 0x00FF00    # Green
-COLOR_ERROR = 0xFF0000      # Red
-COLOR_INFO = 0x5865F2       # Discord blurple
-COLOR_WARNING = 0xFFD700    # Gold
-COLOR_TICKET = 0x3498DB     # Blue
-COLOR_APPEAL = 0x9B59B6     # Purple
-COLOR_MODMAIL = 0x1ABC9C    # Teal
-COLOR_PRISON = 0xFF4500     # Orange-red
+# Rate limit retry settings
+MAX_RETRIES = 3
+INITIAL_BACKOFF = 1.0  # seconds
 
 
 # =============================================================================
@@ -53,45 +52,92 @@ COLOR_PRISON = 0xFF4500     # Orange-red
 # =============================================================================
 
 class InteractionLogger:
-    """Logs bot button interactions via webhook."""
+    """Logs bot button interactions via webhook with batching and rate limit handling."""
 
     def __init__(self, bot: "AzabBot") -> None:
         self.bot = bot
-        self._session: Optional[aiohttp.ClientSession] = None
+        self.config = get_config()
+        self._embed_queue: List[dict] = []
+        self._flush_task: Optional[asyncio.Task] = None
+        self._lock = asyncio.Lock()
+
+    @property
+    def webhook_url(self) -> Optional[str]:
+        """Get webhook URL from config."""
+        return self.config.interaction_webhook_url
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get shared HTTP session from bot."""
+        return await self.bot.get_http_session()
+
+    async def _send_with_retry(self, payload: dict) -> bool:
+        """Send webhook with rate limit retry and exponential backoff."""
+        session = await self._get_session()
+        backoff = INITIAL_BACKOFF
+
+        for attempt in range(MAX_RETRIES):
+            try:
+                async with session.post(self.webhook_url, json=payload) as resp:
+                    if resp.status in (200, 204):
+                        return True
+                    elif resp.status == 429:
+                        # Rate limited - get retry-after from headers or use backoff
+                        retry_after = float(resp.headers.get("Retry-After", backoff))
+                        logger.warning("Interaction Webhook Rate Limited", [
+                            ("Retry After", f"{retry_after}s"),
+                            ("Attempt", f"{attempt + 1}/{MAX_RETRIES}"),
+                        ])
+                        await asyncio.sleep(retry_after)
+                        backoff *= 2  # Exponential backoff
+                    else:
+                        logger.warning("Interaction Webhook Error", [
+                            ("Status", str(resp.status)),
+                            ("Attempt", f"{attempt + 1}/{MAX_RETRIES}"),
+                        ])
+                        return False
+            except Exception as e:
+                logger.warning("Interaction Webhook Failed", [
+                    ("Error", str(e)[:100]),
+                    ("Attempt", f"{attempt + 1}/{MAX_RETRIES}"),
+                ])
+                if attempt < MAX_RETRIES - 1:
+                    await asyncio.sleep(backoff)
+                    backoff *= 2
+
+        return False
 
     async def verify_webhook(self) -> bool:
         """Send a startup verification message to confirm webhook is working."""
-        if not LOG_WEBHOOK_URL:
+        if not self.webhook_url:
             logger.warning("Interaction Logger", [
                 ("Status", "No webhook URL configured"),
             ])
             return False
 
         try:
-            session = await self._get_session()
             embed = discord.Embed(
                 title="🔔 Interaction Logger Online",
                 description="Webhook verification successful. All button interactions will be logged here.",
-                color=COLOR_SUCCESS,
+                color=EmbedColors.SUCCESS,
+                timestamp=datetime.now(NY_TZ),
             )
             embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
             embed.add_field(name="Bot", value=f"`{self.bot.user.name if self.bot.user else 'AzabBot'}`", inline=True)
+            embed.set_footer(text="AzabBot Interaction Logger")
 
             payload = {"embeds": [embed.to_dict()]}
 
-            async with session.post(LOG_WEBHOOK_URL, json=payload) as resp:
-                if resp.status in (200, 204):
-                    logger.info("Interaction Logger", [
-                        ("Status", "Webhook verified"),
-                        ("Response", str(resp.status)),
-                    ])
-                    return True
-                else:
-                    logger.warning("Interaction Logger", [
-                        ("Status", "Webhook verification failed"),
-                        ("Response", str(resp.status)),
-                    ])
-                    return False
+            success = await self._send_with_retry(payload)
+            if success:
+                logger.info("Interaction Logger", [
+                    ("Status", "Webhook verified"),
+                ])
+                return True
+            else:
+                logger.warning("Interaction Logger", [
+                    ("Status", "Webhook verification failed"),
+                ])
+                return False
         except Exception as e:
             logger.error("Interaction Logger", [
                 ("Status", "Webhook verification error"),
@@ -99,45 +145,70 @@ class InteractionLogger:
             ])
             return False
 
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session with timeout."""
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(timeout=WEBHOOK_TIMEOUT)
-        return self._session
-
-    async def _send_log(self, embed: discord.Embed) -> None:
-        """Send a log embed via webhook."""
-        if not LOG_WEBHOOK_URL:
+    async def _queue_embed(self, embed: discord.Embed) -> None:
+        """Add embed to queue and flush if full."""
+        if not self.webhook_url:
             return
 
-        try:
-            session = await self._get_session()
-            embed_dict = embed.to_dict()
-            payload = {"embeds": [embed_dict]}
+        async with self._lock:
+            self._embed_queue.append(embed.to_dict())
 
-            async with session.post(LOG_WEBHOOK_URL, json=payload) as resp:
-                if resp.status in (200, 204):
-                    logger.debug(f"Interaction logged: {embed.title}")
-                else:
-                    logger.warning("Interaction Webhook Error", [
-                        ("Status", str(resp.status)),
-                        ("Title", embed.title or "Unknown"),
-                    ])
-        except Exception as e:
-            logger.warning("Interaction Webhook Failed", [
-                ("Error", str(e)[:100]),
-                ("Title", embed.title if hasattr(embed, 'title') else "Unknown"),
-            ])
+            # Flush immediately if batch is full
+            if len(self._embed_queue) >= MAX_EMBEDS_PER_REQUEST:
+                await self._flush_queue()
+            else:
+                # Schedule delayed flush for partial batches
+                self._schedule_flush()
+
+    def _schedule_flush(self) -> None:
+        """Schedule a delayed flush for partial batches."""
+        if self._flush_task and not self._flush_task.done():
+            return  # Already scheduled
+
+        self._flush_task = asyncio.create_task(self._delayed_flush())
+
+    async def _delayed_flush(self) -> None:
+        """Wait and then flush the queue."""
+        await asyncio.sleep(BATCH_FLUSH_INTERVAL)
+        async with self._lock:
+            if self._embed_queue:
+                await self._flush_queue()
+
+    async def _flush_queue(self) -> None:
+        """Send all queued embeds to webhook with retry."""
+        if not self._embed_queue or not self.webhook_url:
+            return
+
+        embeds_to_send = self._embed_queue[:MAX_EMBEDS_PER_REQUEST]
+        self._embed_queue = self._embed_queue[MAX_EMBEDS_PER_REQUEST:]
+
+        payload = {"embeds": embeds_to_send}
+        await self._send_with_retry(payload)
+
+    async def flush(self) -> None:
+        """Force flush all queued embeds (call on shutdown)."""
+        async with self._lock:
+            while self._embed_queue:
+                await self._flush_queue()
 
     async def close(self) -> None:
-        """Close the aiohttp session."""
-        if self._session and not self._session.closed:
-            await self._session.close()
+        """Flush queue (session is managed by bot)."""
+        await self.flush()
 
     def _get_time_str(self) -> str:
         """Get formatted time string in EST."""
         now_est = datetime.now(NY_TZ)
         return now_est.strftime("%I:%M %p EST")
+
+    def _create_embed(self, title: str, color: int) -> discord.Embed:
+        """Create a standardized embed with timestamp and footer."""
+        embed = discord.Embed(
+            title=title,
+            color=color,
+            timestamp=datetime.now(NY_TZ),
+        )
+        embed.set_footer(text="AzabBot")
+        return embed
 
     # =========================================================================
     # Ticket Events
@@ -153,21 +224,17 @@ class InteractionLogger:
         guild_id: int,
     ) -> None:
         """Log when a ticket is created."""
-        embed = discord.Embed(
-            title="🎫 Ticket Created",
-            color=COLOR_TICKET,
-        )
+        embed = self._create_embed("🎫 Ticket Created", EmbedColors.TICKET)
         embed.set_thumbnail(url=user.display_avatar.url)
         embed.add_field(name="User", value=f"{user.mention} `[{user.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
         embed.add_field(name="Category", value=f"`{category.title()}`", inline=True)
         embed.add_field(name="Subject", value=f"`{subject[:50]}{'...' if len(subject) > 50 else ''}`", inline=False)
 
         thread_link = f"https://discord.com/channels/{guild_id}/{thread_id}"
         embed.add_field(name="Thread", value=f"[Open Thread]({thread_link})", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     async def log_ticket_claimed(
         self,
@@ -176,17 +243,13 @@ class InteractionLogger:
         user: discord.User,
     ) -> None:
         """Log when a ticket is claimed."""
-        embed = discord.Embed(
-            title="✋ Ticket Claimed",
-            color=COLOR_WARNING,
-        )
+        embed = self._create_embed("✋ Ticket Claimed", EmbedColors.PRIORITY_HIGH)
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Staff", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
         embed.add_field(name="Ticket Owner", value=f"{user.mention}", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     async def log_ticket_unclaimed(
         self,
@@ -194,16 +257,12 @@ class InteractionLogger:
         ticket_id: str,
     ) -> None:
         """Log when a ticket is unclaimed."""
-        embed = discord.Embed(
-            title="👐 Ticket Unclaimed",
-            color=COLOR_INFO,
-        )
+        embed = self._create_embed("👐 Ticket Unclaimed", EmbedColors.BLURPLE)
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Staff", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     async def log_ticket_closed(
         self,
@@ -213,19 +272,15 @@ class InteractionLogger:
         reason: Optional[str] = None,
     ) -> None:
         """Log when a ticket is closed."""
-        embed = discord.Embed(
-            title="🔒 Ticket Closed",
-            color=COLOR_ERROR,
-        )
+        embed = self._create_embed("🔒 Ticket Closed", EmbedColors.LOG_NEGATIVE)
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Closed By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
         embed.add_field(name="Ticket Owner", value=f"{user.mention}", inline=True)
         if reason:
             embed.add_field(name="Reason", value=f"`{reason[:100]}`", inline=False)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     async def log_ticket_reopened(
         self,
@@ -234,17 +289,13 @@ class InteractionLogger:
         user: discord.User,
     ) -> None:
         """Log when a ticket is reopened."""
-        embed = discord.Embed(
-            title="🔓 Ticket Reopened",
-            color=COLOR_SUCCESS,
-        )
+        embed = self._create_embed("🔓 Ticket Reopened", EmbedColors.SUCCESS)
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Reopened By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
         embed.add_field(name="Ticket Owner", value=f"{user.mention}", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     async def log_ticket_priority(
         self,
@@ -254,23 +305,19 @@ class InteractionLogger:
     ) -> None:
         """Log when ticket priority is changed."""
         priority_colors = {
-            "low": 0x95A5A6,      # Gray
-            "normal": 0x3498DB,   # Blue
-            "high": 0xFF9800,     # Orange
-            "urgent": 0xFF0000,   # Red
+            "low": EmbedColors.PRIORITY_LOW,
+            "normal": EmbedColors.PRIORITY_NORMAL,
+            "high": EmbedColors.PRIORITY_HIGH,
+            "urgent": EmbedColors.PRIORITY_URGENT,
         }
 
-        embed = discord.Embed(
-            title="🏷️ Priority Changed",
-            color=priority_colors.get(priority, COLOR_INFO),
-        )
+        embed = self._create_embed("🏷️ Priority Changed", priority_colors.get(priority, EmbedColors.BLURPLE))
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Changed By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
         embed.add_field(name="Priority", value=f"`{priority.upper()}`", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     async def log_ticket_assigned(
         self,
@@ -279,17 +326,13 @@ class InteractionLogger:
         assigned_to: discord.Member,
     ) -> None:
         """Log when a ticket is assigned."""
-        embed = discord.Embed(
-            title="👤 Ticket Assigned",
-            color=COLOR_INFO,
-        )
+        embed = self._create_embed("👤 Ticket Assigned", EmbedColors.BLURPLE)
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Assigned By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
         embed.add_field(name="Assigned To", value=f"{assigned_to.mention}", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     async def log_ticket_user_added(
         self,
@@ -298,17 +341,13 @@ class InteractionLogger:
         added_user: discord.User,
     ) -> None:
         """Log when a user is added to a ticket."""
-        embed = discord.Embed(
-            title="➕ User Added to Ticket",
-            color=COLOR_SUCCESS,
-        )
+        embed = self._create_embed("➕ User Added to Ticket", EmbedColors.SUCCESS)
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Added By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
         embed.add_field(name="User Added", value=f"{added_user.mention} `[{added_user.id}]`", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     async def log_ticket_transcript(
         self,
@@ -316,16 +355,12 @@ class InteractionLogger:
         ticket_id: str,
     ) -> None:
         """Log when a ticket transcript is requested."""
-        embed = discord.Embed(
-            title="📜 Transcript Requested",
-            color=COLOR_INFO,
-        )
+        embed = self._create_embed("📜 Transcript Requested", EmbedColors.BLURPLE)
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Requested By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     # =========================================================================
     # Appeal Events
@@ -340,19 +375,15 @@ class InteractionLogger:
         action_type: str,
     ) -> None:
         """Log when an appeal is approved."""
-        embed = discord.Embed(
-            title="✅ Appeal Approved",
-            color=COLOR_SUCCESS,
-        )
+        embed = self._create_embed("✅ Appeal Approved", EmbedColors.SUCCESS)
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Approved By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="Appeal", value=f"`{appeal_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
         embed.add_field(name="Case", value=f"`{case_id}`", inline=True)
         embed.add_field(name="Type", value=f"`{action_type.title()}`", inline=True)
         embed.add_field(name="User", value=f"<@{user_id}> `[{user_id}]`", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     async def log_appeal_denied(
         self,
@@ -363,19 +394,15 @@ class InteractionLogger:
         action_type: str,
     ) -> None:
         """Log when an appeal is denied."""
-        embed = discord.Embed(
-            title="❌ Appeal Denied",
-            color=COLOR_ERROR,
-        )
+        embed = self._create_embed("❌ Appeal Denied", EmbedColors.LOG_NEGATIVE)
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Denied By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="Appeal", value=f"`{appeal_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
         embed.add_field(name="Case", value=f"`{case_id}`", inline=True)
         embed.add_field(name="Type", value=f"`{action_type.title()}`", inline=True)
         embed.add_field(name="User", value=f"<@{user_id}> `[{user_id}]`", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     async def log_appeal_contact(
         self,
@@ -384,17 +411,13 @@ class InteractionLogger:
         user: discord.User,
     ) -> None:
         """Log when staff contacts a banned user about their appeal."""
-        embed = discord.Embed(
-            title="📬 Appeal Contact Initiated",
-            color=COLOR_APPEAL,
-        )
+        embed = self._create_embed("📬 Appeal Contact Initiated", EmbedColors.APPEAL)
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Staff", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="Appeal", value=f"`{appeal_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
         embed.add_field(name="User Contacted", value=f"{user.mention} `[{user.id}]`", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     async def log_appeal_ticket_opened(
         self,
@@ -404,18 +427,14 @@ class InteractionLogger:
         user: discord.User,
     ) -> None:
         """Log when a ticket is opened for appeal discussion."""
-        embed = discord.Embed(
-            title="🎫 Appeal Ticket Opened",
-            color=COLOR_APPEAL,
-        )
+        embed = self._create_embed("🎫 Appeal Ticket Opened", EmbedColors.APPEAL)
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Staff", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="Appeal", value=f"`{appeal_id}`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="User", value=f"{user.mention} `[{user.id}]`", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     # =========================================================================
     # Modmail Events
@@ -428,19 +447,15 @@ class InteractionLogger:
         guild_id: int,
     ) -> None:
         """Log when a modmail thread is created."""
-        embed = discord.Embed(
-            title="📬 Modmail Created",
-            color=COLOR_MODMAIL,
-        )
+        embed = self._create_embed("📬 Modmail Created", EmbedColors.MODMAIL)
         embed.set_thumbnail(url=user.display_avatar.url)
         embed.add_field(name="User", value=f"{user.mention} `[{user.id}]`", inline=True)
         embed.add_field(name="Status", value="`Banned User`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
 
         thread_link = f"https://discord.com/channels/{guild_id}/{thread_id}"
         embed.add_field(name="Thread", value=f"[Open Thread]({thread_link})", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     async def log_modmail_closed(
         self,
@@ -449,17 +464,13 @@ class InteractionLogger:
         thread_id: int,
     ) -> None:
         """Log when a modmail thread is closed."""
-        embed = discord.Embed(
-            title="🔒 Modmail Closed",
-            color=COLOR_ERROR,
-        )
+        embed = self._create_embed("🔒 Modmail Closed", EmbedColors.LOG_NEGATIVE)
         embed.set_thumbnail(url=staff.display_avatar.url)
         embed.add_field(name="Closed By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
         embed.add_field(name="User", value=f"{user.mention} `[{user.id}]`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
         embed.add_field(name="Thread ID", value=f"`{thread_id}`", inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
     # =========================================================================
     # Generic Events
@@ -474,16 +485,12 @@ class InteractionLogger:
         **fields
     ) -> None:
         """Log a generic button interaction."""
+        color = EmbedColors.SUCCESS if success else EmbedColors.LOG_NEGATIVE
         status = "✅" if success else "❌"
-        color = COLOR_SUCCESS if success else COLOR_ERROR
 
-        embed = discord.Embed(
-            title=f"{status} {button_name}",
-            color=color,
-        )
+        embed = self._create_embed(f"{status} {button_name}", color)
         embed.set_thumbnail(url=user.display_avatar.url)
         embed.add_field(name="User", value=f"{user.mention} `[{user.id}]`", inline=True)
-        embed.add_field(name="Time", value=f"`{self._get_time_str()}`", inline=True)
 
         if details:
             embed.add_field(name="Details", value=f"`{details[:100]}`", inline=False)
@@ -491,7 +498,7 @@ class InteractionLogger:
         for name, value in fields.items():
             embed.add_field(name=name, value=str(value), inline=True)
 
-        await self._send_log(embed)
+        await self._queue_embed(embed)
 
 
 # =============================================================================

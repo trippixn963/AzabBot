@@ -26,7 +26,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.retry import safe_fetch_channel, safe_send, safe_edit
-from src.utils.views import CASE_EMOJI, APPROVE_EMOJI, APPEAL_EMOJI, DENY_EMOJI
+from src.utils.views import CASE_EMOJI, APPROVE_EMOJI, APPEAL_EMOJI, DENY_EMOJI, InfoButton, HistoryButton
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -512,7 +512,8 @@ class AppealService:
                 embed.add_field(name="Action Taken", value=action_taken, inline=False)
 
                 set_footer(embed)
-                await safe_send(thread, embed=embed)
+                approved_view = AppealApprovedView(user_id, guild.id)
+                await safe_send(thread, embed=embed, view=approved_view)
 
                 # Archive thread
                 try:
@@ -625,8 +626,24 @@ class AppealService:
                 )
                 if reason:
                     embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
+
+                # Add cooldown warning
+                cooldown_hours = APPEAL_COOLDOWN_SECONDS // 3600
+                embed.add_field(
+                    name="⏰ Re-appeal Cooldown",
+                    value=f"You may submit a new appeal in **{cooldown_hours} hours**.",
+                    inline=False,
+                )
+
                 set_footer(embed)
-                await safe_send(thread, embed=embed)
+
+                # Add contact staff button if ticket channel is configured
+                guild_id = appeal["guild_id"]
+                if self.config.ticket_channel_id:
+                    denied_view = AppealDeniedView(self.config.ticket_channel_id, guild_id)
+                    await safe_send(thread, embed=embed, view=denied_view)
+                else:
+                    await safe_send(thread, embed=embed)
 
                 # Archive thread
                 try:
@@ -1365,6 +1382,33 @@ class SubmitAppealModal(discord.ui.Modal, title="Submit Appeal"):
                 f"❌ {message}",
                 ephemeral=True,
             )
+
+
+# =============================================================================
+# Views Using Dynamic Items (must be after DynamicItem definitions)
+# =============================================================================
+
+class AppealApprovedView(discord.ui.View):
+    """View for appeal approved notification (user info + history)."""
+
+    def __init__(self, user_id: int, guild_id: int):
+        super().__init__(timeout=None)
+        self.add_item(InfoButton(user_id, guild_id))
+        self.add_item(HistoryButton(user_id, guild_id))
+
+
+class AppealDeniedView(discord.ui.View):
+    """View for appeal denied notification (ticket link)."""
+
+    def __init__(self, ticket_channel_id: int, guild_id: int):
+        super().__init__(timeout=None)
+        # Add link button to ticket channel
+        self.add_item(discord.ui.Button(
+            label="Contact Staff",
+            style=discord.ButtonStyle.link,
+            url=f"https://discord.com/channels/{guild_id}/{ticket_channel_id}",
+            emoji="🎫",
+        ))
 
 
 # =============================================================================

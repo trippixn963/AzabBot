@@ -18,6 +18,7 @@ Server: discord.gg/syria
 """
 
 import asyncio
+import aiohttp
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 from collections import deque, OrderedDict
@@ -102,6 +103,9 @@ class AzabBot(commands.Bot):
         self.ticket_service = None
         self.modmail_service = None
         self.interaction_logger = None
+
+        # Shared HTTP session for all services
+        self._http_session: Optional[aiohttp.ClientSession] = None
 
         # Prisoner rate limiting
         self.prisoner_cooldowns: Dict[int, datetime] = {}
@@ -652,6 +656,17 @@ class AzabBot(commands.Bot):
             logger.warning(f"Failed to hide channel #{channel.name}: {e}")
 
     # =========================================================================
+    # Shared HTTP Session
+    # =========================================================================
+
+    async def get_http_session(self) -> aiohttp.ClientSession:
+        """Get or create the shared HTTP session for all services."""
+        if self._http_session is None or self._http_session.closed:
+            timeout = aiohttp.ClientTimeout(total=30)
+            self._http_session = aiohttp.ClientSession(timeout=timeout)
+        return self._http_session
+
+    # =========================================================================
     # Shutdown
     # =========================================================================
 
@@ -677,6 +692,14 @@ class AzabBot(commands.Bot):
 
         if self.health_server:
             await self.health_server.stop()
+
+        # Close interaction logger (flushes pending embeds)
+        if self.interaction_logger:
+            await self.interaction_logger.close()
+
+        # Close shared HTTP session
+        if self._http_session and not self._http_session.closed:
+            await self._http_session.close()
 
         self.db.close()
         await super().close()

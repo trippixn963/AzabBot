@@ -2271,6 +2271,31 @@ class DatabaseManager:
         )
         return dict(row) if row else None
 
+    def update_case_reason(self, case_id: str, new_reason: Optional[str], edited_by: int) -> bool:
+        """
+        Update the reason for a case.
+
+        Args:
+            case_id: The 4-char case ID.
+            new_reason: The new reason text (or None to clear).
+            edited_by: User ID of who edited the case.
+
+        Returns:
+            True if updated successfully, False otherwise.
+        """
+        try:
+            self.execute(
+                """
+                UPDATE cases
+                SET reason = ?, updated_at = ?
+                WHERE case_id = ?
+                """,
+                (new_reason, time.time(), case_id)
+            )
+            return True
+        except Exception:
+            return False
+
     def get_case_by_thread(self, thread_id: int) -> Optional[Dict[str, Any]]:
         """
         Get a case by its thread ID.

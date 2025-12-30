@@ -211,17 +211,6 @@ class RateLimiter:
         if seconds > 0:
             await asyncio.sleep(seconds)
 
-    def get_status(self) -> Dict[str, Dict]:
-        """Get current status of all buckets for monitoring."""
-        return {
-            name: {
-                "tokens": bucket.tokens,
-                "rate": bucket.config.rate,
-                "burst": bucket.config.burst,
-            }
-            for name, bucket in self._buckets.items()
-        }
-
 
 # =============================================================================
 # Global Instance
@@ -259,7 +248,6 @@ async def rate_limit(bucket: str = "discord_api", tokens: int = 1) -> float:
 
 __all__ = [
     "RateLimiter",
-    "get_rate_limiter",
     "rate_limit",
     "BucketConfig",
     "BUCKETS",

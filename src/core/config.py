@@ -213,6 +213,7 @@ class Config:
 
     alert_webhook_url: Optional[str] = None
     error_webhook_url: Optional[str] = None
+    interaction_webhook_url: Optional[str] = None
 
     # -------------------------------------------------------------------------
     # Optional: Logging Exclusions
@@ -240,6 +241,10 @@ class EmbedColors:
     # Extended colors (for internal logs only)
     RED = 0xDC3545      # #DC3545 - Negative actions (bans, kicks, deletes)
     BLUE = 0x3498DB     # #3498DB - Informational logs
+    PURPLE = 0x9B59B6   # #9B59B6 - Appeals
+    TEAL = 0x1ABC9C     # #1ABC9C - Modmail
+    ORANGE = 0xFF9800   # #FF9800 - High priority / warnings
+    BLURPLE = 0x5865F2  # #5865F2 - Discord blurple / info
 
     # Semantic aliases for clarity
     SUCCESS = GREEN     # ✅ Operation completed, positive actions
@@ -254,6 +259,15 @@ class EmbedColors:
     LOG_WARNING = GOLD  # 🟡 Timeouts, edits, warnings
     LOG_POSITIVE = GREEN  # 🟢 Joins, unbans, boosts
     LOG_INFO = BLUE     # 🔵 Channel updates, role changes
+
+    # Service-specific colors (for interaction logger)
+    TICKET = BLUE       # 🎫 Ticket actions
+    APPEAL = PURPLE     # 📨 Appeal actions
+    MODMAIL = TEAL      # 📬 Modmail actions
+    PRIORITY_LOW = 0x95A5A6     # Gray
+    PRIORITY_NORMAL = BLUE      # Blue
+    PRIORITY_HIGH = ORANGE      # Orange
+    PRIORITY_URGENT = RED       # Red
 
 
 # =============================================================================
@@ -549,6 +563,7 @@ def load_config() -> Config:
         moderator_ids=moderator_ids if moderator_ids else None,
         alert_webhook_url=_validate_url(os.getenv("ALERT_WEBHOOK_URL"), "ALERT_WEBHOOK_URL"),
         error_webhook_url=_validate_url(os.getenv("ERROR_WEBHOOK_URL"), "ERROR_WEBHOOK_URL"),
+        interaction_webhook_url=_validate_url(os.getenv("INTERACTION_WEBHOOK_URL"), "INTERACTION_WEBHOOK_URL"),
         ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,
         lockdown_exclude_ids=lockdown_exclude_ids if lockdown_exclude_ids else None,
         link_allowed_user_ids=link_allowed_user_ids if link_allowed_user_ids else None,

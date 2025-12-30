@@ -188,6 +188,12 @@ class MessageEvents(commands.Cog):
             return
 
         # -----------------------------------------------------------------
+        # Auto-Response: Partnership keyword detection
+        # -----------------------------------------------------------------
+        if message.guild and "partnership" in message.content.lower():
+            await self._handle_partnership_mention(message)
+
+        # -----------------------------------------------------------------
         # Auto-Mod: External Discord Invite Links
         # Skip: links-allowed channel, management role holders
         # -----------------------------------------------------------------
@@ -335,6 +341,71 @@ class MessageEvents(commands.Cog):
             if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(message.author.id):
                 if message.attachments:
                     await self.bot.mod_tracker.cache_message(message)
+
+    # =========================================================================
+    # Partnership Auto-Response
+    # =========================================================================
+
+    async def _handle_partnership_mention(self, message: discord.Message) -> None:
+        """
+        Auto-respond when someone mentions "partnership" outside ticket channels.
+        Directs them to create a partnership ticket.
+        """
+        # Skip if no ticket channel configured
+        if not self.config.ticket_channel_id:
+            return
+
+        # Skip if in the ticket channel itself
+        if message.channel.id == self.config.ticket_channel_id:
+            return
+
+        # Skip if in a ticket thread (parent is the ticket channel)
+        if isinstance(message.channel, discord.Thread):
+            if message.channel.parent_id == self.config.ticket_channel_id:
+                return
+
+        # Skip if user is developer
+        if message.author.id == self.config.developer_id:
+            return
+
+        # Skip if user is a mod (they know how the system works)
+        if isinstance(message.author, discord.Member):
+            if self.config.moderation_role_id and message.author.get_role(self.config.moderation_role_id):
+                return
+            # Also skip if they have admin/mod permissions
+            if message.author.guild_permissions.administrator or message.author.guild_permissions.moderate_members:
+                return
+
+        # Rate limit: Don't spam the same channel (use simple cooldown)
+        cooldown_key = f"partnership_response:{message.channel.id}"
+        if hasattr(self, '_partnership_cooldowns'):
+            last_response = self._partnership_cooldowns.get(cooldown_key, 0)
+            if datetime.now(NY_TZ).timestamp() - last_response < 300:  # 5 min cooldown per channel
+                return
+        else:
+            self._partnership_cooldowns = {}
+
+        # Send the response
+        try:
+            ticket_channel = self.bot.get_channel(self.config.ticket_channel_id)
+            if not ticket_channel:
+                return
+
+            await message.reply(
+                f"👋 Looking for a partnership? Head over to {ticket_channel.mention} and select the **Partnership** ticket option to get started!",
+                mention_author=False,
+            )
+
+            # Update cooldown
+            self._partnership_cooldowns[cooldown_key] = datetime.now(NY_TZ).timestamp()
+
+            logger.tree("PARTNERSHIP AUTO-RESPONSE", [
+                ("User", f"{message.author} ({message.author.id})"),
+                ("Channel", f"#{message.channel.name}"),
+            ], emoji="🤝")
+
+        except discord.HTTPException:
+            pass
 
     # =========================================================================
     # Invite Link Detection

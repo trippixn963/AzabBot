@@ -113,6 +113,7 @@ class MemberEvents(commands.Cog):
             if added_roles or removed_roles:
                 # Try to find who made the change from audit log
                 changed_by_id = None
+                changed_by_member = None
                 try:
                     async for entry in after.guild.audit_logs(
                         action=discord.AuditLogAction.member_role_update,
@@ -120,6 +121,8 @@ class MemberEvents(commands.Cog):
                     ):
                         if entry.target and entry.target.id == after.id:
                             changed_by_id = entry.user.id if entry.user else None
+                            if entry.user:
+                                changed_by_member = after.guild.get_member(entry.user.id)
                             break
                 except discord.Forbidden:
                     pass  # No audit log access
@@ -128,17 +131,30 @@ class MemberEvents(commands.Cog):
                     after, added_roles, removed_roles, changed_by_id=changed_by_id
                 )
 
+                # Log to logging service with moderator context
+                if self.bot.logging_service and self.bot.logging_service.enabled:
+                    for role in added_roles:
+                        await self.bot.logging_service.log_role_add(after, role, moderator=changed_by_member)
+                    for role in removed_roles:
+                        await self.bot.logging_service.log_role_remove(after, role, moderator=changed_by_member)
+
         # -----------------------------------------------------------------
-        # Logging Service: Role Changes
+        # Logging Service: Role Changes (fallback for when mod_tracker is disabled)
+        # -----------------------------------------------------------------
+        if not (self.bot.mod_tracker and self.bot.mod_tracker.enabled):
+            # Only log roles here if mod_tracker didn't already (to avoid duplicates)
+            if self.bot.logging_service and self.bot.logging_service.enabled:
+                added_roles = [r for r in after.roles if r not in before.roles]
+                removed_roles = [r for r in before.roles if r not in after.roles]
+                for role in added_roles:
+                    await self.bot.logging_service.log_role_add(after, role)
+                for role in removed_roles:
+                    await self.bot.logging_service.log_role_remove(after, role)
+
+        # -----------------------------------------------------------------
+        # Logging Service: Other Member Updates (always run)
         # -----------------------------------------------------------------
         if self.bot.logging_service and self.bot.logging_service.enabled:
-            added_roles = [r for r in after.roles if r not in before.roles]
-            removed_roles = [r for r in before.roles if r not in after.roles]
-            for role in added_roles:
-                await self.bot.logging_service.log_role_add(after, role)
-            for role in removed_roles:
-                await self.bot.logging_service.log_role_remove(after, role)
-
             if before.nick != after.nick:
                 await self.bot.logging_service.log_nickname_change(after, before.nick, after.nick)
                 self.bot.db.save_nickname_change(

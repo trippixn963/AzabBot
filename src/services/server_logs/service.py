@@ -215,11 +215,19 @@ class LoggingService:
             # Get or create threads for each category
             await self._setup_threads()
 
+            # Validate thread sync
+            sync_issues = await self._validate_threads()
+
             self._initialized = True
-            logger.tree("Logging Service Initialized", [
+            log_items = [
                 ("Forum", self._forum.name),
-                ("Threads", str(len(self._threads))),
-            ], emoji="✅")
+                ("Threads", f"{len(self._threads)}/{len(LogCategory)}"),
+            ]
+            if sync_issues:
+                log_items.append(("Sync Issues", str(len(sync_issues))))
+                logger.tree("Logging Service Initialized (with issues)", log_items, emoji="⚠️")
+            else:
+                logger.tree("Logging Service Initialized", log_items, emoji="✅")
 
             return True
 
@@ -265,6 +273,58 @@ class LoggingService:
                     await rate_limit("thread_create")
                 except Exception as e:
                     logger.warning(f"Logging Service: Failed to create thread {thread_name}: {e}")
+
+    async def _validate_threads(self) -> List[str]:
+        """
+        Validate that all log category threads exist and are synced.
+
+        Returns:
+            List of issue descriptions (empty if all valid).
+        """
+        issues: List[str] = []
+
+        if not self._forum:
+            issues.append("Forum channel not available")
+            return issues
+
+        # Check for missing categories
+        for category in LogCategory:
+            if category not in self._threads:
+                issues.append(f"Missing thread: {category.value}")
+                logger.warning(f"Logging Service: Missing thread for {category.value}")
+
+        # Check for extra threads not matching any category
+        category_names = {cat.value for cat in LogCategory}
+
+        # Get all active threads
+        forum_threads = list(self._forum.threads)
+
+        # Also check archived threads
+        try:
+            async for thread in self._forum.archived_threads(limit=50):
+                forum_threads.append(thread)
+        except Exception:
+            pass
+
+        for thread in forum_threads:
+            if thread.name not in category_names:
+                issues.append(f"Extra thread: {thread.name}")
+                logger.info(f"Logging Service: Unrecognized thread '{thread.name}' in forum")
+
+        # Log summary
+        if issues:
+            logger.tree("Thread Sync Validation", [
+                ("Total Categories", str(len(LogCategory))),
+                ("Loaded Threads", str(len(self._threads))),
+                ("Issues Found", str(len(issues))),
+            ], emoji="⚠️")
+        else:
+            logger.tree("Thread Sync Validation", [
+                ("Status", "All threads synced"),
+                ("Categories", str(len(LogCategory))),
+            ], emoji="✅")
+
+        return issues
 
     # =========================================================================
     # Helpers

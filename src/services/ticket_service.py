@@ -76,6 +76,9 @@ PRIORITY_CONFIG = {
 # Max open tickets per user
 MAX_OPEN_TICKETS_PER_USER = 3
 
+# Ticket creation cooldown (seconds)
+TICKET_CREATION_COOLDOWN = 300  # 5 minutes
+
 # Auto-close settings
 INACTIVE_WARNING_DAYS = 3  # Warn after 3 days of inactivity
 INACTIVE_CLOSE_DAYS = 5    # Close after 5 days of inactivity
@@ -108,6 +111,7 @@ class TicketService:
         self._thread_cache: Dict[int, tuple[discord.Thread, datetime]] = {}
         self._auto_close_task: Optional[asyncio.Task] = None
         self._running: bool = False
+        self._creation_cooldowns: Dict[int, float] = {}  # user_id -> timestamp
 
     # =========================================================================
     # Properties
@@ -379,6 +383,16 @@ class TicketService:
         if not self.enabled:
             return (False, "Ticket system is not enabled.", None)
 
+        # Check cooldown (skip for staff)
+        if not self.has_staff_permission(user):
+            now = time.time()
+            last_created = self._creation_cooldowns.get(user.id, 0)
+            remaining = TICKET_CREATION_COOLDOWN - (now - last_created)
+            if remaining > 0:
+                mins = int(remaining // 60)
+                secs = int(remaining % 60)
+                return (False, f"Please wait {mins}m {secs}s before creating another ticket.", None)
+
         # Check open ticket limit
         open_count = self.db.get_user_open_ticket_count(user.id, user.guild.id)
         if open_count >= MAX_OPEN_TICKETS_PER_USER:
@@ -473,6 +487,9 @@ class TicketService:
             # Ping staff (auto-delete)
             if ping_content:
                 await thread.send(ping_content, delete_after=1)
+
+            # Update cooldown
+            self._creation_cooldowns[user.id] = time.time()
 
             logger.tree("Ticket Created", [
                 ("Ticket ID", ticket_id),
@@ -572,7 +589,7 @@ class TicketService:
             except Exception as e:
                 logger.error("Failed to update ticket embed", [("Error", str(e))])
 
-            # Send close message
+            # Send close message with action buttons
             close_embed = discord.Embed(
                 title="🔒 Ticket Closed",
                 description=(
@@ -582,7 +599,8 @@ class TicketService:
                 color=EmbedColors.RED,
             )
             set_footer(close_embed)
-            await safe_send(thread, embed=close_embed)
+            close_view = TicketClosedView(ticket_id)
+            await safe_send(thread, embed=close_embed, view=close_view)
 
             # Archive thread
             try:
@@ -700,14 +718,15 @@ class TicketService:
             except Exception as e:
                 logger.error("Failed to update ticket embed", [("Error", str(e))])
 
-            # Send reopen message
+            # Send reopen message with action buttons
             reopen_embed = discord.Embed(
                 title="🔓 Ticket Reopened",
                 description=f"This ticket has been reopened by {reopened_by.mention}.",
                 color=EmbedColors.GREEN,
             )
             set_footer(reopen_embed)
-            await safe_send(thread, embed=reopen_embed)
+            reopen_view = TicketReopenedNotificationView(ticket_id)
+            await safe_send(thread, embed=reopen_embed, view=reopen_view)
 
         logger.tree("Ticket Reopened", [
             ("Ticket ID", ticket_id),
@@ -784,12 +803,13 @@ class TicketService:
             except Exception as e:
                 logger.error("Failed to update ticket embed", [("Error", str(e))])
 
-            # Send claim message
+            # Send claim message with action buttons
             claim_embed = discord.Embed(
                 description=f"✋ {staff.mention} has claimed this ticket.",
                 color=EmbedColors.BLUE,
             )
-            await safe_send(thread, embed=claim_embed)
+            claim_view = TicketClaimedNotificationView(ticket_id)
+            await safe_send(thread, embed=claim_embed, view=claim_view)
 
         # DM the user
         try:
@@ -1166,6 +1186,270 @@ class TicketService:
         set_footer(embed)
         return embed
 
+    def _generate_html_transcript(
+        self,
+        ticket: dict,
+        messages: list,
+        user: discord.User,
+        closed_by: Optional[discord.Member] = None,
+    ) -> str:
+        """Generate a beautiful HTML transcript."""
+        from datetime import datetime
+        import html as html_lib
+
+        created_dt = datetime.fromtimestamp(ticket["created_at"], tz=NY_TZ)
+        now_dt = datetime.now(NY_TZ)
+        closed_dt = datetime.fromtimestamp(ticket.get("closed_at", time.time()), tz=NY_TZ) if ticket.get("closed_at") else now_dt
+
+        cat_info = TICKET_CATEGORIES.get(ticket["category"], TICKET_CATEGORIES["support"])
+
+        html_output = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket {ticket["ticket_id"]} - Transcript</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e4e4e4;
+            min-height: 100vh;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 900px;
+            margin: 0 auto;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+        }}
+        .header h1 {{
+            font-size: 28px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .header h1 .emoji {{ font-size: 32px; }}
+        .meta-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }}
+        .meta-item {{
+            background: rgba(255,255,255,0.1);
+            padding: 12px 16px;
+            border-radius: 8px;
+        }}
+        .meta-item .label {{
+            font-size: 12px;
+            text-transform: uppercase;
+            opacity: 0.7;
+            margin-bottom: 4px;
+        }}
+        .meta-item .value {{
+            font-size: 16px;
+            font-weight: 600;
+        }}
+        .messages {{
+            background: #0d1117;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }}
+        .messages-header {{
+            background: #161b22;
+            padding: 16px 20px;
+            border-bottom: 1px solid #30363d;
+            font-weight: 600;
+            color: #8b949e;
+        }}
+        .message {{
+            display: flex;
+            padding: 16px 20px;
+            border-bottom: 1px solid #21262d;
+            transition: background 0.2s;
+        }}
+        .message:hover {{
+            background: rgba(255,255,255,0.02);
+        }}
+        .message:last-child {{
+            border-bottom: none;
+        }}
+        .avatar {{
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            margin-right: 16px;
+            flex-shrink: 0;
+            background: #30363d;
+        }}
+        .message-content {{
+            flex: 1;
+            min-width: 0;
+        }}
+        .message-header {{
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 6px;
+        }}
+        .author {{
+            font-weight: 600;
+            color: #58a6ff;
+        }}
+        .author.staff {{
+            color: #f0883e;
+        }}
+        .author.bot {{
+            color: #a371f7;
+        }}
+        .timestamp {{
+            font-size: 12px;
+            color: #8b949e;
+        }}
+        .content {{
+            line-height: 1.5;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }}
+        .attachments {{
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }}
+        .attachment {{
+            background: #21262d;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #58a6ff;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .attachment:hover {{
+            background: #30363d;
+        }}
+        .footer {{
+            text-align: center;
+            padding: 30px;
+            color: #8b949e;
+            font-size: 14px;
+        }}
+        .status-badge {{
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }}
+        .status-open {{ background: #238636; color: #fff; }}
+        .status-claimed {{ background: #d29922; color: #000; }}
+        .status-closed {{ background: #da3633; color: #fff; }}
+        .empty-message {{
+            color: #8b949e;
+            font-style: italic;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><span class="emoji">🎫</span> Ticket {ticket["ticket_id"]}</h1>
+            <div class="meta-grid">
+                <div class="meta-item">
+                    <div class="label">Category</div>
+                    <div class="value">{cat_info["label"]}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Status</div>
+                    <div class="value"><span class="status-badge status-{ticket["status"]}">{ticket["status"].title()}</span></div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Opened By</div>
+                    <div class="value">{user.display_name}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Created</div>
+                    <div class="value">{created_dt.strftime("%b %d, %Y %I:%M %p")}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Subject</div>
+                    <div class="value">{ticket["subject"][:50]}{"..." if len(ticket["subject"]) > 50 else ""}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Messages</div>
+                    <div class="value">{len(messages)}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="messages">
+            <div class="messages-header">📝 Conversation</div>
+'''
+
+        for msg in messages:
+            author = msg.get("author", "Unknown")
+            author_id = msg.get("author_id", "0")
+            content = msg.get("content", "")
+            timestamp = msg.get("timestamp", "")
+            attachments = msg.get("attachments", [])
+            avatar_url = msg.get("avatar_url", "")
+
+            # Determine author class
+            author_class = ""
+            if "Bot" in author or author_id == str(self.bot.user.id if self.bot.user else 0):
+                author_class = "bot"
+            elif msg.get("is_staff", False):
+                author_class = "staff"
+
+            # Escape HTML in content
+            safe_content = html_lib.escape(content) if content else '<span class="empty-message">(no text content)</span>'
+
+            html_output += f'''
+            <div class="message">
+                <img class="avatar" src="{avatar_url or 'https://cdn.discordapp.com/embed/avatars/0.png'}" alt="avatar" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+                <div class="message-content">
+                    <div class="message-header">
+                        <span class="author {author_class}">{html_lib.escape(author)}</span>
+                        <span class="timestamp">{timestamp}</span>
+                    </div>
+                    <div class="content">{safe_content}</div>
+'''
+            if attachments:
+                html_output += '                    <div class="attachments">\n'
+                for att in attachments:
+                    filename = att.split("/")[-1].split("?")[0] if att else "attachment"
+                    html_output += f'                        <a class="attachment" href="{att}" target="_blank">📎 {html_lib.escape(filename[:30])}</a>\n'
+                html_output += '                    </div>\n'
+
+            html_output += '''                </div>
+            </div>
+'''
+
+        html_output += f'''        </div>
+
+        <div class="footer">
+            Generated on {now_dt.strftime("%B %d, %Y at %I:%M %p %Z")}<br>
+            🎫 AzabBot Ticket System
+        </div>
+    </div>
+</body>
+</html>'''
+
+        return html_output
+
+
 # =============================================================================
 # Views
 # =============================================================================
@@ -1193,14 +1477,6 @@ class TicketActionView(discord.ui.View):
         # Add history button if user_id and guild_id provided
         if user_id and guild_id:
             self.add_item(HistoryButton(user_id, guild_id))
-
-
-class TicketClosedView(discord.ui.View):
-    """Persistent view for closed tickets (reopen only)."""
-
-    def __init__(self, ticket_id: str):
-        super().__init__(timeout=None)
-        self.add_item(TicketReopenButton(ticket_id))
 
 
 # =============================================================================
@@ -1322,7 +1598,7 @@ class TicketCloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tk
         super().__init__(
             discord.ui.Button(
                 label="Close",
-                style=discord.ButtonStyle.secondary,
+                style=discord.ButtonStyle.danger,
                 custom_id=f"tkt_close:{ticket_id}",
                 emoji=discord.PartialEmoji(name="lock", id=1455197454277546055),
             )
@@ -1531,19 +1807,27 @@ class TicketTranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template
             await interaction.followup.send("Ticket thread not found.", ephemeral=True)
             return
 
-        # Collect transcript
+        # Collect transcript with avatar URLs
         transcript_messages = []
         try:
             async for message in thread.history(limit=500, oldest_first=True):
                 # Skip the initial embed message
                 if message.embeds and not message.content:
                     continue
+
+                # Check if author is staff
+                is_staff = False
+                if isinstance(message.author, discord.Member):
+                    is_staff = bot.ticket_service.has_staff_permission(message.author)
+
                 transcript_messages.append({
                     "author": str(message.author),
                     "author_id": str(message.author.id),
                     "content": message.content,
                     "timestamp": message.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                     "attachments": [att.url for att in message.attachments],
+                    "avatar_url": message.author.display_avatar.url if message.author.display_avatar else "",
+                    "is_staff": is_staff,
                 })
         except Exception as e:
             logger.error("Failed to collect transcript", [("Error", str(e))])
@@ -1556,51 +1840,18 @@ class TicketTranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template
         except Exception:
             user = None
 
-        # Build transcript
         import io
-        from datetime import datetime
-        from src.core.config import NY_TZ
 
-        created_dt = datetime.fromtimestamp(ticket["created_at"], tz=NY_TZ)
-        now_dt = datetime.now(NY_TZ)
+        # Generate HTML transcript
+        html_content = bot.ticket_service._generate_html_transcript(
+            ticket=ticket,
+            messages=transcript_messages,
+            user=user,
+        )
 
-        transcript_lines = [
-            f"═══════════════════════════════════════════════════════════════",
-            f"TICKET TRANSCRIPT: {self.ticket_id}",
-            f"═══════════════════════════════════════════════════════════════",
-            f"Category: {ticket['category'].title()}",
-            f"Subject: {ticket['subject']}",
-            f"Opened By: {user} ({ticket['user_id']})" if user else f"Opened By: {ticket['user_id']}",
-            f"Status: {ticket['status'].title()}",
-            f"Created: {created_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}",
-            f"Generated: {now_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}",
-            f"Total Messages: {len(transcript_messages)}",
-            f"═══════════════════════════════════════════════════════════════",
-            f"",
-        ]
-
-        for msg in transcript_messages:
-            author = msg.get("author", "Unknown")
-            author_id = msg.get("author_id", "0")
-            content = msg.get("content", "")
-            timestamp = msg.get("timestamp", "")
-            attachments = msg.get("attachments", [])
-
-            transcript_lines.append(f"[{timestamp}] {author} ({author_id}):")
-            if content:
-                transcript_lines.append(f"  {content}")
-            for att in attachments:
-                transcript_lines.append(f"  📎 Attachment: {att}")
-            transcript_lines.append("")
-
-        transcript_lines.append("═══════════════════════════════════════════════════════════════")
-        transcript_lines.append("END OF TRANSCRIPT")
-        transcript_lines.append("═══════════════════════════════════════════════════════════════")
-
-        transcript_text = "\n".join(transcript_lines)
-        transcript_file = discord.File(
-            io.BytesIO(transcript_text.encode("utf-8")),
-            filename=f"transcript_{self.ticket_id}.txt",
+        html_file = discord.File(
+            io.BytesIO(html_content.encode("utf-8")),
+            filename=f"transcript_{self.ticket_id}.html",
         )
 
         logger.tree("Ticket Transcript Generated", [
@@ -1614,8 +1865,9 @@ class TicketTranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template
             await bot.interaction_logger.log_ticket_transcript(interaction.user, self.ticket_id)
 
         await interaction.followup.send(
-            f"📜 Transcript for **{self.ticket_id}** ({len(transcript_messages)} messages):",
-            file=transcript_file,
+            f"📜 Transcript for **{self.ticket_id}** ({len(transcript_messages)} messages)\n"
+            f"-# Open in browser for formatted view with avatars",
+            file=html_file,
             ephemeral=True,
         )
 
@@ -1851,6 +2103,40 @@ class TicketAddUserModal(discord.ui.Modal, title="Add User to Ticket"):
                 ("Reason", message),
             ], emoji="❌")
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
+
+
+# =============================================================================
+# Views Using Dynamic Items (must be after DynamicItem definitions)
+# =============================================================================
+
+class TicketClosedView(discord.ui.View):
+    """Persistent view for closed tickets (transcript + reopen)."""
+
+    def __init__(self, ticket_id: str):
+        super().__init__(timeout=None)
+        self.add_item(TicketTranscriptButton(ticket_id))
+        self.add_item(TicketReopenButton(ticket_id))
+
+
+class TicketClaimedNotificationView(discord.ui.View):
+    """View for claimed notification (close + add user + transcript)."""
+
+    def __init__(self, ticket_id: str):
+        super().__init__(timeout=None)
+        self.add_item(TicketCloseButton(ticket_id))
+        self.add_item(TicketAddUserButton(ticket_id))
+        self.add_item(TicketTranscriptButton(ticket_id))
+
+
+class TicketReopenedNotificationView(discord.ui.View):
+    """View for reopened notification (claim + close + add user + transcript)."""
+
+    def __init__(self, ticket_id: str):
+        super().__init__(timeout=None)
+        self.add_item(TicketClaimButton(ticket_id))
+        self.add_item(TicketCloseButton(ticket_id))
+        self.add_item(TicketAddUserButton(ticket_id))
+        self.add_item(TicketTranscriptButton(ticket_id))
 
 
 # =============================================================================

@@ -120,9 +120,9 @@ from src.utils.views import (
     UnmuteButton,
     NotesButton,
     ApproveButton,
+    EditCaseButton,
 )
 from src.utils.retry import (
-    retry_async,
     safe_fetch_channel,
     safe_fetch_message,
     safe_send,
@@ -222,8 +222,13 @@ class CaseLogView(discord.ui.View):
             self.add_item(unmute_btn)
 
         # =================================================================
-        # Row 3: Approve button (owner only), Appeal button (for eligible cases)
+        # Row 3: Edit button (mods), Approve button (owner only)
         # =================================================================
+
+        if case_id:
+            edit_btn = EditCaseButton(case_id)
+            edit_btn.row = 3
+            self.add_item(edit_btn)
 
         if case_thread_id and case_id:
             approve_btn = ApproveButton(case_thread_id, case_id)
