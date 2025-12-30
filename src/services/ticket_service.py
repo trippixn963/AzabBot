@@ -698,6 +698,27 @@ class TicketService:
             except discord.HTTPException:
                 pass
 
+            # Reset permissions (remove claim lock so all staff can type again)
+            try:
+                # Remove staff role restriction
+                if self.config.ticket_staff_role_id and reopened_by.guild:
+                    staff_role = reopened_by.guild.get_role(self.config.ticket_staff_role_id)
+                    if staff_role:
+                        await thread.set_permissions(staff_role, overwrite=None)
+
+                # Remove individual overwrites for previous claimer
+                if ticket.get("claimed_by"):
+                    previous_claimer = reopened_by.guild.get_member(ticket["claimed_by"])
+                    if previous_claimer:
+                        await thread.set_permissions(previous_claimer, overwrite=None)
+
+                # Remove ticket opener overwrite (they can type via default perms)
+                ticket_opener = reopened_by.guild.get_member(ticket["user_id"])
+                if ticket_opener:
+                    await thread.set_permissions(ticket_opener, overwrite=None)
+            except Exception as e:
+                logger.debug(f"Failed to reset thread permissions: {e}")
+
             # Update embed
             try:
                 async for message in thread.history(limit=1, oldest_first=True):
@@ -782,6 +803,36 @@ class TicketService:
         # Get thread and update
         thread = await self._get_ticket_thread(ticket["thread_id"])
         if thread:
+            # Lock thread so only claimer and ticket opener can type
+            try:
+                # Deny send_messages for staff role (others can still view)
+                if self.config.ticket_staff_role_id and staff.guild:
+                    staff_role = staff.guild.get_role(self.config.ticket_staff_role_id)
+                    if staff_role:
+                        await thread.set_permissions(
+                            staff_role,
+                            send_messages=False,
+                            reason=f"Ticket claimed by {staff}",
+                        )
+
+                # Allow the claiming staff member to send messages
+                await thread.set_permissions(
+                    staff,
+                    send_messages=True,
+                    reason=f"Ticket claimed by {staff}",
+                )
+
+                # Allow the ticket opener to send messages
+                ticket_opener = staff.guild.get_member(ticket["user_id"])
+                if ticket_opener:
+                    await thread.set_permissions(
+                        ticket_opener,
+                        send_messages=True,
+                        reason=f"Ticket opener",
+                    )
+            except Exception as e:
+                logger.debug(f"Failed to set thread permissions: {e}")
+
             # Update embed
             try:
                 async for message in thread.history(limit=1, oldest_first=True):
