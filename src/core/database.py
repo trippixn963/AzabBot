@@ -1152,13 +1152,17 @@ class DatabaseManager:
                 close_reason TEXT
             )
         """)
-        # Migration: Add last_activity_at and warned_at columns if they don't exist
+        # Migration: Add last_activity_at, warned_at, and claimed_at columns if they don't exist
         try:
             cursor.execute("ALTER TABLE tickets ADD COLUMN last_activity_at REAL")
         except sqlite3.OperationalError:
             pass  # Column already exists
         try:
             cursor.execute("ALTER TABLE tickets ADD COLUMN warned_at REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE tickets ADD COLUMN claimed_at REAL")
         except sqlite3.OperationalError:
             pass  # Column already exists
         cursor.execute(
@@ -5086,11 +5090,12 @@ class DatabaseManager:
         Returns:
             True if claimed successfully.
         """
+        import time
         cursor = self.execute(
             """UPDATE tickets
-               SET status = 'claimed', claimed_by = ?
+               SET status = 'claimed', claimed_by = ?, claimed_at = ?
                WHERE ticket_id = ? AND status = 'open'""",
-            (staff_id, ticket_id)
+            (staff_id, time.time(), ticket_id)
         )
 
         if cursor.rowcount > 0:
@@ -5263,6 +5268,60 @@ class DatabaseManager:
             "claimed": claimed_count["c"] if claimed_count else 0,
             "closed": closed_count["c"] if closed_count else 0,
         }
+
+    def get_average_response_time(self, guild_id: int, days: int = 30) -> Optional[float]:
+        """
+        Get average ticket response time (time from creation to first claim).
+
+        Args:
+            guild_id: Guild ID.
+            days: Number of days to look back (default 30).
+
+        Returns:
+            Average response time in seconds, or None if no data.
+        """
+        import time
+        cutoff = time.time() - (days * 24 * 60 * 60)
+
+        row = self.fetchone(
+            """SELECT AVG(claimed_at - created_at) as avg_time
+               FROM tickets
+               WHERE guild_id = ?
+               AND claimed_at IS NOT NULL
+               AND created_at > ?
+               AND (claimed_at - created_at) > 0
+               AND (claimed_at - created_at) < 604800""",  # Exclude outliers > 7 days
+            (guild_id, cutoff)
+        )
+
+        if row and row["avg_time"] is not None:
+            return row["avg_time"]
+        return None
+
+    def get_open_ticket_position(self, ticket_id: str, guild_id: int) -> int:
+        """
+        Get the position of a ticket in the queue (how many open tickets are ahead).
+
+        Args:
+            ticket_id: The ticket ID to check.
+            guild_id: Guild ID.
+
+        Returns:
+            Number of tickets ahead in queue (0 = first in line).
+        """
+        ticket = self.get_ticket(ticket_id)
+        if not ticket:
+            return 0
+
+        row = self.fetchone(
+            """SELECT COUNT(*) as c FROM tickets
+               WHERE guild_id = ?
+               AND status = 'open'
+               AND created_at < ?""",
+            (guild_id, ticket["created_at"])
+        )
+
+        return row["c"] if row else 0
 
     def get_user_open_ticket_count(self, user_id: int, guild_id: int) -> int:
         """
@@ -5725,6 +5784,157 @@ class DatabaseManager:
                 LIMIT ?
                 """,
                 (limit,)
+            )
+        return [dict(row) for row in rows] if rows else []
+
+    def get_moderator_stats(self, moderator_id: int, guild_id: Optional[int] = None) -> Dict[str, Any]:
+        """Get stats for a specific moderator."""
+        if guild_id:
+            row = self.fetchone(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM mute_history WHERE moderator_id = ? AND guild_id = ?) as mutes_issued,
+                    (SELECT COUNT(*) FROM ban_history WHERE moderator_id = ? AND guild_id = ?) as bans_issued,
+                    (SELECT COUNT(*) FROM warnings WHERE moderator_id = ? AND guild_id = ?) as warns_issued
+                """,
+                (moderator_id, guild_id, moderator_id, guild_id, moderator_id, guild_id)
+            )
+        else:
+            row = self.fetchone(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM mute_history WHERE moderator_id = ?) as mutes_issued,
+                    (SELECT COUNT(*) FROM ban_history WHERE moderator_id = ?) as bans_issued,
+                    (SELECT COUNT(*) FROM warnings WHERE moderator_id = ?) as warns_issued
+                """,
+                (moderator_id, moderator_id, moderator_id)
+            )
+
+        if row:
+            result = dict(row)
+            result["total_actions"] = (
+                result.get("mutes_issued", 0) +
+                result.get("bans_issued", 0) +
+                result.get("warns_issued", 0)
+            )
+            return result
+        return {"mutes_issued": 0, "bans_issued": 0, "warns_issued": 0, "total_actions": 0}
+
+    def get_moderator_actions(
+        self,
+        moderator_id: int,
+        limit: int = 10,
+        guild_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Get recent actions by a specific moderator."""
+        if guild_id:
+            rows = self.fetchall(
+                """
+                SELECT type, user_id, reason, timestamp FROM (
+                    SELECT 'mute' as type, user_id, reason, timestamp
+                    FROM mute_history
+                    WHERE moderator_id = ? AND guild_id = ?
+
+                    UNION ALL
+
+                    SELECT 'ban' as type, user_id, reason, timestamp
+                    FROM ban_history
+                    WHERE moderator_id = ? AND guild_id = ?
+
+                    UNION ALL
+
+                    SELECT 'warn' as type, user_id, reason, created_at as timestamp
+                    FROM warnings
+                    WHERE moderator_id = ? AND guild_id = ?
+                ) combined
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (moderator_id, guild_id, moderator_id, guild_id, moderator_id, guild_id, limit)
+            )
+        else:
+            rows = self.fetchall(
+                """
+                SELECT type, user_id, reason, timestamp FROM (
+                    SELECT 'mute' as type, user_id, reason, timestamp
+                    FROM mute_history
+                    WHERE moderator_id = ?
+
+                    UNION ALL
+
+                    SELECT 'ban' as type, user_id, reason, timestamp
+                    FROM ban_history
+                    WHERE moderator_id = ?
+
+                    UNION ALL
+
+                    SELECT 'warn' as type, user_id, reason, created_at as timestamp
+                    FROM warnings
+                    WHERE moderator_id = ?
+                ) combined
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (moderator_id, moderator_id, moderator_id, limit)
+            )
+        return [dict(row) for row in rows] if rows else []
+
+    def get_user_punishments(
+        self,
+        user_id: int,
+        limit: int = 10,
+        guild_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Get recent punishments received by a user."""
+        if guild_id:
+            rows = self.fetchall(
+                """
+                SELECT type, moderator_id, reason, timestamp FROM (
+                    SELECT 'mute' as type, moderator_id, reason, timestamp
+                    FROM mute_history
+                    WHERE user_id = ? AND guild_id = ?
+
+                    UNION ALL
+
+                    SELECT 'ban' as type, moderator_id, reason, timestamp
+                    FROM ban_history
+                    WHERE user_id = ? AND guild_id = ?
+
+                    UNION ALL
+
+                    SELECT 'warn' as type, moderator_id, reason, created_at as timestamp
+                    FROM warnings
+                    WHERE user_id = ? AND guild_id = ?
+                ) combined
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (user_id, guild_id, user_id, guild_id, user_id, guild_id, limit)
+            )
+        else:
+            rows = self.fetchall(
+                """
+                SELECT type, moderator_id, reason, timestamp FROM (
+                    SELECT 'mute' as type, moderator_id, reason, timestamp
+                    FROM mute_history
+                    WHERE user_id = ?
+
+                    UNION ALL
+
+                    SELECT 'ban' as type, moderator_id, reason, timestamp
+                    FROM ban_history
+                    WHERE user_id = ?
+
+                    UNION ALL
+
+                    SELECT 'warn' as type, moderator_id, reason, created_at as timestamp
+                    FROM warnings
+                    WHERE user_id = ?
+                ) combined
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (user_id, user_id, user_id, limit)
             )
         return [dict(row) for row in rows] if rows else []
 

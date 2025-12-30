@@ -5,9 +5,10 @@ Azab Discord Bot - Stats API
 HTTP API server exposing moderation statistics for the dashboard.
 
 Endpoints:
-    GET /api/azab/stats     - Main dashboard stats
-    GET /api/azab/user/{id} - Individual user profile
-    GET /health             - Health check
+    GET /api/azab/stats          - Main dashboard stats
+    GET /api/azab/user/{id}      - Individual user (offender) profile
+    GET /api/azab/moderator/{id} - Moderator profile
+    GET /health                  - Health check
 
 Author: discord.gg/syria
 """
@@ -267,6 +268,7 @@ class AzabAPI:
         """Configure API routes."""
         self.app.router.add_get("/api/azab/stats", self.handle_stats)
         self.app.router.add_get("/api/azab/user/{user_id}", self.handle_user)
+        self.app.router.add_get("/api/azab/moderator/{user_id}", self.handle_moderator)
         self.app.router.add_get("/health", self.handle_health)
 
     async def _cleanup_loop(self) -> None:
@@ -415,18 +417,21 @@ class AzabAPI:
                 None
             )
 
+            # Get recent punishments for this user
+            recent_punishments = await self._get_user_recent_punishments(user_id, guild_id, limit=10)
+
             response = {
                 "user_id": str(user_id),
                 "name": name,
                 "avatar": avatar,
-                "moderation": {
-                    "mutes": mute_count,
-                    "bans": ban_count,
-                    "warns": warn_count,
-                    "active_warns": active_warns,
-                    "currently_muted": is_muted,
-                },
                 "rank": rank,
+                "mutes": mute_count,
+                "bans": ban_count,
+                "warns": warn_count,
+                "total_punishments": mute_count + ban_count + warn_count,
+                "active_warns": active_warns,
+                "currently_muted": is_muted,
+                "recent_punishments": recent_punishments,
                 "generated_at": datetime.now(NY_TZ).isoformat(),
                 "cached": False,
             }
@@ -438,6 +443,79 @@ class AzabAPI:
 
         except Exception as e:
             logger.error("User API Error", [("Error", str(e)[:100])])
+            return web.json_response(
+                {"error": "Internal server error"},
+                status=500
+            )
+
+    async def handle_moderator(self, request: web.Request) -> web.Response:
+        """Moderator profile endpoint."""
+        start_time = time.time()
+        user_id_str = request.match_info.get("user_id", "")
+
+        try:
+            user_id = int(user_id_str)
+        except ValueError:
+            return web.json_response(
+                {"error": "Invalid user ID"},
+                status=400
+            )
+
+        try:
+            # Check cache
+            cache_key = f"moderator_{user_id}"
+            cached = await self._cache.get(cache_key)
+            if cached:
+                cached["cached"] = True
+                cached["response_time_ms"] = round((time.time() - start_time) * 1000, 2)
+                return web.json_response(cached)
+
+            config = get_config()
+            guild_id = config.logging_guild_id
+
+            # Get moderator stats
+            mod_stats = self._bot.db.get_moderator_stats(user_id, guild_id)
+
+            if not mod_stats or mod_stats.get("total_actions", 0) == 0:
+                return web.json_response(
+                    {"error": "Moderator has no recorded actions"},
+                    status=404
+                )
+
+            # Get user info from Discord
+            name, avatar = await self._fetch_user_data(user_id, f"Mod {user_id}")
+
+            # Get rank among moderators
+            mod_leaderboard = self._bot.db.get_moderator_leaderboard(limit=100)
+            rank = next(
+                (i + 1 for i, m in enumerate(mod_leaderboard) if m["moderator_id"] == user_id),
+                None
+            )
+
+            # Get recent actions by this moderator
+            recent_actions = await self._get_moderator_recent_actions(user_id, guild_id, limit=10)
+
+            response = {
+                "user_id": str(user_id),
+                "name": name,
+                "avatar": avatar,
+                "mutes_issued": mod_stats.get("mutes_issued", 0),
+                "bans_issued": mod_stats.get("bans_issued", 0),
+                "warns_issued": mod_stats.get("warns_issued", 0),
+                "total_actions": mod_stats.get("total_actions", 0),
+                "rank": rank,
+                "recent_actions": recent_actions,
+                "generated_at": datetime.now(NY_TZ).isoformat(),
+                "cached": False,
+            }
+
+            await self._cache.set(cache_key, response)
+            response["response_time_ms"] = round((time.time() - start_time) * 1000, 2)
+
+            return web.json_response(response)
+
+        except Exception as e:
+            logger.error("Moderator API Error", [("Error", str(e)[:100])])
             return web.json_response(
                 {"error": "Internal server error"},
                 status=500
@@ -551,6 +629,82 @@ class AzabAPI:
                 "reason": (action["reason"] or "No reason")[:100],
                 "time": time_str,
                 "timestamp": ts,
+            })
+
+        return enriched
+
+    async def _get_moderator_recent_actions(
+        self,
+        moderator_id: int,
+        guild_id: Optional[int],
+        limit: int = 10
+    ) -> List[Dict]:
+        """Get recent actions by a specific moderator."""
+        actions = self._bot.db.get_moderator_actions(moderator_id, limit=limit, guild_id=guild_id)
+
+        enriched = []
+        for action in actions:
+            target_name, _ = await self._fetch_user_data(action["user_id"], f"User {action['user_id']}")
+
+            # Format timestamp
+            ts = action["timestamp"]
+            action_time = datetime.fromtimestamp(ts, NY_TZ)
+            now = datetime.now(NY_TZ)
+            delta = now - action_time
+
+            if delta.days > 0:
+                time_str = f"{delta.days}d ago"
+            elif delta.seconds >= 3600:
+                time_str = f"{delta.seconds // 3600}h ago"
+            elif delta.seconds >= 60:
+                time_str = f"{delta.seconds // 60}m ago"
+            else:
+                time_str = "just now"
+
+            enriched.append({
+                "type": action["type"],
+                "target": target_name,
+                "target_id": str(action["user_id"]),
+                "reason": (action["reason"] or "No reason")[:100],
+                "time": time_str,
+                "timestamp": ts,
+            })
+
+        return enriched
+
+    async def _get_user_recent_punishments(
+        self,
+        user_id: int,
+        guild_id: Optional[int],
+        limit: int = 10
+    ) -> List[Dict]:
+        """Get recent punishments received by a user."""
+        punishments = self._bot.db.get_user_punishments(user_id, limit=limit, guild_id=guild_id)
+
+        enriched = []
+        for p in punishments:
+            mod_name, _ = await self._fetch_user_data(p["moderator_id"], f"Mod {p['moderator_id']}") if p.get("moderator_id") else ("Unknown", None)
+
+            # Format timestamp
+            ts = p["timestamp"]
+            action_time = datetime.fromtimestamp(ts, NY_TZ)
+            now = datetime.now(NY_TZ)
+            delta = now - action_time
+
+            if delta.days > 0:
+                time_str = f"{delta.days}d ago"
+            elif delta.seconds >= 3600:
+                time_str = f"{delta.seconds // 3600}h ago"
+            elif delta.seconds >= 60:
+                time_str = f"{delta.seconds // 60}m ago"
+            else:
+                time_str = "just now"
+
+            enriched.append({
+                "type": p["type"],
+                "reason": (p["reason"] or "No reason")[:100],
+                "moderator": mod_name,
+                "time": time_str,
             })
 
         return enriched

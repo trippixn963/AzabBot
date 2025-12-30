@@ -102,6 +102,9 @@ class TicketService:
     # Thread cache TTL
     THREAD_CACHE_TTL = timedelta(minutes=5)
 
+    # Close request cooldown (seconds)
+    CLOSE_REQUEST_COOLDOWN = 300  # 5 minutes
+
     def __init__(self, bot: "AzabBot") -> None:
         self.bot = bot
         self.config = get_config()
@@ -112,6 +115,7 @@ class TicketService:
         self._auto_close_task: Optional[asyncio.Task] = None
         self._running: bool = False
         self._creation_cooldowns: Dict[int, float] = {}  # user_id -> timestamp
+        self._close_request_cooldowns: Dict[str, float] = {}  # ticket_id -> timestamp
 
     # =========================================================================
     # Properties
@@ -188,18 +192,19 @@ class TicketService:
             await self._auto_close_ticket(ticket)
 
     async def _send_inactivity_warning(self, ticket: dict) -> None:
-        """Send an inactivity warning to a ticket thread."""
+        """Send an inactivity warning to a ticket thread, pinging the user."""
         thread = await self._get_ticket_thread(ticket["thread_id"])
         if not thread:
             return
 
         try:
             days_until_close = INACTIVE_CLOSE_DAYS - INACTIVE_WARNING_DAYS
+            user_id = ticket["user_id"]
 
             warning_embed = discord.Embed(
                 title="⚠️ Inactivity Warning",
                 description=(
-                    f"This ticket has been inactive for **{INACTIVE_WARNING_DAYS} days**.\n\n"
+                    f"<@{user_id}>, this ticket has been inactive for **{INACTIVE_WARNING_DAYS} days**.\n\n"
                     f"If there is no response within **{days_until_close} day(s)**, "
                     f"this ticket will be automatically closed.\n\n"
                     f"Please reply to keep this ticket open."
@@ -207,13 +212,16 @@ class TicketService:
                 color=0xFFA500,  # Orange
             )
             set_footer(warning_embed)
-            await safe_send(thread, embed=warning_embed)
+
+            # Ping user OUTSIDE embed so they get notified
+            await safe_send(thread, content=f"<@{user_id}>", embed=warning_embed)
 
             # Mark as warned
             self.db.mark_ticket_warned(ticket["ticket_id"])
 
             logger.tree("Ticket Warning Sent", [
                 ("Ticket ID", ticket["ticket_id"]),
+                ("User ID", str(user_id)),
                 ("Days inactive", str(INACTIVE_WARNING_DAYS)),
             ], emoji="⚠️")
 
@@ -471,6 +479,9 @@ class TicketService:
                 assigned_text = "A staff member will be with you shortly."
                 ping_content = None
 
+            # Get estimated wait time
+            wait_time_text = self._get_estimated_wait_time(user.guild.id, ticket_id)
+
             # Send welcome message with assignment
             welcome_embed = discord.Embed(
                 description=(
@@ -478,15 +489,17 @@ class TicketService:
                     f"{assigned_text}\n"
                     f"Please describe your issue in detail.\n\n"
                     f"**Subject:** {subject}"
+                    f"{wait_time_text}"
                 ),
                 color=cat_info["color"],
             )
             set_footer(welcome_embed)
-            await thread.send(embed=welcome_embed)
 
-            # Ping staff (auto-delete)
+            # Ping staff OUTSIDE embed so they get notified, then send embed
             if ping_content:
-                await thread.send(ping_content, delete_after=1)
+                await thread.send(content=ping_content, embed=welcome_embed)
+            else:
+                await thread.send(embed=welcome_embed)
 
             # Update cooldown
             self._creation_cooldowns[user.id] = time.time()
@@ -1165,6 +1178,49 @@ class TicketService:
             return None
 
     # =========================================================================
+    # Helpers
+    # =========================================================================
+
+    def _get_estimated_wait_time(self, guild_id: int, ticket_id: str) -> str:
+        """
+        Get estimated wait time text for a new ticket.
+
+        Returns formatted string to append to welcome message.
+        """
+        # Get average response time from last 30 days
+        avg_response = self.db.get_average_response_time(guild_id)
+        # Get position in queue
+        position = self.db.get_open_ticket_position(ticket_id, guild_id)
+
+        if avg_response is None and position == 0:
+            return ""  # No data yet
+
+        parts = []
+
+        # Format average wait time
+        if avg_response is not None:
+            if avg_response < 60:
+                time_str = "< 1 minute"
+            elif avg_response < 3600:
+                mins = int(avg_response // 60)
+                time_str = f"~{mins} minute{'s' if mins != 1 else ''}"
+            elif avg_response < 86400:
+                hours = int(avg_response // 3600)
+                time_str = f"~{hours} hour{'s' if hours != 1 else ''}"
+            else:
+                days = int(avg_response // 86400)
+                time_str = f"~{days} day{'s' if days != 1 else ''}"
+            parts.append(f"**Estimated Wait:** {time_str}")
+
+        # Add queue position if there are tickets ahead
+        if position > 0:
+            parts.append(f"**Queue Position:** #{position + 1}")
+
+        if parts:
+            return "\n\n" + "\n".join(parts)
+        return ""
+
+    # =========================================================================
     # Embed Builders
     # =========================================================================
 
@@ -1540,7 +1596,6 @@ class TicketActionView(discord.ui.View):
         self.add_item(TicketClaimButton(ticket_id))
         self.add_item(TicketCloseButton(ticket_id))
         self.add_item(TicketAddUserButton(ticket_id))
-        self.add_item(TicketTranscriptButton(ticket_id))
         # Add history button if user_id and guild_id provided
         if user_id and guild_id:
             self.add_item(HistoryButton(user_id, guild_id))
@@ -1699,11 +1754,27 @@ class TicketCloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tk
         is_staff = bot.ticket_service.has_staff_permission(interaction.user)
 
         if is_opener and not is_staff:
+            # Check close request cooldown to prevent spam
+            now = time.time()
+            last_request = bot.ticket_service._close_request_cooldowns.get(self.ticket_id, 0)
+            remaining = bot.ticket_service.CLOSE_REQUEST_COOLDOWN - (now - last_request)
+            if remaining > 0:
+                mins = int(remaining // 60)
+                secs = int(remaining % 60)
+                await interaction.response.send_message(
+                    f"A close request is already pending. Please wait {mins}m {secs}s before requesting again.",
+                    ephemeral=True,
+                )
+                return
+
             # Ticket opener requests closure - send request to staff
             logger.tree("Ticket Close Requested", [
                 ("Ticket ID", self.ticket_id),
                 ("Requester", f"{interaction.user} ({interaction.user.id})"),
             ], emoji="📩")
+
+            # Update cooldown
+            bot.ticket_service._close_request_cooldowns[self.ticket_id] = now
 
             request_embed = discord.Embed(
                 title="📩 Close Request",
@@ -1854,7 +1925,7 @@ class TicketTranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template
                 label="Transcript",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"tkt_transcript:{ticket_id}",
-                emoji=discord.PartialEmoji(name="history", id=1452963786427469894),
+                emoji=discord.PartialEmoji(name="transcript", id=1455205892319481916),
             )
         )
         self.ticket_id = ticket_id
@@ -2241,6 +2312,9 @@ class CloseRequestAcceptButton(discord.ui.DynamicItem[discord.ui.Button], templa
             ("Requester ID", str(self.requester_id)),
         ], emoji="✅")
 
+        # Clear close request cooldown
+        bot.ticket_service._close_request_cooldowns.pop(self.ticket_id, None)
+
         # Update the request message
         try:
             accepted_embed = discord.Embed(
@@ -2305,6 +2379,9 @@ class CloseRequestDenyButton(discord.ui.DynamicItem[discord.ui.Button], template
             ("Requester ID", str(self.requester_id)),
         ], emoji="❌")
 
+        # Clear close request cooldown
+        bot.ticket_service._close_request_cooldowns.pop(self.ticket_id, None)
+
         # Update the request message
         denied_embed = discord.Embed(
             title="❌ Close Request Denied",
@@ -2338,24 +2415,22 @@ class TicketClosedView(discord.ui.View):
 
 
 class TicketClaimedNotificationView(discord.ui.View):
-    """View for claimed notification (close + add user + transcript)."""
+    """View for claimed notification (close + add user)."""
 
     def __init__(self, ticket_id: str):
         super().__init__(timeout=None)
         self.add_item(TicketCloseButton(ticket_id))
         self.add_item(TicketAddUserButton(ticket_id))
-        self.add_item(TicketTranscriptButton(ticket_id))
 
 
 class TicketReopenedNotificationView(discord.ui.View):
-    """View for reopened notification (claim + close + add user + transcript)."""
+    """View for reopened notification (claim + close + add user)."""
 
     def __init__(self, ticket_id: str):
         super().__init__(timeout=None)
         self.add_item(TicketClaimButton(ticket_id))
         self.add_item(TicketCloseButton(ticket_id))
         self.add_item(TicketAddUserButton(ticket_id))
-        self.add_item(TicketTranscriptButton(ticket_id))
 
 
 # =============================================================================

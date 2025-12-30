@@ -95,6 +95,23 @@ class LogView(discord.ui.View):
         self.add_item(DownloadButton(user_id))
 
 
+# Custom emoji for transcript button
+TRANSCRIPT_EMOJI = discord.PartialEmoji(name="transcript", id=1455205892319481916)
+
+
+class TranscriptLinkView(discord.ui.View):
+    """View with a link button to open transcript in browser."""
+
+    def __init__(self, transcript_url: str):
+        super().__init__(timeout=None)
+        self.add_item(discord.ui.Button(
+            label="View Transcript",
+            url=transcript_url,
+            style=discord.ButtonStyle.link,
+            emoji=TRANSCRIPT_EMOJI,
+        ))
+
+
 def setup_log_views(bot: "AzabBot") -> None:
     """Register persistent views for log buttons. Call this on bot startup."""
     # Add a dynamic view that handles all log_userid:* patterns
@@ -2988,6 +3005,7 @@ class LoggingService:
 
         # Format timestamps
         from datetime import datetime
+        import html as html_lib
         created_dt = datetime.fromtimestamp(created_at, tz=NY_TZ)
         closed_dt = datetime.fromtimestamp(closed_at, tz=NY_TZ)
         duration = closed_dt - created_dt
@@ -3018,22 +3036,246 @@ class LoggingService:
         embed.add_field(name="Duration", value=duration_str, inline=True)
         embed.add_field(name="Subject", value=subject[:200] if subject else "No subject", inline=False)
 
-        # Build transcript text
-        transcript_lines = [
-            f"═══════════════════════════════════════════════════════════════",
-            f"TICKET TRANSCRIPT: {ticket_id}",
-            f"═══════════════════════════════════════════════════════════════",
-            f"Category: {category.title()}",
-            f"Subject: {subject}",
-            f"Opened By: {user} ({user.id})",
-            f"Closed By: {closed_by} ({closed_by.id})",
-            f"Created: {created_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}",
-            f"Closed: {closed_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}",
-            f"Duration: {duration_str}",
-            f"Total Messages: {len(messages)}",
-            f"═══════════════════════════════════════════════════════════════",
-            f"",
-        ]
+        # Generate HTML transcript
+        html_content = self._generate_transcript_html(
+            ticket_id=ticket_id,
+            category=category,
+            subject=subject,
+            user=user,
+            closed_by=closed_by,
+            created_dt=created_dt,
+            closed_dt=closed_dt,
+            duration_str=duration_str,
+            messages=messages,
+        )
+
+        # Create HTML file attachment
+        transcript_file = discord.File(
+            io.BytesIO(html_content.encode("utf-8")),
+            filename=f"transcript_{ticket_id}.html",
+        )
+
+        self._set_user_thumbnail(embed, user)
+
+        # Send the log and get the message back
+        message = await self._send_log(LogCategory.TICKET_TRANSCRIPTS, embed, files=[transcript_file], user_id=user.id)
+
+        # If message sent successfully, edit to add transcript link button
+        if message and message.attachments:
+            attachment_url = message.attachments[0].url
+            # Create view with link button to open transcript in browser
+            view = TranscriptLinkView(attachment_url)
+            try:
+                await message.edit(view=view)
+            except Exception as e:
+                logger.debug(f"Failed to add transcript link button: {e}")
+
+    def _generate_transcript_html(
+        self,
+        ticket_id: str,
+        category: str,
+        subject: str,
+        user: discord.User,
+        closed_by: discord.Member,
+        created_dt,
+        closed_dt,
+        duration_str: str,
+        messages: list,
+    ) -> str:
+        """Generate a beautiful HTML transcript."""
+        import html as html_lib
+
+        html_output = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket {ticket_id} - Transcript</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e4e4e4;
+            min-height: 100vh;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 900px;
+            margin: 0 auto;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+        }}
+        .header h1 {{
+            font-size: 28px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .header h1 .emoji {{ font-size: 32px; }}
+        .meta-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }}
+        .meta-item {{
+            background: rgba(255,255,255,0.1);
+            padding: 12px 16px;
+            border-radius: 8px;
+        }}
+        .meta-item .label {{
+            font-size: 12px;
+            text-transform: uppercase;
+            opacity: 0.7;
+            margin-bottom: 4px;
+        }}
+        .meta-item .value {{
+            font-size: 16px;
+            font-weight: 600;
+        }}
+        .messages {{
+            background: #0d1117;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }}
+        .messages-header {{
+            background: #161b22;
+            padding: 16px 20px;
+            border-bottom: 1px solid #30363d;
+            font-weight: 600;
+            color: #8b949e;
+        }}
+        .message {{
+            display: flex;
+            padding: 16px 20px;
+            border-bottom: 1px solid #21262d;
+            transition: background 0.2s;
+        }}
+        .message:hover {{
+            background: rgba(255,255,255,0.02);
+        }}
+        .message:last-child {{
+            border-bottom: none;
+        }}
+        .avatar {{
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            margin-right: 16px;
+            flex-shrink: 0;
+            background: #30363d;
+        }}
+        .message-content {{
+            flex: 1;
+            min-width: 0;
+        }}
+        .message-header {{
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 6px;
+        }}
+        .author {{
+            font-weight: 600;
+            color: #58a6ff;
+        }}
+        .author.staff {{
+            color: #f0883e;
+        }}
+        .author.bot {{
+            color: #a371f7;
+        }}
+        .timestamp {{
+            font-size: 12px;
+            color: #8b949e;
+        }}
+        .content {{
+            line-height: 1.5;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }}
+        .attachments {{
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }}
+        .attachment {{
+            background: #21262d;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #58a6ff;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .attachment:hover {{
+            background: #30363d;
+        }}
+        .footer {{
+            text-align: center;
+            padding: 30px;
+            color: #8b949e;
+            font-size: 14px;
+        }}
+        .empty-message {{
+            color: #8b949e;
+            font-style: italic;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><span class="emoji">🎫</span> Ticket {ticket_id}</h1>
+            <div class="meta-grid">
+                <div class="meta-item">
+                    <div class="label">Category</div>
+                    <div class="value">{category.title()}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Status</div>
+                    <div class="value">Closed</div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Opened By</div>
+                    <div class="value">{html_lib.escape(user.display_name)}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Closed By</div>
+                    <div class="value">{html_lib.escape(closed_by.display_name)}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Created</div>
+                    <div class="value">{created_dt.strftime("%b %d, %Y %I:%M %p")}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Duration</div>
+                    <div class="value">{duration_str}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Subject</div>
+                    <div class="value">{html_lib.escape(subject[:50])}{"..." if len(subject) > 50 else ""}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Messages</div>
+                    <div class="value">{len(messages)}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="messages">
+            <div class="messages-header">📝 Conversation</div>
+'''
 
         for msg in messages:
             author = msg.get("author", "Unknown")
@@ -3041,29 +3283,49 @@ class LoggingService:
             content = msg.get("content", "")
             timestamp = msg.get("timestamp", "")
             attachments = msg.get("attachments", [])
+            avatar_url = msg.get("avatar_url", "")
+            is_staff = msg.get("is_staff", False)
 
-            transcript_lines.append(f"[{timestamp}] {author} ({author_id}):")
-            if content:
-                transcript_lines.append(f"  {content}")
-            for att in attachments:
-                transcript_lines.append(f"  📎 Attachment: {att}")
-            transcript_lines.append("")
+            # Determine author class
+            author_class = "staff" if is_staff else ""
+            if "Bot" in author:
+                author_class = "bot"
 
-        transcript_lines.append("═══════════════════════════════════════════════════════════════")
-        transcript_lines.append("END OF TRANSCRIPT")
-        transcript_lines.append("═══════════════════════════════════════════════════════════════")
+            # Escape HTML in content
+            safe_content = html_lib.escape(content) if content else '<span class="empty-message">(no text content)</span>'
 
-        transcript_text = "\n".join(transcript_lines)
+            html_output += f'''
+            <div class="message">
+                <img class="avatar" src="{avatar_url or 'https://cdn.discordapp.com/embed/avatars/0.png'}" alt="avatar" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+                <div class="message-content">
+                    <div class="message-header">
+                        <span class="author {author_class}">{html_lib.escape(author)}</span>
+                        <span class="timestamp">{timestamp}</span>
+                    </div>
+                    <div class="content">{safe_content}</div>
+'''
+            if attachments:
+                html_output += '                    <div class="attachments">\n'
+                for att in attachments:
+                    filename = att.split("/")[-1].split("?")[0] if att else "attachment"
+                    html_output += f'                        <a class="attachment" href="{att}" target="_blank">📎 {html_lib.escape(filename[:30])}</a>\n'
+                html_output += '                    </div>\n'
 
-        # Create file attachment
-        transcript_file = discord.File(
-            io.BytesIO(transcript_text.encode("utf-8")),
-            filename=f"transcript_{ticket_id}.txt",
-        )
+            html_output += '''                </div>
+            </div>
+'''
 
-        self._set_user_thumbnail(embed, user)
+        html_output += f'''        </div>
 
-        await self._send_log(LogCategory.TICKET_TRANSCRIPTS, embed, files=[transcript_file], user_id=user.id)
+        <div class="footer">
+            Generated on {closed_dt.strftime("%B %d, %Y at %I:%M %p %Z")}<br>
+            🎫 AzabBot Ticket System
+        </div>
+    </div>
+</body>
+</html>'''
+
+        return html_output
 
     # =========================================================================
     # Appeal Logging
