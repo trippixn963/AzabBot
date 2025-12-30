@@ -751,6 +751,12 @@ class DatabaseManager:
             )
         """)
 
+        # Migration: Add join_message_id column for editing join embeds on leave
+        try:
+            cursor.execute("ALTER TABLE member_activity ADD COLUMN join_message_id INTEGER")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         # -----------------------------------------------------------------
         # Pending Reasons Table
         # DESIGN: Tracks mod actions awaiting reason replies
@@ -2777,13 +2783,14 @@ class DatabaseManager:
     # Member Activity Operations
     # =========================================================================
 
-    def record_member_join(self, user_id: int, guild_id: int) -> int:
+    def record_member_join(self, user_id: int, guild_id: int, join_message_id: Optional[int] = None) -> int:
         """
         Record a member join and return their join count.
 
         Args:
             user_id: Discord user ID.
             guild_id: Guild ID.
+            join_message_id: Optional message ID of the join log embed.
 
         Returns:
             The member's total join count (including this one).
@@ -2791,12 +2798,13 @@ class DatabaseManager:
         now = time.time()
         # Insert or update the member activity record
         self.execute(
-            """INSERT INTO member_activity (user_id, guild_id, join_count, first_joined_at, last_joined_at)
-               VALUES (?, ?, 1, ?, ?)
+            """INSERT INTO member_activity (user_id, guild_id, join_count, first_joined_at, last_joined_at, join_message_id)
+               VALUES (?, ?, 1, ?, ?, ?)
                ON CONFLICT(user_id, guild_id) DO UPDATE SET
                    join_count = join_count + 1,
-                   last_joined_at = ?""",
-            (user_id, guild_id, now, now, now)
+                   last_joined_at = ?,
+                   join_message_id = ?""",
+            (user_id, guild_id, now, now, join_message_id, now, join_message_id)
         )
         # Get the updated count
         row = self.fetchone(
@@ -2850,6 +2858,30 @@ class DatabaseManager:
             (user_id, guild_id)
         )
         return dict(row) if row else None
+
+    def pop_join_message_id(self, user_id: int, guild_id: int) -> Optional[int]:
+        """
+        Get and clear the join message ID for a member.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            The join message ID if it exists, or None.
+        """
+        row = self.fetchone(
+            "SELECT join_message_id FROM member_activity WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        if row and row["join_message_id"]:
+            # Clear the message ID
+            self.execute(
+                "UPDATE member_activity SET join_message_id = NULL WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id)
+            )
+            return row["join_message_id"]
+        return None
 
     # =========================================================================
     # Pending Reasons Operations

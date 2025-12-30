@@ -787,9 +787,11 @@ class LoggingService:
         if not self._should_log(member.guild.id, member.id):
             return
 
-        # Record join and get count
         db = get_db()
-        join_count = db.record_member_join(member.id, member.guild.id)
+
+        # Get current join count (before incrementing)
+        activity = db.get_member_activity(member.id, member.guild.id)
+        join_count = (activity["join_count"] + 1) if activity else 1
 
         embed = self._create_embed("📥 Member Joined", EmbedColors.SUCCESS, category="Join", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
@@ -813,13 +815,12 @@ class LoggingService:
         self._set_user_thumbnail(embed, member)
 
         message = await self._send_log(LogCategory.JOINS, embed, user_id=member.id)
-        # Store message ID for later editing when member verifies
-        if message:
-            self._join_messages[member.id] = message.id
-            # Evict oldest entries if cache is too large (simple FIFO via dict order)
-            while len(self._join_messages) > MAX_JOIN_MESSAGES_CACHE:
-                oldest_key = next(iter(self._join_messages))
-                del self._join_messages[oldest_key]
+
+        # Record join with message ID in database (persists across restarts)
+        message_id = message.id if message else None
+        db.record_member_join(member.id, member.guild.id, join_message_id=message_id)
+        if message_id:
+            logger.debug(f"Stored join message {message_id} for member {member.id} in database")
 
     async def _edit_join_message_on_leave(
         self,
@@ -828,9 +829,11 @@ class LoggingService:
         was_banned: bool,
     ) -> None:
         """Edit the original join embed to show they left."""
+        logger.debug(f"Editing join message {message_id} for member {member.id}")
         try:
             thread = self._threads[LogCategory.JOINS]
             message = await thread.fetch_message(message_id)
+            logger.debug(f"Fetched message {message_id}, has embeds: {bool(message.embeds)}")
 
             if message.embeds:
                 embed = message.embeds[0]
@@ -869,16 +872,20 @@ class LoggingService:
         was_banned: bool = False,
     ) -> None:
         """Log a member leave with detailed info."""
+        db = get_db()
+
+        # Get join message ID from database (persists across restarts)
+        join_message_id = db.pop_join_message_id(member.id, member.guild.id)
+        logger.debug(f"Member leave: {member.id}, join_message_id={join_message_id}, JOINS in threads={LogCategory.JOINS in self._threads}")
+
         # Edit the original join embed to show they left
-        join_message_id = self._join_messages.pop(member.id, None)
         if join_message_id and LogCategory.JOINS in self._threads:
             await self._edit_join_message_on_leave(join_message_id, member, was_banned)
+        elif join_message_id:
+            logger.debug(f"JOINS thread not found, cannot edit join message for {member.id}")
 
         if not self._should_log(member.guild.id, member.id):
             return
-
-        # Record leave and get count
-        db = get_db()
         leave_count = db.record_member_leave(member.id, member.guild.id)
 
         # Change title if banned
