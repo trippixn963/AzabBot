@@ -37,13 +37,6 @@ if TYPE_CHECKING:
 USERID_EMOJI = "<:userid:1452512424354643969>"
 
 # =============================================================================
-# Cache Constants
-# =============================================================================
-
-MAX_JOIN_MESSAGES_CACHE = 500  # Max join messages to track for verification editing
-
-
-# =============================================================================
 # Persistent Views
 # =============================================================================
 
@@ -135,8 +128,6 @@ class LoggingService:
         self._forum: Optional[discord.ForumChannel] = None
         self._threads: Dict[LogCategory, discord.Thread] = {}
         self._initialized = False
-        # Cache to track join log messages for later editing (user_id -> message_id)
-        self._join_messages: Dict[int, int] = {}
 
         logger.tree("Logging Service Created", [
             ("Enabled", str(self.enabled)),
@@ -2319,8 +2310,9 @@ class LoggingService:
         if not self._initialized or LogCategory.JOINS not in self._threads:
             return
 
-        # Check if we have the original join message cached
-        message_id = self._join_messages.pop(member.id, None)
+        # Get join message ID from database (don't clear - we still need it for leave)
+        db = get_db()
+        message_id = db.get_join_message_id(member.id, member.guild.id)
         if not message_id:
             return
 

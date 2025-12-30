@@ -2859,6 +2859,23 @@ class DatabaseManager:
         )
         return dict(row) if row else None
 
+    def get_join_message_id(self, user_id: int, guild_id: int) -> Optional[int]:
+        """
+        Get the join message ID for a member (without clearing).
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            The join message ID if it exists, or None.
+        """
+        row = self.fetchone(
+            "SELECT join_message_id FROM member_activity WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        return row["join_message_id"] if row and row["join_message_id"] else None
+
     def pop_join_message_id(self, user_id: int, guild_id: int) -> Optional[int]:
         """
         Get and clear the join message ID for a member.
