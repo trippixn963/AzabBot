@@ -300,6 +300,5 @@ docker-compose.override.yml
 !.github/
 CLAUDE.md
 
-# Images and assets (not tracked - too large for git)
-images/
+# Assets (not tracked)
 assets/

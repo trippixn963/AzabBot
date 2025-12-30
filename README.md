@@ -2,6 +2,8 @@
 
 <div align="center">
 
+![AzabBot Banner](images/BANNER.gif)
+
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Discord.py](https://img.shields.io/badge/Discord.py-2.3.2+-5865F2?style=flat-square&logo=discord&logoColor=white)
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-412991?style=flat-square&logo=openai&logoColor=white)
@@ -113,6 +115,8 @@ This code is provided for **educational and viewing purposes only**. You may not
 ---
 
 <div align="center">
+
+<img src="images/PFP.gif" alt="AzabBot" width="100">
 
 **AzabBot**
 
