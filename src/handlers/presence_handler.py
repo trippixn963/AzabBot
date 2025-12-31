@@ -71,6 +71,9 @@ class PresenceHandler:
 
     async def start(self) -> None:
         """Start the presence update and promo scheduler loops."""
+        # Set initial presence immediately
+        await self._update_rotating_presence()
+
         # Start presence update loop (using create_safe_task for error logging)
         self._presence_task = create_safe_task(self._presence_loop(), "Presence Update Loop")
 
@@ -136,6 +139,8 @@ class PresenceHandler:
                 status=discord.Status.online,
                 activity=activity
             )
+
+            logger.debug(f"Rotating presence updated: {status_text}")
 
         except Exception as e:
             self._log_presence_error("Presence Update Failed", e)
