@@ -161,17 +161,23 @@ class SnipeCog(commands.Cog):
             if attachment_data:
                 # We have actual file bytes stored in DB - create discord.File objects
                 for att in attachment_data[:4]:  # Limit to 4 files
-                    filename = att.get("filename", "file")
-                    data_b64 = att.get("data", "")
-                    if data_b64:
-                        file_bytes = base64.b64decode(data_b64)
-                        file_obj = discord.File(BytesIO(file_bytes), filename=filename)
-                        files_to_send.append(file_obj)
-                        # Track first image for embed
-                        if not first_image_filename:
-                            ext = filename.lower().split(".")[-1] if "." in filename else ""
-                            if ext in ("png", "jpg", "jpeg", "gif", "webp"):
-                                first_image_filename = filename
+                    try:
+                        filename = att.get("filename", "file")
+                        data_b64 = att.get("data", "")
+                        if data_b64:
+                            file_bytes = base64.b64decode(data_b64)
+                            file_obj = discord.File(BytesIO(file_bytes), filename=filename)
+                            files_to_send.append(file_obj)
+                            # Track first image for embed
+                            if not first_image_filename:
+                                ext = filename.lower().split(".")[-1] if "." in filename else ""
+                                if ext in ("png", "jpg", "jpeg", "gif", "webp"):
+                                    first_image_filename = filename
+                    except Exception as e:
+                        logger.warning("Snipe Attachment Decode Failed", [
+                            ("Filename", att.get("filename", "unknown")),
+                            ("Error", str(e)[:50]),
+                        ])
 
                 # Set embed image to first uploaded image
                 if first_image_filename:

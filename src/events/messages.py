@@ -668,10 +668,16 @@ class MessageEvents(commands.Cog):
             import base64
             attachment_data = []
             for filename, file_bytes in self.bot._attachment_cache[message.id]:
-                attachment_data.append({
-                    "filename": filename,
-                    "data": base64.b64encode(file_bytes).decode("utf-8"),
-                })
+                try:
+                    attachment_data.append({
+                        "filename": filename,
+                        "data": base64.b64encode(file_bytes).decode("utf-8"),
+                    })
+                except Exception as e:
+                    logger.warning("Snipe Attachment Encode Failed", [
+                        ("Filename", filename),
+                        ("Error", str(e)[:50]),
+                    ])
 
         # Save to database (persists across restarts)
         self.bot.db.save_snipe(
