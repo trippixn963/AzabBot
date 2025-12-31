@@ -154,8 +154,8 @@ class MuteScheduler:
 
         DESIGN:
             Fetches expired mutes from database.
+            Groups by guild to cache role lookup (avoids N+1).
             Processes up to 25 mutes concurrently using asyncio.gather.
-            Groups by guild to minimize role lookups.
         """
         expired_mutes = self.db.get_expired_mutes()
 
@@ -164,22 +164,45 @@ class MuteScheduler:
 
         total_count = len(expired_mutes)
 
-        # Process in batches of 25 concurrently
+        # Group mutes by guild_id to cache role lookups
+        from collections import defaultdict
+        mutes_by_guild: dict[int, list] = defaultdict(list)
+        for mute in expired_mutes:
+            mutes_by_guild[mute["guild_id"]].append(mute)
+
+        # Process each guild's mutes with cached role
         batch_size = 25
-        for i in range(0, len(expired_mutes), batch_size):
-            batch = expired_mutes[i:i + batch_size]
-            tasks = [self._safe_auto_unmute(mute) for mute in batch]
-            await asyncio.gather(*tasks, return_exceptions=True)
+        for guild_id, guild_mutes in mutes_by_guild.items():
+            guild = self.bot.get_guild(guild_id)
+            muted_role = guild.get_role(self.config.muted_role_id) if guild else None
+
+            # Log warning once per guild if role not found
+            if guild and not muted_role:
+                logger.warning("Muted Role Not Found", [
+                    ("Guild", guild.name),
+                    ("Role ID", str(self.config.muted_role_id)),
+                    ("Affected Mutes", str(len(guild_mutes))),
+                ])
+
+            for i in range(0, len(guild_mutes), batch_size):
+                batch = guild_mutes[i:i + batch_size]
+                tasks = [self._safe_auto_unmute(mute, guild, muted_role) for mute in batch]
+                await asyncio.gather(*tasks, return_exceptions=True)
 
         logger.tree("EXPIRED MUTES PROCESSED", [
             ("Total", str(total_count)),
-            ("Batches", str((total_count + batch_size - 1) // batch_size)),
+            ("Guilds", str(len(mutes_by_guild))),
         ], emoji="⏰")
 
-    async def _safe_auto_unmute(self, mute: dict) -> None:
+    async def _safe_auto_unmute(
+        self,
+        mute: dict,
+        guild: Optional[discord.Guild],
+        muted_role: Optional[discord.Role],
+    ) -> None:
         """Wrapper for _auto_unmute with error handling."""
         try:
-            await self._auto_unmute(mute)
+            await self._auto_unmute(mute, guild, muted_role)
         except Exception as e:
             logger.error("Auto-Unmute Failed", [
                 ("User ID", str(mute["user_id"])),
@@ -187,14 +210,20 @@ class MuteScheduler:
                 ("Error", str(e)[:50]),
             ])
 
-    async def _auto_unmute(self, mute: dict) -> None:
+    async def _auto_unmute(
+        self,
+        mute: dict,
+        guild: Optional[discord.Guild],
+        muted_role: Optional[discord.Role],
+    ) -> None:
         """
         Automatically unmute a user whose mute has expired.
 
         Args:
             mute: Mute record from database.
+            guild: Cached guild object (or None if not accessible).
+            muted_role: Cached muted role (or None if not found).
         """
-        guild = self.bot.get_guild(mute["guild_id"])
         if not guild:
             # Guild not accessible, mark as unmuted anyway
             self.db.remove_mute(
@@ -216,15 +245,8 @@ class MuteScheduler:
             )
             return
 
-        muted_role = guild.get_role(self.config.muted_role_id)
         if not muted_role:
-            # Role doesn't exist, mark as unmuted
-            logger.warning("Muted Role Not Found", [
-                ("Guild", guild.name),
-                ("Role ID", str(self.config.muted_role_id)),
-                ("User", str(mute["user_id"])),
-                ("Action", "Removing mute record"),
-            ])
+            # Role doesn't exist, mark as unmuted (warning logged once per guild in caller)
             self.db.remove_mute(
                 user_id=mute["user_id"],
                 guild_id=mute["guild_id"],

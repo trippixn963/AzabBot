@@ -580,8 +580,12 @@ class AzabBot(commands.Bot):
             return
 
         # Evict oldest entries if at limit (O(1) with OrderedDict)
+        # Use try/except to handle race condition with concurrent evictions
         while len(self._attachment_cache) >= self._attachment_cache_limit:
-            self._attachment_cache.popitem(last=False)
+            try:
+                self._attachment_cache.popitem(last=False)
+            except KeyError:
+                break  # Another task already evicted
 
         attachments = []
         for att in message.attachments:
