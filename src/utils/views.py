@@ -21,6 +21,22 @@ import discord
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.core.logger import logger
+from src.core.constants import (
+    EMOJI_ID_CASE,
+    EMOJI_ID_MESSAGE,
+    EMOJI_ID_INFO,
+    EMOJI_ID_DOWNLOAD,
+    EMOJI_ID_HISTORY,
+    EMOJI_ID_EXTEND,
+    EMOJI_ID_UNMUTE,
+    EMOJI_ID_NOTE,
+    EMOJI_ID_APPEAL,
+    EMOJI_ID_DENY,
+    EMOJI_ID_APPROVE,
+    WARNING_DECAY_DAYS,
+    SECONDS_PER_DAY,
+    SECONDS_PER_HOUR,
+)
 from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
@@ -31,17 +47,17 @@ if TYPE_CHECKING:
 # UI Constants
 # =============================================================================
 
-# App emojis from Discord Developer Portal
-CASE_EMOJI = discord.PartialEmoji(name="case", id=1452426909077213255)
-MESSAGE_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon14", id=1452783032460247150)
-INFO_EMOJI = discord.PartialEmoji(name="info", id=1452510787817046197)
-DOWNLOAD_EMOJI = discord.PartialEmoji(name="download", id=1452689360804909148)
-HISTORY_EMOJI = discord.PartialEmoji(name="history", id=1452963786427469894)
-EXTEND_EMOJI = discord.PartialEmoji(name="extend", id=1452963975150174410)
-UNMUTE_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon3", id=1452964296572272703)
-NOTE_EMOJI = discord.PartialEmoji(name="note", id=1452964649271037974)
-APPEAL_EMOJI = discord.PartialEmoji(name="appeal", id=1454788569594859726)
-DENY_EMOJI = discord.PartialEmoji(name="deny", id=1454788303567065242)
+# App emojis from Discord Developer Portal (IDs from constants.py)
+CASE_EMOJI = discord.PartialEmoji(name="case", id=EMOJI_ID_CASE)
+MESSAGE_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon14", id=EMOJI_ID_MESSAGE)
+INFO_EMOJI = discord.PartialEmoji(name="info", id=EMOJI_ID_INFO)
+DOWNLOAD_EMOJI = discord.PartialEmoji(name="download", id=EMOJI_ID_DOWNLOAD)
+HISTORY_EMOJI = discord.PartialEmoji(name="history", id=EMOJI_ID_HISTORY)
+EXTEND_EMOJI = discord.PartialEmoji(name="extend", id=EMOJI_ID_EXTEND)
+UNMUTE_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon3", id=EMOJI_ID_UNMUTE)
+NOTE_EMOJI = discord.PartialEmoji(name="note", id=EMOJI_ID_NOTE)
+APPEAL_EMOJI = discord.PartialEmoji(name="appeal", id=EMOJI_ID_APPEAL)
+DENY_EMOJI = discord.PartialEmoji(name="deny", id=EMOJI_ID_DENY)
 
 
 # =============================================================================
@@ -468,7 +484,6 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
             pass
 
         import time as time_module
-        WARNING_DECAY_DAYS = 30  # Match database.py constant
 
         for record in history:
             # Format the entry
@@ -482,7 +497,7 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
             # Check if warning is expired
             is_expired = False
             if action == "warn":
-                decay_cutoff = time_module.time() - (WARNING_DECAY_DAYS * 86400)
+                decay_cutoff = time_module.time() - (WARNING_DECAY_DAYS * SECONDS_PER_DAY)
                 is_expired = timestamp < decay_cutoff
 
             # Action emoji
@@ -504,7 +519,7 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
             # Format duration
             duration_str = ""
             if duration_seconds:
-                hours, remainder = divmod(int(duration_seconds), 3600)
+                hours, remainder = divmod(int(duration_seconds), SECONDS_PER_HOUR)
                 minutes, _ = divmod(remainder, 60)
                 if hours > 0:
                     duration_str = f" ({hours}h {minutes}m)" if minutes else f" ({hours}h)"
@@ -628,7 +643,6 @@ class HistoryPaginationView(discord.ui.View):
             pass
 
         import time as time_module
-        WARNING_DECAY_DAYS = 30  # Match database.py constant
 
         for record in history:
             action = record.get("action", "unknown")
@@ -640,7 +654,7 @@ class HistoryPaginationView(discord.ui.View):
             # Check if warning is expired
             is_expired = False
             if action == "warn":
-                decay_cutoff = time_module.time() - (WARNING_DECAY_DAYS * 86400)
+                decay_cutoff = time_module.time() - (WARNING_DECAY_DAYS * SECONDS_PER_DAY)
                 is_expired = timestamp < decay_cutoff
 
             if action == "mute":
@@ -660,7 +674,7 @@ class HistoryPaginationView(discord.ui.View):
 
             duration_str = ""
             if duration_seconds:
-                hours, remainder = divmod(int(duration_seconds), 3600)
+                hours, remainder = divmod(int(duration_seconds), SECONDS_PER_HOUR)
                 minutes, _ = divmod(remainder, 60)
                 if hours > 0:
                     duration_str = f" ({hours}h {minutes}m)" if minutes else f" ({hours}h)"
@@ -794,9 +808,9 @@ class ExtendModal(discord.ui.Modal, title="Extend Mute"):
         for value, unit in matches:
             value = int(value)
             if unit == 'd':
-                total += value * 86400
+                total += value * SECONDS_PER_DAY
             elif unit == 'h':
-                total += value * 3600
+                total += value * SECONDS_PER_HOUR
             elif unit == 'm':
                 total += value * 60
             elif unit == 's':
@@ -1284,7 +1298,7 @@ class NotesDisplayView(discord.ui.View):
 # Approve Button (Owner Only)
 # =============================================================================
 
-APPROVE_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon18", id=1454788180485345341)
+APPROVE_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon18", id=EMOJI_ID_APPROVE)
 
 
 class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approve_case:(?P<thread_id>\d+):(?P<case_id>\w+)"):

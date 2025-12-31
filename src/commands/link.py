@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Optional
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.core.constants import EMOJI_ID_APPROVE, EMOJI_ID_DENY
 from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
@@ -41,9 +42,9 @@ if TYPE_CHECKING:
 # Constants
 # =============================================================================
 
-# Custom emojis (black themed) - these are server emoji IDs, not user/role IDs
-APPROVE_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon18", id=1454788180485345341)
-DENY_EMOJI = discord.PartialEmoji(name="deny", id=1454788303567065242)
+# Custom emojis (black themed) - IDs from constants.py
+APPROVE_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon18", id=EMOJI_ID_APPROVE)
+DENY_EMOJI = discord.PartialEmoji(name="deny", id=EMOJI_ID_DENY)
 
 
 # =============================================================================

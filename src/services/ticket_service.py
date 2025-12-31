@@ -25,6 +25,16 @@ import discord
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.core.constants import (
+    EMOJI_ID_TICKET,
+    EMOJI_ID_APPEAL,
+    EMOJI_ID_SUGGESTION,
+    EMOJI_ID_STAFF,
+    TICKET_CREATION_COOLDOWN,
+    AUTO_CLOSE_CHECK_INTERVAL,
+    THREAD_DELETE_DELAY,
+    CLOSE_REQUEST_COOLDOWN,
+)
 from src.utils.footer import set_footer
 from src.utils.retry import safe_fetch_channel, safe_send, safe_edit
 from src.utils.views import APPROVE_EMOJI, DENY_EMOJI, HistoryButton
@@ -37,11 +47,11 @@ if TYPE_CHECKING:
 # Constants
 # =============================================================================
 
-# Custom emojis
-TICKET_EMOJI = discord.PartialEmoji(name="ticket", id=1455177168098295983)
-PARTNERSHIP_EMOJI = discord.PartialEmoji(name="appeal", id=1454788569594859726)
-SUGGESTION_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon22", id=1455178213771972608)
-STAFF_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon23", id=1455178387927732381)
+# Custom emojis (IDs from constants.py)
+TICKET_EMOJI = discord.PartialEmoji(name="ticket", id=EMOJI_ID_TICKET)
+PARTNERSHIP_EMOJI = discord.PartialEmoji(name="appeal", id=EMOJI_ID_APPEAL)
+SUGGESTION_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon22", id=EMOJI_ID_SUGGESTION)
+STAFF_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon23", id=EMOJI_ID_STAFF)
 
 # Category configurations
 TICKET_CATEGORIES = {
@@ -76,16 +86,9 @@ PRIORITY_CONFIG = {
 # Max open tickets per user
 MAX_OPEN_TICKETS_PER_USER = 1
 
-# Ticket creation cooldown (seconds)
-TICKET_CREATION_COOLDOWN = 300  # 5 minutes
-
-# Auto-close settings
+# Auto-close settings (time constants imported from constants.py)
 INACTIVE_WARNING_DAYS = 3  # Warn after 3 days of inactivity
 INACTIVE_CLOSE_DAYS = 5    # Close after 5 days of inactivity
-AUTO_CLOSE_CHECK_INTERVAL = 3600  # Check every hour
-
-# Thread deletion delay after close (seconds)
-THREAD_DELETE_DELAY = 3600  # 1 hour
 
 
 # =============================================================================
@@ -104,9 +107,6 @@ class TicketService:
 
     # Thread cache TTL
     THREAD_CACHE_TTL = timedelta(minutes=5)
-
-    # Close request cooldown (seconds)
-    CLOSE_REQUEST_COOLDOWN = 300  # 5 minutes
 
     def __init__(self, bot: "AzabBot") -> None:
         self.bot = bot
@@ -1877,7 +1877,7 @@ class TicketCloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tk
             # Check close request cooldown to prevent spam
             now = time.time()
             last_request = bot.ticket_service._close_request_cooldowns.get(self.ticket_id, 0)
-            remaining = bot.ticket_service.CLOSE_REQUEST_COOLDOWN - (now - last_request)
+            remaining = CLOSE_REQUEST_COOLDOWN - (now - last_request)
             if remaining > 0:
                 mins = int(remaining // 60)
                 secs = int(remaining % 60)
