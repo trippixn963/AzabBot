@@ -661,6 +661,18 @@ class MessageEvents(commands.Cog):
                     "url": sticker.url,
                 })
 
+        # Copy attachment bytes to snipe cache BEFORE logging service pops it
+        # This ensures /snipe can reliably display deleted images
+        if message.id in self.bot._attachment_cache:
+            # LRU eviction for snipe attachment cache
+            while len(self.bot._snipe_attachment_cache) >= self.bot._snipe_attachment_cache_limit:
+                try:
+                    self.bot._snipe_attachment_cache.popitem(last=False)
+                except KeyError:
+                    break
+            # Copy (not move) the attachment data
+            self.bot._snipe_attachment_cache[message.id] = self.bot._attachment_cache[message.id]
+
         # Save to database (persists across restarts)
         self.bot.db.save_snipe(
             channel_id=channel_id,
@@ -673,6 +685,7 @@ class MessageEvents(commands.Cog):
             deleted_at=deleted_at,
             attachment_urls=attachment_urls if attachment_urls else None,
             sticker_urls=sticker_urls if sticker_urls else None,
+            message_id=message.id,
         )
 
         # Tree logging for message deletions

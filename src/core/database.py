@@ -1038,6 +1038,7 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS snipe_cache (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 channel_id INTEGER NOT NULL,
+                message_id INTEGER,
                 author_id INTEGER NOT NULL,
                 author_name TEXT NOT NULL,
                 author_display TEXT NOT NULL,
@@ -1052,15 +1053,16 @@ class DatabaseManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_snipe_channel ON snipe_cache(channel_id, deleted_at DESC)"
         )
-        # Migration: Add attachment_urls and sticker_urls columns if missing
-        try:
-            cursor.execute("ALTER TABLE snipe_cache ADD COLUMN attachment_urls TEXT")
-        except Exception:
-            pass  # Column already exists
-        try:
-            cursor.execute("ALTER TABLE snipe_cache ADD COLUMN sticker_urls TEXT")
-        except Exception:
-            pass  # Column already exists
+        # Migration: Add columns if missing
+        for column, col_type in [
+            ("attachment_urls", "TEXT"),
+            ("sticker_urls", "TEXT"),
+            ("message_id", "INTEGER"),
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE snipe_cache ADD COLUMN {column} {col_type}")
+            except Exception:
+                pass  # Column already exists
 
         # -----------------------------------------------------------------
         # FORBID HISTORY TABLE
@@ -4476,6 +4478,7 @@ class DatabaseManager:
         deleted_at: float,
         attachment_urls: Optional[List[Dict[str, Any]]] = None,
         sticker_urls: Optional[List[Dict[str, Any]]] = None,
+        message_id: Optional[int] = None,
     ) -> None:
         """
         Save a deleted message to snipe cache.
@@ -4491,15 +4494,16 @@ class DatabaseManager:
             deleted_at: Timestamp when deleted.
             attachment_urls: List of attachment data dicts with url, filename, content_type, size.
             sticker_urls: List of sticker data dicts with name, url.
+            message_id: Original message ID for attachment cache lookup.
         """
         import json
 
         self.execute(
             """INSERT INTO snipe_cache
-               (channel_id, author_id, author_name, author_display, author_avatar, content, attachment_names, attachment_urls, sticker_urls, deleted_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (channel_id, message_id, author_id, author_name, author_display, author_avatar, content, attachment_names, attachment_urls, sticker_urls, deleted_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                channel_id, author_id, author_name, author_display, author_avatar, content,
+                channel_id, message_id, author_id, author_name, author_display, author_avatar, content,
                 json.dumps(attachment_names),
                 json.dumps(attachment_urls) if attachment_urls else None,
                 json.dumps(sticker_urls) if sticker_urls else None,
@@ -4529,7 +4533,7 @@ class DatabaseManager:
             List of snipe data dicts.
         """
         rows = self.fetchall(
-            """SELECT author_id, author_name, author_display, author_avatar, content,
+            """SELECT message_id, author_id, author_name, author_display, author_avatar, content,
                       attachment_names, attachment_urls, sticker_urls, deleted_at
                FROM snipe_cache
                WHERE channel_id = ?
@@ -4541,6 +4545,7 @@ class DatabaseManager:
         snipes = []
         for row in rows:
             snipes.append({
+                "message_id": row["message_id"],
                 "author_id": row["author_id"],
                 "author_name": row["author_name"],
                 "author_display": row["author_display"],

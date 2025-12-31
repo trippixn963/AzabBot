@@ -14,7 +14,8 @@ Server: discord.gg/syria
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from io import BytesIO
+from typing import TYPE_CHECKING, Optional, List
 
 import discord
 from discord import app_commands
@@ -118,6 +119,7 @@ class SnipeCog(commands.Cog):
             deleted_at = snipe_data.get("deleted_at", 0)
 
             # Get snipe data
+            message_id = snipe_data.get("message_id")
             author_id = snipe_data.get("author_id")
             author_name = snipe_data.get("author_name", "Unknown")
             author_display = snipe_data.get("author_display", "Unknown")
@@ -125,6 +127,11 @@ class SnipeCog(commands.Cog):
             content = snipe_data.get("content", "")
             attachment_urls = snipe_data.get("attachment_urls", [])
             sticker_urls = snipe_data.get("sticker_urls", [])
+
+            # Check if we have cached file bytes (reliable, doesn't expire)
+            cached_files: List[tuple] = []
+            if message_id:
+                cached_files = self.bot._snipe_attachment_cache.get(message_id, [])
 
             # Tree logging
             content_preview = (content[:50] + "...") if len(content) > 50 else (content or "(no text)")
@@ -135,6 +142,7 @@ class SnipeCog(commands.Cog):
                 ("Message #", str(number)),
                 ("Content", content_preview),
                 ("Attachments", str(len(attachment_urls))),
+                ("Cached Files", str(len(cached_files))),
                 ("Stickers", str(len(sticker_urls))),
             ], emoji="🎯")
 
@@ -150,31 +158,50 @@ class SnipeCog(commands.Cog):
             )
             embed.set_footer(text=f"Deleted • Message #{number}")
 
-            # Find first image attachment to set as embed image
-            image_url = None
-            other_attachments = []
-            for att in attachment_urls:
-                content_type = att.get("content_type", "") or ""
-                if content_type.startswith("image/") and not image_url:
-                    image_url = att.get("url")
-                else:
-                    other_attachments.append(att)
+            # Prepare files to upload from cache
+            files_to_send: List[discord.File] = []
+            first_image_filename = None
 
-            if image_url:
-                embed.set_image(url=image_url)
+            if cached_files:
+                # We have actual file bytes - create discord.File objects
+                for filename, file_bytes in cached_files[:4]:  # Limit to 4 files
+                    file_obj = discord.File(BytesIO(file_bytes), filename=filename)
+                    files_to_send.append(file_obj)
+                    # Track first image for embed
+                    if not first_image_filename:
+                        ext = filename.lower().split(".")[-1] if "." in filename else ""
+                        if ext in ("png", "jpg", "jpeg", "gif", "webp"):
+                            first_image_filename = filename
 
-            # Add other attachments as field
-            if other_attachments:
-                att_links = []
-                for att in other_attachments[:5]:
-                    filename = att.get("filename", "file")
-                    url = att.get("url", "")
-                    att_links.append(f"[{filename}]({url})")
-                embed.add_field(
-                    name="Attachments",
-                    value="\n".join(att_links),
-                    inline=False,
-                )
+                # Set embed image to first uploaded image
+                if first_image_filename:
+                    embed.set_image(url=f"attachment://{first_image_filename}")
+            else:
+                # Fallback to URLs (may be expired)
+                image_url = None
+                other_attachments = []
+                for att in attachment_urls:
+                    content_type = att.get("content_type", "") or ""
+                    if content_type.startswith("image/") and not image_url:
+                        image_url = att.get("url")
+                    else:
+                        other_attachments.append(att)
+
+                if image_url:
+                    embed.set_image(url=image_url)
+
+                # Add other attachments as field (links may be expired)
+                if other_attachments:
+                    att_links = []
+                    for att in other_attachments[:5]:
+                        filename = att.get("filename", "file")
+                        url = att.get("url", "")
+                        att_links.append(f"[{filename}]({url})")
+                    embed.add_field(
+                        name="Attachments (links may be expired)",
+                        value="\n".join(att_links),
+                        inline=False,
+                    )
 
             # Add stickers
             if sticker_urls:
@@ -189,13 +216,16 @@ class SnipeCog(commands.Cog):
                     inline=False,
                 )
                 # If no image set and sticker has image, show it
-                if not image_url and sticker_urls[0].get("url"):
+                if not first_image_filename and sticker_urls[0].get("url"):
                     embed.set_thumbnail(url=sticker_urls[0].get("url"))
 
             set_footer(embed)
 
-            # Send public message (not ephemeral)
-            await interaction.response.send_message(embed=embed)
+            # Send public message with embed and any cached files
+            if files_to_send:
+                await interaction.response.send_message(embed=embed, files=files_to_send)
+            else:
+                await interaction.response.send_message(embed=embed)
 
             # Log to server logs
             await self._log_snipe_usage(
