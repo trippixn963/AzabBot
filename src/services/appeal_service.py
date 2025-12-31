@@ -451,12 +451,14 @@ class AppealService:
             action_type = appeal["action_type"]
             case_id = appeal["case_id"]
 
+            # Fetch user ONCE (reused throughout)
+            appeal_user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
+
             # Take action based on type
             if action_type == "ban":
                 # Unban user
                 try:
-                    user = await self.bot.fetch_user(user_id)
-                    await guild.unban(user, reason=f"Appeal {appeal_id} approved by {moderator}")
+                    await guild.unban(appeal_user, reason=f"Appeal {appeal_id} approved by {moderator}")
                 except discord.NotFound:
                     pass  # User not banned or doesn't exist
                 except discord.HTTPException as e:
@@ -541,7 +543,6 @@ class AppealService:
 
             # DM the user
             try:
-                user = await self.bot.fetch_user(user_id)
                 dm_embed = discord.Embed(
                     title="✅ Your Appeal Was Approved",
                     description=f"Your appeal for case `{case_id}` has been approved.",
@@ -563,7 +564,7 @@ class AppealService:
                 if reason:
                     dm_embed.add_field(name="Note", value=reason, inline=False)
                 set_footer(dm_embed)
-                await user.send(embed=dm_embed)
+                await appeal_user.send(embed=dm_embed)
             except (discord.HTTPException, discord.Forbidden):
                 pass  # Can't DM user
 
@@ -670,7 +671,7 @@ class AppealService:
 
             # DM the user
             try:
-                user = await self.bot.fetch_user(user_id)
+                denied_user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
                 dm_embed = discord.Embed(
                     title="❌ Your Appeal Was Denied",
                     description=f"Your appeal for case `{case_id}` has been denied.",
@@ -680,7 +681,7 @@ class AppealService:
                 if reason:
                     dm_embed.add_field(name="Reason", value=reason, inline=False)
                 set_footer(dm_embed)
-                await user.send(embed=dm_embed)
+                await denied_user.send(embed=dm_embed)
             except (discord.HTTPException, discord.Forbidden):
                 pass
 

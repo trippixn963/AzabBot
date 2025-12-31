@@ -427,15 +427,17 @@ class ModmailService:
         if message.author.bot:
             return False
 
-        # Get the user
-        try:
-            user = await self.bot.fetch_user(modmail["user_id"])
-        except discord.HTTPException:
-            await message.channel.send(
-                "Could not find user to relay message.",
-                delete_after=10
-            )
-            return True
+        # Get the user (check cache first)
+        user = self.bot.get_user(modmail["user_id"])
+        if not user:
+            try:
+                user = await self.bot.fetch_user(modmail["user_id"])
+            except discord.HTTPException:
+                await message.channel.send(
+                    "Could not find user to relay message.",
+                    delete_after=10
+                )
+                return True
 
         # Relay to user DM
         success = await self.relay_thread_to_dm(message, user)
@@ -481,10 +483,12 @@ class ModmailService:
         # Update database
         self.db.close_modmail(thread.id, closed_by.id)
 
+        # Fetch user ONCE (reused throughout)
+        modmail_user = self.bot.get_user(modmail["user_id"]) or await self.bot.fetch_user(modmail["user_id"])
+
         # Notify user
         if notify_user:
             try:
-                user = await self.bot.fetch_user(modmail["user_id"])
                 close_embed = discord.Embed(
                     title=f"{CLOSE_EMOJI} Modmail Closed",
                     description=(
@@ -495,7 +499,7 @@ class ModmailService:
                     color=EmbedColors.WARNING
                 )
                 set_footer(close_embed)
-                await user.send(embed=close_embed)
+                await modmail_user.send(embed=close_embed)
             except discord.HTTPException:
                 pass
 
@@ -514,8 +518,7 @@ class ModmailService:
         # Log to server logs
         if self.bot.logging_service and self.bot.logging_service.enabled:
             try:
-                user = await self.bot.fetch_user(modmail["user_id"])
-                await self.bot.logging_service.log_modmail_closed(user, closed_by, thread.id)
+                await self.bot.logging_service.log_modmail_closed(modmail_user, closed_by, thread.id)
             except discord.HTTPException:
                 pass
 

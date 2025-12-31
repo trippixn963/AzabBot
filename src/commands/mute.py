@@ -976,8 +976,8 @@ class MuteCog(commands.Cog):
         if case_info:
             embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
 
-        if reason:
-            embed.add_field(name="Reason", value=reason, inline=False)
+        # Note: Reason intentionally not shown in public embed
+        # Only visible in DMs, case logs, and mod logs
 
         embed.set_thumbnail(url=target_member.display_avatar.url)
         set_footer(embed)

@@ -1165,6 +1165,10 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE tickets ADD COLUMN claimed_at REAL")
         except sqlite3.OperationalError:
             pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE tickets ADD COLUMN transcript_html TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_tickets_user ON tickets(user_id, guild_id)"
         )
@@ -5463,6 +5467,39 @@ class DatabaseManager:
             (ticket_id,)
         )
         return cursor.rowcount > 0
+
+    def save_ticket_transcript(self, ticket_id: str, html_content: str) -> bool:
+        """
+        Save HTML transcript for a ticket.
+
+        Args:
+            ticket_id: Ticket ID.
+            html_content: HTML transcript content.
+
+        Returns:
+            True if saved successfully.
+        """
+        cursor = self.execute(
+            "UPDATE tickets SET transcript_html = ? WHERE ticket_id = ?",
+            (html_content, ticket_id)
+        )
+        return cursor.rowcount > 0
+
+    def get_ticket_transcript(self, ticket_id: str) -> Optional[str]:
+        """
+        Get HTML transcript for a ticket.
+
+        Args:
+            ticket_id: Ticket ID.
+
+        Returns:
+            HTML content or None if not found.
+        """
+        row = self.fetchone(
+            "SELECT transcript_html FROM tickets WHERE ticket_id = ?",
+            (ticket_id,)
+        )
+        return row["transcript_html"] if row and row["transcript_html"] else None
 
     # =========================================================================
     # Modmail Operations

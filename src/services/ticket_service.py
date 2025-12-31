@@ -84,6 +84,9 @@ INACTIVE_WARNING_DAYS = 3  # Warn after 3 days of inactivity
 INACTIVE_CLOSE_DAYS = 5    # Close after 5 days of inactivity
 AUTO_CLOSE_CHECK_INTERVAL = 3600  # Check every hour
 
+# Thread deletion delay after close (seconds)
+THREAD_DELETE_DELAY = 3600  # 1 hour
+
 
 # =============================================================================
 # Ticket Service
@@ -116,6 +119,7 @@ class TicketService:
         self._running: bool = False
         self._creation_cooldowns: Dict[int, float] = {}  # user_id -> timestamp
         self._close_request_cooldowns: Dict[str, float] = {}  # ticket_id -> timestamp
+        self._pending_deletions: Dict[str, asyncio.Task] = {}  # ticket_id -> deletion task
 
     # =========================================================================
     # Properties
@@ -561,6 +565,9 @@ class TicketService:
         if not self.db.close_ticket(ticket_id, closed_by.id, reason):
             return (False, "Failed to close ticket.")
 
+        # Fetch ticket user ONCE (reused throughout)
+        ticket_user = self.bot.get_user(ticket["user_id"]) or await self.bot.fetch_user(ticket["user_id"])
+
         # Get thread and update
         thread = await self._get_ticket_thread(ticket["thread_id"])
         transcript_messages = []
@@ -571,24 +578,46 @@ class TicketService:
                     # Skip the initial embed message
                     if message.embeds and not message.content:
                         continue
+                    # Check if author is staff
+                    is_staff = False
+                    if isinstance(message.author, discord.Member):
+                        is_staff = self.has_staff_permission(message.author)
                     transcript_messages.append({
-                        "author": str(message.author),
+                        "author": message.author.display_name,
                         "author_id": str(message.author.id),
                         "content": message.content,
                         "timestamp": message.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                         "attachments": [att.url for att in message.attachments],
+                        "avatar_url": message.author.display_avatar.url,
+                        "is_staff": is_staff,
+                        "is_bot": message.author.bot,
                     })
             except Exception as e:
                 logger.error("Failed to collect transcript", [("Error", str(e))])
+
+            # Generate and save transcript HTML to database
+            if transcript_messages:
+                try:
+                    html_content = self._generate_html_transcript(
+                        ticket=ticket,
+                        messages=transcript_messages,
+                        user=ticket_user,
+                    )
+                    self.db.save_ticket_transcript(ticket_id, html_content)
+                    logger.tree("Transcript Saved", [
+                        ("Ticket ID", ticket_id),
+                        ("Messages", str(len(transcript_messages))),
+                    ], emoji="📜")
+                except Exception as e:
+                    logger.error("Failed to save transcript", [("Error", str(e))])
 
             # Update embed
             try:
                 async for message in thread.history(limit=1, oldest_first=True):
                     if message.embeds:
-                        user = await self.bot.fetch_user(ticket["user_id"])
                         embed = await self._build_ticket_embed(
                             ticket_id=ticket_id,
-                            user=user,
+                            user=ticket_user,
                             category=ticket["category"],
                             subject=ticket["subject"],
                             description="",
@@ -623,9 +652,11 @@ class TicketService:
             except discord.HTTPException:
                 pass
 
-        # DM the user
+            # Schedule thread deletion after delay
+            self._schedule_thread_deletion(ticket_id, thread.id)
+
+        # DM the user with transcript button
         try:
-            user = await self.bot.fetch_user(ticket["user_id"])
             dm_embed = discord.Embed(
                 title="🔒 Ticket Closed",
                 description=(
@@ -639,7 +670,15 @@ class TicketService:
                 color=EmbedColors.GOLD,
             )
             set_footer(dm_embed)
-            await user.send(embed=dm_embed)
+            # Transcript link button
+            dm_view = discord.ui.View()
+            dm_view.add_item(discord.ui.Button(
+                label="View Transcript",
+                style=discord.ButtonStyle.link,
+                url=f"https://trippixn.com/api/azab/transcripts/{ticket_id}",
+                emoji=discord.PartialEmoji(name="transcript", id=1455205892319481916),
+            ))
+            await ticket_user.send(embed=dm_embed, view=dm_view)
         except (discord.Forbidden, discord.HTTPException):
             pass  # User has DMs disabled
 
@@ -652,11 +691,10 @@ class TicketService:
         # Log to server logs
         if hasattr(self.bot, 'logging_service') and self.bot.logging_service:
             try:
-                user = await self.bot.fetch_user(ticket["user_id"])
                 # Log ticket closed
                 await self.bot.logging_service.log_ticket_closed(
                     ticket_id=ticket_id,
-                    user=user,
+                    user=ticket_user,
                     closed_by=closed_by,
                     category=ticket["category"],
                     reason=reason,
@@ -665,7 +703,7 @@ class TicketService:
                 import time
                 await self.bot.logging_service.log_ticket_transcript(
                     ticket_id=ticket_id,
-                    user=user,
+                    user=ticket_user,
                     category=ticket["category"],
                     subject=ticket["subject"],
                     messages=transcript_messages,
@@ -703,6 +741,12 @@ class TicketService:
         # Reopen in database
         if not self.db.reopen_ticket(ticket_id):
             return (False, "Failed to reopen ticket.")
+
+        # Cancel any pending thread deletion
+        self._cancel_thread_deletion(ticket_id)
+
+        # Fetch ticket user ONCE (reused throughout)
+        ticket_user = self.bot.get_user(ticket["user_id"]) or await self.bot.fetch_user(ticket["user_id"])
 
         # Get thread and update
         thread = await self._get_ticket_thread(ticket["thread_id"])
@@ -744,10 +788,9 @@ class TicketService:
             try:
                 async for message in thread.history(limit=1, oldest_first=True):
                     if message.embeds:
-                        user = await self.bot.fetch_user(ticket["user_id"])
                         embed = await self._build_ticket_embed(
                             ticket_id=ticket_id,
-                            user=user,
+                            user=ticket_user,
                             category=ticket["category"],
                             subject=ticket["subject"],
                             description="",
@@ -778,10 +821,9 @@ class TicketService:
         # Log to server logs
         if hasattr(self.bot, 'logging_service') and self.bot.logging_service:
             try:
-                user = await self.bot.fetch_user(ticket["user_id"])
                 await self.bot.logging_service.log_ticket_reopened(
                     ticket_id=ticket_id,
-                    user=user,
+                    user=ticket_user,
                     reopened_by=reopened_by,
                     category=ticket["category"],
                 )
@@ -820,6 +862,9 @@ class TicketService:
         # Claim in database
         if not self.db.claim_ticket(ticket_id, staff.id):
             return (False, "Failed to claim ticket.")
+
+        # Fetch ticket user ONCE (reused throughout)
+        ticket_user = self.bot.get_user(ticket["user_id"]) or await self.bot.fetch_user(ticket["user_id"])
 
         # Get thread and update
         thread = await self._get_ticket_thread(ticket["thread_id"])
@@ -868,10 +913,9 @@ class TicketService:
             try:
                 async for message in thread.history(limit=1, oldest_first=True):
                     if message.embeds:
-                        user = await self.bot.fetch_user(ticket["user_id"])
                         embed = await self._build_ticket_embed(
                             ticket_id=ticket_id,
-                            user=user,
+                            user=ticket_user,
                             category=ticket["category"],
                             subject=ticket["subject"],
                             description="",
@@ -895,7 +939,6 @@ class TicketService:
 
         # DM the user
         try:
-            user = await self.bot.fetch_user(ticket["user_id"])
             dm_embed = discord.Embed(
                 title="🎫 Ticket Update",
                 description=(
@@ -907,7 +950,7 @@ class TicketService:
                 color=EmbedColors.GREEN,
             )
             set_footer(dm_embed)
-            await user.send(embed=dm_embed)
+            await ticket_user.send(embed=dm_embed)
         except (discord.Forbidden, discord.HTTPException):
             pass  # User has DMs disabled
 
@@ -919,10 +962,9 @@ class TicketService:
         # Log to server logs
         if hasattr(self.bot, 'logging_service') and self.bot.logging_service:
             try:
-                user = await self.bot.fetch_user(ticket["user_id"])
                 await self.bot.logging_service.log_ticket_claimed(
                     ticket_id=ticket_id,
-                    user=user,
+                    user=ticket_user,
                     staff=staff,
                     category=ticket["category"],
                 )
@@ -966,10 +1008,10 @@ class TicketService:
             try:
                 async for message in thread.history(limit=1, oldest_first=True):
                     if message.embeds:
-                        user = await self.bot.fetch_user(ticket["user_id"])
+                        priority_user = self.bot.get_user(ticket["user_id"]) or await self.bot.fetch_user(ticket["user_id"])
                         embed = await self._build_ticket_embed(
                             ticket_id=ticket_id,
-                            user=user,
+                            user=priority_user,
                             category=ticket["category"],
                             subject=ticket["subject"],
                             description="",
@@ -1080,13 +1122,15 @@ class TicketService:
         if not thread:
             return (False, "Ticket thread not found.")
 
-        # Fetch the user to add
-        try:
-            user = await self.bot.fetch_user(user_id)
-        except discord.NotFound:
-            return (False, "User not found.")
-        except discord.HTTPException as e:
-            return (False, f"Failed to fetch user: {e}")
+        # Fetch the user to add (check cache first)
+        user = self.bot.get_user(user_id)
+        if not user:
+            try:
+                user = await self.bot.fetch_user(user_id)
+            except discord.NotFound:
+                return (False, "User not found.")
+            except discord.HTTPException as e:
+                return (False, f"Failed to fetch user: {e}")
 
         # Add user to thread
         try:
@@ -1110,10 +1154,10 @@ class TicketService:
         # Log to server logs
         if hasattr(self.bot, 'logging_service') and self.bot.logging_service:
             try:
-                ticket_user = await self.bot.fetch_user(ticket["user_id"])
+                ticket_owner = self.bot.get_user(ticket["user_id"]) or await self.bot.fetch_user(ticket["user_id"])
                 await self.bot.logging_service.log_ticket_user_added(
                     ticket_id=ticket_id,
-                    ticket_user=ticket_user,
+                    ticket_user=ticket_owner,
                     added_user=user,
                     added_by=added_by,
                 )
@@ -1182,6 +1226,48 @@ class TicketService:
     # =========================================================================
     # Helpers
     # =========================================================================
+
+    def _schedule_thread_deletion(self, ticket_id: str, thread_id: int) -> None:
+        """Schedule a thread for deletion after THREAD_DELETE_DELAY."""
+        # Cancel any existing deletion task for this ticket
+        if ticket_id in self._pending_deletions:
+            self._pending_deletions[ticket_id].cancel()
+
+        async def delete_after_delay():
+            try:
+                await asyncio.sleep(THREAD_DELETE_DELAY)
+                thread = await self._get_ticket_thread(thread_id)
+                if thread:
+                    await thread.delete()
+                    logger.tree("Ticket Thread Deleted", [
+                        ("Ticket ID", ticket_id),
+                        ("Thread ID", str(thread_id)),
+                        ("Delay", f"{THREAD_DELETE_DELAY // 60} minutes"),
+                    ], emoji="🗑️")
+            except asyncio.CancelledError:
+                pass  # Task was cancelled (ticket reopened)
+            except discord.NotFound:
+                pass  # Thread already deleted
+            except discord.HTTPException as e:
+                logger.error("Failed to delete ticket thread", [
+                    ("Ticket ID", ticket_id),
+                    ("Error", str(e)),
+                ])
+            finally:
+                self._pending_deletions.pop(ticket_id, None)
+
+        self._pending_deletions[ticket_id] = asyncio.create_task(delete_after_delay())
+        logger.tree("Thread Deletion Scheduled", [
+            ("Ticket ID", ticket_id),
+            ("Delete In", f"{THREAD_DELETE_DELAY // 60} minutes"),
+        ], emoji="⏰")
+
+    def _cancel_thread_deletion(self, ticket_id: str) -> None:
+        """Cancel scheduled thread deletion (e.g., when reopening)."""
+        if ticket_id in self._pending_deletions:
+            self._pending_deletions[ticket_id].cancel()
+            self._pending_deletions.pop(ticket_id, None)
+            logger.debug(f"Cancelled deletion for ticket {ticket_id}")
 
     def _get_estimated_wait_time(self, guild_id: int, ticket_id: str) -> str:
         """
@@ -1283,27 +1369,33 @@ class TicketService:
 
         # Add claimed by if applicable
         if claimed_by:
-            try:
-                claimer = await self.bot.fetch_user(claimed_by)
-                embed.add_field(name="Claimed By", value=claimer.mention, inline=True)
-            except discord.NotFound:
-                embed.add_field(name="Claimed By", value=f"User {claimed_by}", inline=True)
+            claimer = self.bot.get_user(claimed_by)
+            if not claimer:
+                try:
+                    claimer = await self.bot.fetch_user(claimed_by)
+                except discord.NotFound:
+                    claimer = None
+            embed.add_field(name="Claimed By", value=claimer.mention if claimer else f"User {claimed_by}", inline=True)
 
         # Add assigned to if applicable
         if assigned_to:
-            try:
-                assignee = await self.bot.fetch_user(assigned_to)
-                embed.add_field(name="Assigned To", value=assignee.mention, inline=True)
-            except discord.NotFound:
-                embed.add_field(name="Assigned To", value=f"User {assigned_to}", inline=True)
+            assignee = self.bot.get_user(assigned_to)
+            if not assignee:
+                try:
+                    assignee = await self.bot.fetch_user(assigned_to)
+                except discord.NotFound:
+                    assignee = None
+            embed.add_field(name="Assigned To", value=assignee.mention if assignee else f"User {assigned_to}", inline=True)
 
         # Add closed info if applicable
         if status == "closed" and closed_by:
-            try:
-                closer = await self.bot.fetch_user(closed_by)
-                embed.add_field(name="Closed By", value=closer.mention, inline=True)
-            except discord.NotFound:
-                embed.add_field(name="Closed By", value=f"User {closed_by}", inline=True)
+            closer = self.bot.get_user(closed_by)
+            if not closer:
+                try:
+                    closer = await self.bot.fetch_user(closed_by)
+                except discord.NotFound:
+                    closer = None
+            embed.add_field(name="Closed By", value=closer.mention if closer else f"User {closed_by}", inline=True)
 
             if close_reason:
                 embed.add_field(name="Close Reason", value=close_reason[:1024], inline=False)
@@ -1464,6 +1556,16 @@ class TicketService:
         .attachment:hover {{
             background: #30363d;
         }}
+        .attachment-image {{
+            max-width: 400px;
+            max-height: 300px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }}
+        .attachment-image:hover {{
+            transform: scale(1.02);
+        }}
         .footer {{
             text-align: center;
             padding: 30px;
@@ -1533,7 +1635,7 @@ class TicketService:
 
             # Determine author class
             author_class = ""
-            if "Bot" in author or author_id == str(self.bot.user.id if self.bot.user else 0):
+            if msg.get("is_bot", False):
                 author_class = "bot"
             elif msg.get("is_staff", False):
                 author_class = "staff"
@@ -1555,7 +1657,12 @@ class TicketService:
                 html_output += '                    <div class="attachments">\n'
                 for att in attachments:
                     filename = att.split("/")[-1].split("?")[0] if att else "attachment"
-                    html_output += f'                        <a class="attachment" href="{att}" target="_blank">📎 {html_lib.escape(filename[:30])}</a>\n'
+                    # Check if it's an image
+                    is_image = any(filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp'])
+                    if is_image:
+                        html_output += f'                        <a href="{att}" target="_blank"><img class="attachment-image" src="{att}" alt="{html_lib.escape(filename)}" loading="lazy"></a>\n'
+                    else:
+                        html_output += f'                        <a class="attachment" href="{att}" target="_blank">📎 {html_lib.escape(filename[:30])}</a>\n'
                 html_output += '                    </div>\n'
 
             html_output += '''                </div>
@@ -1682,6 +1789,12 @@ class TicketClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tk
             await interaction.response.send_message("Ticket system unavailable.", ephemeral=True)
             return
 
+        # Check if ticket is already closed
+        ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
+        if ticket and ticket["status"] == "closed":
+            await interaction.response.send_message("This ticket is already closed.", ephemeral=True)
+            return
+
         # Check permission
         if not bot.ticket_service.has_staff_permission(interaction.user):
             logger.tree("Ticket Claim Denied", [
@@ -1749,6 +1862,11 @@ class TicketCloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tk
         ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
         if not ticket:
             await interaction.response.send_message("Ticket not found.", ephemeral=True)
+            return
+
+        # Check if ticket is already closed
+        if ticket["status"] == "closed":
+            await interaction.response.send_message("This ticket is already closed.", ephemeral=True)
             return
 
         # Check if user is the ticket opener (not staff)
@@ -1900,6 +2018,12 @@ class TicketAddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"
             await interaction.response.send_message("Ticket system unavailable.", ephemeral=True)
             return
 
+        # Check if ticket is already closed
+        ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
+        if ticket and ticket["status"] == "closed":
+            await interaction.response.send_message("This ticket is already closed.", ephemeral=True)
+            return
+
         # Check permission
         if not bot.ticket_service.has_staff_permission(interaction.user):
             logger.tree("Ticket Add User Denied", [
@@ -2032,12 +2156,29 @@ class TicketTranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template
         if hasattr(bot, "interaction_logger") and bot.interaction_logger:
             await bot.interaction_logger.log_ticket_transcript(interaction.user, self.ticket_id)
 
-        await interaction.followup.send(
-            f"📜 Transcript for **{self.ticket_id}** ({len(transcript_messages)} messages)\n"
-            f"-# Open in browser for formatted view with avatars",
+        # Upload file and get URL, then send link button
+        msg = await interaction.followup.send(
+            f"📜 Transcript for **{self.ticket_id}** ({len(transcript_messages)} messages)",
             file=html_file,
             ephemeral=True,
+            wait=True,
         )
+
+        # Get attachment URL and send link button
+        if msg and msg.attachments:
+            attachment_url = msg.attachments[0].url
+            view = discord.ui.View()
+            view.add_item(discord.ui.Button(
+                label="Open Transcript",
+                style=discord.ButtonStyle.link,
+                url=attachment_url,
+                emoji="🔗",
+            ))
+            await interaction.followup.send(
+                "-# Click below to open in browser:",
+                view=view,
+                ephemeral=True,
+            )
 
 
 # =============================================================================
@@ -2412,7 +2553,13 @@ class TicketClosedView(discord.ui.View):
 
     def __init__(self, ticket_id: str):
         super().__init__(timeout=None)
-        self.add_item(TicketTranscriptButton(ticket_id))
+        # Link button to open transcript directly in browser
+        self.add_item(discord.ui.Button(
+            label="Transcript",
+            style=discord.ButtonStyle.link,
+            url=f"https://trippixn.com/api/azab/transcripts/{ticket_id}",
+            emoji=discord.PartialEmoji(name="transcript", id=1455205892319481916),
+        ))
         self.add_item(TicketReopenButton(ticket_id))
 
 

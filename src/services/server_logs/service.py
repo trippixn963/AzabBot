@@ -433,6 +433,7 @@ class LoggingService:
         embed: discord.Embed,
         files: Optional[List[discord.File]] = None,
         user_id: Optional[int] = None,
+        view: Optional[discord.ui.View] = None,
     ) -> Optional[discord.Message]:
         """Send a log to the appropriate thread. Returns the message if successful."""
         if not self._initialized or category not in self._threads:
@@ -440,8 +441,9 @@ class LoggingService:
 
         try:
             thread = self._threads[category]
-            # Create view with Case/UserID/Download buttons if user_id is provided
-            view = LogView(user_id, thread.guild.id) if user_id else None
+            # Use provided view, or create LogView if user_id provided
+            if view is None and user_id:
+                view = LogView(user_id, thread.guild.id)
             message = await thread.send(embed=embed, files=files or [], view=view)
             return message
         except discord.Forbidden:
@@ -2936,7 +2938,24 @@ class LoggingService:
             embed.add_field(name="Reason", value=reason[:500], inline=False)
         self._set_user_thumbnail(embed, closed_by)
 
-        await self._send_log(LogCategory.TICKETS, embed, user_id=user.id)
+        # Create view with transcript button + standard log buttons
+        transcript_url = f"https://trippixn.com/api/azab/transcripts/{ticket_id}"
+        view = TranscriptLinkView(transcript_url)
+        # Add standard log buttons
+        db = get_db()
+        case = db.get_case_log(user.id)
+        if case:
+            guild_id = closed_by.guild.id if hasattr(closed_by, 'guild') else 0
+            case_url = f"https://discord.com/channels/{guild_id}/{case['thread_id']}"
+            view.add_item(discord.ui.Button(
+                label="Case",
+                url=case_url,
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+            ))
+        view.add_item(UserIdButton(user.id))
+
+        await self._send_log(LogCategory.TICKETS, embed, view=view)
 
     async def log_ticket_reopened(
         self,

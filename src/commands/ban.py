@@ -480,11 +480,9 @@ class BanCog(commands.Cog):
             embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
         if ban_count > 1:
             embed.add_field(name="Ban Count", value=f"`{ban_count}`", inline=True)
-        if reason:
-            embed.add_field(name="Reason", value=reason, inline=False)
 
-        # Note: Evidence is intentionally not shown in public embed
-        # It's only visible in DMs, case logs, and mod logs
+        # Note: Reason/Evidence intentionally not shown in public embed
+        # Only visible in DMs, case logs, and mod logs
 
         embed.set_thumbnail(url=user.display_avatar.url)
         set_footer(embed)
@@ -839,11 +837,9 @@ class BanCog(commands.Cog):
             embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
         if ban_duration:
             embed.add_field(name="Was Banned For", value=f"`{ban_duration}`", inline=True)
-        if reason:
-            embed.add_field(name="Reason", value=reason, inline=False)
 
-        # Note: Evidence is intentionally not shown in public embed
-        # It's only visible in case logs and mod logs
+        # Note: Reason/Evidence intentionally not shown in public embed
+        # Only visible in DMs, case logs, and mod logs
 
         embed.set_thumbnail(url=target_user.display_avatar.url)
         set_footer(embed)

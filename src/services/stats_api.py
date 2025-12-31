@@ -5,10 +5,11 @@ Azab Discord Bot - Stats API
 HTTP API server exposing moderation statistics for the dashboard.
 
 Endpoints:
-    GET /api/azab/stats          - Main dashboard stats
-    GET /api/azab/user/{id}      - Individual user (offender) profile
-    GET /api/azab/moderator/{id} - Moderator profile
-    GET /health                  - Health check
+    GET /api/azab/stats              - Main dashboard stats
+    GET /api/azab/user/{id}          - Individual user (offender) profile
+    GET /api/azab/moderator/{id}     - Moderator profile
+    GET /api/azab/transcripts/{id}   - Ticket transcript HTML
+    GET /health                      - Health check
 
 Author: discord.gg/syria
 """
@@ -269,6 +270,7 @@ class AzabAPI:
         self.app.router.add_get("/api/azab/stats", self.handle_stats)
         self.app.router.add_get("/api/azab/user/{user_id}", self.handle_user)
         self.app.router.add_get("/api/azab/moderator/{user_id}", self.handle_moderator)
+        self.app.router.add_get("/api/azab/transcripts/{ticket_id}", self.handle_transcript)
         self.app.router.add_get("/health", self.handle_health)
 
     async def _cleanup_loop(self) -> None:
@@ -294,6 +296,42 @@ class AzabAPI:
             "connected": self._bot.is_ready(),
             "timestamp": datetime.now(NY_TZ).isoformat()
         })
+
+    async def handle_transcript(self, request: web.Request) -> web.Response:
+        """Serve ticket transcript HTML."""
+        ticket_id = request.match_info.get("ticket_id", "").upper()
+
+        if not ticket_id:
+            return web.Response(
+                text="<h1>404 - Ticket ID Required</h1>",
+                status=404,
+                content_type="text/html",
+            )
+
+        # Get transcript from database
+        from src.core.database import get_db
+        db = get_db()
+        html_content = db.get_ticket_transcript(ticket_id)
+
+        if not html_content:
+            return web.Response(
+                text=f"<h1>404 - Transcript Not Found</h1><p>No transcript found for ticket {ticket_id}</p>",
+                status=404,
+                content_type="text/html",
+            )
+
+        logger.tree("Transcript Served", [
+            ("Ticket ID", ticket_id),
+            ("Client IP", get_client_ip(request)),
+        ], emoji="📜")
+
+        return web.Response(
+            text=html_content,
+            content_type="text/html",
+            headers={
+                "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
+            }
+        )
 
     async def handle_stats(self, request: web.Request) -> web.Response:
         """Main stats endpoint."""
