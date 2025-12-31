@@ -724,12 +724,14 @@ class ExtendModal(discord.ui.Modal, title="Extend Mute"):
         style=discord.TextStyle.paragraph,
     )
 
-    def __init__(self, user_id: int, guild_id: int):
+    def __init__(self, user_id: int, guild_id: int) -> None:
+        """Initialize the extend modal with target user context."""
         super().__init__()
         self.user_id = user_id
         self.guild_id = guild_id
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
+        """Process mute extension when modal is submitted."""
         logger.tree("Extend Modal Submitted", [
             ("Submitted By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),
@@ -798,7 +800,8 @@ class ExtendButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_ext
     Persistent extend button that opens a modal to extend mute duration.
     """
 
-    def __init__(self, user_id: int, guild_id: int):
+    def __init__(self, user_id: int, guild_id: int) -> None:
+        """Initialize the extend button with target user context."""
         super().__init__(
             discord.ui.Button(
                 label="Extend",
@@ -817,11 +820,13 @@ class ExtendButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_ext
         item: discord.ui.Button,
         match: re.Match[str],
     ) -> "ExtendButton":
+        """Reconstruct button from custom_id regex match."""
         user_id = int(match.group("user_id"))
         guild_id = int(match.group("guild_id"))
         return cls(user_id, guild_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle button click - opens extend modal."""
         logger.tree("Extend Button Clicked", [
             ("Clicked By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),
@@ -883,12 +888,14 @@ class UnmuteModal(discord.ui.Modal, title="Unmute User"):
         style=discord.TextStyle.paragraph,
     )
 
-    def __init__(self, user_id: int, guild_id: int):
+    def __init__(self, user_id: int, guild_id: int) -> None:
+        """Initialize the unmute modal with target user context."""
         super().__init__()
         self.user_id = user_id
         self.guild_id = guild_id
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
+        """Process unmute when modal is submitted."""
         logger.tree("Unmute Modal Submitted", [
             ("Submitted By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),
@@ -975,7 +982,8 @@ class UnmuteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_unm
     Persistent unmute button that opens a modal to unmute with reason.
     """
 
-    def __init__(self, user_id: int, guild_id: int):
+    def __init__(self, user_id: int, guild_id: int) -> None:
+        """Initialize the unmute button with target user context."""
         super().__init__(
             discord.ui.Button(
                 label="Unmute",
@@ -994,11 +1002,13 @@ class UnmuteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_unm
         item: discord.ui.Button,
         match: re.Match[str],
     ) -> "UnmuteButton":
+        """Reconstruct button from custom_id regex match."""
         user_id = int(match.group("user_id"))
         guild_id = int(match.group("guild_id"))
         return cls(user_id, guild_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle button click - opens unmute modal."""
         logger.tree("Unmute Button Clicked", [
             ("Clicked By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),
@@ -1051,13 +1061,15 @@ class NoteModal(discord.ui.Modal, title="Add Moderator Note"):
         style=discord.TextStyle.paragraph,
     )
 
-    def __init__(self, user_id: int, guild_id: int, case_id: Optional[str] = None):
+    def __init__(self, user_id: int, guild_id: int, case_id: Optional[str] = None) -> None:
+        """Initialize the note modal with target user context."""
         super().__init__()
         self.user_id = user_id
         self.guild_id = guild_id
         self.case_id = case_id
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
+        """Save the moderator note when modal is submitted."""
         logger.tree("Note Modal Submitted", [
             ("Submitted By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),
