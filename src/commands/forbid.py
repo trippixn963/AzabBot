@@ -40,6 +40,11 @@ from typing import Optional, List, Tuple, TYPE_CHECKING
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ, is_developer, has_mod_role
 from src.core.database import get_db
+from src.core.moderation_validation import (
+    validate_self_action,
+    validate_target_not_bot,
+    validate_role_hierarchy,
+)
 from src.utils.footer import set_footer
 from src.utils.views import APPEAL_EMOJI
 from src.utils.rate_limiter import rate_limit
@@ -392,29 +397,28 @@ class ForbidCog(commands.Cog):
                 )
                 return
 
-            # Can't forbid yourself
-            if user.id == moderator.id:
-                await interaction.followup.send(
-                    "You cannot forbid yourself.",
-                    ephemeral=True,
-                )
+            # Validation using centralized module
+            result = validate_self_action(moderator, user, "forbid")
+            if not result.is_valid:
+                await interaction.followup.send(result.error_message, ephemeral=True)
                 return
 
-            # Can't forbid bots
-            if user.bot:
-                await interaction.followup.send(
-                    "You cannot forbid bots.",
-                    ephemeral=True,
-                )
+            result = validate_target_not_bot(moderator, user, "forbid")
+            if not result.is_valid:
+                await interaction.followup.send(result.error_message, ephemeral=True)
                 return
 
-            # Hierarchy check - can't forbid higher roles (developers bypass)
-            if not is_developer(moderator.id):
-                if isinstance(moderator, discord.Member) and user.top_role >= moderator.top_role:
-                    await interaction.followup.send(
-                        "You cannot forbid someone with an equal or higher role.",
-                        ephemeral=True,
-                    )
+            # Hierarchy check
+            if isinstance(moderator, discord.Member):
+                result = validate_role_hierarchy(
+                    moderator=moderator,
+                    target=user,
+                    target_guild=guild,
+                    action="forbid",
+                    cross_server=False,
+                )
+                if not result.is_valid:
+                    await interaction.followup.send(result.error_message, ephemeral=True)
                     return
 
             # Parse duration

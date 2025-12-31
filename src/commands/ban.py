@@ -29,6 +29,12 @@ from typing import Optional, List, TYPE_CHECKING
 from src.core.logger import logger
 from src.core.config import get_config, is_developer, has_mod_role, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.core.moderation_validation import (
+    validate_moderation_target,
+    get_target_guild,
+    is_cross_server,
+    send_management_blocked_embed,
+)
 from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
 
@@ -173,28 +179,6 @@ class BanCog(commands.Cog):
     # Helper Methods
     # =========================================================================
 
-    def _get_target_guild(self, interaction: discord.Interaction) -> discord.Guild:
-        """
-        Get the target guild for moderation actions.
-
-        If command is run from mod server, targets the main server.
-        Otherwise, targets the current server.
-        """
-        # If in mod server and main guild is configured, target main guild
-        if (self.config.mod_server_id and
-            self.config.logging_guild_id and
-            interaction.guild.id == self.config.mod_server_id):
-            main_guild = self.bot.get_guild(self.config.logging_guild_id)
-            if main_guild:
-                return main_guild
-        return interaction.guild
-
-    def _is_cross_server(self, interaction: discord.Interaction) -> bool:
-        """Check if this is a cross-server moderation action."""
-        return (self.config.mod_server_id and
-                self.config.logging_guild_id and
-                interaction.guild.id == self.config.mod_server_id)
-
     def _format_ban_duration(self, seconds: int) -> str:
         """Format seconds into a human-readable ban duration."""
         if seconds < 60:
@@ -242,97 +226,30 @@ class BanCog(commands.Cog):
         # Get Target Guild (for cross-server moderation)
         # -----------------------------------------------------------------
 
-        target_guild = self._get_target_guild(interaction)
-        is_cross_server = self._is_cross_server(interaction)
+        target_guild = get_target_guild(interaction, self.bot)
+        cross_server = is_cross_server(interaction)
 
         # Try to get member from target guild for role checks
         target_member = target_guild.get_member(user.id)
 
         # -----------------------------------------------------------------
-        # Validation
+        # Validation (using centralized validation module)
         # -----------------------------------------------------------------
 
-        if user.id == interaction.user.id:
-            logger.tree("BAN BLOCKED", [
-                ("Reason", "Self-ban attempt"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-            ], emoji="🚫")
-            await interaction.followup.send("You cannot ban yourself.", ephemeral=True)
-            return False
+        result = await validate_moderation_target(
+            interaction=interaction,
+            target=user,
+            bot=self.bot,
+            action="ban",
+            require_member=False,  # Can ban users not in server
+            check_bot_hierarchy=True,
+        )
 
-        if user.id == self.bot.user.id:
-            logger.tree("BAN BLOCKED", [
-                ("Reason", "Bot self-ban attempt"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-            ], emoji="🚫")
-            await interaction.followup.send("I cannot ban myself.", ephemeral=True)
-            return False
-
-        if user.bot and not is_developer(interaction.user.id):
-            logger.tree("BAN BLOCKED", [
-                ("Reason", "Target is a bot"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-                ("Target", f"{user} ({user.id})"),
-            ], emoji="🚫")
-            await interaction.followup.send("You cannot ban bots.", ephemeral=True)
-            return False
-
-        # Role hierarchy check (only if target is a member of target guild)
-        if target_member and isinstance(interaction.user, discord.Member):
-            # For cross-server, get mod's roles from main server if they're a member there
-            mod_member = target_guild.get_member(interaction.user.id) if is_cross_server else interaction.user
-            if mod_member and target_member.top_role >= mod_member.top_role and not is_developer(interaction.user.id):
-                logger.tree("BAN BLOCKED", [
-                    ("Reason", "Role hierarchy"),
-                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-                    ("Mod Role", mod_member.top_role.name),
-                    ("Target", f"{user} ({user.id})"),
-                    ("Target Role", target_member.top_role.name),
-                ], emoji="🚫")
-                await interaction.followup.send(
-                    "You cannot ban someone with an equal or higher role.",
-                    ephemeral=True,
-                )
-                return False
-
-        # Management protection (only if target is a member)
-        if self.config.moderation_role_id and target_member:
-            management_role = target_guild.get_role(self.config.moderation_role_id)
-            mod_member = target_guild.get_member(interaction.user.id) if is_cross_server else interaction.user
-            if management_role and mod_member and isinstance(mod_member, discord.Member):
-                user_has_management = management_role in target_member.roles
-                mod_has_management = management_role in mod_member.roles
-                if user_has_management and mod_has_management and not is_developer(interaction.user.id):
-                    logger.tree("BAN BLOCKED", [
-                        ("Reason", "Management protection"),
-                        ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-                        ("Target", f"{user} ({user.id})"),
-                    ], emoji="🚫")
-                    if self.bot.mod_tracker:
-                        await self.bot.mod_tracker.log_management_mute_attempt(
-                            mod=interaction.user,
-                            target=target_member,
-                        )
-                    embed = discord.Embed(
-                        title="Action Blocked",
-                        description="Management members cannot ban each other.",
-                        color=EmbedColors.WARNING,
-                    )
-                    set_footer(embed)
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                    return False
-
-        # Bot role check (only if target is a member)
-        if target_member and target_member.top_role >= target_guild.me.top_role:
-            logger.tree("BAN BLOCKED", [
-                ("Reason", "Bot role too low"),
-                ("Target Role", target_member.top_role.name),
-                ("Bot Top Role", target_guild.me.top_role.name),
-            ], emoji="🚫")
-            await interaction.followup.send(
-                "I cannot ban this user because their role is higher than mine.",
-                ephemeral=True,
-            )
+        if not result.is_valid:
+            if result.should_log_attempt:
+                await send_management_blocked_embed(interaction, "ban")
+            else:
+                await interaction.followup.send(result.error_message, ephemeral=True)
             return False
 
         # -----------------------------------------------------------------
@@ -415,7 +332,7 @@ class BanCog(commands.Cog):
             ("Ban Count", str(ban_count)),
             ("DM Sent", "Yes" if dm_sent else "No"),
         ]
-        if is_cross_server:
+        if cross_server:
             log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
         logger.tree(log_type, log_items, emoji="🔨")
 
@@ -679,8 +596,8 @@ class BanCog(commands.Cog):
         await interaction.response.defer()
 
         # Get target guild for cross-server moderation
-        target_guild = self._get_target_guild(interaction)
-        is_cross_server = self._is_cross_server(interaction)
+        target_guild = get_target_guild(interaction, self.bot)
+        cross_server = is_cross_server(interaction)
 
         # Parse user ID
         try:
@@ -703,7 +620,7 @@ class BanCog(commands.Cog):
         try:
             await target_guild.fetch_ban(target_user)
         except discord.NotFound:
-            guild_name = target_guild.name if is_cross_server else "this server"
+            guild_name = target_guild.name if cross_server else "this server"
             await interaction.followup.send(f"{target_user} is not banned in {guild_name}.", ephemeral=True)
             return
 
@@ -766,7 +683,7 @@ class BanCog(commands.Cog):
             ("Reason", (reason or "None")[:50]),
             ("Evidence", (evidence_url or "None")[:50]),
         ]
-        if is_cross_server:
+        if cross_server:
             log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
         logger.tree("USER UNBANNED", log_items, emoji="🔓")
 

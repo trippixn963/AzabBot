@@ -30,6 +30,11 @@ from typing import Optional, List, TYPE_CHECKING
 from src.core.logger import logger
 from src.core.config import get_config, is_developer, has_mod_role, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.core.moderation_validation import (
+    validate_moderation_target,
+    get_target_guild,
+    is_cross_server,
+)
 from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
 
@@ -144,31 +149,6 @@ class WarnCog(commands.Cog):
         """Check if user has permission to use warn commands."""
         return has_mod_role(interaction.user)
 
-    # =========================================================================
-    # Cross-Server Helpers
-    # =========================================================================
-
-    def _get_target_guild(self, interaction: discord.Interaction) -> discord.Guild:
-        """
-        Get the target guild for moderation actions.
-
-        If command is run from mod server, targets the main server.
-        Otherwise, targets the current server.
-        """
-        if (self.config.mod_server_id and
-            self.config.logging_guild_id and
-            interaction.guild.id == self.config.mod_server_id):
-            main_guild = self.bot.get_guild(self.config.logging_guild_id)
-            if main_guild:
-                return main_guild
-        return interaction.guild
-
-    def _is_cross_server(self, interaction: discord.Interaction) -> bool:
-        """Check if this is a cross-server moderation action."""
-        return (self.config.mod_server_id and
-                self.config.logging_guild_id and
-                interaction.guild.id == self.config.mod_server_id)
-
     async def cog_unload(self) -> None:
         """Unload the cog."""
         self.bot.tree.remove_command(self.warn_message_ctx.name, type=self.warn_message_ctx.type)
@@ -223,57 +203,28 @@ class WarnCog(commands.Cog):
         # Get Target Guild (for cross-server moderation)
         # -----------------------------------------------------------------
 
-        target_guild = self._get_target_guild(interaction)
-        is_cross_server = self._is_cross_server(interaction)
+        target_guild = get_target_guild(interaction, self.bot)
+        cross_server = is_cross_server(interaction)
 
         # Try to get member from target guild for role checks
         target_member = target_guild.get_member(user.id)
 
         # ---------------------------------------------------------------------
-        # Validation
+        # Validation (using centralized validation module)
         # ---------------------------------------------------------------------
 
-        if user.id == interaction.user.id:
-            logger.tree("WARN BLOCKED", [
-                ("Reason", "Self-warn attempt"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-            ], emoji="🚫")
-            await interaction.followup.send("You cannot warn yourself.", ephemeral=True)
-            return
+        result = await validate_moderation_target(
+            interaction=interaction,
+            target=user,
+            bot=self.bot,
+            action="warn",
+            require_member=False,  # Can warn users not in server
+            check_bot_hierarchy=False,  # No role assignment for warns
+        )
 
-        if user.id == self.bot.user.id:
-            logger.tree("WARN BLOCKED", [
-                ("Reason", "Bot self-warn attempt"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-            ], emoji="🚫")
-            await interaction.followup.send("I cannot warn myself.", ephemeral=True)
+        if not result.is_valid:
+            await interaction.followup.send(result.error_message, ephemeral=True)
             return
-
-        if user.bot:
-            logger.tree("WARN BLOCKED", [
-                ("Reason", "Target is a bot"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-                ("Target", f"{user} ({user.id})"),
-            ], emoji="🚫")
-            await interaction.followup.send("I cannot warn bots.", ephemeral=True)
-            return
-
-        # Role hierarchy check (only if target is a member)
-        if target_member and isinstance(interaction.user, discord.Member):
-            mod_member = target_guild.get_member(interaction.user.id) if is_cross_server else interaction.user
-            if mod_member and target_member.top_role >= mod_member.top_role and not is_developer(interaction.user.id):
-                logger.tree("WARN BLOCKED", [
-                    ("Reason", "Role hierarchy"),
-                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-                    ("Mod Role", mod_member.top_role.name),
-                    ("Target", f"{user} ({user.id})"),
-                    ("Target Role", target_member.top_role.name),
-                ], emoji="🚫")
-                await interaction.followup.send(
-                    "You cannot warn someone with an equal or higher role.",
-                    ephemeral=True,
-                )
-                return
 
         # ---------------------------------------------------------------------
         # Record Warning
@@ -296,7 +247,7 @@ class WarnCog(commands.Cog):
             ("Total Warnings", str(total_warns)),
             ("Reason", (reason or "None")[:50]),
         ]
-        if is_cross_server:
+        if cross_server:
             log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
         logger.tree("USER WARNED", log_items, emoji="⚠️")
 

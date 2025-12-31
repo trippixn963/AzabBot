@@ -34,6 +34,12 @@ import re
 from src.core.logger import logger
 from src.core.config import get_config, is_developer, has_mod_role, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.core.moderation_validation import (
+    validate_moderation_target,
+    get_target_guild,
+    is_cross_server,
+    send_management_blocked_embed,
+)
 from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
 
@@ -278,31 +284,6 @@ class MuteCog(commands.Cog):
         ], emoji="🔇")
 
     # =========================================================================
-    # Cross-Server Helpers
-    # =========================================================================
-
-    def _get_target_guild(self, interaction: discord.Interaction) -> discord.Guild:
-        """
-        Get the target guild for moderation actions.
-
-        If command is run from mod server, targets the main server.
-        Otherwise, targets the current server.
-        """
-        if (self.config.mod_server_id and
-            self.config.logging_guild_id and
-            interaction.guild.id == self.config.mod_server_id):
-            main_guild = self.bot.get_guild(self.config.logging_guild_id)
-            if main_guild:
-                return main_guild
-        return interaction.guild
-
-    def _is_cross_server(self, interaction: discord.Interaction) -> bool:
-        """Check if this is a cross-server moderation action."""
-        return (self.config.mod_server_id and
-                self.config.logging_guild_id and
-                interaction.guild.id == self.config.mod_server_id)
-
-    # =========================================================================
     # Permission Check
     # =========================================================================
 
@@ -424,13 +405,13 @@ class MuteCog(commands.Cog):
         # Get Target Guild (for cross-server moderation)
         # -----------------------------------------------------------------
 
-        target_guild = self._get_target_guild(interaction)
-        is_cross_server = self._is_cross_server(interaction)
+        target_guild = get_target_guild(interaction, self.bot)
+        cross_server = is_cross_server(interaction)
 
         # Get member from target guild (required for role-based mute)
         target_member = target_guild.get_member(user.id)
         if not target_member:
-            guild_name = target_guild.name if is_cross_server else "this server"
+            guild_name = target_guild.name if cross_server else "this server"
             await interaction.followup.send(
                 f"User is not a member of {guild_name}.",
                 ephemeral=True,
@@ -438,80 +419,26 @@ class MuteCog(commands.Cog):
             return
 
         # ---------------------------------------------------------------------
-        # Validation
+        # Validation (using centralized validation module)
         # ---------------------------------------------------------------------
 
-        if user.id == interaction.user.id:
-            logger.tree("MUTE BLOCKED", [
-                ("Reason", "Self-mute attempt"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-            ], emoji="🚫")
-            await interaction.followup.send("You cannot mute yourself.", ephemeral=True)
+        result = await validate_moderation_target(
+            interaction=interaction,
+            target=user,
+            bot=self.bot,
+            action="mute",
+            require_member=True,
+            check_bot_hierarchy=False,  # We check muted role instead
+        )
+
+        if not result.is_valid:
+            if result.should_log_attempt:
+                await send_management_blocked_embed(interaction, "mute")
+            else:
+                await interaction.followup.send(result.error_message, ephemeral=True)
             return
 
-        if user.id == self.bot.user.id:
-            logger.tree("MUTE BLOCKED", [
-                ("Reason", "Bot self-mute attempt"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-            ], emoji="🚫")
-            await interaction.followup.send("I cannot mute myself.", ephemeral=True)
-            return
-
-        if user.bot:
-            logger.tree("MUTE BLOCKED", [
-                ("Reason", "Target is a bot"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-                ("Target", f"{user} ({user.id})"),
-            ], emoji="🚫")
-            await interaction.followup.send("I cannot mute bots.", ephemeral=True)
-            return
-
-        # Role hierarchy check
-        if isinstance(interaction.user, discord.Member):
-            mod_member = target_guild.get_member(interaction.user.id) if is_cross_server else interaction.user
-            if mod_member and target_member.top_role >= mod_member.top_role and not is_developer(interaction.user.id):
-                logger.tree("MUTE BLOCKED", [
-                    ("Reason", "Role hierarchy"),
-                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-                    ("Mod Role", mod_member.top_role.name),
-                    ("Target", f"{user} ({user.id})"),
-                    ("Target Role", target_member.top_role.name),
-                ], emoji="🚫")
-                await interaction.followup.send(
-                    "You cannot mute someone with an equal or higher role.",
-                    ephemeral=True,
-                )
-                return
-
-        # Check management protection
-        if self.config.moderation_role_id:
-            management_role = target_guild.get_role(self.config.moderation_role_id)
-            mod_member = target_guild.get_member(interaction.user.id) if is_cross_server else interaction.user
-            if management_role and mod_member and isinstance(mod_member, discord.Member):
-                user_has_management = management_role in target_member.roles
-                mod_has_management = management_role in mod_member.roles
-                if user_has_management and mod_has_management and not is_developer(interaction.user.id):
-                    logger.tree("MUTE BLOCKED", [
-                        ("Reason", "Management protection"),
-                        ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-                        ("Target", f"{user} ({user.id})"),
-                    ], emoji="🚫")
-                    # Secret log to mod tracker
-                    if self.bot.mod_tracker:
-                        await self.bot.mod_tracker.log_management_mute_attempt(
-                            mod=interaction.user,
-                            target=target_member,
-                        )
-
-                    warning_embed = discord.Embed(
-                        title="⚠️ Action Blocked",
-                        description="Management members cannot mute each other.",
-                        color=EmbedColors.WARNING,
-                    )
-                    set_footer(warning_embed)
-                    await interaction.followup.send(embed=warning_embed, ephemeral=True)
-                    return
-
+        # Muted role specific checks
         muted_role = target_guild.get_role(self.config.muted_role_id)
         if not muted_role:
             logger.tree("MUTE BLOCKED", [
@@ -563,7 +490,7 @@ class MuteCog(commands.Cog):
                 ("Duration", duration_display),
                 ("Reason", (reason or "None")[:50]),
             ]
-            if is_cross_server:
+            if cross_server:
                 log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
             logger.tree(f"USER {action}", log_items, emoji="🔇")
 
@@ -860,14 +787,14 @@ class MuteCog(commands.Cog):
         # Get Target Guild (for cross-server moderation)
         # -----------------------------------------------------------------
 
-        target_guild = self._get_target_guild(interaction)
-        is_cross_server = self._is_cross_server(interaction)
+        target_guild = get_target_guild(interaction, self.bot)
+        cross_server = is_cross_server(interaction)
 
         # Get member from target guild
         target_member = target_guild.get_member(user.id)
         if not skip_validation:
             if not target_member:
-                guild_name = target_guild.name if is_cross_server else "this server"
+                guild_name = target_guild.name if cross_server else "this server"
                 await interaction.followup.send(
                     f"User is not a member of {guild_name}.",
                     ephemeral=True,
@@ -920,7 +847,7 @@ class MuteCog(commands.Cog):
                 ("Was Muted For", muted_duration or "Unknown"),
                 ("Reason", (reason or "None")[:50]),
             ]
-            if is_cross_server:
+            if cross_server:
                 log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
             logger.tree("USER UNMUTED", log_items, emoji="🔊")
 
@@ -1052,11 +979,11 @@ class MuteCog(commands.Cog):
     ) -> None:
         """Unmute a user by removing the muted role (supports cross-server from mod server)."""
         # Pre-validate before deferring (so errors can be ephemeral)
-        target_guild = self._get_target_guild(interaction)
+        target_guild = get_target_guild(interaction, self.bot)
         target_member = target_guild.get_member(user.id)
 
         if not target_member:
-            guild_name = target_guild.name if self._is_cross_server(interaction) else "this server"
+            guild_name = target_guild.name if is_cross_server(interaction) else "this server"
             await interaction.response.send_message(
                 f"User is not a member of {guild_name}.",
                 ephemeral=True,
