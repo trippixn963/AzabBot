@@ -25,36 +25,11 @@ from src.core.logger import logger
 from src.core.config import get_config, NY_TZ, EmbedColors
 from src.utils.footer import set_footer
 from src.utils.rate_limiter import rate_limit
+from src.utils.duration import format_duration_from_minutes as format_duration
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
     from src.services.ai_service import AIService
-
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-def format_duration(minutes: int) -> str:
-    """
-    Format minutes into human-readable duration string.
-
-    Args:
-        minutes: Duration in minutes
-
-    Returns:
-        Formatted string like "2d 5h 30m" or "45m"
-    """
-    if not minutes:
-        return "0m"
-    days = minutes // 1440
-    hours = (minutes % 1440) // 60
-    mins = minutes % 60
-    if days:
-        return f"{days}d {hours}h {mins}m"
-    elif hours:
-        return f"{hours}h {mins}m"
-    return f"{mins}m"
 
 
 # =============================================================================

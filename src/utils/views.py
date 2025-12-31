@@ -38,6 +38,7 @@ from src.core.constants import (
     SECONDS_PER_HOUR,
 )
 from src.utils.footer import set_footer
+from src.utils.duration import parse_duration
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -740,7 +741,7 @@ class ExtendModal(discord.ui.Modal, title="Extend Mute"):
 
         # Parse duration
         duration_str = self.duration.value.lower().strip()
-        total_seconds = self._parse_duration(duration_str)
+        total_seconds = parse_duration(duration_str)
 
         if total_seconds is None or total_seconds <= 0:
             await interaction.response.send_message(
@@ -790,33 +791,6 @@ class ExtendModal(discord.ui.Modal, title="Extend Mute"):
                     await thread.send(embed=embed)
         except Exception:
             pass  # Silently fail if can't log
-
-    def _parse_duration(self, duration_str: str) -> Optional[int]:
-        """Parse duration string like 1h, 30m, 2h30m, 1d into seconds."""
-        import re as regex
-        total = 0
-        pattern = regex.compile(r'(\d+)([dhms])')
-        matches = pattern.findall(duration_str)
-
-        if not matches:
-            # Try just a number (assume minutes)
-            try:
-                return int(duration_str) * 60
-            except ValueError:
-                return None
-
-        for value, unit in matches:
-            value = int(value)
-            if unit == 'd':
-                total += value * SECONDS_PER_DAY
-            elif unit == 'h':
-                total += value * SECONDS_PER_HOUR
-            elif unit == 'm':
-                total += value * 60
-            elif unit == 's':
-                total += value
-
-        return total if total > 0 else None
 
 
 class ExtendButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_extend:(?P<user_id>\d+):(?P<guild_id>\d+)"):

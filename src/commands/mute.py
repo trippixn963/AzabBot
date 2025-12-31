@@ -29,7 +29,6 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
-import re
 
 from src.core.logger import logger
 from src.core.config import get_config, is_developer, has_mod_role, EmbedColors, NY_TZ
@@ -44,6 +43,7 @@ from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
 from src.utils.dm_helpers import send_moderation_dm, safe_send_dm, build_appeal_dm
+from src.utils.duration import parse_duration, format_duration
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -142,106 +142,6 @@ REASON_CHOICES = [
     "Excessive mentions",
 ]
 """Common moderation reasons for autocomplete."""
-
-
-# =============================================================================
-# Duration Parser
-# =============================================================================
-
-def parse_duration(duration_str: str) -> Optional[int]:
-    """
-    Parse a duration string into seconds.
-
-    DESIGN:
-        Supports multiple formats:
-        - "10m", "30m" for minutes
-        - "1h", "6h" for hours
-        - "1d", "7d" for days
-        - "1w" for weeks
-        - "1y", "99y" for years
-        - Combined like "1d12h30m"
-        - "permanent" or "perm" for None (no expiry)
-
-    Args:
-        duration_str: Duration string to parse.
-
-    Returns:
-        Duration in seconds, or None for permanent.
-    """
-    if not duration_str:
-        return None
-
-    duration_str = duration_str.lower().strip()
-
-    # Permanent mute
-    if duration_str in ("permanent", "perm", "forever", "indefinite"):
-        return None
-
-    # Parse combined format like "1y2w3d12h30m"
-    pattern = r"(?:(\d+)y)?(?:(\d+)w)?(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?"
-    match = re.fullmatch(pattern, duration_str)
-
-    if not match or not any(match.groups()):
-        # Try single unit format (including years)
-        single_match = re.match(r"^(\d+)\s*(y|w|d|h|m|s)?$", duration_str)
-        if single_match:
-            value = int(single_match.group(1))
-            unit = single_match.group(2) or "m"  # Default to minutes
-
-            multipliers = {"y": 31536000, "w": 604800, "d": 86400, "h": 3600, "m": 60, "s": 1}
-            return value * multipliers.get(unit, 60)
-        return None
-
-    years = int(match.group(1) or 0)
-    weeks = int(match.group(2) or 0)
-    days = int(match.group(3) or 0)
-    hours = int(match.group(4) or 0)
-    minutes = int(match.group(5) or 0)
-    seconds = int(match.group(6) or 0)
-
-    total_seconds = (
-        years * 31536000 +
-        weeks * 604800 +
-        days * 86400 +
-        hours * 3600 +
-        minutes * 60 +
-        seconds
-    )
-
-    return total_seconds if total_seconds > 0 else None
-
-
-def format_duration(seconds: Optional[int]) -> str:
-    """
-    Format seconds into a human-readable duration string.
-
-    Args:
-        seconds: Duration in seconds, or None for permanent.
-
-    Returns:
-        Formatted string like "1y 2d 3h" or "Permanent".
-    """
-    if seconds is None:
-        return "Permanent"
-
-    parts = []
-    years, remainder = divmod(seconds, 31536000)
-    days, remainder = divmod(remainder, 86400)
-    hours, remainder = divmod(remainder, 3600)
-    minutes, secs = divmod(remainder, 60)
-
-    if years > 0:
-        parts.append(f"{years}y")
-    if days > 0:
-        parts.append(f"{days}d")
-    if hours > 0:
-        parts.append(f"{hours}h")
-    if minutes > 0:
-        parts.append(f"{minutes}m")
-    if secs > 0 and not parts:
-        parts.append(f"{secs}s")
-
-    return " ".join(parts) if parts else "0s"
 
 
 # =============================================================================

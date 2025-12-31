@@ -30,7 +30,6 @@ Server: discord.gg/syria
 """
 
 import asyncio
-import re
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -48,79 +47,10 @@ from src.core.moderation_validation import (
 from src.utils.footer import set_footer
 from src.utils.views import APPEAL_EMOJI
 from src.utils.rate_limiter import rate_limit
+from src.utils.duration import parse_duration, format_duration_short as format_duration
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
-
-
-# =============================================================================
-# Duration Parsing
-# =============================================================================
-
-DURATION_PATTERN = re.compile(
-    r'^(?:(\d+)w)?(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?$',
-    re.IGNORECASE
-)
-
-def parse_duration(duration_str: str) -> Optional[int]:
-    """
-    Parse a duration string like '7d', '24h', '1w2d', '30m' into seconds.
-
-    Returns None if invalid format.
-    """
-    if not duration_str:
-        return None
-
-    duration_str = duration_str.strip().lower()
-
-    # Handle simple formats like "7d", "24h"
-    match = DURATION_PATTERN.match(duration_str)
-    if not match:
-        # Try simple single-unit format
-        simple_match = re.match(r'^(\d+)([wdhm])$', duration_str)
-        if simple_match:
-            value = int(simple_match.group(1))
-            unit = simple_match.group(2)
-            multipliers = {'w': 604800, 'd': 86400, 'h': 3600, 'm': 60}
-            return value * multipliers.get(unit, 0)
-        return None
-
-    weeks = int(match.group(1) or 0)
-    days = int(match.group(2) or 0)
-    hours = int(match.group(3) or 0)
-    minutes = int(match.group(4) or 0)
-
-    if weeks == 0 and days == 0 and hours == 0 and minutes == 0:
-        return None
-
-    return (weeks * 604800) + (days * 86400) + (hours * 3600) + (minutes * 60)
-
-def format_duration(seconds: int) -> str:
-    """Format seconds into a human-readable duration string."""
-    if seconds >= 604800:  # weeks
-        weeks = seconds // 604800
-        remaining = seconds % 604800
-        if remaining >= 86400:
-            days = remaining // 86400
-            return f"{weeks}w {days}d"
-        return f"{weeks}w"
-    elif seconds >= 86400:  # days
-        days = seconds // 86400
-        remaining = seconds % 86400
-        if remaining >= 3600:
-            hours = remaining // 3600
-            return f"{days}d {hours}h"
-        return f"{days}d"
-    elif seconds >= 3600:  # hours
-        hours = seconds // 3600
-        remaining = seconds % 3600
-        if remaining >= 60:
-            minutes = remaining // 60
-            return f"{hours}h {minutes}m"
-        return f"{hours}h"
-    else:
-        minutes = seconds // 60
-        return f"{minutes}m"
 
 
 # =============================================================================

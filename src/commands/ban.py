@@ -37,6 +37,7 @@ from src.core.moderation_validation import (
 )
 from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
+from src.utils.duration import format_duration
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -174,29 +175,6 @@ class BanCog(commands.Cog):
         """Remove context menus when cog unloads."""
         self.bot.tree.remove_command(self.ban_user_ctx.name, type=self.ban_user_ctx.type)
         self.bot.tree.remove_command(self.ban_message_ctx.name, type=self.ban_message_ctx.type)
-
-    # =========================================================================
-    # Helper Methods
-    # =========================================================================
-
-    def _format_ban_duration(self, seconds: int) -> str:
-        """Format seconds into a human-readable ban duration."""
-        if seconds < 60:
-            return f"{seconds}s"
-
-        parts = []
-        days, remainder = divmod(seconds, 86400)
-        hours, remainder = divmod(remainder, 3600)
-        minutes, _ = divmod(remainder, 60)
-
-        if days > 0:
-            parts.append(f"{days}d")
-        if hours > 0:
-            parts.append(f"{hours}h")
-        if minutes > 0 and days == 0:  # Only show minutes if less than a day
-            parts.append(f"{minutes}m")
-
-        return " ".join(parts) if parts else "< 1m"
 
     # =========================================================================
     # Shared Ban Execution
@@ -735,7 +713,7 @@ class BanCog(commands.Cog):
         for record in ban_history:
             if record.get("action") == "ban":
                 banned_seconds = int(time.time() - record["timestamp"])
-                ban_duration = self._format_ban_duration(banned_seconds)
+                ban_duration = format_duration(banned_seconds, show_seconds=True)
                 break
 
         # -----------------------------------------------------------------
