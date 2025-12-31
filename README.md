@@ -4,7 +4,7 @@
 
 ![AzabBot Banner](images/BANNER.gif)
 
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Discord.py](https://img.shields.io/badge/Discord.py-2.3.2+-5865F2?style=flat-square&logo=discord&logoColor=white)
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-412991?style=flat-square&logo=openai&logoColor=white)
 ![License](https://img.shields.io/badge/License-Source%20Available-red?style=flat-square)
@@ -14,6 +14,7 @@
 *Built for [discord.gg/syria](https://discord.gg/syria)*
 
 [![Join Server](https://img.shields.io/badge/Join%20Server-discord.gg/syria-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/syria)
+[![Dashboard](https://img.shields.io/badge/Dashboard-trippixn.com/azab-E6B84A?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTMgOWwzLTMgMyAzIi8+PHBhdGggZD0iTTYgNnYxMiIvPjxwYXRoIGQ9Ik0xNSAyMWwzLTMgMy0zIi8+PHBhdGggZD0iTTE4IDE4VjYiLz48L3N2Zz4=&logoColor=white)](https://trippixn.com/azab)
 
 </div>
 
@@ -22,6 +23,8 @@
 ## Overview
 
 AzabBot is a comprehensive moderation bot featuring AI-powered prison interactions, a full ticketing system, appeal handling, and extensive server logging. When users get muted, the bot welcomes them to "prison" and responds to their messages with contextual AI-generated responses.
+
+**Live Stats Dashboard**: [trippixn.com/azab](https://trippixn.com/azab)
 
 > **Note**: This bot was custom-built for **discord.gg/syria** and is provided as-is for educational purposes. **No support will be provided.**
 
@@ -66,7 +69,7 @@ AzabBot is a comprehensive moderation bot featuring AI-powered prison interactio
 
 ## Tech Stack
 
-- **Python 3.12+** - Async runtime
+- **Python 3.13+** - Async runtime
 - **Discord.py 2.3+** - Discord API wrapper
 - **OpenAI GPT-4o-mini** - AI responses
 - **SQLite** - State persistence with WAL mode
@@ -85,8 +88,8 @@ AzabBot/
 │   ├── commands/       # Slash commands (ban, mute, warn, purge, etc.)
 │   ├── events/         # Discord event listeners
 │   └── utils/          # Helpers, views, validators
-├── scripts/            # Utility scripts
-└── tests/              # Test suite
+├── data/               # SQLite database, backups
+└── images/             # Bot assets
 ```
 
 ---
