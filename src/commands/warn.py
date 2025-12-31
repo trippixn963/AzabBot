@@ -329,26 +329,18 @@ class WarnCog(commands.Cog):
         # Concurrent Post-Response Operations
         # ---------------------------------------------------------------------
 
-        async def _dm_user():
-            try:
-                dm_embed = discord.Embed(title="You have been warned", color=EmbedColors.WARNING)
-                dm_embed.add_field(name="Server", value=f"`{target_guild.name}`", inline=False)
-                if active_warns != total_warns:
-                    dm_embed.add_field(name="Active Warnings", value=f"`{active_warns}` (`{total_warns}` total)", inline=True)
-                else:
-                    dm_embed.add_field(name="Warning #", value=f"`{active_warns}`", inline=True)
-                dm_embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
-                dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
-                if evidence:
-                    dm_embed.add_field(name="Evidence", value=evidence, inline=False)
-                dm_embed.set_thumbnail(url=avatar_url)
-                set_footer(dm_embed)
-                await user.send(embed=dm_embed)
-            except (discord.Forbidden, discord.HTTPException):
-                pass
-
-        async def _post_logs():
-            await self._post_mod_log(
+        await gather_with_logging(
+            ("DM User", self._send_warn_dm(
+                user=user,
+                guild=target_guild,
+                moderator=interaction.user,
+                reason=reason,
+                evidence=evidence,
+                active_warns=active_warns,
+                total_warns=total_warns,
+                avatar_url=avatar_url,
+            )),
+            ("Post Mod Logs", self._post_mod_log(
                 action="Warn",
                 user=target_member or user,
                 moderator=interaction.user,
@@ -356,21 +348,12 @@ class WarnCog(commands.Cog):
                 active_warns=active_warns,
                 total_warns=total_warns,
                 color=EmbedColors.WARNING,
-            )
-
-        async def _mod_tracker():
-            if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(interaction.user.id):
-                await self.bot.mod_tracker.log_warn(
-                    mod=interaction.user,
-                    target=target_member or user,
-                    reason=reason,
-                )
-
-        # Run all post-response operations concurrently
-        await gather_with_logging(
-            ("DM User", _dm_user()),
-            ("Post Mod Logs", _post_logs()),
-            ("Mod Tracker", _mod_tracker()),
+            )),
+            ("Mod Tracker", self._log_warn_to_tracker(
+                moderator=interaction.user,
+                target=target_member or user,
+                reason=reason,
+            )),
             context="Warn Command",
         )
 
@@ -476,6 +459,49 @@ class WarnCog(commands.Cog):
     # =========================================================================
     # Helper Methods
     # =========================================================================
+
+    async def _send_warn_dm(
+        self,
+        user: discord.User,
+        guild: discord.Guild,
+        moderator: discord.Member,
+        reason: Optional[str],
+        evidence: Optional[str],
+        active_warns: int,
+        total_warns: int,
+        avatar_url: str,
+    ) -> None:
+        """Send DM notification to warned user."""
+        try:
+            dm_embed = discord.Embed(title="You have been warned", color=EmbedColors.WARNING)
+            dm_embed.add_field(name="Server", value=f"`{guild.name}`", inline=False)
+            if active_warns != total_warns:
+                dm_embed.add_field(name="Active Warnings", value=f"`{active_warns}` (`{total_warns}` total)", inline=True)
+            else:
+                dm_embed.add_field(name="Warning #", value=f"`{active_warns}`", inline=True)
+            dm_embed.add_field(name="Moderator", value=f"`{moderator.display_name}`", inline=True)
+            dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
+            if evidence:
+                dm_embed.add_field(name="Evidence", value=evidence, inline=False)
+            dm_embed.set_thumbnail(url=avatar_url)
+            set_footer(dm_embed)
+            await user.send(embed=dm_embed)
+        except (discord.Forbidden, discord.HTTPException):
+            pass  # User has DMs disabled
+
+    async def _log_warn_to_tracker(
+        self,
+        moderator: discord.Member,
+        target: discord.User,
+        reason: Optional[str],
+    ) -> None:
+        """Log warn action to mod tracker if moderator is tracked."""
+        if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(moderator.id):
+            await self.bot.mod_tracker.log_warn(
+                mod=moderator,
+                target=target,
+                reason=reason,
+            )
 
     async def _post_mod_log(
         self,

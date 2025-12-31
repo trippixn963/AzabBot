@@ -570,69 +570,33 @@ class MuteCog(commands.Cog):
         # Concurrent Post-Response Operations
         # ---------------------------------------------------------------------
 
-        async def _dm_user():
-            try:
-                dm_title = "Your mute has been extended" if is_extension else "You have been muted"
-                dm_embed = discord.Embed(title=dm_title, color=EmbedColors.ERROR)
-                dm_embed.add_field(name="Server", value=f"`{target_guild.name}`", inline=False)
-                dm_embed.add_field(name="Duration", value=f"`{duration_display}`", inline=True)
-                dm_embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
-                dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
-                if evidence:
-                    dm_embed.add_field(name="Evidence", value=evidence, inline=False)
-                dm_embed.set_thumbnail(url=target_member.display_avatar.url)
-                set_footer(dm_embed)
-                await target_member.send(embed=dm_embed)
-
-                # Send appeal button for eligible mutes (>= 6 hours or permanent)
-                MIN_APPEAL_SECONDS = 6 * 60 * 60  # 6 hours
-                if case_info and (duration_seconds is None or duration_seconds >= MIN_APPEAL_SECONDS):
-                    try:
-                        from src.services.appeal_service import SubmitAppealButton
-                        appeal_view = discord.ui.View(timeout=None)
-                        appeal_btn = SubmitAppealButton(case_info["case_id"], target_member.id)
-                        appeal_view.add_item(appeal_btn)
-
-                        appeal_embed = discord.Embed(
-                            title="📝 Appeal Your Mute",
-                            description="If you believe this mute was issued in error, you may submit an appeal.",
-                            color=EmbedColors.INFO,
-                        )
-                        appeal_embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
-                        appeal_embed.add_field(name="Server", value=f"`{target_guild.name}`", inline=True)
-                        set_footer(appeal_embed)
-
-                        await target_member.send(embed=appeal_embed, view=appeal_view)
-                    except Exception as e:
-                        logger.debug(f"Appeal button send failed: {e}")
-            except (discord.Forbidden, discord.HTTPException):
-                pass  # User has DMs disabled
-
-        async def _post_logs():
-            await self._post_mod_log(
+        await gather_with_logging(
+            ("DM User", self._send_mute_dm(
+                target=target_member,
+                guild=target_guild,
+                moderator=interaction.user,
+                duration_display=duration_display,
+                duration_seconds=duration_seconds,
+                reason=reason,
+                evidence=evidence,
+                case_info=case_info,
+                is_extension=is_extension,
+            )),
+            ("Post Mod Logs", self._post_mod_log(
                 action="Mute Extended" if is_extension else "Mute",
                 user=target_member,
                 moderator=interaction.user,
                 reason=reason,
                 duration=duration_display,
                 color=EmbedColors.ERROR,
-            )
-
-        async def _mod_tracker():
-            if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(interaction.user.id):
-                await self.bot.mod_tracker.log_mute(
-                    mod=interaction.user,
-                    target=target_member,
-                    duration=duration_display,
-                    reason=reason,
-                    case_id=case_info["case_id"] if case_info else None,
-                )
-
-        # Run all post-response operations concurrently
-        await gather_with_logging(
-            ("DM User", _dm_user()),
-            ("Post Mod Logs", _post_logs()),
-            ("Mod Tracker", _mod_tracker()),
+            )),
+            ("Mod Tracker", self._log_mute_to_tracker(
+                moderator=interaction.user,
+                target=target_member,
+                duration=duration_display,
+                reason=reason,
+                case_id=case_info["case_id"] if case_info else None,
+            )),
             context="Mute Command",
         )
 
@@ -924,41 +888,26 @@ class MuteCog(commands.Cog):
         # Concurrent Post-Response Operations
         # ---------------------------------------------------------------------
 
-        async def _dm_user():
-            try:
-                dm_embed = discord.Embed(title="You have been unmuted", color=EmbedColors.SUCCESS)
-                dm_embed.add_field(name="Server", value=f"`{target_guild.name}`", inline=False)
-                dm_embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
-                dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
-                dm_embed.set_thumbnail(url=target_member.display_avatar.url)
-                set_footer(dm_embed)
-                await target_member.send(embed=dm_embed)
-            except (discord.Forbidden, discord.HTTPException):
-                pass
-
-        async def _post_logs():
-            await self._post_mod_log(
+        await gather_with_logging(
+            ("DM User", self._send_unmute_dm(
+                target=target_member,
+                guild=target_guild,
+                moderator=interaction.user,
+                reason=reason,
+            )),
+            ("Post Mod Logs", self._post_mod_log(
                 action="Unmute",
                 user=target_member,
                 moderator=interaction.user,
                 reason=reason,
                 color=EmbedColors.SUCCESS,
-            )
-
-        async def _mod_tracker():
-            if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(interaction.user.id):
-                await self.bot.mod_tracker.log_unmute(
-                    mod=interaction.user,
-                    target=target_member,
-                    reason=reason,
-                    case_id=case_info["case_id"] if case_info else None,
-                )
-
-        # Run all post-response operations concurrently
-        await gather_with_logging(
-            ("DM User", _dm_user()),
-            ("Post Mod Logs", _post_logs()),
-            ("Mod Tracker", _mod_tracker()),
+            )),
+            ("Mod Tracker", self._log_unmute_to_tracker(
+                moderator=interaction.user,
+                target=target_member,
+                reason=reason,
+                case_id=case_info["case_id"] if case_info else None,
+            )),
             context="Unmute Command",
         )
 
@@ -1013,6 +962,109 @@ class MuteCog(commands.Cog):
     # =========================================================================
     # Helper Methods
     # =========================================================================
+
+    async def _send_mute_dm(
+        self,
+        target: discord.Member,
+        guild: discord.Guild,
+        moderator: discord.Member,
+        duration_display: str,
+        duration_seconds: Optional[int],
+        reason: Optional[str],
+        evidence: Optional[str],
+        case_info: Optional[dict],
+        is_extension: bool = False,
+    ) -> None:
+        """Send DM notification to muted user with optional appeal button."""
+        try:
+            dm_title = "Your mute has been extended" if is_extension else "You have been muted"
+            dm_embed = discord.Embed(title=dm_title, color=EmbedColors.ERROR)
+            dm_embed.add_field(name="Server", value=f"`{guild.name}`", inline=False)
+            dm_embed.add_field(name="Duration", value=f"`{duration_display}`", inline=True)
+            dm_embed.add_field(name="Moderator", value=f"`{moderator.display_name}`", inline=True)
+            dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
+            if evidence:
+                dm_embed.add_field(name="Evidence", value=evidence, inline=False)
+            dm_embed.set_thumbnail(url=target.display_avatar.url)
+            set_footer(dm_embed)
+            await target.send(embed=dm_embed)
+
+            # Send appeal button for eligible mutes (>= 6 hours or permanent)
+            MIN_APPEAL_SECONDS = 6 * 60 * 60  # 6 hours
+            if case_info and (duration_seconds is None or duration_seconds >= MIN_APPEAL_SECONDS):
+                try:
+                    from src.services.appeal_service import SubmitAppealButton
+                    appeal_view = discord.ui.View(timeout=None)
+                    appeal_btn = SubmitAppealButton(case_info["case_id"], target.id)
+                    appeal_view.add_item(appeal_btn)
+
+                    appeal_embed = discord.Embed(
+                        title="📝 Appeal Your Mute",
+                        description="If you believe this mute was issued in error, you may submit an appeal.",
+                        color=EmbedColors.INFO,
+                    )
+                    appeal_embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
+                    appeal_embed.add_field(name="Server", value=f"`{guild.name}`", inline=True)
+                    set_footer(appeal_embed)
+
+                    await target.send(embed=appeal_embed, view=appeal_view)
+                except Exception as e:
+                    logger.debug(f"Appeal button send failed: {e}")
+        except (discord.Forbidden, discord.HTTPException):
+            pass  # User has DMs disabled
+
+    async def _send_unmute_dm(
+        self,
+        target: discord.Member,
+        guild: discord.Guild,
+        moderator: discord.Member,
+        reason: Optional[str],
+    ) -> None:
+        """Send DM notification to unmuted user."""
+        try:
+            dm_embed = discord.Embed(title="You have been unmuted", color=EmbedColors.SUCCESS)
+            dm_embed.add_field(name="Server", value=f"`{guild.name}`", inline=False)
+            dm_embed.add_field(name="Moderator", value=f"`{moderator.display_name}`", inline=True)
+            dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
+            dm_embed.set_thumbnail(url=target.display_avatar.url)
+            set_footer(dm_embed)
+            await target.send(embed=dm_embed)
+        except (discord.Forbidden, discord.HTTPException):
+            pass  # User has DMs disabled
+
+    async def _log_mute_to_tracker(
+        self,
+        moderator: discord.Member,
+        target: discord.Member,
+        duration: str,
+        reason: Optional[str],
+        case_id: Optional[int],
+    ) -> None:
+        """Log mute action to mod tracker if moderator is tracked."""
+        if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(moderator.id):
+            await self.bot.mod_tracker.log_mute(
+                mod=moderator,
+                target=target,
+                duration=duration,
+                reason=reason,
+                case_id=case_id,
+            )
+
+    async def _log_unmute_to_tracker(
+        self,
+        moderator: discord.Member,
+        target: discord.Member,
+        reason: Optional[str],
+        case_id: Optional[int],
+    ) -> None:
+        """Log unmute action to mod tracker if moderator is tracked."""
+        if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(moderator.id):
+            await self.bot.mod_tracker.log_unmute(
+                mod=moderator,
+                target=target,
+                reason=reason,
+                case_id=case_id,
+            )
 
     async def _post_mod_log(
         self,
