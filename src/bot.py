@@ -522,7 +522,7 @@ class AzabBot(commands.Bot):
                 except asyncio.TimeoutError:
                     logger.warning(f"Invite fetch timeout for {guild.name}")
         except Exception as e:
-            logger.debug(f"Invite cache failed: {e}")
+            logger.warning(f"Invite cache failed: {e}")
 
     async def _check_lockdown_state(self) -> None:
         """Check if any guild is in lockdown state on startup."""

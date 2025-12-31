@@ -105,6 +105,9 @@ IMAGE_DUPLICATE_TIME_WINDOW = 60  # seconds
 WEBHOOK_MESSAGE_LIMIT = 5
 WEBHOOK_TIME_WINDOW = 10  # seconds
 
+# Memory bounds: Maximum tracked users per guild to prevent unbounded growth
+MAX_TRACKED_USERS_PER_GUILD = 5000
+
 # Arabic characters range (exempt from char spam and lenient on duplicates)
 # Arabic script: U+0600 to U+06FF
 ARABIC_RANGE = range(0x0600, 0x06FF + 1)
@@ -592,7 +595,7 @@ class AntiSpamService:
                 if decayed > 0:
                     logger.debug(f"Decayed {decayed} spam violation records")
             except Exception as e:
-                logger.debug(f"Anti-spam cleanup error: {e}")
+                logger.warning(f"Anti-spam cleanup error: {e}")
 
     async def _reputation_loop(self) -> None:
         """Periodically update reputation scores for active users."""
@@ -601,7 +604,7 @@ class AntiSpamService:
             try:
                 await self._update_reputations()
             except Exception as e:
-                logger.debug(f"Reputation update error: {e}")
+                logger.warning(f"Reputation update error: {e}")
 
     async def _update_reputations(self) -> None:
         """Update reputation for all tracked users."""
@@ -622,7 +625,7 @@ class AntiSpamService:
         ) * 2)
 
         # Clean user message states
-        for guild_states in self._user_states.values():
+        for guild_id, guild_states in self._user_states.items():
             for user_id, state in list(guild_states.items()):
                 state.messages = [
                     m for m in state.messages
@@ -630,6 +633,18 @@ class AntiSpamService:
                 ]
                 if not state.messages:
                     del guild_states[user_id]
+
+            # Enforce max users per guild limit
+            if len(guild_states) > MAX_TRACKED_USERS_PER_GUILD:
+                # Remove oldest entries (users with oldest last message)
+                sorted_users = sorted(
+                    guild_states.items(),
+                    key=lambda x: x[1].messages[-1].timestamp if x[1].messages else cutoff
+                )
+                excess = len(guild_states) - MAX_TRACKED_USERS_PER_GUILD
+                for user_id, _ in sorted_users[:excess]:
+                    del guild_states[user_id]
+                logger.debug(f"Anti-spam: Evicted {excess} oldest users from guild {guild_id}")
 
         # Clean image hashes
         image_cutoff = now - timedelta(seconds=IMAGE_DUPLICATE_TIME_WINDOW * 2)

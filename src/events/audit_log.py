@@ -76,7 +76,7 @@ class AuditLogEvents(commands.Cog):
 
         except Exception as e:
             from src.core.logger import logger
-            logger.debug(f"Anti-nuke check failed: {e}")
+            logger.warning(f"Anti-nuke check failed: {e}")
 
     # =========================================================================
     # Mod Tracker Routing

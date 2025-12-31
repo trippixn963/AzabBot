@@ -219,6 +219,12 @@ class MuteScheduler:
         muted_role = guild.get_role(self.config.muted_role_id)
         if not muted_role:
             # Role doesn't exist, mark as unmuted
+            logger.warning("Muted Role Not Found", [
+                ("Guild", guild.name),
+                ("Role ID", str(self.config.muted_role_id)),
+                ("User", str(mute["user_id"])),
+                ("Action", "Removing mute record"),
+            ])
             self.db.remove_mute(
                 user_id=mute["user_id"],
                 guild_id=mute["guild_id"],
@@ -378,6 +384,12 @@ class MuteScheduler:
             muted_role = guild.get_role(self.config.muted_role_id)
             if not muted_role:
                 # Role doesn't exist - remove all mutes for this guild
+                logger.warning("Muted Role Not Found During Sync", [
+                    ("Guild", guild.name),
+                    ("Role ID", str(self.config.muted_role_id)),
+                    ("Affected Mutes", str(len(guild_mutes))),
+                    ("Action", "Removing all mute records"),
+                ])
                 for mute in guild_mutes:
                     self.db.remove_mute(
                         user_id=mute["user_id"],

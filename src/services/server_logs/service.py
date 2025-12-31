@@ -447,7 +447,7 @@ class LoggingService:
         except discord.Forbidden:
             return None
         except Exception as e:
-            logger.debug(f"Logging Service: Send failed: {e}")
+            logger.warning(f"Logging Service: Send failed: {e}")
             return None
 
     # =========================================================================
