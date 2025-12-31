@@ -74,7 +74,7 @@ PRIORITY_CONFIG = {
 }
 
 # Max open tickets per user
-MAX_OPEN_TICKETS_PER_USER = 3
+MAX_OPEN_TICKETS_PER_USER = 1
 
 # Ticket creation cooldown (seconds)
 TICKET_CREATION_COOLDOWN = 300  # 5 minutes
@@ -404,7 +404,9 @@ class TicketService:
         # Check open ticket limit
         open_count = self.db.get_user_open_ticket_count(user.id, user.guild.id)
         if open_count >= MAX_OPEN_TICKETS_PER_USER:
-            return (False, f"You already have {open_count} open ticket(s). Please wait for them to be resolved.", None)
+            if open_count == 1:
+                return (False, "You already have an open ticket. Please wait for it to be resolved before creating another.", None)
+            return (False, f"You already have {open_count} open tickets. Please wait for them to be resolved.", None)
 
         # Get ticket channel
         channel = await self._get_channel()

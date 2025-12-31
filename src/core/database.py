@@ -5951,6 +5951,107 @@ class DatabaseManager:
         )
         return [dict(row) for row in rows] if rows else []
 
+    def get_repeat_offenders(self, min_offenses: int = 3, limit: int = 5, guild_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get users with 3+ total punishments (repeat offenders)."""
+        guild_filter = "AND guild_id = ?" if guild_id else ""
+        params = [guild_id] if guild_id else []
+
+        rows = self.fetchall(
+            f"""
+            SELECT
+                user_id,
+                SUM(CASE WHEN action_type = 'mute' THEN 1 ELSE 0 END) as mutes,
+                SUM(CASE WHEN action_type = 'ban' THEN 1 ELSE 0 END) as bans,
+                SUM(CASE WHEN action_type = 'warn' THEN 1 ELSE 0 END) as warns,
+                COUNT(*) as total
+            FROM (
+                SELECT user_id, 'mute' as action_type, guild_id FROM mute_history WHERE 1=1 {guild_filter}
+                UNION ALL
+                SELECT user_id, 'ban' as action_type, guild_id FROM ban_history WHERE 1=1 {guild_filter}
+                UNION ALL
+                SELECT user_id, 'warn' as action_type, guild_id FROM warnings WHERE 1=1 {guild_filter}
+            )
+            GROUP BY user_id
+            HAVING total >= ?
+            ORDER BY total DESC
+            LIMIT ?
+            """,
+            (*params, *params, *params, min_offenses, limit)
+        )
+        return [dict(row) for row in rows] if rows else []
+
+    def get_recent_releases(self, limit: int = 5, guild_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get recently released prisoners (unmuted users)."""
+        guild_filter = "WHERE guild_id = ?" if guild_id else ""
+        params = (guild_id, limit) if guild_id else (limit,)
+
+        # Note: active_mutes doesn't have unmuted_at, so we use expires_at as proxy
+        # For manual unmutes, expires_at would be the scheduled time
+        rows = self.fetchall(
+            f"""
+            SELECT
+                user_id,
+                muted_at,
+                expires_at,
+                CAST((COALESCE(expires_at, strftime('%s', 'now')) - muted_at) / 60 AS INTEGER) as duration_minutes
+            FROM active_mutes
+            {guild_filter}
+            {"AND" if guild_filter else "WHERE"} unmuted = 1
+            ORDER BY expires_at DESC
+            LIMIT ?
+            """,
+            params
+        )
+        return [dict(row) for row in rows] if rows else []
+
+    def get_weekly_top_moderator(self, guild_id: Optional[int] = None, exclude_user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """Get the top moderator for this week based on actions.
+
+        Args:
+            guild_id: Optional guild ID to filter by
+            exclude_user_id: Optional user ID to exclude (e.g., the bot itself)
+        """
+        import time
+        week_start = time.time() - (7 * 24 * 60 * 60)
+        guild_filter = "AND guild_id = ?" if guild_id else ""
+        exclude_filter = "WHERE moderator_id != ?" if exclude_user_id else ""
+
+        # Build params for each subquery (3 subqueries) plus optional exclusion
+        params: list = []
+        for _ in range(3):
+            params.append(week_start)
+            if guild_id:
+                params.append(guild_id)
+        if exclude_user_id:
+            params.append(exclude_user_id)
+
+        row = self.fetchone(
+            f"""
+            SELECT
+                moderator_id,
+                COUNT(*) as weekly_actions,
+                SUM(CASE WHEN action_type = 'mute' THEN 1 ELSE 0 END) as mutes,
+                SUM(CASE WHEN action_type = 'ban' THEN 1 ELSE 0 END) as bans,
+                SUM(CASE WHEN action_type = 'warn' THEN 1 ELSE 0 END) as warns
+            FROM (
+                SELECT moderator_id, 'mute' as action_type, guild_id, timestamp as ts
+                FROM mute_history WHERE timestamp >= ? {guild_filter}
+                UNION ALL
+                SELECT moderator_id, 'ban' as action_type, guild_id, timestamp as ts
+                FROM ban_history WHERE timestamp >= ? {guild_filter}
+                UNION ALL
+                SELECT moderator_id, 'warn' as action_type, guild_id, created_at as ts
+                FROM warnings WHERE created_at >= ? {guild_filter}
+            )
+            {exclude_filter}
+            GROUP BY moderator_id
+            ORDER BY weekly_actions DESC
+            LIMIT 1
+            """,
+            tuple(params)
+        )
+        return dict(row) if row else None
+
 
 # =============================================================================
 # Global Instance

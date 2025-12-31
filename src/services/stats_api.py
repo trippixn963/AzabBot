@@ -332,6 +332,9 @@ class AzabAPI:
             top_offenders = await self._get_top_offenders(guild_id)
             mod_leaderboard = await self._get_moderator_leaderboard()
             recent_actions = await self._get_recent_actions(guild_id)
+            repeat_offenders = await self._get_repeat_offenders(guild_id)
+            recent_releases = await self._get_recent_releases(guild_id)
+            mod_spotlight = await self._get_moderator_spotlight(guild_id)
             system = self._get_system_resources()
             changelog = await self._get_changelog()
 
@@ -348,6 +351,9 @@ class AzabAPI:
                 "top_offenders": top_offenders,
                 "moderator_leaderboard": mod_leaderboard,
                 "recent_actions": recent_actions,
+                "repeat_offenders": repeat_offenders,
+                "recent_releases": recent_releases,
+                "moderator_spotlight": mod_spotlight,
                 "system": system,
                 "changelog": changelog,
                 "generated_at": now.isoformat(),
@@ -632,6 +638,100 @@ class AzabAPI:
             })
 
         return enriched
+
+    async def _get_repeat_offenders(self, guild_id: Optional[int], limit: int = 5) -> List[Dict]:
+        """Get users with 3+ total punishments (repeat offenders)."""
+        offenders = self._bot.db.get_repeat_offenders(min_offenses=3, limit=limit, guild_id=guild_id)
+
+        enriched = []
+        for offender in offenders:
+            user_id = offender["user_id"]
+            name, avatar = await self._fetch_user_data(user_id, f"User {user_id}")
+            enriched.append({
+                "user_id": str(user_id),
+                "name": name,
+                "mutes": offender["mutes"],
+                "bans": offender["bans"],
+                "warns": offender["warns"],
+                "total": offender["total"],
+                "avatar": avatar,
+            })
+
+        return enriched
+
+    async def _get_recent_releases(self, guild_id: Optional[int], limit: int = 5) -> List[Dict]:
+        """Get recently released prisoners."""
+        releases = self._bot.db.get_recent_releases(limit=limit, guild_id=guild_id)
+
+        enriched = []
+        for release in releases:
+            try:
+                user_id = release["user_id"]
+                name, avatar = await self._fetch_user_data(user_id, f"User {user_id}")
+
+                # Format duration - cap at reasonable values
+                duration_mins = release.get("duration_minutes", 0) or 0
+                # Sanity check: cap at 1 year (525600 minutes)
+                if duration_mins > 525600:
+                    duration_mins = 0
+
+                if duration_mins >= 1440:  # 24 hours
+                    duration_str = f"{duration_mins // 1440}d {(duration_mins % 1440) // 60}h"
+                elif duration_mins >= 60:
+                    duration_str = f"{duration_mins // 60}h {duration_mins % 60}m"
+                else:
+                    duration_str = f"{duration_mins}m" if duration_mins > 0 else "N/A"
+
+                # Format release time using muted_at (more reliable)
+                muted_at = release.get("muted_at")
+                if muted_at and muted_at < 2000000000:  # Sanity check: before year 2033
+                    muted_time = datetime.fromtimestamp(muted_at, NY_TZ)
+                    now = datetime.now(NY_TZ)
+                    delta = now - muted_time
+                    if delta.days > 0:
+                        time_str = f"{delta.days}d ago"
+                    elif delta.seconds >= 3600:
+                        time_str = f"{delta.seconds // 3600}h ago"
+                    elif delta.seconds >= 60:
+                        time_str = f"{delta.seconds // 60}m ago"
+                    else:
+                        time_str = "just now"
+                else:
+                    time_str = "recently"
+
+                enriched.append({
+                    "user_id": str(user_id),
+                    "name": name,
+                    "avatar": avatar,
+                    "time_served": duration_str,
+                    "released": time_str,
+                })
+            except Exception:
+                # Skip problematic entries
+                continue
+
+        return enriched
+
+    async def _get_moderator_spotlight(self, guild_id: Optional[int]) -> Optional[Dict]:
+        """Get top moderator of the week (excludes the bot itself)."""
+        bot_user_id = self._bot.user.id if self._bot.user else None
+        top_mod = self._bot.db.get_weekly_top_moderator(guild_id=guild_id, exclude_user_id=bot_user_id)
+
+        if not top_mod:
+            return None
+
+        mod_id = top_mod["moderator_id"]
+        name, avatar = await self._fetch_user_data(mod_id, f"Mod {mod_id}")
+
+        return {
+            "user_id": str(mod_id),
+            "name": name,
+            "avatar": avatar,
+            "weekly_actions": top_mod["weekly_actions"],
+            "mutes": top_mod["mutes"],
+            "bans": top_mod["bans"],
+            "warns": top_mod["warns"],
+        }
 
     async def _get_moderator_recent_actions(
         self,
