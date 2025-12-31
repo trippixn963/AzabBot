@@ -233,13 +233,12 @@ class MemberEvents(commands.Cog):
     async def _check_mute_evasion(self, member: discord.Member) -> None:
         """Check if rejoining member has an active mute and re-apply it."""
         db = get_db()
-        config = get_config()
 
         active_mute = db.get_active_mute(member.id, member.guild.id)
         if not active_mute:
             return
 
-        muted_role = member.guild.get_role(config.muted_role_id)
+        muted_role = member.guild.get_role(self.config.muted_role_id)
         if not muted_role:
             return
 

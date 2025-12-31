@@ -191,9 +191,8 @@ class AzabBot(commands.Bot):
         # Sync commands globally
         try:
             # Clear any guild-specific commands first (to remove duplicates)
-            config = get_config()
-            if config.logging_guild_id:
-                guild = discord.Object(id=config.logging_guild_id)
+            if self.config.logging_guild_id:
+                guild = discord.Object(id=self.config.logging_guild_id)
                 self.tree.clear_commands(guild=guild)
                 await self.tree.sync(guild=guild)
                 logger.debug("Cleared guild-specific commands")

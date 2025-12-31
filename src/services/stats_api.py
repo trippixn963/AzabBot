@@ -213,6 +213,7 @@ class AzabAPI:
 
     def __init__(self, bot: "AzabBot") -> None:
         self._bot = bot
+        self._config = get_config()
         self._start_time: Optional[datetime] = None
         self._cache = ResponseCache()
         self._cleanup_task: Optional[asyncio.Task] = None
@@ -359,8 +360,7 @@ class AzabAPI:
 
             # Build fresh response
             now = datetime.now(NY_TZ)
-            config = get_config()
-            guild_id = config.logging_guild_id
+            guild_id = self._config.logging_guild_id
 
             # Get time ranges
             today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
@@ -445,8 +445,7 @@ class AzabAPI:
                 cached["response_time_ms"] = round((time.time() - start_time) * 1000, 2)
                 return web.json_response(cached)
 
-            config = get_config()
-            guild_id = config.logging_guild_id
+            guild_id = self._config.logging_guild_id
 
             # Get user data
             mute_count = self._bot.db.get_user_mute_count(user_id, guild_id) if guild_id else 0
@@ -518,8 +517,7 @@ class AzabAPI:
                 cached["response_time_ms"] = round((time.time() - start_time) * 1000, 2)
                 return web.json_response(cached)
 
-            config = get_config()
-            guild_id = config.logging_guild_id
+            guild_id = self._config.logging_guild_id
 
             # Get moderator stats
             mod_stats = self._bot.db.get_moderator_stats(user_id, guild_id)
