@@ -22,18 +22,11 @@ from typing import Optional, TYPE_CHECKING
 from src.core.logger import logger
 from src.core.config import get_config, has_mod_role, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.core.constants import SNIPE_MAX_AGE
 from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
-
-
-# =============================================================================
-# Constants
-# =============================================================================
-
-# How old a sniped message can be before it's considered stale (seconds)
-SNIPE_MAX_AGE = 600  # 10 minutes
 
 
 # =============================================================================

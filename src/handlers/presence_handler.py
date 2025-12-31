@@ -22,6 +22,7 @@ from typing import Optional, TYPE_CHECKING
 
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
+from src.core.constants import PRESENCE_UPDATE_INTERVAL, PROMO_DURATION_MINUTES
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -31,12 +32,8 @@ if TYPE_CHECKING:
 # Constants
 # =============================================================================
 
-# Presence update interval (seconds)
-PRESENCE_UPDATE_INTERVAL = 60
-
-# Promotional presence settings
+# Promotional presence text
 PROMO_TEXT = "🌐 trippixn.com/azab"
-PROMO_DURATION_MINUTES = 10
 
 
 # =============================================================================

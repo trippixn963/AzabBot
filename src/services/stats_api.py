@@ -25,6 +25,12 @@ from aiohttp import web
 
 from src.core.config import get_config, NY_TZ
 from src.core.logger import logger
+from src.core.constants import (
+    STATS_API_PORT,
+    STATS_CACHE_TTL,
+    RATE_LIMIT_REQUESTS,
+    RATE_LIMIT_BURST,
+)
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -34,9 +40,7 @@ if TYPE_CHECKING:
 # Constants
 # =============================================================================
 
-STATS_API_PORT = 8087
 STATS_API_HOST = "0.0.0.0"
-CACHE_TTL = 30  # seconds
 BOT_HOME = os.environ.get("BOT_HOME", "/root/AzabBot")
 
 
@@ -47,7 +51,7 @@ BOT_HOME = os.environ.get("BOT_HOME", "/root/AzabBot")
 class RateLimiter:
     """Sliding window rate limiter per IP address."""
 
-    def __init__(self, requests_per_minute: int = 60, burst_limit: int = 10):
+    def __init__(self, requests_per_minute: int = RATE_LIMIT_REQUESTS, burst_limit: int = RATE_LIMIT_BURST):
         self.requests_per_minute = requests_per_minute
         self.burst_limit = burst_limit
         self._requests: Dict[str, List[float]] = {}
@@ -108,7 +112,7 @@ rate_limiter = RateLimiter(requests_per_minute=60, burst_limit=10)
 class ResponseCache:
     """Simple TTL cache for API responses."""
 
-    def __init__(self, ttl: int = CACHE_TTL):
+    def __init__(self, ttl: int = STATS_CACHE_TTL):
         self.ttl = ttl
         self._cache: Dict[str, tuple[Dict, float]] = {}
         self._lock = asyncio.Lock()

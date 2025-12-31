@@ -28,24 +28,11 @@ import re
 
 from src.core.logger import logger
 from src.core.config import get_config, has_mod_role, EmbedColors, NY_TZ
+from src.core.constants import MAX_PURGE_AMOUNT, DEFAULT_PURGE_AMOUNT, BULK_DELETE_LIMIT
 from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
-
-
-# =============================================================================
-# Constants
-# =============================================================================
-
-MAX_PURGE_AMOUNT = 500
-"""Maximum messages that can be purged in a single command."""
-
-DEFAULT_PURGE_AMOUNT = 100
-"""Default number of messages to scan when not specified."""
-
-BULK_DELETE_LIMIT = 100
-"""Discord's limit for bulk delete operations."""
 
 MESSAGE_AGE_LIMIT = timedelta(days=14)
 """Messages older than this cannot be bulk deleted."""

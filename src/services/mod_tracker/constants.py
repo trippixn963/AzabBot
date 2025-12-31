@@ -3,10 +3,28 @@ Mod Tracker Service - Constants
 ===============================
 
 Configuration constants for the mod tracker service.
+Imports shared constants from core and defines mod-tracker-specific values.
 
-Author: حَـــــنَّـــــا
+Author: John Hamwi
 Server: discord.gg/syria
 """
+
+from src.core.constants import (
+    CACHE_TTL,
+    MESSAGE_CACHE_TTL,
+    MESSAGE_CACHE_SIZE,
+    MESSAGE_CACHE_MAX_MODS,
+    BULK_ACTION_WINDOW,
+    BULK_DELETE_THRESHOLD,
+    SUSPICIOUS_UNBAN_WINDOW,
+    BAN_HISTORY_TTL,
+    MASS_PERMISSION_WINDOW,
+    TARGET_HARASSMENT_WINDOW,
+    TARGET_HARASSMENT_THRESHOLD,
+    TARGET_HARASSMENT_TTL,
+    QUEUE_MAX_SIZE,
+    SECONDS_PER_HOUR,
+)
 
 # =============================================================================
 # Retry Configuration
@@ -15,7 +33,6 @@ Server: discord.gg/syria
 MAX_RETRIES = 3
 BASE_RETRY_DELAY = 1.0  # seconds
 RATE_LIMIT_DELAY = 1.5  # seconds between API calls
-CACHE_TTL = 300  # 5 minutes cache for forum channel
 
 # =============================================================================
 # Inactivity Alerts
@@ -24,43 +41,17 @@ CACHE_TTL = 300  # 5 minutes cache for forum channel
 INACTIVITY_DAYS = 7  # Days before alerting about inactive mod
 
 # =============================================================================
-# Message Caching
+# Bulk Action Detection (thresholds)
 # =============================================================================
 
-MESSAGE_CACHE_SIZE = 50  # Messages to cache per mod
-MESSAGE_CACHE_TTL = 3600  # 1 hour cache for messages
-MESSAGE_CACHE_MAX_MODS = 100  # Max number of mods to cache messages for (LRU)
-
-# =============================================================================
-# Bulk Action Detection
-# =============================================================================
-
-BULK_ACTION_WINDOW = 300  # 5 minutes window
 BULK_BAN_THRESHOLD = 5  # Bans in window to trigger alert
-BULK_DELETE_THRESHOLD = 10  # Message deletes in window to trigger alert
 BULK_TIMEOUT_THRESHOLD = 8  # Timeouts in window to trigger alert
-
-# =============================================================================
-# Suspicious Pattern Detection
-# =============================================================================
-
-SUSPICIOUS_UNBAN_WINDOW = 3600  # 1 hour - alert if unban within this time of ban
-BAN_HISTORY_TTL = 86400  # 24 hours - how long to keep ban history
 
 # =============================================================================
 # Mass Permission Change Detection
 # =============================================================================
 
-MASS_PERMISSION_WINDOW = 300  # 5 minutes
 MASS_PERMISSION_THRESHOLD = 5  # Permission changes in window to trigger alert
-
-# =============================================================================
-# Target Harassment Detection
-# =============================================================================
-
-TARGET_HARASSMENT_WINDOW = 300  # 5 minutes
-TARGET_HARASSMENT_THRESHOLD = 3  # Actions on same user in window to trigger alert
-TARGET_HARASSMENT_TTL = 3600  # 1 hour - how long to keep target action history
 
 # =============================================================================
 # Priority Queue Configuration
@@ -75,4 +66,3 @@ PRIORITY_LOW = 3       # Informational logs (avatar changes, etc.)
 # Queue processing
 QUEUE_PROCESS_INTERVAL = 0.5  # Seconds between processing items
 QUEUE_BATCH_SIZE = 5  # Max items to process per batch (prioritized)
-QUEUE_MAX_SIZE = 500  # Max queue size before dropping low priority

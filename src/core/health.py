@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from src.core.logger import logger
 from src.core.config import NY_TZ
+from src.core.constants import HEALTH_CHECK_PORT
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -62,7 +63,7 @@ class HealthCheckServer:
         """
         import os
         self.bot = bot
-        self.port = port or int(os.getenv("HEALTH_PORT", "8080"))
+        self.port = port or int(os.getenv("HEALTH_PORT", str(HEALTH_CHECK_PORT)))
         self.app = web.Application()
         self.runner: web.AppRunner = None
 
