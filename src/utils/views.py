@@ -729,7 +729,7 @@ class ExtendModal(discord.ui.Modal, title="Extend Mute"):
         self.user_id = user_id
         self.guild_id = guild_id
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction: discord.Interaction) -> None:
         logger.tree("Extend Modal Submitted", [
             ("Submitted By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),
@@ -888,7 +888,7 @@ class UnmuteModal(discord.ui.Modal, title="Unmute User"):
         self.user_id = user_id
         self.guild_id = guild_id
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction: discord.Interaction) -> None:
         logger.tree("Unmute Modal Submitted", [
             ("Submitted By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),
@@ -1057,7 +1057,7 @@ class NoteModal(discord.ui.Modal, title="Add Moderator Note"):
         self.guild_id = guild_id
         self.case_id = case_id
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction: discord.Interaction) -> None:
         logger.tree("Note Modal Submitted", [
             ("Submitted By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),

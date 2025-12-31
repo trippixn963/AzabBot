@@ -116,7 +116,7 @@ class BanModal(discord.ui.Modal, title="Ban User"):
         max_length=500,
     )
 
-    def __init__(self, target: discord.Member, cog: "BanCog", evidence: Optional[str] = None):
+    def __init__(self, target: discord.Member, cog: "BanCog", evidence: Optional[str] = None) -> None:
         super().__init__()
         self.target = target
         self.cog = cog

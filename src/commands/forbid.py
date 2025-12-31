@@ -1084,7 +1084,7 @@ class ForbidCog(commands.Cog):
 class ForbidAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"forbid_appeal:(?P<guild_id>\d+):(?P<user_id>\d+)"):
     """Persistent appeal button for forbid DMs."""
 
-    def __init__(self, guild_id: int, user_id: int):
+    def __init__(self, guild_id: int, user_id: int) -> None:
         super().__init__(
             discord.ui.Button(
                 label="Appeal Restriction",

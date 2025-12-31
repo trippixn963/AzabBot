@@ -54,7 +54,7 @@ DENY_EMOJI = discord.PartialEmoji(name="deny", id=EMOJI_ID_DENY)
 class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"la:(?P<msg>\d+):(?P<chan>\d+):(?P<mem>\d+):(?P<gid>\d+)"):
     """Persistent approve button for link confirmation."""
 
-    def __init__(self, message_id: int, channel_id: int, member_id: int, guild_id: int):
+    def __init__(self, message_id: int, channel_id: int, member_id: int, guild_id: int) -> None:
         super().__init__(
             discord.ui.Button(
                 label="Approve",
@@ -155,7 +155,7 @@ class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"la
 class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ld:(?P<msg>\d+):(?P<mem>\d+)"):
     """Persistent deny button for link confirmation."""
 
-    def __init__(self, message_id: int, member_id: int):
+    def __init__(self, message_id: int, member_id: int) -> None:
         super().__init__(
             discord.ui.Button(
                 label="Deny",

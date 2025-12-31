@@ -26,7 +26,7 @@ Server: discord.gg/syria
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, Optional, AsyncIterator
 from contextlib import asynccontextmanager
 
 from src.core.logger import logger
@@ -195,7 +195,7 @@ class RateLimiter:
         return wait_time
 
     @asynccontextmanager
-    async def limit(self, bucket: str = "discord_api", tokens: int = 1):
+    async def limit(self, bucket: str = "discord_api", tokens: int = 1) -> AsyncIterator[None]:
         """
         Context manager for rate-limited operations.
 
