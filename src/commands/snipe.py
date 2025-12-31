@@ -121,8 +121,10 @@ class SnipeCog(commands.Cog):
             author_id = snipe_data.get("author_id")
             author_name = snipe_data.get("author_name", "Unknown")
             author_display = snipe_data.get("author_display", "Unknown")
+            author_avatar = snipe_data.get("author_avatar")
             content = snipe_data.get("content", "")
-            attachment_names = snipe_data.get("attachment_names", [])
+            attachment_urls = snipe_data.get("attachment_urls", [])
+            sticker_urls = snipe_data.get("sticker_urls", [])
 
             # Tree logging
             content_preview = (content[:50] + "...") if len(content) > 50 else (content or "(no text)")
@@ -132,34 +134,68 @@ class SnipeCog(commands.Cog):
                 ("Target", f"{author_name} ({author_id})"),
                 ("Message #", str(number)),
                 ("Content", content_preview),
-                ("Attachments", str(len(attachment_names))),
+                ("Attachments", str(len(attachment_urls))),
+                ("Stickers", str(len(sticker_urls))),
             ], emoji="🎯")
 
-            # Build plain text message (public, not embed)
-            # Format: @mention: content
-            #         -# metadata underneath
-            if content:
-                # Truncate if too long
-                if len(content) > 1500:
-                    content = content[:1497] + "..."
-                main_line = f"<@{author_id}>: {content}"
-            else:
-                main_line = f"<@{author_id}>: *(No text content)*"
+            # Build embed for better attachment display
+            embed = discord.Embed(
+                description=content[:4000] if content else None,
+                color=EmbedColors.INFO,
+                timestamp=datetime.fromtimestamp(deleted_at, tz=NY_TZ),
+            )
+            embed.set_author(
+                name=f"{author_display} ({author_name})",
+                icon_url=author_avatar,
+            )
+            embed.set_footer(text=f"Deleted • Message #{number}")
 
-            message_lines = [main_line]
+            # Find first image attachment to set as embed image
+            image_url = None
+            other_attachments = []
+            for att in attachment_urls:
+                content_type = att.get("content_type", "") or ""
+                if content_type.startswith("image/") and not image_url:
+                    image_url = att.get("url")
+                else:
+                    other_attachments.append(att)
 
-            # Add attachment names if any
-            if attachment_names:
-                attachment_list = ", ".join(attachment_names[:4])
-                message_lines.append(f"-# Attachments: {attachment_list}")
+            if image_url:
+                embed.set_image(url=image_url)
 
-            # Add deleted time in -# small text format
-            message_lines.append(f"-# Deleted <t:{int(deleted_at)}:R>")
+            # Add other attachments as field
+            if other_attachments:
+                att_links = []
+                for att in other_attachments[:5]:
+                    filename = att.get("filename", "file")
+                    url = att.get("url", "")
+                    att_links.append(f"[{filename}]({url})")
+                embed.add_field(
+                    name="Attachments",
+                    value="\n".join(att_links),
+                    inline=False,
+                )
 
-            snipe_message = "\n".join(message_lines)
+            # Add stickers
+            if sticker_urls:
+                sticker_info = []
+                for sticker in sticker_urls[:3]:
+                    name = sticker.get("name", "sticker")
+                    url = sticker.get("url", "")
+                    sticker_info.append(f"[{name}]({url})")
+                embed.add_field(
+                    name="Stickers",
+                    value="\n".join(sticker_info),
+                    inline=False,
+                )
+                # If no image set and sticker has image, show it
+                if not image_url and sticker_urls[0].get("url"):
+                    embed.set_thumbnail(url=sticker_urls[0].get("url"))
+
+            set_footer(embed)
 
             # Send public message (not ephemeral)
-            await interaction.response.send_message(snipe_message)
+            await interaction.response.send_message(embed=embed)
 
             # Log to server logs
             await self._log_snipe_usage(
@@ -268,9 +304,17 @@ class SnipeCog(commands.Cog):
             # Get edit data
             author_id = edit_data.get("author_id")
             author_name = edit_data.get("author_name", "Unknown")
+            author_display = edit_data.get("author_display", "Unknown")
+            author_avatar = edit_data.get("author_avatar")
             before_content = edit_data.get("before_content", "")
             after_content = edit_data.get("after_content", "")
+            before_attachments = edit_data.get("before_attachments", [])
+            after_attachments = edit_data.get("after_attachments", [])
             jump_url = edit_data.get("jump_url", "")
+
+            # Find removed attachments (in before but not in after)
+            after_urls = {att.get("url") for att in after_attachments}
+            removed_attachments = [att for att in before_attachments if att.get("url") not in after_urls]
 
             # Tree logging
             before_preview = (before_content[:30] + "...") if len(before_content) > 30 else (before_content or "(empty)")
@@ -282,32 +326,62 @@ class SnipeCog(commands.Cog):
                 ("Message #", str(number)),
                 ("Before", before_preview),
                 ("After", after_preview),
+                ("Removed Attachments", str(len(removed_attachments))),
             ], emoji="✏️")
 
-            # Build plain text message (public, not embed)
-            # Truncate if too long
-            if len(before_content) > 800:
-                before_content = before_content[:797] + "..."
-            if len(after_content) > 800:
-                after_content = after_content[:797] + "..."
+            # Build embed for better attachment display
+            embed = discord.Embed(
+                color=EmbedColors.WARNING,
+                timestamp=datetime.fromtimestamp(edited_at, tz=NY_TZ),
+            )
+            embed.set_author(
+                name=f"{author_display} ({author_name})",
+                icon_url=author_avatar,
+            )
 
-            message_lines = [
-                f"<@{author_id}> edited their message:",
-                f"**Before:** {before_content or '*(empty)*'}",
-                f"**After:** {after_content or '*(empty)*'}",
-            ]
+            # Add before/after content
+            if before_content or after_content:
+                before_display = before_content[:1000] if before_content else "*(empty)*"
+                after_display = after_content[:1000] if after_content else "*(empty)*"
+                embed.add_field(name="Before", value=before_display, inline=False)
+                embed.add_field(name="After", value=after_display, inline=False)
 
-            # Add jump link if available
+            # Show removed attachments
+            if removed_attachments:
+                # Find first removed image to display
+                removed_image_url = None
+                removed_other = []
+                for att in removed_attachments:
+                    content_type = att.get("content_type", "") or ""
+                    if content_type.startswith("image/") and not removed_image_url:
+                        removed_image_url = att.get("url")
+                    else:
+                        removed_other.append(att)
+
+                if removed_image_url:
+                    embed.set_image(url=removed_image_url)
+
+                # List removed attachments
+                att_links = []
+                for att in removed_attachments[:5]:
+                    filename = att.get("filename", "file")
+                    url = att.get("url", "")
+                    att_links.append(f"[{filename}]({url})")
+                embed.add_field(
+                    name="Removed Attachments",
+                    value="\n".join(att_links),
+                    inline=False,
+                )
+
+            # Add jump link
             if jump_url:
-                message_lines.append(f"-# [Jump to message]({jump_url})")
+                embed.add_field(name="Message", value=f"[Jump to message]({jump_url})", inline=True)
 
-            # Add edited time
-            message_lines.append(f"-# Edited <t:{int(edited_at)}:R>")
-
-            snipe_message = "\n".join(message_lines)
+            embed.set_footer(text=f"Edited • Message #{number}")
+            set_footer(embed)
 
             # Send public message (not ephemeral)
-            await interaction.response.send_message(snipe_message)
+            await interaction.response.send_message(embed=embed)
 
             # Log to server logs
             await self._log_editsnipe_usage(

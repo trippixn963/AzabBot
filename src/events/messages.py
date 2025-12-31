@@ -641,6 +641,26 @@ class MessageEvents(commands.Cog):
         deleted_at = datetime.now(NY_TZ).timestamp()
         attachment_names = [a.filename for a in message.attachments] if message.attachments else []
 
+        # Build attachment URL data for snipe display
+        attachment_urls = []
+        if message.attachments:
+            for att in message.attachments:
+                attachment_urls.append({
+                    "filename": att.filename,
+                    "url": att.url,
+                    "content_type": att.content_type,
+                    "size": att.size,
+                })
+
+        # Build sticker data for snipe display
+        sticker_urls = []
+        if message.stickers:
+            for sticker in message.stickers:
+                sticker_urls.append({
+                    "name": sticker.name,
+                    "url": sticker.url,
+                })
+
         # Save to database (persists across restarts)
         self.bot.db.save_snipe(
             channel_id=channel_id,
@@ -651,6 +671,8 @@ class MessageEvents(commands.Cog):
             content=message.content,
             attachment_names=attachment_names,
             deleted_at=deleted_at,
+            attachment_urls=attachment_urls if attachment_urls else None,
+            sticker_urls=sticker_urls if sticker_urls else None,
         )
 
         # Tree logging for message deletions
@@ -708,7 +730,11 @@ class MessageEvents(commands.Cog):
         if before.author.bot:
             return
 
-        if before.content == after.content:
+        # Check if content or attachments changed
+        content_changed = before.content != after.content
+        attachments_changed = len(before.attachments) != len(after.attachments)
+
+        if not content_changed and not attachments_changed:
             return
 
         # -----------------------------------------------------------------
@@ -726,6 +752,25 @@ class MessageEvents(commands.Cog):
             # Move to end (most recently used)
             self.bot._editsnipe_cache.move_to_end(channel_id)
 
+        # Build before/after attachment data
+        before_attachments = []
+        for att in before.attachments:
+            before_attachments.append({
+                "filename": att.filename,
+                "url": att.url,
+                "content_type": att.content_type,
+                "size": att.size,
+            })
+
+        after_attachments = []
+        for att in after.attachments:
+            after_attachments.append({
+                "filename": att.filename,
+                "url": att.url,
+                "content_type": att.content_type,
+                "size": att.size,
+            })
+
         edit_data = {
             "author_id": before.author.id,
             "author_name": str(before.author),
@@ -733,6 +778,8 @@ class MessageEvents(commands.Cog):
             "author_avatar": before.author.display_avatar.url,
             "before_content": before.content,
             "after_content": after.content,
+            "before_attachments": before_attachments,
+            "after_attachments": after_attachments,
             "edited_at": datetime.now(NY_TZ).timestamp(),
             "message_id": before.id,
             "jump_url": after.jump_url,
