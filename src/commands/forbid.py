@@ -556,8 +556,8 @@ class ForbidCog(commands.Cog):
                     "An error occurred while applying restrictions.",
                     ephemeral=True,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error response failed: {e}")
 
         except Exception as e:
             logger.error("Forbid Command Failed", [
@@ -576,8 +576,8 @@ class ForbidCog(commands.Cog):
                         "An error occurred.",
                         ephemeral=True,
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error response failed: {e}")
 
     # =========================================================================
     # Unforbid Command
@@ -724,8 +724,8 @@ class ForbidCog(commands.Cog):
                         "An error occurred.",
                         ephemeral=True,
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error response failed: {e}")
 
     # =========================================================================
     # Server Logs Integration
@@ -1262,8 +1262,8 @@ class ForbidAppealModal(discord.ui.Modal):
                     )
                     return
 
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Appeal via logging service failed: {e}")
 
             if alert_channel:
                 embed = discord.Embed(

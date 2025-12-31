@@ -37,6 +37,7 @@ from src.core.moderation_validation import (
 )
 from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
+from src.utils.async_utils import gather_with_logging
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -366,11 +367,11 @@ class WarnCog(commands.Cog):
                 )
 
         # Run all post-response operations concurrently
-        await asyncio.gather(
-            _dm_user(),
-            _post_logs(),
-            _mod_tracker(),
-            return_exceptions=True,
+        await gather_with_logging(
+            ("DM User", _dm_user()),
+            ("Post Mod Logs", _post_logs()),
+            ("Mod Tracker", _mod_tracker()),
+            context="Warn Command",
         )
 
     # =========================================================================

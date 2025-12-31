@@ -376,8 +376,8 @@ class BanCog(commands.Cog):
                     ),
                     timeout=5.0,
                 )
-            except Exception:
-                pass  # Don't block command for server logs
+            except Exception as e:
+                logger.debug(f"Server log failed (ban): {e}")
 
         # -----------------------------------------------------------------
         # Build & Send Embed
@@ -726,8 +726,8 @@ class BanCog(commands.Cog):
                     ),
                     timeout=5.0,
                 )
-            except Exception:
-                pass  # Don't block command for server logs
+            except Exception as e:
+                logger.debug(f"Server log failed (unban): {e}")
 
         # Get ban duration from history
         ban_duration = None

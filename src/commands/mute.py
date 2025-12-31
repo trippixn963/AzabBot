@@ -42,6 +42,7 @@ from src.core.moderation_validation import (
 )
 from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
+from src.utils.async_utils import gather_with_logging
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -602,10 +603,10 @@ class MuteCog(commands.Cog):
                         set_footer(appeal_embed)
 
                         await target_member.send(embed=appeal_embed, view=appeal_view)
-                    except Exception:
-                        pass  # Don't fail DM if appeal button fails
+                    except Exception as e:
+                        logger.debug(f"Appeal button send failed: {e}")
             except (discord.Forbidden, discord.HTTPException):
-                pass
+                pass  # User has DMs disabled
 
         async def _post_logs():
             await self._post_mod_log(
@@ -628,11 +629,11 @@ class MuteCog(commands.Cog):
                 )
 
         # Run all post-response operations concurrently
-        await asyncio.gather(
-            _dm_user(),
-            _post_logs(),
-            _mod_tracker(),
-            return_exceptions=True,
+        await gather_with_logging(
+            ("DM User", _dm_user()),
+            ("Post Mod Logs", _post_logs()),
+            ("Mod Tracker", _mod_tracker()),
+            context="Mute Command",
         )
 
     # =========================================================================
@@ -954,11 +955,11 @@ class MuteCog(commands.Cog):
                 )
 
         # Run all post-response operations concurrently
-        await asyncio.gather(
-            _dm_user(),
-            _post_logs(),
-            _mod_tracker(),
-            return_exceptions=True,
+        await gather_with_logging(
+            ("DM User", _dm_user()),
+            ("Post Mod Logs", _post_logs()),
+            ("Mod Tracker", _mod_tracker()),
+            context="Unmute Command",
         )
 
     # =========================================================================
