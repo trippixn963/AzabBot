@@ -217,6 +217,27 @@ HTTP_RATE_LIMITED = 429
 HTTP_SERVER_ERROR = 500
 
 # =============================================================================
+# Custom Discord Emojis
+# =============================================================================
+# Note: These are custom emoji IDs from the Syria server. If emojis are
+# deleted or changed, update the IDs here.
+
+# Moderation action emojis (for history command)
+EMOJI_MUTE = "<:mute:1337255401531154432>"
+EMOJI_BAN = "<:ban:1337255389103284284>"
+EMOJI_WARN = "<:warn:1337255414315393065>"
+EMOJI_TIMEOUT = "<:timeout:1337255426600611840>"
+EMOJI_KICK = "<:kick:1337255404907593759>"
+
+# Service emojis
+EMOJI_USERID = "<:userid:1452512424354643969>"
+EMOJI_MODMAIL = "<:modmail:1455197399621750876>"
+EMOJI_CLOSE = "<:close:1452963782208032768>"
+
+# Minutes threshold for duration formatting
+MINUTES_PER_DAY = 1440
+
+# =============================================================================
 # Module Export
 # =============================================================================
 
@@ -329,4 +350,15 @@ __all__ = [
     "HTTP_OK",
     "HTTP_RATE_LIMITED",
     "HTTP_SERVER_ERROR",
+    # Emojis
+    "EMOJI_MUTE",
+    "EMOJI_BAN",
+    "EMOJI_WARN",
+    "EMOJI_TIMEOUT",
+    "EMOJI_KICK",
+    "EMOJI_USERID",
+    "EMOJI_MODMAIL",
+    "EMOJI_CLOSE",
+    # Duration
+    "MINUTES_PER_DAY",
 ]

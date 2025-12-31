@@ -20,6 +20,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.core.constants import EMOJI_USERID, SECONDS_PER_DAY, SECONDS_PER_HOUR
 from src.utils.views import DownloadButton, CASE_EMOJI
 from src.utils.rate_limiter import rate_limit
 
@@ -30,11 +31,8 @@ if TYPE_CHECKING:
     from src.bot import AzabBot
 
 
-# =============================================================================
-# UI Constants
-# =============================================================================
-
-USERID_EMOJI = "<:userid:1452512424354643969>"
+# Alias for backward compatibility
+USERID_EMOJI = EMOJI_USERID
 
 # =============================================================================
 # Persistent Views

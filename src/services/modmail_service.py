@@ -23,6 +23,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.core.constants import EMOJI_MODMAIL, EMOJI_CLOSE
 from src.utils.footer import set_footer
 from src.utils.retry import safe_fetch_channel, safe_send
 
@@ -30,12 +31,9 @@ if TYPE_CHECKING:
     from src.bot import AzabBot
 
 
-# =============================================================================
-# Constants
-# =============================================================================
-
-MODMAIL_EMOJI = "<:modmail:1455197399621750876>"  # Ticket emoji
-CLOSE_EMOJI = "<:close:1452963782208032768>"
+# Aliases for backward compatibility
+MODMAIL_EMOJI = EMOJI_MODMAIL
+CLOSE_EMOJI = EMOJI_CLOSE
 
 
 # =============================================================================

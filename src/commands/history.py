@@ -21,6 +21,13 @@ from typing import Optional, TYPE_CHECKING
 from src.core.logger import logger
 from src.core.config import get_config, has_mod_role, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.core.constants import (
+    EMOJI_MUTE,
+    EMOJI_BAN,
+    EMOJI_WARN,
+    EMOJI_TIMEOUT,
+    EMOJI_KICK,
+)
 from src.utils.footer import set_footer
 from src.utils.views import CASE_EMOJI, InfoButton, DownloadButton
 
@@ -32,13 +39,13 @@ if TYPE_CHECKING:
 # Constants
 # =============================================================================
 
-# Action type emojis
+# Action type emojis (from constants.py)
 ACTION_EMOJIS = {
-    "mute": "<:mute:1337255401531154432>",
-    "ban": "<:ban:1337255389103284284>",
-    "warn": "<:warn:1337255414315393065>",
-    "timeout": "<:timeout:1337255426600611840>",
-    "kick": "<:kick:1337255404907593759>",
+    "mute": EMOJI_MUTE,
+    "ban": EMOJI_BAN,
+    "warn": EMOJI_WARN,
+    "timeout": EMOJI_TIMEOUT,
+    "kick": EMOJI_KICK,
 }
 
 FALLBACK_EMOJIS = {
