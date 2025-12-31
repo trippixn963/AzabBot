@@ -43,6 +43,7 @@ from src.core.moderation_validation import (
 from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
+from src.utils.dm_helpers import send_moderation_dm, safe_send_dm, build_appeal_dm
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -976,42 +977,37 @@ class MuteCog(commands.Cog):
         is_extension: bool = False,
     ) -> None:
         """Send DM notification to muted user with optional appeal button."""
-        try:
-            dm_title = "Your mute has been extended" if is_extension else "You have been muted"
-            dm_embed = discord.Embed(title=dm_title, color=EmbedColors.ERROR)
-            dm_embed.add_field(name="Server", value=f"`{guild.name}`", inline=False)
-            dm_embed.add_field(name="Duration", value=f"`{duration_display}`", inline=True)
-            dm_embed.add_field(name="Moderator", value=f"`{moderator.display_name}`", inline=True)
-            dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
-            if evidence:
-                dm_embed.add_field(name="Evidence", value=evidence, inline=False)
-            dm_embed.set_thumbnail(url=target.display_avatar.url)
-            set_footer(dm_embed)
-            await target.send(embed=dm_embed)
+        dm_title = "Your mute has been extended" if is_extension else "You have been muted"
 
-            # Send appeal button for eligible mutes (>= 6 hours or permanent)
-            MIN_APPEAL_SECONDS = 6 * 60 * 60  # 6 hours
-            if case_info and (duration_seconds is None or duration_seconds >= MIN_APPEAL_SECONDS):
-                try:
-                    from src.services.appeal_service import SubmitAppealButton
-                    appeal_view = discord.ui.View(timeout=None)
-                    appeal_btn = SubmitAppealButton(case_info["case_id"], target.id)
-                    appeal_view.add_item(appeal_btn)
+        sent = await send_moderation_dm(
+            user=target,
+            title=dm_title,
+            color=EmbedColors.ERROR,
+            guild=guild,
+            moderator=moderator,
+            reason=reason,
+            evidence=evidence,
+            thumbnail_url=target.display_avatar.url,
+            fields=[("Duration", f"`{duration_display}`", True)],
+            context="Mute DM",
+        )
 
-                    appeal_embed = discord.Embed(
-                        title="📝 Appeal Your Mute",
-                        description="If you believe this mute was issued in error, you may submit an appeal.",
-                        color=EmbedColors.INFO,
-                    )
-                    appeal_embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
-                    appeal_embed.add_field(name="Server", value=f"`{guild.name}`", inline=True)
-                    set_footer(appeal_embed)
+        if not sent:
+            return  # User has DMs disabled, skip appeal
 
-                    await target.send(embed=appeal_embed, view=appeal_view)
-                except Exception as e:
-                    logger.debug(f"Appeal button send failed: {e}")
-        except (discord.Forbidden, discord.HTTPException):
-            pass  # User has DMs disabled
+        # Send appeal button for eligible mutes (>= 6 hours or permanent)
+        MIN_APPEAL_SECONDS = 6 * 60 * 60  # 6 hours
+        if case_info and (duration_seconds is None or duration_seconds >= MIN_APPEAL_SECONDS):
+            try:
+                from src.services.appeal_service import SubmitAppealButton
+                appeal_view = discord.ui.View(timeout=None)
+                appeal_btn = SubmitAppealButton(case_info["case_id"], target.id)
+                appeal_view.add_item(appeal_btn)
+
+                appeal_embed = build_appeal_dm("Mute", case_info["case_id"], guild)
+                await safe_send_dm(target, embed=appeal_embed, view=appeal_view, context="Mute Appeal")
+            except Exception as e:
+                logger.debug(f"Appeal button send failed: {e}")
 
     async def _send_unmute_dm(
         self,
@@ -1021,16 +1017,16 @@ class MuteCog(commands.Cog):
         reason: Optional[str],
     ) -> None:
         """Send DM notification to unmuted user."""
-        try:
-            dm_embed = discord.Embed(title="You have been unmuted", color=EmbedColors.SUCCESS)
-            dm_embed.add_field(name="Server", value=f"`{guild.name}`", inline=False)
-            dm_embed.add_field(name="Moderator", value=f"`{moderator.display_name}`", inline=True)
-            dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
-            dm_embed.set_thumbnail(url=target.display_avatar.url)
-            set_footer(dm_embed)
-            await target.send(embed=dm_embed)
-        except (discord.Forbidden, discord.HTTPException):
-            pass  # User has DMs disabled
+        await send_moderation_dm(
+            user=target,
+            title="You have been unmuted",
+            color=EmbedColors.SUCCESS,
+            guild=guild,
+            moderator=moderator,
+            reason=reason,
+            thumbnail_url=target.display_avatar.url,
+            context="Unmute DM",
+        )
 
     async def _log_mute_to_tracker(
         self,

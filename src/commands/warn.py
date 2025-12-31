@@ -38,6 +38,7 @@ from src.core.moderation_validation import (
 from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
+from src.utils.dm_helpers import send_moderation_dm
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -472,22 +473,24 @@ class WarnCog(commands.Cog):
         avatar_url: str,
     ) -> None:
         """Send DM notification to warned user."""
-        try:
-            dm_embed = discord.Embed(title="You have been warned", color=EmbedColors.WARNING)
-            dm_embed.add_field(name="Server", value=f"`{guild.name}`", inline=False)
-            if active_warns != total_warns:
-                dm_embed.add_field(name="Active Warnings", value=f"`{active_warns}` (`{total_warns}` total)", inline=True)
-            else:
-                dm_embed.add_field(name="Warning #", value=f"`{active_warns}`", inline=True)
-            dm_embed.add_field(name="Moderator", value=f"`{moderator.display_name}`", inline=True)
-            dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
-            if evidence:
-                dm_embed.add_field(name="Evidence", value=evidence, inline=False)
-            dm_embed.set_thumbnail(url=avatar_url)
-            set_footer(dm_embed)
-            await user.send(embed=dm_embed)
-        except (discord.Forbidden, discord.HTTPException):
-            pass  # User has DMs disabled
+        # Build warning count field
+        if active_warns != total_warns:
+            warn_field = ("Active Warnings", f"`{active_warns}` (`{total_warns}` total)", True)
+        else:
+            warn_field = ("Warning #", f"`{active_warns}`", True)
+
+        await send_moderation_dm(
+            user=user,
+            title="You have been warned",
+            color=EmbedColors.WARNING,
+            guild=guild,
+            moderator=moderator,
+            reason=reason,
+            evidence=evidence,
+            thumbnail_url=avatar_url,
+            fields=[warn_field],
+            context="Warn DM",
+        )
 
     async def _log_warn_to_tracker(
         self,
