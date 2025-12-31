@@ -20,11 +20,11 @@ Server: discord.gg/syria
 import asyncio
 import time
 from datetime import datetime
+from typing import TYPE_CHECKING, List, Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
-from typing import Optional, List, TYPE_CHECKING
 
 from src.core.logger import logger
 from src.core.config import get_config, is_developer, has_mod_role, EmbedColors, NY_TZ
