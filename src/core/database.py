@@ -17,6 +17,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import json
 import sqlite3
 import threading
 import asyncio
@@ -28,6 +29,17 @@ from datetime import datetime
 from typing import Optional, List, Tuple, Any, Set, Dict, TypedDict
 
 from src.core.logger import logger
+
+
+def _safe_json_loads(value: Optional[str], default: Any = None) -> Any:
+    """Safely parse JSON, returning default on error."""
+    if not value:
+        return default if default is not None else []
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        logger.warning(f"Corrupted JSON in database: {value[:50] if len(value) > 50 else value}")
+        return default if default is not None else []
 
 
 # =============================================================================
@@ -3074,7 +3086,6 @@ class DatabaseManager:
         Returns:
             List of alt link records.
         """
-        import json
         rows = self.fetchall(
             "SELECT * FROM alt_links WHERE banned_user_id = ? AND guild_id = ?",
             (user_id, guild_id)
@@ -3082,7 +3093,7 @@ class DatabaseManager:
         results = []
         for row in rows:
             record = dict(row)
-            record['signals'] = json.loads(record['signals'])
+            record['signals'] = _safe_json_loads(record['signals'], default=[])
             results.append(record)
         return results
 
@@ -3097,7 +3108,6 @@ class DatabaseManager:
         Returns:
             List of alt link records.
         """
-        import json
         rows = self.fetchall(
             "SELECT * FROM alt_links WHERE potential_alt_id = ? AND guild_id = ?",
             (alt_id, guild_id)
@@ -3105,7 +3115,7 @@ class DatabaseManager:
         results = []
         for row in rows:
             record = dict(row)
-            record['signals'] = json.loads(record['signals'])
+            record['signals'] = _safe_json_loads(record['signals'], default=[])
             results.append(record)
         return results
 
@@ -4516,7 +4526,7 @@ class DatabaseManager:
                 "author_display": row["author_display"],
                 "author_avatar": row["author_avatar"],
                 "content": row["content"],
-                "attachment_names": json.loads(row["attachment_names"]) if row["attachment_names"] else [],
+                "attachment_names": _safe_json_loads(row["attachment_names"], default=[]),
                 "deleted_at": row["deleted_at"],
             })
 

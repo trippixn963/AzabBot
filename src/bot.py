@@ -30,6 +30,7 @@ from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
 from src.utils.rate_limiter import rate_limit
+from src.utils.async_utils import create_safe_task
 
 
 # =============================================================================
@@ -239,7 +240,7 @@ class AzabBot(commands.Bot):
         logger.tree("Bot State Loaded", [("Active", str(not self.disabled))], emoji="ℹ️")
 
         if self.presence_handler:
-            asyncio.create_task(self.presence_handler.start())
+            create_safe_task(self.presence_handler.start(), "Presence Handler")
 
         await self._cleanup_polls_channel()
         await self._cache_invites()
@@ -512,12 +513,14 @@ class AzabBot(commands.Bot):
         try:
             for guild in self.guilds:
                 try:
-                    invites = await guild.invites()
+                    invites = await asyncio.wait_for(guild.invites(), timeout=5.0)
                     for invite in invites:
                         self._invite_cache[invite.code] = invite.uses or 0
                     logger.info(f"Cached {len(invites)} invites for {guild.name}")
                 except discord.Forbidden:
                     pass
+                except asyncio.TimeoutError:
+                    logger.warning(f"Invite fetch timeout for {guild.name}")
         except Exception as e:
             logger.debug(f"Invite cache failed: {e}")
 

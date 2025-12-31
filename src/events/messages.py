@@ -20,6 +20,7 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.utils.footer import set_footer
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -145,7 +146,7 @@ class MessageEvents(commands.Cog):
         # Cache attachments for delete logging
         # -----------------------------------------------------------------
         if message.attachments and not message.author.bot:
-            asyncio.create_task(self.bot._cache_message_attachments(message))
+            create_safe_task(self.bot._cache_message_attachments(message), "Attachment Cache")
 
         # -----------------------------------------------------------------
         # Cache message content for mod delete logging (OrderedDict LRU)

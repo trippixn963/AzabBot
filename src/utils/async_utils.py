@@ -164,6 +164,50 @@ def log_gather_exceptions(
 
 
 # =============================================================================
+# Safe Background Tasks
+# =============================================================================
+
+def create_safe_task(
+    coro: Coroutine[Any, Any, Any],
+    name: str = "Background Task",
+) -> asyncio.Task:
+    """
+    Create a background task with automatic error logging.
+
+    Unlike raw asyncio.create_task(), this catches and logs any exceptions
+    instead of letting them silently disappear.
+
+    Args:
+        coro: The coroutine to run as a background task.
+        name: Name for logging purposes.
+
+    Returns:
+        The created asyncio.Task.
+
+    Example:
+        # Instead of:
+        asyncio.create_task(self._cleanup_loop())
+
+        # Use:
+        create_safe_task(self._cleanup_loop(), "Cleanup Loop")
+    """
+    async def wrapped():
+        try:
+            await coro
+        except asyncio.CancelledError:
+            # Task was cancelled, this is expected during shutdown
+            pass
+        except Exception as e:
+            logger.error("Background Task Failed", [
+                ("Task", name),
+                ("Error Type", type(e).__name__),
+                ("Error", str(e)[:200]),
+            ])
+
+    return asyncio.create_task(wrapped())
+
+
+# =============================================================================
 # Module Export
 # =============================================================================
 
@@ -171,4 +215,5 @@ __all__ = [
     "gather_with_logging",
     "safe_async_operation",
     "log_gather_exceptions",
+    "create_safe_task",
 ]

@@ -26,6 +26,7 @@ from src.core.config import get_config, NY_TZ, EmbedColors
 from src.utils.footer import set_footer
 from src.utils.rate_limiter import rate_limit
 from src.utils.duration import format_duration_from_minutes as format_duration
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -74,7 +75,7 @@ class PrisonHandler:
         self.vc_kick_counts: Dict[int, int] = {}
 
         # Start daily cleanup task
-        asyncio.create_task(self._daily_cleanup_loop())
+        create_safe_task(self._daily_cleanup_loop(), "Prison Daily Cleanup")
 
         logger.tree("Prison Handler Loaded", [
             ("Features", "Welcome, release, VC kick"),
@@ -191,8 +192,9 @@ class PrisonHandler:
 
             # Record mute in database
             trigger_message = None
-            if member.id in self.bot.last_messages:
-                messages = self.bot.last_messages[member.id].get("messages")
+            msg_data = self.bot.last_messages.get(member.id)
+            if msg_data:
+                messages = msg_data.get("messages")
                 if messages:
                     trigger_message = messages[-1]
 
@@ -348,8 +350,9 @@ class PrisonHandler:
 
     def _get_mute_notification_channel(self, member: discord.Member) -> Optional[discord.TextChannel]:
         """Get channel for mute notification based on user's last message."""
-        if member.id in self.bot.last_messages:
-            channel_id = self.bot.last_messages[member.id].get("channel_id")
+        msg_data = self.bot.last_messages.get(member.id)
+        if msg_data:
+            channel_id = msg_data.get("channel_id")
             if channel_id:
                 return self.bot.get_channel(channel_id)
         return self.bot.get_channel(self.config.general_channel_id)
