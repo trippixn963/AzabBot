@@ -62,6 +62,8 @@ jobs:
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
+          set -eo pipefail
+
           # Read values into variables
           TITLE='${{ steps.commit.outputs.title }}'
           BODY='${{ steps.commit.outputs.body }}'
@@ -81,13 +83,19 @@ jobs:
 
           # Build description with jq
           if [ -n "$BODY" ]; then
-            DESC=$(jq -n --arg t "$TITLE" --arg b "$BODY" '"**" + $t + "**\n\n```\n" + $b + "```"')
+            DESC=$(jq -n --arg t "$TITLE" --arg b "$BODY" '"**" + $t + "**\n\n```\n" + $b + "```"') || {
+              echo "::error::Failed to build description with jq"
+              exit 1
+            }
           else
-            DESC=$(jq -n --arg t "$TITLE" '"**" + $t + "**"')
+            DESC=$(jq -n --arg t "$TITLE" '"**" + $t + "**"') || {
+              echo "::error::Failed to build description with jq"
+              exit 1
+            }
           fi
 
           # Build full payload with jq (handles all escaping automatically)
-          jq -n \
+          PAYLOAD=$(jq -n \
             --argjson desc "$DESC" \
             --arg type "$TYPE" \
             --argjson color "$COLOR" \
@@ -144,14 +152,38 @@ jobs:
                   icon_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
                 }
               }]
-            }' | curl -s -H "Content-Type: application/json" -X POST -d @- "$WEBHOOK_URL"
+            }') || {
+            echo "::error::Failed to build JSON payload with jq"
+            exit 1
+          }
+
+          # Send to Discord and check response
+          HTTP_CODE=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
+            -H "Content-Type: application/json" \
+            -X POST -d "$PAYLOAD" "$WEBHOOK_URL")
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Discord webhook failed with HTTP $HTTP_CODE"
+            cat /tmp/response.txt
+            exit 1
+          fi
+
+          echo "Discord notification sent successfully (HTTP $HTTP_CODE)"
 
       - name: Update category name with commit ID
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           MODS_CATEGORY_ID: ${{ secrets.MODS_CATEGORY_ID }}
         run: |
-          curl -s -X PATCH "https://discord.com/api/v10/channels/${MODS_CATEGORY_ID}" \
+          HTTP_CODE=$(curl -s -o /tmp/category_response.txt -w "%{http_code}" \
+            -X PATCH "https://discord.com/api/v10/channels/${MODS_CATEGORY_ID}" \
             -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"name\": \"AZAB ・${{ steps.commit.outputs.sha }}\"}"
+            -d "{\"name\": \"AZAB ・${{ steps.commit.outputs.sha }}\"}")
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::warning::Failed to update category name (HTTP $HTTP_CODE)"
+            cat /tmp/category_response.txt
+          else
+            echo "Category name updated successfully (HTTP $HTTP_CODE)"
+          fi
