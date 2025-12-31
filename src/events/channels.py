@@ -203,7 +203,13 @@ class ChannelEvents(commands.Cog):
                         added_by = entry.user
                         break
             except discord.Forbidden:
-                pass
+                logger.debug(f"Audit log access denied for thread member add lookup in {thread.guild.name}")
+            except discord.HTTPException as e:
+                logger.warning("Audit Log Fetch Failed", [
+                    ("Action", "thread_member_add"),
+                    ("Guild", thread.guild.name),
+                    ("Error", str(e)[:50]),
+                ])
 
         await self.bot.logging_service.log_thread_member_add(
             thread=thread,
@@ -253,7 +259,13 @@ class ChannelEvents(commands.Cog):
                         removed_by = entry.user
                         break
             except discord.Forbidden:
-                pass
+                logger.debug(f"Audit log access denied for thread member remove lookup in {thread.guild.name}")
+            except discord.HTTPException as e:
+                logger.warning("Audit Log Fetch Failed", [
+                    ("Action", "thread_member_remove"),
+                    ("Guild", thread.guild.name),
+                    ("Error", str(e)[:50]),
+                ])
 
         await self.bot.logging_service.log_thread_member_remove(
             thread=thread,

@@ -23,6 +23,7 @@ from typing import Optional, TYPE_CHECKING
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
 from src.core.constants import PRESENCE_UPDATE_INTERVAL, PROMO_DURATION_MINUTES
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -70,11 +71,11 @@ class PresenceHandler:
 
     async def start(self) -> None:
         """Start the presence update and promo scheduler loops."""
-        # Start presence update loop
-        self._presence_task = asyncio.create_task(self._presence_loop())
+        # Start presence update loop (using create_safe_task for error logging)
+        self._presence_task = create_safe_task(self._presence_loop(), "Presence Update Loop")
 
         # Start promo scheduler
-        self._promo_task = asyncio.create_task(self._promo_loop())
+        self._promo_task = create_safe_task(self._promo_loop(), "Promo Scheduler Loop")
 
         logger.tree("Presence Handler Started", [
             ("Update Interval", f"{PRESENCE_UPDATE_INTERVAL}s"),

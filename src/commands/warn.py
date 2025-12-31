@@ -33,6 +33,7 @@ from src.core.config import get_config, is_developer, has_mod_role, EmbedColors,
 from src.core.database import get_db
 from src.core.moderation_validation import (
     validate_moderation_target,
+    validate_evidence,
     get_target_guild,
     is_cross_server,
 )
@@ -277,12 +278,22 @@ class WarnCog(commands.Cog):
                     ("Action", "Warn"),
                     ("User", f"{user} ({user.id})"),
                 ])
+                if self.bot.webhook_alert_service:
+                    await self.bot.webhook_alert_service.send_error_alert(
+                        "Case Log Timeout",
+                        f"Warn case logging timed out for {user} ({user.id})"
+                    )
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Warn"),
                     ("User", f"{user} ({user.id})"),
                     ("Error", str(e)[:100]),
                 ])
+                if self.bot.webhook_alert_service:
+                    await self.bot.webhook_alert_service.send_error_alert(
+                        "Case Log Failed",
+                        f"Warn case logging failed for {user} ({user.id}): {str(e)[:200]}"
+                    )
 
         # ---------------------------------------------------------------------
         # Build & Send Embed
@@ -378,20 +389,17 @@ class WarnCog(commands.Cog):
         evidence: Optional[discord.Attachment] = None,
     ) -> None:
         """Issue a warning to a user (supports cross-server from mod server)."""
-        # Validate attachment is image/video if provided
-        evidence_url = None
-        if evidence:
-            valid_types = ('image/', 'video/')
-            if not evidence.content_type or not evidence.content_type.startswith(valid_types):
-                await interaction.response.send_message(
-                    "Evidence must be an image or video file.",
-                    ephemeral=True,
-                )
-                return
-            evidence_url = evidence.url
+        # Validate evidence attachment (content type, file size, CDN expiry warning)
+        evidence_result = validate_evidence(evidence, "warn")
+        if not evidence_result.is_valid:
+            await interaction.response.send_message(
+                evidence_result.error_message,
+                ephemeral=True,
+            )
+            return
 
         await interaction.response.defer(ephemeral=False)
-        await self.execute_warn(interaction, user, reason, evidence_url)
+        await self.execute_warn(interaction, user, reason, evidence_result.url)
 
     # =========================================================================
     # Context Menu Handlers

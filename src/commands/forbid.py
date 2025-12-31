@@ -49,6 +49,7 @@ from src.utils.footer import set_footer
 from src.utils.views import APPEAL_EMOJI
 from src.utils.rate_limiter import rate_limit
 from src.utils.duration import parse_duration, format_duration_short as format_duration
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -126,9 +127,9 @@ class ForbidCog(commands.Cog):
         self.config = get_config()
         self.db = get_db()
 
-        # Start background tasks
-        self._scan_task = asyncio.create_task(self._start_nightly_scan())
-        self._expiry_task = asyncio.create_task(self._start_expiry_scheduler())
+        # Start background tasks (using create_safe_task for error logging)
+        self._scan_task = create_safe_task(self._start_nightly_scan(), "Forbid Nightly Scan")
+        self._expiry_task = create_safe_task(self._start_expiry_scheduler(), "Forbid Expiry Scheduler")
 
         logger.tree("Forbid Cog Loaded", [
             ("Commands", "/forbid, /unforbid"),
@@ -466,15 +467,37 @@ class ForbidCog(commands.Cog):
             # Create case log
             if applied and self.bot.case_log_service:
                 try:
-                    await self.bot.case_log_service.log_forbid(
-                        user=user,
-                        moderator=moderator,
-                        restrictions=applied,
-                        reason=reason,
-                        duration=duration_display,
+                    await asyncio.wait_for(
+                        self.bot.case_log_service.log_forbid(
+                            user=user,
+                            moderator=moderator,
+                            restrictions=applied,
+                            reason=reason,
+                            duration=duration_display,
+                        ),
+                        timeout=10.0,
                     )
+                except asyncio.TimeoutError:
+                    logger.warning("Case Log Timeout", [
+                        ("Action", "Forbid"),
+                        ("User", f"{user} ({user.id})"),
+                    ])
+                    if self.bot.webhook_alert_service:
+                        await self.bot.webhook_alert_service.send_error_alert(
+                            "Case Log Timeout",
+                            f"Forbid case logging timed out for {user} ({user.id})"
+                        )
                 except Exception as e:
-                    logger.debug(f"Failed to create forbid case: {e}")
+                    logger.error("Case Log Failed", [
+                        ("Action", "Forbid"),
+                        ("User", f"{user} ({user.id})"),
+                        ("Error", str(e)[:100]),
+                    ])
+                    if self.bot.webhook_alert_service:
+                        await self.bot.webhook_alert_service.send_error_alert(
+                            "Case Log Failed",
+                            f"Forbid case logging failed for {user} ({user.id}): {str(e)[:200]}"
+                        )
 
         except discord.HTTPException as e:
             logger.error("Forbid Command Failed (HTTP)", [
@@ -630,13 +653,35 @@ class ForbidCog(commands.Cog):
             # Create case log
             if removed and self.bot.case_log_service:
                 try:
-                    await self.bot.case_log_service.log_unforbid(
-                        user=user,
-                        moderator=moderator,
-                        restrictions=removed,
+                    await asyncio.wait_for(
+                        self.bot.case_log_service.log_unforbid(
+                            user=user,
+                            moderator=moderator,
+                            restrictions=removed,
+                        ),
+                        timeout=10.0,
                     )
+                except asyncio.TimeoutError:
+                    logger.warning("Case Log Timeout", [
+                        ("Action", "Unforbid"),
+                        ("User", f"{user} ({user.id})"),
+                    ])
+                    if self.bot.webhook_alert_service:
+                        await self.bot.webhook_alert_service.send_error_alert(
+                            "Case Log Timeout",
+                            f"Unforbid case logging timed out for {user} ({user.id})"
+                        )
                 except Exception as e:
-                    logger.debug(f"Failed to create unforbid case: {e}")
+                    logger.error("Case Log Failed", [
+                        ("Action", "Unforbid"),
+                        ("User", f"{user} ({user.id})"),
+                        ("Error", str(e)[:100]),
+                    ])
+                    if self.bot.webhook_alert_service:
+                        await self.bot.webhook_alert_service.send_error_alert(
+                            "Case Log Failed",
+                            f"Unforbid case logging failed for {user} ({user.id}): {str(e)[:200]}"
+                        )
 
         except Exception as e:
             logger.error("Unforbid Command Failed", [
@@ -959,8 +1004,14 @@ class ForbidCog(commands.Cog):
                     expiry_embed.add_field(name="Restriction", value=RESTRICTIONS[restriction_type]['display'], inline=True)
                     set_footer(expiry_embed)
                     await member.send(embed=expiry_embed)
-                except (discord.Forbidden, discord.HTTPException):
-                    pass
+                except discord.Forbidden:
+                    logger.debug(f"Forbid expiry DM blocked: {member} ({member.id}) has DMs disabled")
+                except discord.HTTPException as e:
+                    logger.warning("Forbid Expiry DM Failed", [
+                        ("User", f"{member} ({member.id})"),
+                        ("Restriction", restriction_type),
+                        ("Error", str(e)[:50]),
+                    ])
 
             except Exception as e:
                 logger.debug(f"Error processing expired forbid: {e}")

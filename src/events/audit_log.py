@@ -697,12 +697,27 @@ class AuditLogEvents(commands.Cog):
                         )
                         # Log to case log
                         if self.bot.case_log_service:
-                            await self.bot.case_log_service.log_timeout(
-                                user=entry.target,
-                                moderator_id=moderator.id if moderator else entry.user_id,
-                                until=entry.after.timed_out_until,
-                                reason=entry.reason,
-                            )
+                            try:
+                                await asyncio.wait_for(
+                                    self.bot.case_log_service.log_timeout(
+                                        user=entry.target,
+                                        moderator_id=moderator.id if moderator else entry.user_id,
+                                        until=entry.after.timed_out_until,
+                                        reason=entry.reason,
+                                    ),
+                                    timeout=10.0,
+                                )
+                            except asyncio.TimeoutError:
+                                logger.warning("Case Log Timeout", [
+                                    ("Action", "Timeout"),
+                                    ("User", f"{entry.target} ({entry.target.id})"),
+                                ])
+                            except Exception as e:
+                                logger.error("Case Log Failed", [
+                                    ("Action", "Timeout"),
+                                    ("User", f"{entry.target} ({entry.target.id})"),
+                                    ("Error", str(e)[:100]),
+                                ])
 
                 old_timeout = getattr(entry.before, 'timed_out_until', None)
                 new_timeout = getattr(entry.after, 'timed_out_until', None)

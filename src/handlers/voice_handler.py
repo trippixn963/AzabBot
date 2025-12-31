@@ -194,12 +194,27 @@ class VoiceHandler:
         # 5. Case Log
         # -----------------------------------------------------------------
         if self.bot.case_log_service:
-            await self.bot.case_log_service.log_muted_vc_violation(
-                user_id=member.id,
-                display_name=member.display_name,
-                channel_name=channel_name,
-                avatar_url=member.display_avatar.url,
-            )
+            try:
+                await asyncio.wait_for(
+                    self.bot.case_log_service.log_muted_vc_violation(
+                        user_id=member.id,
+                        display_name=member.display_name,
+                        channel_name=channel_name,
+                        avatar_url=member.display_avatar.url,
+                    ),
+                    timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Case Log Timeout", [
+                    ("Action", "Muted VC Violation"),
+                    ("User", f"{member} ({member.id})"),
+                ])
+            except Exception as e:
+                logger.error("Case Log Failed", [
+                    ("Action", "Muted VC Violation"),
+                    ("User", f"{member} ({member.id})"),
+                    ("Error", str(e)[:100]),
+                ])
 
     async def _log_mod_voice_activity(
         self,

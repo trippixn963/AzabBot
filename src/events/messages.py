@@ -306,9 +306,17 @@ class MessageEvents(commands.Cog):
                                 delete_after=5.0,
                             )
                         except discord.Forbidden:
-                            pass
-                        except discord.HTTPException:
-                            pass
+                            logger.warning("Prisoner Ping Block Failed", [
+                                ("User", f"{message.author} ({message.author.id})"),
+                                ("Channel", f"#{message.channel.name}"),
+                                ("Reason", "Missing permissions to delete message"),
+                            ])
+                        except discord.HTTPException as e:
+                            logger.warning("Prisoner Ping Block Failed", [
+                                ("User", f"{message.author} ({message.author.id})"),
+                                ("Channel", f"#{message.channel.name}"),
+                                ("Error", str(e)[:50]),
+                            ])
                         return  # Stop processing this message
 
         # -----------------------------------------------------------------
@@ -604,24 +612,39 @@ class MessageEvents(commands.Cog):
         # 5. Create case log entry
         # -----------------------------------------------------------------
         if self.bot.case_log_service:
-            case_result = await self.bot.case_log_service.log_mute(
-                user=member,
-                moderator=guild.me,  # Bot is the moderator
-                duration="Permanent",
-                reason="Auto-mute: Advertising external Discord server",
-                evidence=f"Posted invite link: `discord.gg/{invite_code}` in #{message.channel.name}",
-            )
-            if case_result:
-                logger.tree("CASE LOG CREATED", [
+            try:
+                case_result = await asyncio.wait_for(
+                    self.bot.case_log_service.log_mute(
+                        user=member,
+                        moderator=guild.me,  # Bot is the moderator
+                        duration="Permanent",
+                        reason="Auto-mute: Advertising external Discord server",
+                        evidence=f"Posted invite link: `discord.gg/{invite_code}` in #{message.channel.name}",
+                    ),
+                    timeout=10.0,
+                )
+                if case_result:
+                    logger.tree("CASE LOG CREATED", [
+                        ("User", f"{member} ({member.id})"),
+                        ("Case Number", str(case_result.get("case_number", "N/A"))),
+                        ("Thread", case_result.get("thread_name", "N/A")),
+                    ], emoji="📋")
+                else:
+                    logger.tree("CASE LOG FAILED", [
+                        ("User", f"{member} ({member.id})"),
+                        ("Reason", "log_mute returned None"),
+                    ], emoji="❌")
+            except asyncio.TimeoutError:
+                logger.warning("Case Log Timeout", [
+                    ("Action", "Auto-Mute (Invite Link)"),
                     ("User", f"{member} ({member.id})"),
-                    ("Case Number", str(case_result.get("case_number", "N/A"))),
-                    ("Thread", case_result.get("thread_name", "N/A")),
-                ], emoji="📋")
-            else:
-                logger.tree("CASE LOG FAILED", [
+                ])
+            except Exception as e:
+                logger.error("Case Log Failed", [
+                    ("Action", "Auto-Mute (Invite Link)"),
                     ("User", f"{member} ({member.id})"),
-                    ("Reason", "log_mute returned None"),
-                ], emoji="❌")
+                    ("Error", str(e)[:100]),
+                ])
         else:
             logger.tree("CASE LOG SKIPPED", [
                 ("User", f"{member} ({member.id})"),

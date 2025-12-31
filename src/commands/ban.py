@@ -31,6 +31,7 @@ from src.core.config import get_config, is_developer, has_mod_role, EmbedColors,
 from src.core.database import get_db
 from src.core.moderation_validation import (
     validate_moderation_target,
+    validate_evidence,
     get_target_guild,
     is_cross_server,
     send_management_blocked_embed,
@@ -196,9 +197,12 @@ class BanCog(commands.Cog):
 
         Returns True if successful, False otherwise.
         """
-        # Defer if not already responded
-        if not interaction.response.is_done():
-            await interaction.response.defer()
+        # Defer if not already responded (with error handling for expired/failed interactions)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer()
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
 
         # -----------------------------------------------------------------
         # Get Target Guild (for cross-server moderation)
@@ -249,8 +253,13 @@ class BanCog(commands.Cog):
 
                 await user.send(embed=dm_embed)
                 dm_sent = True
-            except (discord.Forbidden, discord.HTTPException):
-                pass
+            except discord.Forbidden:
+                logger.debug(f"Ban DM blocked: {user} ({user.id}) has DMs disabled")
+            except discord.HTTPException as e:
+                logger.warning("Ban DM Failed", [
+                    ("User", f"{user} ({user.id})"),
+                    ("Error", str(e)[:50]),
+                ])
 
         # -----------------------------------------------------------------
         # Execute Ban (on target guild)
@@ -335,12 +344,22 @@ class BanCog(commands.Cog):
                     ("Action", "Ban"),
                     ("User", f"{user} ({user.id})"),
                 ])
+                if self.bot.webhook_alert_service:
+                    await self.bot.webhook_alert_service.send_error_alert(
+                        "Case Log Timeout",
+                        f"Ban case logging timed out for {user} ({user.id})"
+                    )
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Ban"),
                     ("User", f"{user} ({user.id})"),
                     ("Error", str(e)[:100]),
                 ])
+                if self.bot.webhook_alert_service:
+                    await self.bot.webhook_alert_service.send_error_alert(
+                        "Case Log Failed",
+                        f"Ban case logging failed for {user} ({user.id}): {str(e)[:200]}"
+                    )
 
         # Server logs (after case creation to include case_id)
         if self.bot.logging_service and self.bot.logging_service.enabled:
@@ -417,10 +436,19 @@ class BanCog(commands.Cog):
                     ("User", f"{user} ({user.id})"),
                     ("Case", case_info["case_id"]),
                 ], emoji="📝")
-            except (discord.Forbidden, discord.HTTPException):
-                pass  # User has DMs disabled or blocked
+            except discord.Forbidden:
+                logger.debug(f"Appeal DM blocked: {user} ({user.id}) has DMs disabled")
+            except discord.HTTPException as e:
+                logger.warning("Appeal DM Failed", [
+                    ("User", f"{user} ({user.id})"),
+                    ("Case", case_info["case_id"]),
+                    ("Error", str(e)[:50]),
+                ])
             except Exception as e:
-                logger.error(f"Failed to send appeal DM: {e}")
+                logger.error("Appeal DM Failed", [
+                    ("User", f"{user} ({user.id})"),
+                    ("Error", str(e)[:50]),
+                ])
 
         # -----------------------------------------------------------------
         # Alt Detection (background task, regular bans only)
@@ -521,23 +549,20 @@ class BanCog(commands.Cog):
         evidence: Optional[discord.Attachment] = None,
     ) -> None:
         """Ban a user from the server (supports cross-server from mod server)."""
-        # Validate attachment is image/video if provided
-        evidence_url = None
-        if evidence:
-            valid_types = ('image/', 'video/')
-            if not evidence.content_type or not evidence.content_type.startswith(valid_types):
-                await interaction.response.send_message(
-                    "Evidence must be an image or video file.",
-                    ephemeral=True,
-                )
-                return
-            evidence_url = evidence.url
+        # Validate evidence attachment (content type, file size, CDN expiry warning)
+        evidence_result = validate_evidence(evidence, "ban")
+        if not evidence_result.is_valid:
+            await interaction.response.send_message(
+                evidence_result.error_message,
+                ephemeral=True,
+            )
+            return
 
         await self.execute_ban(
             interaction=interaction,
             user=user,
             reason=reason,
-            evidence=evidence_url,
+            evidence=evidence_result.url,
         )
 
     # =========================================================================
@@ -559,17 +584,14 @@ class BanCog(commands.Cog):
         evidence: Optional[discord.Attachment] = None,
     ) -> None:
         """Unban a user from the server (supports cross-server from mod server)."""
-        # Validate attachment is image/video if provided
-        evidence_url = None
-        if evidence:
-            valid_types = ('image/', 'video/')
-            if not evidence.content_type or not evidence.content_type.startswith(valid_types):
-                await interaction.response.send_message(
-                    "Evidence must be an image or video file.",
-                    ephemeral=True,
-                )
-                return
-            evidence_url = evidence.url
+        # Validate evidence attachment (content type, file size, CDN expiry warning)
+        evidence_result = validate_evidence(evidence, "unban")
+        if not evidence_result.is_valid:
+            await interaction.response.send_message(
+                evidence_result.error_message,
+                ephemeral=True,
+            )
+            return
 
         await interaction.response.defer()
 
@@ -659,7 +681,7 @@ class BanCog(commands.Cog):
             ("User", f"{target_user} ({target_user.id})"),
             ("Moderator", str(interaction.user)),
             ("Reason", (reason or "None")[:50]),
-            ("Evidence", (evidence_url or "None")[:50]),
+            ("Evidence", (evidence_result.url or "None")[:50]),
         ]
         if cross_server:
             log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
@@ -686,12 +708,22 @@ class BanCog(commands.Cog):
                     ("Action", "Unban"),
                     ("User", f"{target_user} ({target_user.id})"),
                 ])
+                if self.bot.webhook_alert_service:
+                    await self.bot.webhook_alert_service.send_error_alert(
+                        "Case Log Timeout",
+                        f"Unban case logging timed out for {target_user} ({target_user.id})"
+                    )
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Unban"),
                     ("User", f"{target_user} ({target_user.id})"),
                     ("Error", str(e)[:100]),
                 ])
+                if self.bot.webhook_alert_service:
+                    await self.bot.webhook_alert_service.send_error_alert(
+                        "Case Log Failed",
+                        f"Unban case logging failed for {target_user} ({target_user.id}): {str(e)[:200]}"
+                    )
 
         # Server logs (after case creation to include case_id)
         if self.bot.logging_service and self.bot.logging_service.enabled:

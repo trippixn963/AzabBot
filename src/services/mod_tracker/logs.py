@@ -2349,7 +2349,10 @@ class ModTrackerLogsMixin:
             )
 
             # Remove from history after alerting
-            del self._ban_history[mod_id][target_id]
+            try:
+                del self._ban_history[mod_id][target_id]
+            except KeyError:
+                pass  # Already removed
 
             logger.tree("Mod Tracker: Suspicious Unban Alert", [
                 ("Mod ID", str(mod_id)),

@@ -74,6 +74,12 @@ class PrisonHandler:
         # =================================================================
         self.vc_kick_counts: Dict[int, int] = {}
 
+        # =================================================================
+        # Concurrency Protection
+        # DESIGN: Lock for thread-safe access to shared dicts
+        # =================================================================
+        self._state_lock = asyncio.Lock()
+
         # Start daily cleanup task
         create_safe_task(self._daily_cleanup_loop(), "Prison Daily Cleanup")
 
@@ -132,16 +138,18 @@ class PrisonHandler:
             # Wait for mute embed to appear in logs
             await asyncio.sleep(self.config.presence_retry_delay)
 
-            # Get mute reason from cache or scan logs
-            mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(
-                member.name.lower()
-            )
-
-            if not mute_reason:
-                await self._scan_logs_for_reason(member, logs_channel)
+            # Get mute reason from cache or scan logs (with lock for thread-safety)
+            async with self._state_lock:
                 mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(
                     member.name.lower()
                 )
+
+            if not mute_reason:
+                await self._scan_logs_for_reason(member, logs_channel)
+                async with self._state_lock:
+                    mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(
+                        member.name.lower()
+                    )
 
             # Get prisoner stats for personalized message
             prisoner_stats = await self.bot.db.get_prisoner_stats(member.id)
@@ -249,10 +257,11 @@ class PrisonHandler:
             # Record unmute in database
             await self.bot.db.record_unmute(user_id=member.id, unmuted_by=None)
 
-            # Cleanup tracking data
-            self.mute_reasons.pop(member.id, None)
-            self.mute_reasons.pop(member.name.lower(), None)
-            self.vc_kick_counts.pop(member.id, None)
+            # Cleanup tracking data (with lock for thread-safety)
+            async with self._state_lock:
+                self.mute_reasons.pop(member.id, None)
+                self.mute_reasons.pop(member.name.lower(), None)
+                self.vc_kick_counts.pop(member.id, None)
 
             # Schedule delayed message cleanup (1 hour)
             asyncio.create_task(self._delayed_message_cleanup(member))
@@ -291,9 +300,10 @@ class PrisonHandler:
         try:
             await member.move_to(None)
 
-            # Track kick count
-            self.vc_kick_counts[member.id] = self.vc_kick_counts.get(member.id, 0) + 1
-            kick_count = self.vc_kick_counts[member.id]
+            # Track kick count (with lock for thread-safety)
+            async with self._state_lock:
+                self.vc_kick_counts[member.id] = self.vc_kick_counts.get(member.id, 0) + 1
+                kick_count = self.vc_kick_counts[member.id]
 
             # Determine timeout duration
             timeout_minutes = 0

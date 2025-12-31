@@ -129,6 +129,7 @@ from src.utils.retry import (
     safe_edit,
     safe_delete,
 )
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -299,7 +300,7 @@ class CaseLogService:
             self._reason_check_task.cancel()
 
         self._reason_check_running = True
-        self._reason_check_task = asyncio.create_task(self._reason_check_loop())
+        self._reason_check_task = create_safe_task(self._reason_check_loop(), "Case Log Reason Checker")
 
         logger.tree("Pending Reason Scheduler Started", [
             ("Check Interval", "5 minutes"),
@@ -401,7 +402,7 @@ class CaseLogService:
 
         # Schedule processing if not already scheduled
         if self._profile_update_task is None or self._profile_update_task.done():
-            self._profile_update_task = asyncio.create_task(self._process_profile_updates())
+            self._profile_update_task = create_safe_task(self._process_profile_updates(), "Case Log Profile Updates")
 
     async def _process_profile_updates(self) -> None:
         """Process all pending profile updates after debounce delay."""
@@ -537,7 +538,10 @@ class CaseLogService:
                 return cached_thread
             else:
                 # Cache expired, remove it
-                del self._thread_cache[thread_id]
+                try:
+                    del self._thread_cache[thread_id]
+                except KeyError:
+                    pass  # Already removed
 
         # Cache miss - fetch thread with retry
         channel = await safe_fetch_channel(self.bot, thread_id)
@@ -550,8 +554,11 @@ class CaseLogService:
             self._thread_cache[thread_id] = (channel, now)
             # Cleanup old cache entries (keep max 100)
             if len(self._thread_cache) > 100:
-                oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
-                del self._thread_cache[oldest]
+                try:
+                    oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
+                    del self._thread_cache[oldest]
+                except (KeyError, ValueError):
+                    pass  # Entry already removed by another coroutine
             return channel
 
         logger.warning(f"Channel {thread_id} is not a Thread: {type(channel)}")

@@ -36,6 +36,7 @@ from src.core.config import get_config, is_developer, has_mod_role, EmbedColors,
 from src.core.database import get_db
 from src.core.moderation_validation import (
     validate_moderation_target,
+    validate_evidence,
     get_target_guild,
     is_cross_server,
     send_management_blocked_embed,
@@ -427,12 +428,22 @@ class MuteCog(commands.Cog):
                     ("Action", "Mute"),
                     ("User", f"{target_member} ({target_member.id})"),
                 ])
+                if self.bot.webhook_alert_service:
+                    await self.bot.webhook_alert_service.send_error_alert(
+                        "Case Log Timeout",
+                        f"Mute case logging timed out for {target_member} ({target_member.id})"
+                    )
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Mute"),
                     ("User", f"{target_member} ({target_member.id})"),
                     ("Error", str(e)[:100]),
                 ])
+                if self.bot.webhook_alert_service:
+                    await self.bot.webhook_alert_service.send_error_alert(
+                        "Case Log Failed",
+                        f"Mute case logging failed for {target_member} ({target_member.id}): {str(e)[:200]}"
+                    )
 
         # ---------------------------------------------------------------------
         # Build & Send Embed
@@ -523,20 +534,17 @@ class MuteCog(commands.Cog):
         evidence: Optional[discord.Attachment] = None,
     ) -> None:
         """Mute a user by assigning the muted role (supports cross-server from mod server)."""
-        # Validate attachment is image/video if provided
-        evidence_url = None
-        if evidence:
-            valid_types = ('image/', 'video/')
-            if not evidence.content_type or not evidence.content_type.startswith(valid_types):
-                await interaction.response.send_message(
-                    "Evidence must be an image or video file.",
-                    ephemeral=True,
-                )
-                return
-            evidence_url = evidence.url
+        # Validate evidence attachment (content type, file size, CDN expiry warning)
+        evidence_result = validate_evidence(evidence, "mute")
+        if not evidence_result.is_valid:
+            await interaction.response.send_message(
+                evidence_result.error_message,
+                ephemeral=True,
+            )
+            return
 
         await interaction.response.defer(ephemeral=False)
-        await self.execute_mute(interaction, user, duration, reason, evidence_url)
+        await self.execute_mute(interaction, user, duration, reason, evidence_result.url)
 
     # =========================================================================
     # Mute Context Menu (Right-click message)
@@ -747,12 +755,22 @@ class MuteCog(commands.Cog):
                     ("Action", "Unmute"),
                     ("User", f"{target_member} ({target_member.id})"),
                 ])
+                if self.bot.webhook_alert_service:
+                    await self.bot.webhook_alert_service.send_error_alert(
+                        "Case Log Timeout",
+                        f"Unmute case logging timed out for {target_member} ({target_member.id})"
+                    )
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Unmute"),
                     ("User", f"{target_member} ({target_member.id})"),
                     ("Error", str(e)[:100]),
                 ])
+                if self.bot.webhook_alert_service:
+                    await self.bot.webhook_alert_service.send_error_alert(
+                        "Case Log Failed",
+                        f"Unmute case logging failed for {target_member} ({target_member.id}): {str(e)[:200]}"
+                    )
 
         # ---------------------------------------------------------------------
         # Build & Send Embed

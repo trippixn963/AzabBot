@@ -25,6 +25,7 @@ from typing import Optional, TYPE_CHECKING
 
 from src.core.logger import logger
 from src.core.config import NY_TZ
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -430,7 +431,7 @@ class WebhookAlertService:
         if is_high:
             logger.warning(f"High Latency Detected: {latency_ms}ms (threshold: {LATENCY_THRESHOLD_MS}ms)")
             self._latency_degraded = True
-            asyncio.create_task(self.send_latency_alert(latency_ms))
+            _create_background_task(self.send_latency_alert(latency_ms))
 
         # Detect recovery: was degraded and now normal
         elif self._latency_degraded and not is_high:
@@ -439,7 +440,7 @@ class WebhookAlertService:
                 ("Threshold", f"{LATENCY_THRESHOLD_MS}ms"),
             ], emoji="💚")
             self._latency_degraded = False
-            asyncio.create_task(self.send_recovery_alert("Latency"))
+            _create_background_task(self.send_recovery_alert("Latency"))
 
     # =========================================================================
     # Hourly Scheduler
@@ -486,7 +487,7 @@ class WebhookAlertService:
                     logger.debug(f"Hourly Alert Error: {e}")
                     await asyncio.sleep(STATUS_CHECK_INTERVAL)
 
-        self._hourly_task = asyncio.create_task(hourly_loop())
+        self._hourly_task = create_safe_task(hourly_loop(), "Webhook Hourly Alerts")
 
     def stop_hourly_alerts(self) -> None:
         """Stop the hourly alert loop."""

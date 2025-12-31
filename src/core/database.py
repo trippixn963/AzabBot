@@ -1520,9 +1520,12 @@ class DatabaseManager:
 
         # Evict old cache entries (keep max 1000)
         if len(self._prisoner_stats_cache) > 1000:
-            oldest_key = min(self._prisoner_stats_cache.keys(),
-                           key=lambda k: self._prisoner_stats_cache[k][1])
-            del self._prisoner_stats_cache[oldest_key]
+            try:
+                oldest_key = min(self._prisoner_stats_cache.keys(),
+                               key=lambda k: self._prisoner_stats_cache[k][1])
+                del self._prisoner_stats_cache[oldest_key]
+            except (KeyError, ValueError):
+                pass  # Entry already removed by another coroutine
 
         return stats
 

@@ -31,6 +31,7 @@ from src.core.constants import (
     RATE_LIMIT_REQUESTS,
     RATE_LIMIT_BURST,
 )
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -245,7 +246,7 @@ class AzabAPI:
         await site.start()
 
         # Start cleanup task
-        self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+        self._cleanup_task = create_safe_task(self._cleanup_loop(), "Stats API Cleanup")
 
         logger.tree("Azab API Started", [
             ("Host", STATS_API_HOST),

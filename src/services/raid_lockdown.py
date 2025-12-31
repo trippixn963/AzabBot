@@ -23,6 +23,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -154,8 +155,8 @@ class RaidLockdownService:
             # Schedule auto-unlock
             if self._auto_unlock_task and not self._auto_unlock_task.done():
                 self._auto_unlock_task.cancel()
-            self._auto_unlock_task = asyncio.create_task(
-                self._auto_unlock(guild)
+            self._auto_unlock_task = create_safe_task(
+                self._auto_unlock(guild), "Raid Auto-Unlock"
             )
 
             return True

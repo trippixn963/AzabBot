@@ -125,7 +125,13 @@ class MemberEvents(commands.Cog):
                                 changed_by_member = after.guild.get_member(entry.user.id)
                             break
                 except discord.Forbidden:
-                    pass  # No audit log access
+                    logger.debug(f"Audit log access denied for role change lookup in {after.guild.name}")
+                except discord.HTTPException as e:
+                    logger.warning("Audit Log Fetch Failed", [
+                        ("Action", "member_role_update"),
+                        ("Guild", after.guild.name),
+                        ("Error", str(e)[:50]),
+                    ])
 
                 await self.bot.mod_tracker.log_role_change(
                     after, added_roles, removed_roles, changed_by_id=changed_by_id
@@ -252,7 +258,22 @@ class MemberEvents(commands.Cog):
 
             if self.bot.case_log_service:
                 mod_id = active_mute["moderator_id"]
-                await self.bot.case_log_service.log_mute_evasion_return(member, [mod_id])
+                try:
+                    await asyncio.wait_for(
+                        self.bot.case_log_service.log_mute_evasion_return(member, [mod_id]),
+                        timeout=10.0,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("Case Log Timeout", [
+                        ("Action", "Mute Evasion Return"),
+                        ("User", f"{member} ({member.id})"),
+                    ])
+                except Exception as e:
+                    logger.error("Case Log Failed", [
+                        ("Action", "Mute Evasion Return"),
+                        ("User", f"{member} ({member.id})"),
+                        ("Error", str(e)[:100]),
+                    ])
 
         except Exception as e:
             logger.error("Mute Evasion Re-apply Failed", [
@@ -337,7 +358,13 @@ class MemberEvents(commands.Cog):
                         was_banned = True
                     break
         except discord.Forbidden:
-            pass
+            logger.debug(f"Audit log access denied for ban check in {member.guild.name}")
+        except discord.HTTPException as e:
+            logger.warning("Audit Log Fetch Failed", [
+                ("Action", "ban_check"),
+                ("Guild", member.guild.name),
+                ("Error", str(e)[:50]),
+            ])
 
         leave_type = "BANNED" if was_banned else "MEMBER LEFT"
         logger.tree(leave_type, [
@@ -365,12 +392,27 @@ class MemberEvents(commands.Cog):
         ], emoji="🚪")
 
         if self.bot.case_log_service:
-            await self.bot.case_log_service.log_member_left_muted(
-                user_id=member.id,
-                display_name=member.display_name,
-                muted_at=active_mute["muted_at"],
-                avatar_url=member.display_avatar.url,
-            )
+            try:
+                await asyncio.wait_for(
+                    self.bot.case_log_service.log_member_left_muted(
+                        user_id=member.id,
+                        display_name=member.display_name,
+                        muted_at=active_mute["muted_at"],
+                        avatar_url=member.display_avatar.url,
+                    ),
+                    timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Case Log Timeout", [
+                    ("Action", "Member Left Muted"),
+                    ("User", f"{member} ({member.id})"),
+                ])
+            except Exception as e:
+                logger.error("Case Log Failed", [
+                    ("Action", "Member Left Muted"),
+                    ("User", f"{member} ({member.id})"),
+                    ("Error", str(e)[:100]),
+                ])
 
     async def _delete_linked_messages(self, member: discord.Member) -> None:
         """Delete all messages linked to a leaving member."""
@@ -534,7 +576,13 @@ class MemberEvents(commands.Cog):
                     reason = entry.reason
                     break
         except discord.Forbidden:
-            pass
+            logger.debug(f"Audit log access denied for ban moderator lookup in {guild.name}")
+        except discord.HTTPException as e:
+            logger.warning("Audit Log Fetch Failed", [
+                ("Action", "ban_moderator_lookup"),
+                ("Guild", guild.name),
+                ("Error", str(e)[:50]),
+            ])
 
         # Log to server logs
         if self.bot.logging_service and self.bot.logging_service.enabled:
@@ -569,7 +617,13 @@ class MemberEvents(commands.Cog):
                     reason = entry.reason
                     break
         except discord.Forbidden:
-            pass
+            logger.debug(f"Audit log access denied for unban moderator lookup in {guild.name}")
+        except discord.HTTPException as e:
+            logger.warning("Audit Log Fetch Failed", [
+                ("Action", "unban_moderator_lookup"),
+                ("Guild", guild.name),
+                ("Error", str(e)[:50]),
+            ])
 
         # Log to server logs
         if self.bot.logging_service and self.bot.logging_service.enabled:

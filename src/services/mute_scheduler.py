@@ -28,6 +28,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.views import CASE_EMOJI
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -87,7 +88,7 @@ class MuteScheduler:
             self.task.cancel()
 
         self.running = True
-        self.task = asyncio.create_task(self._scheduler_loop())
+        self.task = create_safe_task(self._scheduler_loop(), "Mute Scheduler Loop")
 
         # Sync mute state on startup
         await self._sync_mute_state()
@@ -174,10 +175,27 @@ class MuteScheduler:
         batch_size = 25
         for guild_id, guild_mutes in mutes_by_guild.items():
             guild = self.bot.get_guild(guild_id)
-            muted_role = guild.get_role(self.config.muted_role_id) if guild else None
+
+            # Handle guild not accessible (bot removed) - cleanup all mutes for this guild
+            if not guild:
+                logger.warning("Guild Not Accessible", [
+                    ("Guild ID", str(guild_id)),
+                    ("Affected Mutes", str(len(guild_mutes))),
+                    ("Action", "Removing stale mute records"),
+                ])
+                for mute in guild_mutes:
+                    self.db.remove_mute(
+                        user_id=mute["user_id"],
+                        guild_id=guild_id,
+                        moderator_id=self.bot.user.id,
+                        reason="Auto-unmute (guild not accessible)",
+                    )
+                continue
+
+            muted_role = guild.get_role(self.config.muted_role_id)
 
             # Log warning once per guild if role not found
-            if guild and not muted_role:
+            if not muted_role:
                 logger.warning("Muted Role Not Found", [
                     ("Guild", guild.name),
                     ("Role ID", str(self.config.muted_role_id)),
@@ -289,12 +307,27 @@ class MuteScheduler:
 
         # Log to case forum (includes guild_id for per-action case lookup)
         if self.bot.case_log_service:
-            await self.bot.case_log_service.log_mute_expired(
-                user_id=member.id,
-                display_name=member.display_name,
-                user_avatar_url=member.display_avatar.url,
-                guild_id=guild.id,
-            )
+            try:
+                await asyncio.wait_for(
+                    self.bot.case_log_service.log_mute_expired(
+                        user_id=member.id,
+                        display_name=member.display_name,
+                        user_avatar_url=member.display_avatar.url,
+                        guild_id=guild.id,
+                    ),
+                    timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Case Log Timeout", [
+                    ("Action", "Mute Expired"),
+                    ("User", f"{member} ({member.id})"),
+                ])
+            except Exception as e:
+                logger.error("Case Log Failed", [
+                    ("Action", "Mute Expired"),
+                    ("User", f"{member} ({member.id})"),
+                    ("Error", str(e)[:100]),
+                ])
 
         # DM user (silent fail)
         try:

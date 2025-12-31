@@ -130,9 +130,13 @@ class AppealService:
 
         if isinstance(channel, discord.Thread):
             self._thread_cache[thread_id] = (channel, now)
+            # Evict oldest entry if cache exceeds limit (with race condition protection)
             if len(self._thread_cache) > 50:
-                oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
-                del self._thread_cache[oldest]
+                try:
+                    oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
+                    del self._thread_cache[oldest]
+                except (KeyError, ValueError):
+                    pass  # Entry already removed by another coroutine
             return channel
 
         return None

@@ -192,30 +192,43 @@ class PurgeCog(commands.Cog):
         deleted_count = 0
         failed_count = 0
 
-        try:
-            for i in range(0, len(messages_to_delete), BULK_DELETE_LIMIT):
-                chunk = messages_to_delete[i:i + BULK_DELETE_LIMIT]
-                if chunk:
-                    await channel.delete_messages(chunk)
-                    deleted_count += len(chunk)
+        for i in range(0, len(messages_to_delete), BULK_DELETE_LIMIT):
+            chunk = messages_to_delete[i:i + BULK_DELETE_LIMIT]
+            if not chunk:
+                continue
 
-        except discord.Forbidden:
-            logger.tree("PURGE BLOCKED", [
-                ("Reason", "Cannot delete messages"),
-                ("Channel", f"{channel.name} ({channel.id})"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-            ], emoji="🚫")
-            await interaction.followup.send(
-                "I don't have permission to delete messages in this channel.",
-                ephemeral=True,
-            )
-            return
-        except discord.HTTPException as e:
-            logger.tree("PURGE PARTIAL FAIL", [
-                ("Deleted", str(deleted_count)),
-                ("Error", str(e)[:50]),
-            ], emoji="⚠️")
-            failed_count = len(messages_to_delete) - deleted_count
+            try:
+                await channel.delete_messages(chunk)
+                deleted_count += len(chunk)
+            except discord.Forbidden:
+                logger.tree("PURGE BLOCKED", [
+                    ("Reason", "Cannot delete messages"),
+                    ("Channel", f"{channel.name} ({channel.id})"),
+                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                ], emoji="🚫")
+                await interaction.followup.send(
+                    "I don't have permission to delete messages in this channel.",
+                    ephemeral=True,
+                )
+                return
+            except discord.HTTPException as e:
+                # Bulk delete failed for this chunk - fall back to individual deletion
+                # for accurate failure counting
+                logger.warning("Bulk Delete Failed", [
+                    ("Chunk", f"{i // BULK_DELETE_LIMIT + 1}"),
+                    ("Size", str(len(chunk))),
+                    ("Error", str(e)[:50]),
+                    ("Action", "Falling back to individual deletion"),
+                ])
+                for msg in chunk:
+                    try:
+                        await msg.delete()
+                        deleted_count += 1
+                    except discord.NotFound:
+                        # Message already deleted - count as success
+                        deleted_count += 1
+                    except (discord.Forbidden, discord.HTTPException):
+                        failed_count += 1
 
         # Handle old messages (delete individually if any)
         old_deleted = 0
@@ -224,7 +237,10 @@ class PurgeCog(commands.Cog):
                 try:
                     await msg.delete()
                     old_deleted += 1
-                except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+                except discord.NotFound:
+                    # Message already deleted - count as success
+                    old_deleted += 1
+                except (discord.Forbidden, discord.HTTPException):
                     failed_count += 1
 
         total_deleted = deleted_count + old_deleted

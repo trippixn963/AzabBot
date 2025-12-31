@@ -952,18 +952,30 @@ class UnmuteModal(discord.ui.Modal, title="Unmute User"):
             )
 
             # Log to case thread using case_log_service (handles per-action cases)
-            try:
-                bot = interaction.client
-                if hasattr(bot, 'case_log_service') and bot.case_log_service:
-                    await bot.case_log_service.log_unmute(
-                        user_id=self.user_id,
-                        moderator=interaction.user,
-                        display_name=member.display_name,
-                        reason=self.reason.value if self.reason.value else None,
-                        user_avatar_url=member.display_avatar.url,
+            bot = interaction.client
+            if hasattr(bot, 'case_log_service') and bot.case_log_service:
+                try:
+                    await asyncio.wait_for(
+                        bot.case_log_service.log_unmute(
+                            user_id=self.user_id,
+                            moderator=interaction.user,
+                            display_name=member.display_name,
+                            reason=self.reason.value if self.reason.value else None,
+                            user_avatar_url=member.display_avatar.url,
+                        ),
+                        timeout=10.0,
                     )
-            except Exception:
-                pass
+                except asyncio.TimeoutError:
+                    logger.warning("Case Log Timeout", [
+                        ("Action", "Unmute (Button)"),
+                        ("User", f"{member} ({member.id})"),
+                    ])
+                except Exception as e:
+                    logger.error("Case Log Failed", [
+                        ("Action", "Unmute (Button)"),
+                        ("User", f"{member} ({member.id})"),
+                        ("Error", str(e)[:100]),
+                    ])
 
         except discord.Forbidden:
             await interaction.response.send_message(
@@ -1374,11 +1386,14 @@ class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approv
                 ("Case ID", self.case_id),
                 ("Error", str(e)[:100]),
             ])
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "An error occurred while approving the case.",
-                    ephemeral=True,
-                )
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "An error occurred while approving the case.",
+                        ephemeral=True,
+                    )
+            except discord.HTTPException:
+                pass  # Interaction expired or already responded
 
 
 # =============================================================================

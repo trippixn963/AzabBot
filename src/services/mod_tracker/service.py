@@ -29,6 +29,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.views import CASE_EMOJI, MESSAGE_EMOJI, CaseButtonView, MessageButtonView
 from src.utils.rate_limiter import rate_limit
+from src.utils.async_utils import create_safe_task
 
 # Import from local package modules
 from .constants import (
@@ -171,7 +172,7 @@ class ModTrackerService(ModTrackerLogsMixin):
         """Start the background queue processor task."""
         if self._queue_processor_task is None or self._queue_processor_task.done():
             self._queue_running = True
-            self._queue_processor_task = asyncio.create_task(self._process_queue())
+            self._queue_processor_task = create_safe_task(self._process_queue(), "Mod Tracker Queue Processor")
             logger.debug("Mod Tracker: Queue processor started")
 
     async def stop_queue_processor(self, drain_timeout: float = 10.0) -> int:
@@ -476,7 +477,10 @@ class ModTrackerService(ModTrackerLogsMixin):
                         oldest_time = msg_time
                         oldest_mod = mod_id
             if oldest_mod and oldest_mod != message.author.id:
-                del self._message_cache[oldest_mod]
+                try:
+                    del self._message_cache[oldest_mod]
+                except KeyError:
+                    pass  # Already removed by another coroutine
 
     def get_cached_message(self, message_id: int) -> Optional[CachedMessage]:
         """Get a cached message by ID."""
@@ -660,7 +664,7 @@ class ModTrackerService(ModTrackerLogsMixin):
         if not self.enabled:
             return
 
-        asyncio.create_task(self._inactivity_check_loop())
+        create_safe_task(self._inactivity_check_loop(), "Mod Tracker Inactivity Checker")
         logger.tree("Mod Tracker: Inactivity Checker Started", [
             ("Check Time", "Daily at 12:00 PM EST"),
             ("Tracked Mods", str(len(self.db.get_all_tracked_mods()))),
@@ -820,7 +824,7 @@ class ModTrackerService(ModTrackerLogsMixin):
             return
 
         self._scheduler_healthy = True
-        asyncio.create_task(self._title_update_loop())
+        create_safe_task(self._title_update_loop(), "Mod Tracker Title Update")
         logger.tree("Mod Tracker: Title Update Scheduler Started", [
             ("Update Time", "Daily at 12:00 AM EST"),
             ("Status", "Healthy"),

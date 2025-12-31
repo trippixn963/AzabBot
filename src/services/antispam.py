@@ -55,6 +55,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.views import CASE_EMOJI
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -578,11 +579,11 @@ class AntiSpamService:
 
     def _start_cleanup_task(self) -> None:
         """Start background task to clean old message records."""
-        asyncio.create_task(self._cleanup_loop())
+        create_safe_task(self._cleanup_loop(), "AntiSpam Cleanup Loop")
 
     def _start_reputation_task(self) -> None:
         """Start background task to update reputation scores."""
-        asyncio.create_task(self._reputation_loop())
+        create_safe_task(self._reputation_loop(), "AntiSpam Reputation Loop")
 
     async def _cleanup_loop(self) -> None:
         """Periodically clean up old message records and decay DB violations."""
@@ -661,7 +662,10 @@ class AntiSpamService:
         for webhook_id, state in list(self._webhook_states.items()):
             state.messages = [t for t in state.messages if t > webhook_cutoff]
             if not state.messages:
-                del self._webhook_states[webhook_id]
+                try:
+                    del self._webhook_states[webhook_id]
+                except KeyError:
+                    pass  # Already removed
 
         # Clean old join records
         join_cutoff = now - timedelta(seconds=RAID_TIME_WINDOW * 2)
@@ -671,7 +675,10 @@ class AntiSpamService:
                 if j.join_time > join_cutoff
             ]
             if not self._recent_joins[guild_id]:
-                del self._recent_joins[guild_id]
+                try:
+                    del self._recent_joins[guild_id]
+                except KeyError:
+                    pass  # Already removed
 
     # =========================================================================
     # Reputation System
@@ -1540,17 +1547,30 @@ class AntiSpamService:
             duration_str = f"{duration // 60} minute(s)"
 
         try:
-            case_info = await self.bot.case_log_service.log_mute(
-                user=member,
-                moderator=self.bot.user,
-                duration=duration_str,
-                reason=f"Auto-spam detection: {spam_type} (violation #{violation_count})",
-                is_extension=False,
-                evidence=None,
+            case_info = await asyncio.wait_for(
+                self.bot.case_log_service.log_mute(
+                    user=member,
+                    moderator=self.bot.user,
+                    duration=duration_str,
+                    reason=f"Auto-spam detection: {spam_type} (violation #{violation_count})",
+                    is_extension=False,
+                    evidence=None,
+                ),
+                timeout=10.0,
             )
             return case_info
+        except asyncio.TimeoutError:
+            logger.warning("Case Log Timeout", [
+                ("Action", "Auto-Spam Mute"),
+                ("User", f"{member} ({member.id})"),
+            ])
+            return None
         except Exception as e:
-            logger.warning(f"Failed to open spam case: {e}")
+            logger.error("Case Log Failed", [
+                ("Action", "Auto-Spam Mute"),
+                ("User", f"{member} ({member.id})"),
+                ("Error", str(e)[:100]),
+            ])
             return None
 
     async def _log_spam(

@@ -23,6 +23,7 @@ from src.core.database import get_db
 from src.core.constants import EMOJI_USERID, SECONDS_PER_DAY, SECONDS_PER_HOUR
 from src.utils.views import DownloadButton, CASE_EMOJI
 from src.utils.rate_limiter import rate_limit
+from src.utils.async_utils import create_safe_task
 
 # Import from local package
 from .categories import LogCategory, THREAD_DESCRIPTIONS
@@ -3617,7 +3618,7 @@ class LoggingService:
             logger.debug("Log retention cleanup disabled")
             return
 
-        asyncio.create_task(self._retention_cleanup_loop())
+        create_safe_task(self._retention_cleanup_loop(), "Log Retention Cleanup")
         logger.tree("Log Retention Started", [
             ("Retention", f"{self.config.log_retention_days} days"),
             ("Schedule", "Daily at 3:00 AM EST"),

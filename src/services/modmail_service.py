@@ -113,7 +113,10 @@ class ModmailService:
             if now - cached_at < self.THREAD_CACHE_TTL:
                 return cached_thread
             else:
-                del self._thread_cache[thread_id]
+                try:
+                    del self._thread_cache[thread_id]
+                except KeyError:
+                    pass  # Already removed
 
         # Fetch thread
         channel = await safe_fetch_channel(self.bot, thread_id)
@@ -123,8 +126,11 @@ class ModmailService:
         if isinstance(channel, discord.Thread):
             self._thread_cache[thread_id] = (channel, now)
             if len(self._thread_cache) > 50:
-                oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
-                del self._thread_cache[oldest]
+                try:
+                    oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
+                    del self._thread_cache[oldest]
+                except (KeyError, ValueError):
+                    pass  # Entry already removed by another coroutine
             return channel
 
         return None

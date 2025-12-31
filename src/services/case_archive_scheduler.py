@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Optional
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -86,7 +87,7 @@ class CaseArchiveScheduler:
             self.task.cancel()
 
         self.running = True
-        self.task = asyncio.create_task(self._scheduler_loop())
+        self.task = create_safe_task(self._scheduler_loop(), "Case Archive Scheduler")
 
         logger.tree("Case Archive Scheduler Started", [
             ("Retention", f"{CASE_RETENTION_DAYS} days"),

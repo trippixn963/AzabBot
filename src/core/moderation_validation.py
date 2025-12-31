@@ -458,11 +458,104 @@ async def send_management_blocked_embed(
 
 
 # =============================================================================
+# Evidence Validation
+# =============================================================================
+
+# Maximum evidence file size (25 MB)
+MAX_EVIDENCE_SIZE_MB = 25
+MAX_EVIDENCE_SIZE_BYTES = MAX_EVIDENCE_SIZE_MB * 1024 * 1024
+
+# Valid evidence content types
+VALID_EVIDENCE_TYPES = ('image/', 'video/')
+
+
+@dataclass
+class EvidenceResult:
+    """Result of evidence validation."""
+    is_valid: bool
+    url: Optional[str] = None
+    error_message: Optional[str] = None
+    warning: Optional[str] = None  # For non-fatal warnings (e.g., CDN expiry)
+
+
+def validate_evidence(
+    attachment: Optional[discord.Attachment],
+    action: str,
+) -> EvidenceResult:
+    """
+    Validate an evidence attachment.
+
+    Checks:
+    1. Content type (must be image or video)
+    2. File size (max 25 MB)
+    3. Discord CDN URL expiration warning
+
+    Args:
+        attachment: The Discord attachment to validate.
+        action: Action name for logging (e.g., "ban", "mute").
+
+    Returns:
+        EvidenceResult with validation status, URL, and any warnings.
+    """
+    if not attachment:
+        return EvidenceResult(is_valid=True, url=None)
+
+    # Check content type
+    if not attachment.content_type or not attachment.content_type.startswith(VALID_EVIDENCE_TYPES):
+        logger.tree(f"{action.upper()} EVIDENCE REJECTED", [
+            ("Reason", "Invalid content type"),
+            ("Type", attachment.content_type or "unknown"),
+            ("Filename", attachment.filename),
+        ], emoji="🚫")
+        return EvidenceResult(
+            is_valid=False,
+            error_message="Evidence must be an image or video file.",
+        )
+
+    # Check file size
+    if attachment.size > MAX_EVIDENCE_SIZE_BYTES:
+        size_mb = attachment.size / (1024 * 1024)
+        logger.tree(f"{action.upper()} EVIDENCE REJECTED", [
+            ("Reason", "File too large"),
+            ("Size", f"{size_mb:.1f} MB"),
+            ("Max", f"{MAX_EVIDENCE_SIZE_MB} MB"),
+            ("Filename", attachment.filename),
+        ], emoji="🚫")
+        return EvidenceResult(
+            is_valid=False,
+            error_message=f"Evidence file is too large ({size_mb:.1f} MB). Maximum size is {MAX_EVIDENCE_SIZE_MB} MB.",
+        )
+
+    # Check for Discord CDN URL (these expire)
+    warning = None
+    if 'cdn.discordapp.com' in attachment.url or 'media.discordapp.net' in attachment.url:
+        warning = "Discord CDN URLs may expire. Consider re-uploading to a permanent host."
+        logger.warning("Evidence URL May Expire", [
+            ("Action", action),
+            ("Filename", attachment.filename),
+            ("Note", "Discord CDN URLs expire after message deletion"),
+        ])
+
+    logger.tree(f"{action.upper()} EVIDENCE VALIDATED", [
+        ("Filename", attachment.filename),
+        ("Type", attachment.content_type),
+        ("Size", f"{attachment.size / 1024:.1f} KB"),
+    ], emoji="📎")
+
+    return EvidenceResult(
+        is_valid=True,
+        url=attachment.url,
+        warning=warning,
+    )
+
+
+# =============================================================================
 # Module Export
 # =============================================================================
 
 __all__ = [
     "ValidationResult",
+    "EvidenceResult",
     "get_target_guild",
     "is_cross_server",
     "validate_self_action",
@@ -472,5 +565,7 @@ __all__ = [
     "validate_management_protection",
     "validate_bot_can_action",
     "validate_moderation_target",
+    "validate_evidence",
     "send_management_blocked_embed",
+    "MAX_EVIDENCE_SIZE_MB",
 ]
