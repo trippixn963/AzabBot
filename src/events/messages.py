@@ -661,17 +661,17 @@ class MessageEvents(commands.Cog):
                     "url": sticker.url,
                 })
 
-        # Copy attachment bytes to snipe cache BEFORE logging service pops it
-        # This ensures /snipe can reliably display deleted images
+        # Get attachment bytes from cache BEFORE logging service pops it
+        # Store as base64 in database for reliable /snipe display
+        attachment_data = None
         if message.id in self.bot._attachment_cache:
-            # LRU eviction for snipe attachment cache
-            while len(self.bot._snipe_attachment_cache) >= self.bot._snipe_attachment_cache_limit:
-                try:
-                    self.bot._snipe_attachment_cache.popitem(last=False)
-                except KeyError:
-                    break
-            # Copy (not move) the attachment data
-            self.bot._snipe_attachment_cache[message.id] = self.bot._attachment_cache[message.id]
+            import base64
+            attachment_data = []
+            for filename, file_bytes in self.bot._attachment_cache[message.id]:
+                attachment_data.append({
+                    "filename": filename,
+                    "data": base64.b64encode(file_bytes).decode("utf-8"),
+                })
 
         # Save to database (persists across restarts)
         self.bot.db.save_snipe(
@@ -686,6 +686,7 @@ class MessageEvents(commands.Cog):
             attachment_urls=attachment_urls if attachment_urls else None,
             sticker_urls=sticker_urls if sticker_urls else None,
             message_id=message.id,
+            attachment_data=attachment_data,
         )
 
         # Tree logging for message deletions

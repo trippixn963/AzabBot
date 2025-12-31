@@ -13,6 +13,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import base64
 from datetime import datetime
 from io import BytesIO
 from typing import TYPE_CHECKING, Optional, List
@@ -119,19 +120,14 @@ class SnipeCog(commands.Cog):
             deleted_at = snipe_data.get("deleted_at", 0)
 
             # Get snipe data
-            message_id = snipe_data.get("message_id")
             author_id = snipe_data.get("author_id")
             author_name = snipe_data.get("author_name", "Unknown")
             author_display = snipe_data.get("author_display", "Unknown")
             author_avatar = snipe_data.get("author_avatar")
             content = snipe_data.get("content", "")
             attachment_urls = snipe_data.get("attachment_urls", [])
+            attachment_data = snipe_data.get("attachment_data", [])  # Base64 encoded files from DB
             sticker_urls = snipe_data.get("sticker_urls", [])
-
-            # Check if we have cached file bytes (reliable, doesn't expire)
-            cached_files: List[tuple] = []
-            if message_id:
-                cached_files = self.bot._snipe_attachment_cache.get(message_id, [])
 
             # Tree logging
             content_preview = (content[:50] + "...") if len(content) > 50 else (content or "(no text)")
@@ -142,7 +138,7 @@ class SnipeCog(commands.Cog):
                 ("Message #", str(number)),
                 ("Content", content_preview),
                 ("Attachments", str(len(attachment_urls))),
-                ("Cached Files", str(len(cached_files))),
+                ("Cached Files", str(len(attachment_data))),
                 ("Stickers", str(len(sticker_urls))),
             ], emoji="🎯")
 
@@ -158,20 +154,24 @@ class SnipeCog(commands.Cog):
             )
             embed.set_footer(text=f"Deleted • Message #{number}")
 
-            # Prepare files to upload from cache
+            # Prepare files to upload from database cache
             files_to_send: List[discord.File] = []
             first_image_filename = None
 
-            if cached_files:
-                # We have actual file bytes - create discord.File objects
-                for filename, file_bytes in cached_files[:4]:  # Limit to 4 files
-                    file_obj = discord.File(BytesIO(file_bytes), filename=filename)
-                    files_to_send.append(file_obj)
-                    # Track first image for embed
-                    if not first_image_filename:
-                        ext = filename.lower().split(".")[-1] if "." in filename else ""
-                        if ext in ("png", "jpg", "jpeg", "gif", "webp"):
-                            first_image_filename = filename
+            if attachment_data:
+                # We have actual file bytes stored in DB - create discord.File objects
+                for att in attachment_data[:4]:  # Limit to 4 files
+                    filename = att.get("filename", "file")
+                    data_b64 = att.get("data", "")
+                    if data_b64:
+                        file_bytes = base64.b64decode(data_b64)
+                        file_obj = discord.File(BytesIO(file_bytes), filename=filename)
+                        files_to_send.append(file_obj)
+                        # Track first image for embed
+                        if not first_image_filename:
+                            ext = filename.lower().split(".")[-1] if "." in filename else ""
+                            if ext in ("png", "jpg", "jpeg", "gif", "webp"):
+                                first_image_filename = filename
 
                 # Set embed image to first uploaded image
                 if first_image_filename:

@@ -125,11 +125,6 @@ class AzabBot(commands.Bot):
         self._attachment_cache: OrderedDict[int, List[tuple]] = OrderedDict()
         self._attachment_cache_limit: int = 500
 
-        # Snipe attachment cache - stores actual file bytes for reliable snipe display
-        # Keyed by message_id, stores List[tuple(filename, bytes)]
-        self._snipe_attachment_cache: OrderedDict[int, List[tuple]] = OrderedDict()
-        self._snipe_attachment_cache_limit: int = 100  # Keep fewer, but reliable
-
         # Message content cache (OrderedDict for O(1) LRU eviction)
         self._message_cache: OrderedDict[int, dict] = OrderedDict()
         self._message_cache_limit: int = 5000

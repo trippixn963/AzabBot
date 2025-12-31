@@ -1046,6 +1046,7 @@ class DatabaseManager:
                 content TEXT,
                 attachment_names TEXT,
                 attachment_urls TEXT,
+                attachment_data TEXT,
                 sticker_urls TEXT,
                 deleted_at REAL NOT NULL
             )
@@ -1058,6 +1059,7 @@ class DatabaseManager:
             ("attachment_urls", "TEXT"),
             ("sticker_urls", "TEXT"),
             ("message_id", "INTEGER"),
+            ("attachment_data", "TEXT"),  # Base64-encoded file bytes
         ]:
             try:
                 cursor.execute(f"ALTER TABLE snipe_cache ADD COLUMN {column} {col_type}")
@@ -4479,6 +4481,7 @@ class DatabaseManager:
         attachment_urls: Optional[List[Dict[str, Any]]] = None,
         sticker_urls: Optional[List[Dict[str, Any]]] = None,
         message_id: Optional[int] = None,
+        attachment_data: Optional[List[Dict[str, str]]] = None,
     ) -> None:
         """
         Save a deleted message to snipe cache.
@@ -4494,18 +4497,20 @@ class DatabaseManager:
             deleted_at: Timestamp when deleted.
             attachment_urls: List of attachment data dicts with url, filename, content_type, size.
             sticker_urls: List of sticker data dicts with name, url.
-            message_id: Original message ID for attachment cache lookup.
+            message_id: Original message ID (legacy, no longer used).
+            attachment_data: List of dicts with filename and base64-encoded file bytes.
         """
         import json
 
         self.execute(
             """INSERT INTO snipe_cache
-               (channel_id, message_id, author_id, author_name, author_display, author_avatar, content, attachment_names, attachment_urls, sticker_urls, deleted_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (channel_id, message_id, author_id, author_name, author_display, author_avatar, content, attachment_names, attachment_urls, attachment_data, sticker_urls, deleted_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 channel_id, message_id, author_id, author_name, author_display, author_avatar, content,
                 json.dumps(attachment_names),
                 json.dumps(attachment_urls) if attachment_urls else None,
+                json.dumps(attachment_data) if attachment_data else None,
                 json.dumps(sticker_urls) if sticker_urls else None,
                 deleted_at,
             )
@@ -4534,7 +4539,7 @@ class DatabaseManager:
         """
         rows = self.fetchall(
             """SELECT message_id, author_id, author_name, author_display, author_avatar, content,
-                      attachment_names, attachment_urls, sticker_urls, deleted_at
+                      attachment_names, attachment_urls, attachment_data, sticker_urls, deleted_at
                FROM snipe_cache
                WHERE channel_id = ?
                ORDER BY deleted_at DESC
@@ -4553,6 +4558,7 @@ class DatabaseManager:
                 "content": row["content"],
                 "attachment_names": _safe_json_loads(row["attachment_names"], default=[]),
                 "attachment_urls": _safe_json_loads(row["attachment_urls"], default=[]),
+                "attachment_data": _safe_json_loads(row["attachment_data"], default=[]),
                 "sticker_urls": _safe_json_loads(row["sticker_urls"], default=[]),
                 "deleted_at": row["deleted_at"],
             })
