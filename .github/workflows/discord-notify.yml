@@ -33,17 +33,15 @@ jobs:
           elif echo "$TITLE" | grep -qiE '^doc|readme'; then
             echo "color=3447003" >> $GITHUB_OUTPUT   # Blue for docs
             echo "type=📚 Documentation" >> $GITHUB_OUTPUT
-          elif echo "$TITLE" | grep -qiE '^test'; then
-            echo "color=16776960" >> $GITHUB_OUTPUT  # Yellow for tests
-            echo "type=🧪 Tests" >> $GITHUB_OUTPUT
           else
             echo "color=9807270" >> $GITHUB_OUTPUT   # Gray for other
             echo "type=📝 Update" >> $GITHUB_OUTPUT
           fi
 
-          # Get body and convert bullet points to numbered list
+          # Get body - extract bullet points and convert to numbered list
+          BODY=$(git log -1 --pretty=%b | grep -E '^- ' | nl -w1 -s'. ' | sed 's/^[[:space:]]*//' | sed 's/^[0-9]*\. - /&/' | sed 's/- //')
           echo "body<<EOF" >> $GITHUB_OUTPUT
-          git log -1 --pretty=%b | grep -E '^- ' | nl -w1 -s'. ' | sed 's/^//' >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
           echo "author=$(git log -1 --pretty=%an)" >> $GITHUB_OUTPUT
@@ -52,7 +50,9 @@ jobs:
           # Get file count and list
           FILE_COUNT=$(git diff --name-only HEAD~1 HEAD | wc -l | tr -d ' ')
           echo "file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
-          echo "files=$(git diff --name-only HEAD~1 HEAD | head -8 | tr '\n' ', ' | sed 's/,$//')" >> $GITHUB_OUTPUT
+
+          FILES=$(git diff --name-only HEAD~1 HEAD | head -8 | tr '\n' ',' | sed 's/,$//')
+          echo "files=$FILES" >> $GITHUB_OUTPUT
 
           # Get stats
           STATS=$(git diff --shortstat HEAD~1 HEAD | sed 's/ files\? changed//' | sed 's/ insertions\?(+)/+/' | sed 's/ deletions\?(-)/−/' | tr -d ' ')
@@ -61,65 +61,90 @@ jobs:
       - name: Send Discord notification
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          COMMIT_TITLE: ${{ steps.commit.outputs.title }}
-          COMMIT_BODY: ${{ steps.commit.outputs.body }}
-          COMMIT_FILES: ${{ steps.commit.outputs.files }}
         run: |
-          # Escape special characters for JSON using env vars (safer for special chars)
-          TITLE=$(echo "$COMMIT_TITLE" | sed 's/"/\\"/g' | head -c 200)
-          BODY=$(echo "$COMMIT_BODY" | sed 's/- //g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}' | sed 's/\\n$//')
-          FILES=$(echo "$COMMIT_FILES" | sed 's/"/\\"/g')
+          # Read values into variables
+          TITLE='${{ steps.commit.outputs.title }}'
+          BODY='${{ steps.commit.outputs.body }}'
+          FILES='${{ steps.commit.outputs.files }}'
+          TYPE='${{ steps.commit.outputs.type }}'
+          COLOR='${{ steps.commit.outputs.color }}'
+          FILE_COUNT='${{ steps.commit.outputs.file_count }}'
+          SHA='${{ steps.commit.outputs.sha }}'
+          STATS='${{ steps.commit.outputs.stats }}'
+          AUTHOR='${{ steps.commit.outputs.author }}'
+          BRANCH='${{ github.ref_name }}'
+          REPO='${{ github.repository }}'
+          COMMIT_SHA='${{ github.sha }}'
+          BEFORE='${{ github.event.before }}'
+          ACTOR='${{ github.actor }}'
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-          # Build description
+          # Build description with jq
           if [ -n "$BODY" ]; then
-            DESC="**$TITLE**\n\n\`\`\`\n$BODY\`\`\`"
+            DESC=$(jq -n --arg t "$TITLE" --arg b "$BODY" '"**" + $t + "**\n\n```\n" + $b + "```"')
           else
-            DESC="**$TITLE**"
+            DESC=$(jq -n --arg t "$TITLE" '"**" + $t + "**"')
           fi
 
-          curl -H "Content-Type: application/json" -X POST "$WEBHOOK_URL" -d "{
-            \"embeds\": [{
-              \"title\": \"${{ steps.commit.outputs.type }}\",
-              \"description\": \"$DESC\",
-              \"color\": ${{ steps.commit.outputs.color }},
-              \"fields\": [
-                {
-                  \"name\": \"📁 Files Changed\",
-                  \"value\": \"\`${{ steps.commit.outputs.file_count }}\` files\n\`\`\`$FILES\`\`\`\",
-                  \"inline\": false
+          # Build full payload with jq (handles all escaping automatically)
+          jq -n \
+            --argjson desc "$DESC" \
+            --arg type "$TYPE" \
+            --argjson color "$COLOR" \
+            --arg file_count "$FILE_COUNT" \
+            --arg files "$FILES" \
+            --arg sha "$SHA" \
+            --arg stats "$STATS" \
+            --arg branch "$BRANCH" \
+            --arg repo "$REPO" \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg before "$BEFORE" \
+            --arg author "$AUTHOR" \
+            --arg actor "$ACTOR" \
+            --arg timestamp "$TIMESTAMP" \
+            '{
+              embeds: [{
+                title: $type,
+                description: $desc,
+                color: $color,
+                fields: [
+                  {
+                    name: "📁 Files Changed",
+                    value: ("`" + $file_count + "` files\n```" + $files + "```"),
+                    inline: false
+                  },
+                  {
+                    name: "🔗 Commit",
+                    value: ("[`" + $sha + "`](https://github.com/" + $repo + "/commit/" + $commit_sha + ")"),
+                    inline: true
+                  },
+                  {
+                    name: "📊 Changes",
+                    value: ("`" + $stats + "`"),
+                    inline: true
+                  },
+                  {
+                    name: "🌿 Branch",
+                    value: ("`" + $branch + "`"),
+                    inline: true
+                  },
+                  {
+                    name: "🔍 Compare",
+                    value: ("[View Diff](https://github.com/" + $repo + "/compare/" + $before + "..." + $commit_sha + ")"),
+                    inline: true
+                  }
+                ],
+                author: {
+                  name: $author,
+                  icon_url: ("https://github.com/" + $actor + ".png")
                 },
-                {
-                  \"name\": \"🔗 Commit\",
-                  \"value\": \"[\`${{ steps.commit.outputs.sha }}\`](https://github.com/${{ github.repository }}/commit/${{ github.sha }})\",
-                  \"inline\": true
-                },
-                {
-                  \"name\": \"📊 Changes\",
-                  \"value\": \"\`${{ steps.commit.outputs.stats }}\`\",
-                  \"inline\": true
-                },
-                {
-                  \"name\": \"🌿 Branch\",
-                  \"value\": \"\`${{ github.ref_name }}\`\",
-                  \"inline\": true
-                },
-                {
-                  \"name\": \"🔍 Compare\",
-                  \"value\": \"[View Diff](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }})\",
-                  \"inline\": true
+                timestamp: $timestamp,
+                footer: {
+                  text: ("AzabBot • " + $repo),
+                  icon_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
                 }
-              ],
-              \"author\": {
-                \"name\": \"${{ steps.commit.outputs.author }}\",
-                \"icon_url\": \"https://github.com/${{ github.actor }}.png\"
-              },
-              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
-              \"footer\": {
-                \"text\": \"AzabBot • ${{ github.repository }}\",
-                \"icon_url\": \"https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png\"
-              }
-            }]
-          }"
+              }]
+            }' | curl -s -H "Content-Type: application/json" -X POST -d @- "$WEBHOOK_URL"
 
       - name: Update category name with commit ID
         env:
