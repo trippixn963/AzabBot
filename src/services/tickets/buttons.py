@@ -328,7 +328,7 @@ class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt
         # Send link button to open transcript in browser (works on mobile)
         view = discord.ui.View()
         view.add_item(discord.ui.Button(
-            label="Open Transcript",
+            label="Transcript",
             style=discord.ButtonStyle.link,
             url=f"https://trippixn.com/api/azab/transcripts/{self.ticket_id}",
             emoji=TRANSCRIPT_EMOJI,

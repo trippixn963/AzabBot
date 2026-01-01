@@ -543,7 +543,7 @@ class TicketService:
                 )
                 dm_view = discord.ui.View()
                 dm_view.add_item(discord.ui.Button(
-                    label="View Transcript",
+                    label="Transcript",
                     style=discord.ButtonStyle.link,
                     url=f"https://trippixn.com/api/azab/transcripts/{ticket_id}",
                     emoji=TRANSCRIPT_EMOJI,
@@ -567,6 +567,8 @@ class TicketService:
                     closed_by=closed_by,
                     category=ticket["category"],
                     reason=reason,
+                    thread_id=ticket["thread_id"],
+                    guild_id=closed_by.guild.id,
                 )
                 if transcript_messages:
                     await self.bot.logging_service.log_ticket_transcript(
@@ -634,6 +636,8 @@ class TicketService:
                     user=ticket_user,
                     reopened_by=reopened_by,
                     category=ticket["category"],
+                    thread_id=ticket["thread_id"],
+                    guild_id=reopened_by.guild.id,
                 )
             except Exception as e:
                 logger.error("Failed to log ticket reopen", [("Error", str(e))])
@@ -703,6 +707,9 @@ class TicketService:
                     user=ticket_user,
                     staff=staff,
                     category=ticket["category"],
+                    thread_id=ticket["thread_id"],
+                    guild_id=staff.guild.id,
+                    created_at=ticket["created_at"],
                 )
             except Exception as e:
                 logger.error("Failed to log ticket claim", [("Error", str(e))])
@@ -761,6 +768,8 @@ class TicketService:
                     old_priority=old_priority,
                     new_priority=priority,
                     category=ticket["category"],
+                    thread_id=ticket["thread_id"],
+                    guild_id=changed_by.guild.id,
                 )
             except Exception as e:
                 logger.error("Failed to log priority change", [("Error", str(e))])
@@ -811,6 +820,8 @@ class TicketService:
                     ticket_user=ticket_user,
                     added_user=user,
                     added_by=added_by,
+                    thread_id=thread.id,
+                    guild_id=added_by.guild.id,
                 )
             except Exception as e:
                 logger.error("Failed to log user added", [("Error", str(e))])
@@ -867,6 +878,8 @@ class TicketService:
                     new_staff=new_staff,
                     transferred_by=transferred_by,
                     category=ticket["category"],
+                    thread_id=ticket["thread_id"],
+                    guild_id=transferred_by.guild.id,
                 )
             except Exception as e:
                 logger.error("Failed to log ticket transfer", [("Error", str(e))])

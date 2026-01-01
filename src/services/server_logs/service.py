@@ -94,8 +94,9 @@ class LogView(discord.ui.View):
         self.add_item(DownloadButton(user_id))
 
 
-# Custom emoji for transcript button
+# Custom emojis for log buttons
 TRANSCRIPT_EMOJI = discord.PartialEmoji(name="transcript", id=1455205892319481916)
+TICKET_EMOJI = discord.PartialEmoji(name="ticket", id=1455177168098295983)
 
 
 class TranscriptLinkView(discord.ui.View):
@@ -104,10 +105,24 @@ class TranscriptLinkView(discord.ui.View):
     def __init__(self, transcript_url: str):
         super().__init__(timeout=None)
         self.add_item(discord.ui.Button(
-            label="View Transcript",
+            label="Transcript",
             url=transcript_url,
             style=discord.ButtonStyle.link,
             emoji=TRANSCRIPT_EMOJI,
+        ))
+
+
+class TicketLogView(discord.ui.View):
+    """View with Open Ticket button for ticket logs."""
+
+    def __init__(self, guild_id: int, thread_id: int):
+        super().__init__(timeout=None)
+        ticket_url = f"https://discord.com/channels/{guild_id}/{thread_id}"
+        self.add_item(discord.ui.Button(
+            label="Open Ticket",
+            url=ticket_url,
+            style=discord.ButtonStyle.link,
+            emoji=TICKET_EMOJI,
         ))
 
 
@@ -2881,10 +2896,12 @@ class LoggingService:
         embed.add_field(name="Category", value=category.title(), inline=True)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         embed.add_field(name="Subject", value=subject[:200] if subject else "No subject", inline=False)
-        embed.add_field(name="Thread", value=f"<#{thread_id}>", inline=True)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.TICKETS, embed, user_id=user.id)
+        view = TicketLogView(guild_id, thread_id)
+        view.add_item(UserIdButton(user.id))
+
+        await self._send_log(LogCategory.TICKETS, embed, view=view)
 
     async def log_ticket_claimed(
         self,
@@ -2892,10 +2909,29 @@ class LoggingService:
         user: discord.User,
         staff: discord.Member,
         category: str,
+        thread_id: int,
+        guild_id: int,
+        created_at: float,
     ) -> None:
         """Log a ticket claim."""
         if not self.enabled:
             return
+
+        # Calculate response time
+        import time
+        response_seconds = int(time.time() - created_at)
+        if response_seconds < 60:
+            response_time = f"{response_seconds}s"
+        elif response_seconds < 3600:
+            response_time = f"{response_seconds // 60}m {response_seconds % 60}s"
+        elif response_seconds < 86400:
+            hours = response_seconds // 3600
+            mins = (response_seconds % 3600) // 60
+            response_time = f"{hours}h {mins}m"
+        else:
+            days = response_seconds // 86400
+            hours = (response_seconds % 86400) // 3600
+            response_time = f"{days}d {hours}h"
 
         embed = self._create_embed(
             "✋ Ticket Claimed",
@@ -2905,11 +2941,15 @@ class LoggingService:
         )
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Category", value=category.title(), inline=True)
+        embed.add_field(name="Response Time", value=f"⏱️ {response_time}", inline=True)
         embed.add_field(name="Opened By", value=self._format_user_field(user), inline=True)
         embed.add_field(name="Claimed By", value=self._format_user_field(staff), inline=True)
         self._set_user_thumbnail(embed, staff)
 
-        await self._send_log(LogCategory.TICKETS, embed, user_id=user.id)
+        view = TicketLogView(guild_id, thread_id)
+        view.add_item(UserIdButton(user.id))
+
+        await self._send_log(LogCategory.TICKETS, embed, view=view)
 
     async def log_ticket_closed(
         self,
@@ -2917,6 +2957,8 @@ class LoggingService:
         user: discord.User,
         closed_by: discord.Member,
         category: str,
+        thread_id: int,
+        guild_id: int,
         reason: Optional[str] = None,
     ) -> None:
         """Log a ticket close."""
@@ -2937,14 +2979,19 @@ class LoggingService:
             embed.add_field(name="Reason", value=reason[:500], inline=False)
         self._set_user_thumbnail(embed, closed_by)
 
-        # Create view with transcript button + standard log buttons
+        # Create view with Open Ticket + Transcript + Case buttons
+        view = TicketLogView(guild_id, thread_id)
         transcript_url = f"https://trippixn.com/api/azab/transcripts/{ticket_id}"
-        view = TranscriptLinkView(transcript_url)
-        # Add standard log buttons
+        view.add_item(discord.ui.Button(
+            label="Transcript",
+            url=transcript_url,
+            style=discord.ButtonStyle.link,
+            emoji=TRANSCRIPT_EMOJI,
+        ))
+        # Add case button if user has a case log
         db = get_db()
         case = db.get_case_log(user.id)
         if case:
-            guild_id = closed_by.guild.id if hasattr(closed_by, 'guild') else 0
             case_url = f"https://discord.com/channels/{guild_id}/{case['thread_id']}"
             view.add_item(discord.ui.Button(
                 label="Case",
@@ -2962,6 +3009,8 @@ class LoggingService:
         user: discord.User,
         reopened_by: discord.Member,
         category: str,
+        thread_id: int,
+        guild_id: int,
     ) -> None:
         """Log a ticket reopen."""
         if not self.enabled:
@@ -2979,7 +3028,10 @@ class LoggingService:
         embed.add_field(name="Reopened By", value=self._format_user_field(reopened_by), inline=True)
         self._set_user_thumbnail(embed, reopened_by)
 
-        await self._send_log(LogCategory.TICKETS, embed, user_id=user.id)
+        view = TicketLogView(guild_id, thread_id)
+        view.add_item(UserIdButton(user.id))
+
+        await self._send_log(LogCategory.TICKETS, embed, view=view)
 
     async def log_ticket_user_added(
         self,
@@ -2987,6 +3039,8 @@ class LoggingService:
         ticket_user: discord.User,
         added_user: discord.User,
         added_by: discord.Member,
+        thread_id: int,
+        guild_id: int,
     ) -> None:
         """Log a user being added to a ticket."""
         if not self.enabled:
@@ -3004,7 +3058,10 @@ class LoggingService:
         embed.add_field(name="Added By", value=self._format_user_field(added_by), inline=True)
         self._set_user_thumbnail(embed, added_user)
 
-        await self._send_log(LogCategory.TICKETS, embed, user_id=added_user.id)
+        view = TicketLogView(guild_id, thread_id)
+        view.add_item(UserIdButton(added_user.id))
+
+        await self._send_log(LogCategory.TICKETS, embed, view=view)
 
     async def log_ticket_transferred(
         self,
@@ -3013,6 +3070,8 @@ class LoggingService:
         new_staff: discord.Member,
         transferred_by: discord.Member,
         category: str,
+        thread_id: int,
+        guild_id: int,
     ) -> None:
         """Log a ticket transfer."""
         if not self.enabled:
@@ -3031,7 +3090,10 @@ class LoggingService:
         embed.add_field(name="Transferred By", value=self._format_user_field(transferred_by), inline=True)
         self._set_user_thumbnail(embed, new_staff)
 
-        await self._send_log(LogCategory.TICKETS, embed, user_id=ticket_user.id)
+        view = TicketLogView(guild_id, thread_id)
+        view.add_item(UserIdButton(ticket_user.id))
+
+        await self._send_log(LogCategory.TICKETS, embed, view=view)
 
     async def log_ticket_priority_changed(
         self,
@@ -3041,6 +3103,8 @@ class LoggingService:
         old_priority: str,
         new_priority: str,
         category: str,
+        thread_id: int,
+        guild_id: int,
     ) -> None:
         """Log a ticket priority change."""
         if not self.enabled:
@@ -3066,7 +3130,10 @@ class LoggingService:
         embed.add_field(name="Changed By", value=self._format_user_field(changed_by), inline=True)
         self._set_user_thumbnail(embed, changed_by)
 
-        await self._send_log(LogCategory.TICKETS, embed, user_id=ticket_user.id)
+        view = TicketLogView(guild_id, thread_id)
+        view.add_item(UserIdButton(ticket_user.id))
+
+        await self._send_log(LogCategory.TICKETS, embed, view=view)
 
     async def log_ticket_transcript(
         self,
@@ -3137,18 +3204,11 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, user)
 
-        # Send the log and get the message back
-        message = await self._send_log(LogCategory.TICKET_TRANSCRIPTS, embed, files=[transcript_file], user_id=user.id)
+        # Create view with link button to website transcript
+        transcript_url = f"https://trippixn.com/api/azab/transcripts/{ticket_id}"
+        view = TranscriptLinkView(transcript_url)
 
-        # If message sent successfully, edit to add transcript link button
-        if message and message.attachments:
-            attachment_url = message.attachments[0].url
-            # Create view with link button to open transcript in browser
-            view = TranscriptLinkView(attachment_url)
-            try:
-                await message.edit(view=view)
-            except Exception as e:
-                logger.debug(f"Failed to add transcript link button: {e}")
+        await self._send_log(LogCategory.TICKET_TRANSCRIPTS, embed, files=[transcript_file], view=view, user_id=user.id)
 
     def _generate_transcript_html(
         self,
