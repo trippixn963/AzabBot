@@ -31,6 +31,7 @@ from .constants import (
 def build_control_panel_embed(
     ticket: dict,
     user: Optional[discord.User] = None,
+    closed_by: Optional[discord.Member] = None,
 ) -> discord.Embed:
     """
     Build the main control panel embed for a ticket.
@@ -41,6 +42,7 @@ def build_control_panel_embed(
     Args:
         ticket: Ticket data from database
         user: The ticket creator (optional, for mention)
+        closed_by: The staff who closed the ticket (optional, for thumbnail)
 
     Returns:
         Discord embed with ticket status and info
@@ -59,6 +61,10 @@ def build_control_panel_embed(
         title="🎫 Ticket Control Panel",
         color=STATUS_COLOR.get(status, EmbedColors.GREEN),
     )
+
+    # Add mod avatar thumbnail when closed
+    if status == "closed" and closed_by:
+        embed.set_thumbnail(url=closed_by.display_avatar.url)
 
     # Row 1: Ticket ID, Status, Category
     embed.add_field(

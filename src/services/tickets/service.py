@@ -551,8 +551,8 @@ class TicketService:
                 except Exception as e:
                     logger.error("Failed to save transcript", [("Error", str(e))])
 
-            # Update control panel embed
-            await self._update_control_panel(ticket_id, thread)
+            # Update control panel embed with closed_by for thumbnail
+            await self._update_control_panel(ticket_id, thread, closed_by)
 
             # Send close notification (no buttons)
             close_embed = build_close_notification(closed_by, reason)
@@ -948,6 +948,7 @@ class TicketService:
         self,
         ticket_id: str,
         thread: discord.Thread,
+        closed_by: Optional[discord.Member] = None,
     ) -> None:
         """Update the control panel embed in a ticket thread."""
         ticket = self.db.get_ticket(ticket_id)
@@ -960,8 +961,17 @@ class TicketService:
         except Exception:
             ticket_user = None
 
+        # Get closed_by member if ticket is closed and not passed
+        if ticket["status"] == "closed" and not closed_by and ticket.get("closed_by"):
+            try:
+                guild = thread.guild or self.bot.get_guild(self.config.guild_id)
+                if guild:
+                    closed_by = guild.get_member(ticket["closed_by"])
+            except Exception:
+                pass
+
         # Build new embed and view
-        new_embed = build_control_panel_embed(ticket, ticket_user)
+        new_embed = build_control_panel_embed(ticket, ticket_user, closed_by)
         new_view = TicketControlPanelView.from_ticket(ticket)
 
         # Try to edit existing control panel message

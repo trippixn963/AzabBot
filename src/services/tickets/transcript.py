@@ -41,6 +41,7 @@ async def collect_transcript_messages(
     user_map: Dict[int, str] = {}  # user_id -> display_name
     channel_map: Dict[int, str] = {}  # channel_id -> name
     role_map: Dict[int, str] = {}  # role_id -> name
+    raw_mention_ids: set = set()  # IDs found in raw text that need resolution
 
     try:
         # Collect role names from guild
@@ -62,6 +63,14 @@ async def collect_transcript_messages(
             for mentioned_channel in msg.channel_mentions:
                 channel_map[mentioned_channel.id] = mentioned_channel.name
 
+            # Find raw mention-like text in content (e.g., <@123456789>)
+            if msg.content:
+                raw_mentions = re.findall(r'<@!?(\d+)>', msg.content)
+                for user_id_str in raw_mentions:
+                    user_id = int(user_id_str)
+                    if user_id not in user_map:
+                        raw_mention_ids.add(user_id)
+
             messages.append({
                 "author": msg.author.display_name,
                 "author_id": str(msg.author.id),
@@ -72,6 +81,24 @@ async def collect_transcript_messages(
                 "is_bot": msg.author.bot,
                 "is_staff": msg.author.guild_permissions.manage_messages if hasattr(msg.author, 'guild_permissions') else False,
             })
+
+        # Resolve raw mention IDs to usernames
+        if raw_mention_ids and thread.guild:
+            for user_id in raw_mention_ids:
+                try:
+                    # Try to get member from guild first
+                    member = thread.guild.get_member(user_id)
+                    if member:
+                        user_map[user_id] = member.display_name
+                    else:
+                        # Fetch user from Discord API
+                        user = await thread.guild._state._get_client().fetch_user(user_id)
+                        if user:
+                            user_map[user_id] = user.display_name
+                except Exception:
+                    # If we can't resolve, leave it unresolved
+                    pass
+
     except Exception as e:
         logger.error("Failed to collect transcript messages", [
             ("Thread", f"{thread.name} ({thread.id})"),

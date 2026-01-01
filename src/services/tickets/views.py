@@ -17,13 +17,12 @@ from .buttons import (
     CloseButton,
     AddUserButton,
     ReopenButton,
-    TranscriptButton,
     InfoButton,
     TransferButton,
     CloseApproveButton,
     CloseDenyButton,
 )
-from .constants import TICKET_CATEGORIES
+from .constants import TICKET_CATEGORIES, TRANSCRIPT_EMOJI
 from .modals import TicketCreateModal
 
 if TYPE_CHECKING:
@@ -139,9 +138,15 @@ class TicketControlPanelView(discord.ui.View):
             self.add_item(InfoButton(self.ticket_id))
 
         elif self.status == "closed":
-            # Closed tickets: Reopen, Transcript, Info
+            # Closed tickets: Reopen, Transcript (direct link), Info
             self.add_item(ReopenButton(self.ticket_id))
-            self.add_item(TranscriptButton(self.ticket_id))
+            # Direct link button for transcript (no extra message)
+            self.add_item(discord.ui.Button(
+                label="Transcript",
+                style=discord.ButtonStyle.link,
+                url=f"https://trippixn.com/api/azab/transcripts/{self.ticket_id}",
+                emoji=TRANSCRIPT_EMOJI,
+            ))
             self.add_item(InfoButton(self.ticket_id))
 
     @classmethod
