@@ -3006,6 +3006,68 @@ class LoggingService:
 
         await self._send_log(LogCategory.TICKETS, embed, user_id=added_user.id)
 
+    async def log_ticket_transferred(
+        self,
+        ticket_id: str,
+        ticket_user: discord.User,
+        new_staff: discord.Member,
+        transferred_by: discord.Member,
+        category: str,
+    ) -> None:
+        """Log a ticket transfer."""
+        if not self.enabled:
+            return
+
+        embed = self._create_embed(
+            "↔️ Ticket Transferred",
+            EmbedColors.BLUE,
+            category="Ticket",
+            user_id=ticket_user.id,
+        )
+        embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
+        embed.add_field(name="Category", value=category.title(), inline=True)
+        embed.add_field(name="Ticket Owner", value=self._format_user_field(ticket_user), inline=True)
+        embed.add_field(name="Transferred To", value=self._format_user_field(new_staff), inline=True)
+        embed.add_field(name="Transferred By", value=self._format_user_field(transferred_by), inline=True)
+        self._set_user_thumbnail(embed, new_staff)
+
+        await self._send_log(LogCategory.TICKETS, embed, user_id=ticket_user.id)
+
+    async def log_ticket_priority_changed(
+        self,
+        ticket_id: str,
+        ticket_user: discord.User,
+        changed_by: discord.Member,
+        old_priority: str,
+        new_priority: str,
+        category: str,
+    ) -> None:
+        """Log a ticket priority change."""
+        if not self.enabled:
+            return
+
+        priority_colors = {
+            "low": 0x808080,
+            "normal": EmbedColors.BLUE,
+            "high": 0xFFA500,
+            "urgent": EmbedColors.LOG_NEGATIVE,
+        }
+
+        embed = self._create_embed(
+            "📊 Ticket Priority Changed",
+            priority_colors.get(new_priority, EmbedColors.BLUE),
+            category="Ticket",
+            user_id=ticket_user.id,
+        )
+        embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
+        embed.add_field(name="Category", value=category.title(), inline=True)
+        embed.add_field(name="Priority", value=f"{old_priority.title()} → **{new_priority.title()}**", inline=True)
+        embed.add_field(name="Ticket Owner", value=self._format_user_field(ticket_user), inline=True)
+        embed.add_field(name="Changed By", value=self._format_user_field(changed_by), inline=True)
+        self._set_user_thumbnail(embed, changed_by)
+
+        await self._send_log(LogCategory.TICKETS, embed, user_id=ticket_user.id)
+
     async def log_ticket_transcript(
         self,
         ticket_id: str,

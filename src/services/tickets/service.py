@@ -625,6 +625,19 @@ class TicketService:
             ("Reopened By", f"{reopened_by} ({reopened_by.id})"),
         ], emoji="🔓")
 
+        # Log to server logs
+        if hasattr(self.bot, "logging_service") and self.bot.logging_service:
+            try:
+                ticket_user = await self.bot.fetch_user(ticket["user_id"])
+                await self.bot.logging_service.log_ticket_reopened(
+                    ticket_id=ticket_id,
+                    user=ticket_user,
+                    reopened_by=reopened_by,
+                    category=ticket["category"],
+                )
+            except Exception as e:
+                logger.error("Failed to log ticket reopen", [("Error", str(e))])
+
         return (True, f"Ticket {ticket_id} reopened.")
 
     async def claim_ticket(
@@ -682,6 +695,18 @@ class TicketService:
             ("Claimed By", f"{staff} ({staff.id})"),
         ], emoji="✋")
 
+        # Log to server logs
+        if hasattr(self.bot, "logging_service") and self.bot.logging_service:
+            try:
+                await self.bot.logging_service.log_ticket_claimed(
+                    ticket_id=ticket_id,
+                    user=ticket_user,
+                    staff=staff,
+                    category=ticket["category"],
+                )
+            except Exception as e:
+                logger.error("Failed to log ticket claim", [("Error", str(e))])
+
         return (True, f"You claimed ticket {ticket_id}.")
 
     async def set_priority(
@@ -725,6 +750,21 @@ class TicketService:
             ("To", priority),
         ], emoji="📊")
 
+        # Log to server logs
+        if hasattr(self.bot, "logging_service") and self.bot.logging_service:
+            try:
+                ticket_user = await self.bot.fetch_user(ticket["user_id"])
+                await self.bot.logging_service.log_ticket_priority_changed(
+                    ticket_id=ticket_id,
+                    ticket_user=ticket_user,
+                    changed_by=changed_by,
+                    old_priority=old_priority,
+                    new_priority=priority,
+                    category=ticket["category"],
+                )
+            except Exception as e:
+                logger.error("Failed to log priority change", [("Error", str(e))])
+
         return (True, f"Priority set to {priority}.")
 
     async def add_user_to_ticket(
@@ -761,6 +801,19 @@ class TicketService:
             ("Added User", f"{user} ({user.id})"),
             ("Added By", f"{added_by} ({added_by.id})"),
         ], emoji="👤")
+
+        # Log to server logs
+        if hasattr(self.bot, "logging_service") and self.bot.logging_service:
+            try:
+                ticket_user = await self.bot.fetch_user(ticket["user_id"])
+                await self.bot.logging_service.log_ticket_user_added(
+                    ticket_id=ticket_id,
+                    ticket_user=ticket_user,
+                    added_user=user,
+                    added_by=added_by,
+                )
+            except Exception as e:
+                logger.error("Failed to log user added", [("Error", str(e))])
 
         return (True, f"Added {user.mention} to the ticket.")
 
@@ -803,6 +856,20 @@ class TicketService:
             ("New Staff", f"{new_staff} ({new_staff.id})"),
             ("Transferred By", f"{transferred_by} ({transferred_by.id})"),
         ], emoji="↔️")
+
+        # Log to server logs
+        if hasattr(self.bot, "logging_service") and self.bot.logging_service:
+            try:
+                ticket_user = await self.bot.fetch_user(ticket["user_id"])
+                await self.bot.logging_service.log_ticket_transferred(
+                    ticket_id=ticket_id,
+                    ticket_user=ticket_user,
+                    new_staff=new_staff,
+                    transferred_by=transferred_by,
+                    category=ticket["category"],
+                )
+            except Exception as e:
+                logger.error("Failed to log ticket transfer", [("Error", str(e))])
 
         return (True, f"Ticket transferred to {new_staff.mention}.")
 
