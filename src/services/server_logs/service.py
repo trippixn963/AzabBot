@@ -21,7 +21,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.core.constants import EMOJI_USERID, SECONDS_PER_DAY, SECONDS_PER_HOUR
-from src.utils.views import DownloadButton, CASE_EMOJI, DOWNLOAD_EMOJI
+from src.utils.views import DownloadButton, OldAvatarButton, NewAvatarButton, CASE_EMOJI, DOWNLOAD_EMOJI
 from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
 
@@ -214,8 +214,10 @@ class TicketLogView(discord.ui.View):
 
 def setup_log_views(bot: "AzabBot") -> None:
     """Register persistent views for log buttons. Call this on bot startup."""
-    # Add a dynamic view that handles all log_userid:* patterns
+    # Add dynamic views for log buttons
     bot.add_dynamic_items(UserIdButton)
+    bot.add_dynamic_items(OldAvatarButton)
+    bot.add_dynamic_items(NewAvatarButton)
 
 
 # =============================================================================
@@ -1185,36 +1187,18 @@ class LoggingService:
 
         message = await self._send_log(LogCategory.AVATAR_CHANGES, embed, files, user_id=user.id)
 
-        # Add download buttons for old and new avatars
+        # Add download buttons for old and new avatars (ephemeral style)
         if message:
             try:
                 view = discord.ui.View(timeout=None)
 
-                # Old avatar button (from attachment URL)
-                if old_avatar_downloaded and message.attachments:
-                    view.add_item(discord.ui.Button(
-                        label="Avatar (Old)",
-                        url=message.attachments[0].url,
-                        style=discord.ButtonStyle.link,
-                        emoji=DOWNLOAD_EMOJI,
-                    ))
-                elif before_url:
-                    # Fallback to original URL if attachment failed
-                    view.add_item(discord.ui.Button(
-                        label="Avatar (Old)",
-                        url=before_url,
-                        style=discord.ButtonStyle.link,
-                        emoji=DOWNLOAD_EMOJI,
-                    ))
+                # Old avatar button (fetches from message attachment)
+                if old_avatar_downloaded:
+                    view.add_item(OldAvatarButton(message.channel.id, message.id))
 
-                # New avatar button
+                # New avatar button (fetches from message embed image)
                 if after_url:
-                    view.add_item(discord.ui.Button(
-                        label="Avatar (New)",
-                        url=after_url,
-                        style=discord.ButtonStyle.link,
-                        emoji=DOWNLOAD_EMOJI,
-                    ))
+                    view.add_item(NewAvatarButton(message.channel.id, message.id))
 
                 view.add_item(UserIdButton(user.id))
                 await message.edit(view=view)
