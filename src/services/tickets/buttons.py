@@ -31,7 +31,6 @@ from .constants import (
     TRANSFER_EMOJI,
     STATUS_EMOJI,
     TICKET_CATEGORIES,
-    PRIORITY_CONFIG,
 )
 
 if TYPE_CHECKING:
@@ -398,8 +397,6 @@ class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_info:
         status = ticket.get("status", "open")
         category = ticket.get("category", "support")
         cat_info = TICKET_CATEGORIES.get(category, TICKET_CATEGORIES["support"])
-        priority = ticket.get("priority", "normal")
-        priority_info = PRIORITY_CONFIG.get(priority, PRIORITY_CONFIG["normal"])
 
         embed = discord.Embed(
             title=f"{INFO_EMOJI} Ticket Information",
@@ -427,16 +424,6 @@ class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_info:
         embed.add_field(
             name="Created By",
             value=user_display,
-            inline=True,
-        )
-        embed.add_field(
-            name="Priority",
-            value=f"{priority_info['emoji']} {priority.title()}",
-            inline=True,
-        )
-        embed.add_field(
-            name="\u200b",
-            value="\u200b",
             inline=True,
         )
 

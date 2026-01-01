@@ -44,7 +44,6 @@ from .embeds import (
     build_reopen_notification,
     build_user_added_notification,
     build_transfer_notification,
-    build_priority_notification,
     build_inactivity_warning,
     build_close_request_embed,
     build_ticket_closed_dm,
@@ -715,12 +714,15 @@ class TicketService:
             except Exception:
                 ticket_user = None
 
-            # Send claim notification
+            # Send claim notification with user ping outside embed
+            claim_embed = build_claim_notification(staff)
             if ticket_user:
-                claim_embed = build_claim_notification(staff, ticket_user)
+                await safe_send(thread, content=ticket_user.mention, embed=claim_embed)
+            else:
                 await safe_send(thread, embed=claim_embed)
 
-                # DM user
+            # DM user
+            if ticket_user:
                 try:
                     dm_embed = build_ticket_claimed_dm(
                         ticket_id=ticket_id,
@@ -752,66 +754,6 @@ class TicketService:
                 logger.error("Failed to log ticket claim", [("Error", str(e))])
 
         return (True, f"You claimed ticket {ticket_id}.")
-
-    async def set_priority(
-        self,
-        ticket_id: str,
-        priority: str,
-        changed_by: discord.Member,
-    ) -> Tuple[bool, str]:
-        """Set ticket priority."""
-        ticket = self.db.get_ticket(ticket_id)
-        if not ticket:
-            return (False, "Ticket not found.")
-
-        if ticket["status"] == "closed":
-            return (False, "Cannot change priority of a closed ticket.")
-
-        old_priority = ticket.get("priority", "normal")
-        if old_priority == priority:
-            return (False, f"Priority is already {priority}.")
-
-        # Update in database
-        if not self.db.set_ticket_priority(ticket_id, priority):
-            return (False, "Failed to set priority.")
-
-        # Get thread
-        thread = await self._get_ticket_thread(ticket["thread_id"])
-        if thread:
-            # Update control panel
-            await self._update_control_panel(ticket_id, thread)
-
-            # Send priority notification
-            priority_embed = build_priority_notification(
-                changed_by, old_priority, priority
-            )
-            await safe_send(thread, embed=priority_embed)
-
-        logger.tree("Priority Changed", [
-            ("Ticket ID", ticket_id),
-            ("Changed By", f"{changed_by} ({changed_by.id})"),
-            ("From", old_priority),
-            ("To", priority),
-        ], emoji="📊")
-
-        # Log to server logs
-        if hasattr(self.bot, "logging_service") and self.bot.logging_service:
-            try:
-                ticket_user = await self.bot.fetch_user(ticket["user_id"])
-                await self.bot.logging_service.log_ticket_priority_changed(
-                    ticket_id=ticket_id,
-                    ticket_user=ticket_user,
-                    changed_by=changed_by,
-                    old_priority=old_priority,
-                    new_priority=priority,
-                    category=ticket["category"],
-                    thread_id=ticket["thread_id"],
-                    guild_id=changed_by.guild.id,
-                )
-            except Exception as e:
-                logger.error("Failed to log priority change", [("Error", str(e))])
-
-        return (True, f"Priority set to {priority}.")
 
     async def add_user_to_ticket(
         self,

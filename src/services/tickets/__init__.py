@@ -15,7 +15,6 @@ from .views import (
     TicketPanelView,
     TicketControlPanelView,
     CloseRequestView,
-    PrioritySelectView,
     TicketPanelButton,
 )
 from .buttons import setup_ticket_buttons
@@ -25,7 +24,7 @@ from .embeds import (
     build_welcome_embed,
     build_panel_embed,
 )
-from .constants import TICKET_CATEGORIES, PRIORITY_CONFIG
+from .constants import TICKET_CATEGORIES
 from .transcript import generate_html_transcript, collect_transcript_messages
 
 if TYPE_CHECKING:
@@ -51,7 +50,6 @@ __all__ = [
     "TicketPanelView",
     "TicketControlPanelView",
     "CloseRequestView",
-    "PrioritySelectView",
     "TicketPanelButton",
     # Buttons
     "setup_ticket_buttons",
@@ -65,7 +63,6 @@ __all__ = [
     "build_panel_embed",
     # Constants
     "TICKET_CATEGORIES",
-    "PRIORITY_CONFIG",
     # Transcript
     "generate_html_transcript",
     "collect_transcript_messages",

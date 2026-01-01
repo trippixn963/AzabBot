@@ -78,18 +78,6 @@ TICKET_CATEGORIES = {
 
 
 # =============================================================================
-# Priority
-# =============================================================================
-
-PRIORITY_CONFIG = {
-    "low": {"emoji": "⬜", "color": 0x808080},      # Gray
-    "normal": {"emoji": "🟦", "color": EmbedColors.BLUE},
-    "high": {"emoji": "🟧", "color": 0xFFA500},     # Orange
-    "urgent": {"emoji": "🟥", "color": EmbedColors.RED},
-}
-
-
-# =============================================================================
 # Status
 # =============================================================================
 
@@ -138,7 +126,6 @@ __all__ = [
     "TRANSFER_EMOJI",
     # Categories
     "TICKET_CATEGORIES",
-    "PRIORITY_CONFIG",
     # Status
     "STATUS_EMOJI",
     "STATUS_COLOR",

@@ -20,7 +20,6 @@ from .constants import (
     TICKET_CATEGORIES,
     STATUS_EMOJI,
     STATUS_COLOR,
-    PRIORITY_CONFIG,
     TRANSFER_EMOJI,
 )
 
@@ -78,7 +77,7 @@ def build_control_panel_embed(
         inline=True,
     )
 
-    # Row 2: User, Claimed by (if applicable), Priority
+    # Row 2: User, Claimed by (if applicable)
     if user:
         embed.add_field(
             name="User",
@@ -104,15 +103,6 @@ def build_control_panel_embed(
             value="—",
             inline=True,
         )
-
-    # Priority
-    priority = ticket.get("priority", "normal")
-    priority_info = PRIORITY_CONFIG.get(priority, PRIORITY_CONFIG["normal"])
-    embed.add_field(
-        name="Priority",
-        value=f"{priority_info['emoji']} {priority.title()}",
-        inline=True,
-    )
 
     # Row 3: Created, Subject
     created_at = ticket.get("created_at")
@@ -176,16 +166,13 @@ def build_welcome_embed(
 
 def build_claim_notification(
     staff: discord.Member,
-    ticket_user: discord.User,
 ) -> discord.Embed:
     """Build notification when ticket is claimed."""
     embed = discord.Embed(
-        description=(
-            f"✅ {staff.mention} has claimed this ticket.\n\n"
-            f"{ticket_user.mention}, they will assist you shortly."
-        ),
+        description=f"✅ {staff.mention} has claimed this ticket and will assist you shortly.",
         color=EmbedColors.BLUE,
     )
+    embed.set_thumbnail(url=staff.display_avatar.url)
     set_footer(embed)
     return embed
 
@@ -240,27 +227,6 @@ def build_transfer_notification(
     embed = discord.Embed(
         description=f"{TRANSFER_EMOJI} This ticket has been transferred to {new_staff.mention} by {transferred_by.mention}.",
         color=EmbedColors.BLUE,
-    )
-    set_footer(embed)
-    return embed
-
-
-def build_priority_notification(
-    changed_by: discord.Member,
-    old_priority: str,
-    new_priority: str,
-) -> discord.Embed:
-    """Build notification when priority changes."""
-    old_info = PRIORITY_CONFIG.get(old_priority, PRIORITY_CONFIG["normal"])
-    new_info = PRIORITY_CONFIG.get(new_priority, PRIORITY_CONFIG["normal"])
-
-    embed = discord.Embed(
-        description=(
-            f"📊 Priority changed by {changed_by.mention}\n\n"
-            f"{old_info['emoji']} {old_priority.title()} → "
-            f"{new_info['emoji']} {new_priority.title()}"
-        ),
-        color=new_info["color"],
     )
     set_footer(embed)
     return embed
