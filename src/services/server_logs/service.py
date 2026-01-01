@@ -1163,6 +1163,7 @@ class LoggingService:
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
 
         files = []
+        old_avatar_downloaded = False
 
         # Download and attach old avatar before it expires
         if before_url:
@@ -1174,6 +1175,7 @@ class LoggingService:
                             files.append(discord.File(io.BytesIO(data), filename="old_avatar.png"))
                             embed.set_thumbnail(url="attachment://old_avatar.png")
                             embed.add_field(name="Previous", value="See thumbnail ↗️", inline=True)
+                            old_avatar_downloaded = True
             except Exception:
                 pass
 
@@ -1188,12 +1190,19 @@ class LoggingService:
             try:
                 view = discord.ui.View(timeout=None)
 
-                # Old avatar button (from attachment)
-                if message.attachments and before_url:
-                    old_avatar_url = message.attachments[0].url
+                # Old avatar button (from attachment URL)
+                if old_avatar_downloaded and message.attachments:
                     view.add_item(discord.ui.Button(
                         label="Avatar (Old)",
-                        url=old_avatar_url,
+                        url=message.attachments[0].url,
+                        style=discord.ButtonStyle.link,
+                        emoji=DOWNLOAD_EMOJI,
+                    ))
+                elif before_url:
+                    # Fallback to original URL if attachment failed
+                    view.add_item(discord.ui.Button(
+                        label="Avatar (Old)",
+                        url=before_url,
                         style=discord.ButtonStyle.link,
                         emoji=DOWNLOAD_EMOJI,
                     ))
