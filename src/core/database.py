@@ -9,7 +9,6 @@ Consolidates:
 - Ignored users list
 - Prisoner tracking and statistics
 - Message logging
-- Roast history
 
 Single database file: data/azab.db
 
@@ -492,41 +491,6 @@ class DatabaseManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_prisoner_active ON prisoner_history(is_active)"
         )
-
-        # -----------------------------------------------------------------
-        # Roast History Table
-        # DESIGN: Tracks roasts to avoid repetition (legacy table)
-        # -----------------------------------------------------------------
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS roast_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                roast_text TEXT,
-                roast_category TEXT,
-                timestamp TEXT,
-                mute_session_id INTEGER,
-                FOREIGN KEY (mute_session_id) REFERENCES prisoner_history(id)
-            )
-        """)
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_roast_user ON roast_history(user_id)"
-        )
-
-        # -----------------------------------------------------------------
-        # User Profiles Table
-        # DESIGN: User personalization data (legacy table)
-        # -----------------------------------------------------------------
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user_profiles (
-                user_id INTEGER PRIMARY KEY,
-                favorite_excuse TEXT,
-                most_used_words TEXT,
-                personality_type TEXT,
-                total_roasts_received INTEGER DEFAULT 0,
-                last_roast_time TEXT,
-                callback_references TEXT
-            )
-        """)
 
         # -----------------------------------------------------------------
         # Active Mutes Table
@@ -1545,62 +1509,6 @@ class DatabaseManager:
                 (user_id,)
             )
             return row["id"] if row else None
-
-        return await asyncio.to_thread(_get)
-
-    # =========================================================================
-    # Roast History
-    # =========================================================================
-
-    async def save_roast(
-        self,
-        user_id: int,
-        roast_text: str,
-        category: str = "general",
-        session_id: Optional[int] = None,
-    ) -> None:
-        """
-        Save a roast to history.
-
-        DESIGN: Tracks roasts to avoid repetition (legacy).
-        """
-        def _save():
-            timestamp = datetime.now(NY_TZ).strftime("%Y-%m-%d %H:%M:%S")
-            self.execute(
-                """INSERT INTO roast_history
-                   (user_id, roast_text, roast_category, timestamp, mute_session_id)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (user_id, roast_text[:500], category, timestamp, session_id)
-            )
-
-            self.execute(
-                """INSERT INTO user_profiles (user_id, total_roasts_received, last_roast_time)
-                   VALUES (?, 1, ?)
-                   ON CONFLICT(user_id) DO UPDATE SET
-                   total_roasts_received = total_roasts_received + 1,
-                   last_roast_time = ?""",
-                (user_id, timestamp, timestamp)
-            )
-
-        await asyncio.to_thread(_save)
-
-    async def get_recent_roasts(self, user_id: int, limit: int = 5) -> List[str]:
-        """
-        Get recent roasts for a user.
-
-        Args:
-            user_id: User to get roasts for
-            limit: Maximum number of roasts to return
-
-        Returns:
-            List of recent roast texts
-        """
-        def _get():
-            rows = self.fetchall(
-                "SELECT roast_text FROM roast_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT ?",
-                (user_id, limit)
-            )
-            return [row["roast_text"] for row in rows]
 
         return await asyncio.to_thread(_get)
 

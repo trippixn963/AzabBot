@@ -57,7 +57,7 @@ class Config:
         discord_token: Discord bot authentication token.
         developer_id: User ID of the bot developer.
         logs_channel_id: Channel ID for mod action logs.
-        prison_channel_ids: Set of channel IDs where prisoners can be roasted.
+        prison_channel_ids: Set of channel IDs for prisoner messages.
         general_channel_id: Main server channel ID.
         muted_role_id: Role ID assigned to muted/timed-out users.
     """

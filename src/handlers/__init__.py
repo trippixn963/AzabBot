@@ -17,7 +17,7 @@ DESIGN:
     4. Initialize in bot.py's setup_hook()
 
 Available Handlers:
-    PrisonHandler: Manages prisoner welcome, roasting, and release
+    PrisonHandler: Manages prisoner welcome and release notifications
     MuteHandler: Processes mute embeds and extracts reasons from logs
     PresenceHandler: Manages dynamic Discord rich presence updates
 

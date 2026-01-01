@@ -181,7 +181,7 @@ class MessageEvents(commands.Cog):
         2. Logs channel -> Parse mute embeds
         3. Polls channel -> Delete non-polls
         4. Ignored users -> Skip
-        5. Muted users -> Roast with batching
+        5. Muted users -> Track messages
         """
         # -----------------------------------------------------------------
         # Route 1: Case forum thread - check for reason replies
