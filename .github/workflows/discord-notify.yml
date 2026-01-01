@@ -179,7 +179,7 @@ jobs:
             -X PATCH "https://discord.com/api/v10/channels/${MODS_CATEGORY_ID}" \
             -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"name\": \"AZAB ・${{ steps.commit.outputs.sha }}\"}")
+            -d "{\"name\": \"AZAB・${{ steps.commit.outputs.sha }}\"}")
 
           if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
             echo "::warning::Failed to update category name (HTTP $HTTP_CODE)"
