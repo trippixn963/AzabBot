@@ -336,8 +336,18 @@ class PurgeCog(commands.Cog):
         """Delete messages from the channel with optional filters."""
         await interaction.response.defer(ephemeral=True)
 
-        # Default to all messages if no filter specified
-        filter_value = filter_type.value if filter_type else PurgeFilter.ALL
+        # Determine filter value - auto-detect from parameters if not specified
+        if filter_type:
+            filter_value = filter_type.value
+        elif user:
+            # User provided without filter - auto-select USER filter
+            filter_value = PurgeFilter.USER
+        elif text:
+            # Text provided without filter - auto-select CONTAINS filter
+            filter_value = PurgeFilter.CONTAINS
+        else:
+            # No filter and no special parameters - default to ALL
+            filter_value = PurgeFilter.ALL
 
         # Build the check function based on filter
         check: Optional[Callable[[discord.Message], bool]] = None

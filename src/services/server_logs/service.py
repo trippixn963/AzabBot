@@ -21,7 +21,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.core.constants import EMOJI_USERID, SECONDS_PER_DAY, SECONDS_PER_HOUR
-from src.utils.views import DownloadButton, CASE_EMOJI
+from src.utils.views import DownloadButton, CASE_EMOJI, DOWNLOAD_EMOJI
 from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
 
@@ -97,6 +97,92 @@ class LogView(discord.ui.View):
 # Custom emojis for log buttons
 TRANSCRIPT_EMOJI = discord.PartialEmoji(name="transcript", id=1455205892319481916)
 TICKET_EMOJI = discord.PartialEmoji(name="ticket", id=1455177168098295983)
+MESSAGE_EMOJI = discord.PartialEmoji(name="message", id=1452783032460247150)
+
+
+class ReactionLogView(discord.ui.View):
+    """View for reaction logs with Jump, UserID, and Avatar buttons."""
+
+    def __init__(self, user_id: int, guild_id: int, message_url: str):
+        super().__init__(timeout=None)
+
+        # Jump to message button first
+        self.add_item(discord.ui.Button(
+            label="Message",
+            url=message_url,
+            style=discord.ButtonStyle.link,
+            emoji=MESSAGE_EMOJI,
+        ))
+
+        # Check if user has an open case
+        db = get_db()
+        case = db.get_case_log(user_id)
+        if case:
+            case_url = f"https://discord.com/channels/{guild_id}/{case['thread_id']}"
+            self.add_item(discord.ui.Button(
+                label="Case",
+                url=case_url,
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+            ))
+
+        self.add_item(UserIdButton(user_id))
+        self.add_item(DownloadButton(user_id))
+
+
+class MessageLogView(discord.ui.View):
+    """View for message logs with optional Jump, UserID, and Avatar buttons."""
+
+    def __init__(self, user_id: int, guild_id: int, message_url: Optional[str] = None):
+        super().__init__(timeout=None)
+
+        # Jump to message button first (if URL provided - for edits, not deletes)
+        if message_url:
+            self.add_item(discord.ui.Button(
+                label="Message",
+                url=message_url,
+                style=discord.ButtonStyle.link,
+                emoji=MESSAGE_EMOJI,
+            ))
+
+        # Check if user has an open case
+        db = get_db()
+        case = db.get_case_log(user_id)
+        if case:
+            case_url = f"https://discord.com/channels/{guild_id}/{case['thread_id']}"
+            self.add_item(discord.ui.Button(
+                label="Case",
+                url=case_url,
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+            ))
+
+        self.add_item(UserIdButton(user_id))
+        self.add_item(DownloadButton(user_id))
+
+
+class ModActionLogView(discord.ui.View):
+    """View for mod action logs with Case button support."""
+
+    def __init__(self, user_id: int, guild_id: int, case_id: Optional[str] = None):
+        super().__init__(timeout=None)
+
+        db = get_db()
+
+        # Add Case button if case_id provided - look up thread_id
+        if case_id:
+            case = db.get_case(case_id)
+            if case and case.get("thread_id"):
+                case_url = f"https://discord.com/channels/{guild_id}/{case['thread_id']}"
+                self.add_item(discord.ui.Button(
+                    label="Case",
+                    url=case_url,
+                    style=discord.ButtonStyle.link,
+                    emoji=CASE_EMOJI,
+                ))
+
+        self.add_item(UserIdButton(user_id))
+        self.add_item(DownloadButton(user_id))
 
 
 class TranscriptLinkView(discord.ui.View):
@@ -185,14 +271,14 @@ class LoggingService:
         return True  # No filter, log all guilds
 
     def _format_channel(self, channel) -> str:
-        """Format channel reference with fallback to name if mention fails."""
+        """Format channel reference as clickable mention."""
         if channel is None:
             return "#unknown"
         try:
-            if hasattr(channel, 'name') and channel.name:
+            if hasattr(channel, 'id'):
+                return f"<#{channel.id}>"
+            elif hasattr(channel, 'name') and channel.name:
                 return f"#{channel.name}"
-            elif hasattr(channel, 'id'):
-                return f"#channel-{channel.id}"
             else:
                 return "#unknown"
         except Exception:
@@ -378,8 +464,8 @@ class LoggingService:
         return embed
 
     def _format_user_field(self, user: Union[discord.User, discord.Member]) -> str:
-        """Format user field without ID (ID goes in footer)."""
-        return f"{user.mention}\n`{user.name}`"
+        """Format user field inline without ID (ID goes in footer)."""
+        return f"{user.mention} · {user.name}"
 
     def _format_reason(self, reason: Optional[str]) -> str:
         """Format reason field with code block."""
@@ -499,7 +585,9 @@ class LoggingService:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id)
+        # Use ModActionLogView with Case button if case_id provided
+        view = ModActionLogView(user.id, self.config.logging_guild_id or 0, case_id=case_id)
+        await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id, view=view)
 
     async def log_unban(
         self,
@@ -521,7 +609,8 @@ class LoggingService:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id)
+        view = ModActionLogView(user.id, self.config.logging_guild_id or 0, case_id=case_id)
+        await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id, view=view)
 
     async def log_kick(
         self,
@@ -552,7 +641,8 @@ class LoggingService:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id)
+        view = ModActionLogView(user.id, self.config.logging_guild_id or 0, case_id=case_id)
+        await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id, view=view)
 
     # =========================================================================
     # Mutes & Timeouts
@@ -602,7 +692,8 @@ class LoggingService:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
+        view = ModActionLogView(user.id, user.guild.id, case_id=case_id)
+        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id, view=view)
 
     async def log_timeout_remove(
         self,
@@ -622,7 +713,8 @@ class LoggingService:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
+        view = ModActionLogView(user.id, user.guild.id, case_id=case_id)
+        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id, view=view)
 
     async def log_mute(
         self,
@@ -652,7 +744,8 @@ class LoggingService:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
+        view = ModActionLogView(user.id, user.guild.id, case_id=case_id)
+        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id, view=view)
 
     async def log_unmute(
         self,
@@ -672,13 +765,15 @@ class LoggingService:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id)
+        view = ModActionLogView(user.id, user.guild.id, case_id=case_id)
+        await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=user.id, view=view)
 
     async def log_muted_vc_violation(
         self,
         member: discord.Member,
         channel_name: str,
         timeout_duration: "timedelta",
+        channel_id: Optional[int] = None,
     ) -> None:
         """Log when a muted user attempts to join voice and gets timed out."""
         if not self._should_log(member.guild.id):
@@ -697,7 +792,8 @@ class LoggingService:
             user_id=member.id,
         )
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
-        embed.add_field(name="Attempted Channel", value=f"🔊 {channel_name}", inline=True)
+        channel_value = f"🔊 <#{channel_id}>" if channel_id else f"🔊 {channel_name}"
+        embed.add_field(name="Attempted Channel", value=channel_value, inline=True)
         embed.add_field(name="Action", value="Disconnected", inline=True)
         embed.add_field(name="Timeout Applied", value=f"`{timeout_str}`", inline=True)
         embed.add_field(
@@ -729,23 +825,35 @@ class LoggingService:
         content = f"```{message.content[:900]}```" if message.content else "*(no content)*"
         embed.add_field(name="Content", value=content, inline=False)
 
-        # Handle reply info
+        # Show attachment filenames (not raw CDN URLs)
+        if message.attachments:
+            att_names = [f"📎 {att.filename}" for att in message.attachments[:5]]
+            embed.add_field(name="Attachments", value="\n".join(att_names), inline=True)
+
+        # Handle reply info with jump link
         if message.reference and message.reference.message_id:
+            channel_id = message.reference.channel_id or message.channel.id
+            guild_id = message.guild.id if message.guild else 0
+            reply_url = f"https://discord.com/channels/{guild_id}/{channel_id}/{message.reference.message_id}"
             embed.add_field(
                 name="Reply To",
-                value=f"Message ID: `{message.reference.message_id}`",
+                value=f"[Jump to message]({reply_url})",
                 inline=True,
             )
 
         self._set_user_thumbnail(embed, message.author)
 
-        # Prepare files
+        # Prepare files from cached attachments
         files = []
         if attachments:
             for filename, data in attachments[:5]:  # Max 5 files
                 files.append(discord.File(io.BytesIO(data), filename=filename))
 
-        await self._send_log(LogCategory.MESSAGES, embed, files, user_id=message.author.id)
+        # Create view with UserID/Avatar buttons (no Jump since message is deleted)
+        guild_id = message.guild.id if message.guild else 0
+        view = MessageLogView(message.author.id, guild_id)
+
+        await self._send_log(LogCategory.MESSAGES, embed, files, user_id=message.author.id, view=view)
 
     async def log_message_edit(
         self,
@@ -763,11 +871,6 @@ class LoggingService:
         embed = self._create_embed("✏️ Message Edited", EmbedColors.WARNING, category="Message Edit", user_id=after.author.id)
         embed.add_field(name="Author", value=self._format_user_field(after.author), inline=True)
         embed.add_field(name="Channel", value=self._format_channel(after.channel), inline=True)
-        embed.add_field(
-            name="Jump",
-            value=f"[Go to message]({after.jump_url})",
-            inline=True,
-        )
 
         before_content = f"```{before.content[:400]}```" if before.content else "*(empty)*"
         after_content = f"```{after.content[:400]}```" if after.content else "*(empty)*"
@@ -777,7 +880,11 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, after.author)
 
-        await self._send_log(LogCategory.MESSAGES, embed, user_id=after.author.id)
+        # Create view with Jump button, UserID, Avatar
+        guild_id = after.guild.id if after.guild else 0
+        view = MessageLogView(after.author.id, guild_id, message_url=after.jump_url)
+
+        await self._send_log(LogCategory.MESSAGES, embed, user_id=after.author.id, view=view)
 
     async def log_bulk_delete(
         self,
@@ -1074,7 +1181,24 @@ class LoggingService:
             embed.set_image(url=after_url)
             embed.add_field(name="New", value="See image below ↓", inline=True)
 
-        await self._send_log(LogCategory.AVATAR_CHANGES, embed, files, user_id=user.id)
+        message = await self._send_log(LogCategory.AVATAR_CHANGES, embed, files, user_id=user.id)
+
+        # Add download button for old avatar after message is sent (to get attachment URL)
+        if message and message.attachments and before_url:
+            try:
+                old_avatar_url = message.attachments[0].url
+                view = discord.ui.View(timeout=None)
+                view.add_item(discord.ui.Button(
+                    label="Old",
+                    url=old_avatar_url,
+                    style=discord.ButtonStyle.link,
+                    emoji=DOWNLOAD_EMOJI,
+                ))
+                view.add_item(UserIdButton(user.id))
+                view.add_item(DownloadButton(user.id))  # "Avatar" button for current avatar
+                await message.edit(view=view)
+            except Exception:
+                pass
 
     # =========================================================================
     # Voice Activity
@@ -1093,9 +1217,9 @@ class LoggingService:
         if self.config.moderator_ids and member.id in self.config.moderator_ids:
             return
 
-        embed = self._create_embed("🔊 Voice Join", EmbedColors.SUCCESS, category="Voice Join", user_id=member.id)
+        embed = self._create_embed("🟢 Voice Join", EmbedColors.SUCCESS, category="Voice Join", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
-        embed.add_field(name="Channel", value=f"🔊 {channel.name}", inline=True)
+        embed.add_field(name="Channel", value=f"🔊 {self._format_channel(channel)}", inline=True)
         self._set_user_thumbnail(embed, member)
 
         await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
@@ -1113,9 +1237,9 @@ class LoggingService:
         if self.config.moderator_ids and member.id in self.config.moderator_ids:
             return
 
-        embed = self._create_embed("🔇 Voice Leave", EmbedColors.WARNING, category="Voice Leave", user_id=member.id)
+        embed = self._create_embed("🔴 Voice Leave", EmbedColors.LOG_NEGATIVE, category="Voice Leave", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
-        embed.add_field(name="Channel", value=f"🔊 {channel.name}", inline=True)
+        embed.add_field(name="Channel", value=f"🔊 {self._format_channel(channel)}", inline=True)
         self._set_user_thumbnail(embed, member)
 
         await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
@@ -1134,10 +1258,9 @@ class LoggingService:
         if self.config.moderator_ids and member.id in self.config.moderator_ids:
             return
 
-        embed = self._create_embed("🔀 Voice Move", EmbedColors.INFO, category="Voice Move", user_id=member.id)
+        embed = self._create_embed("🔀 Voice Move", EmbedColors.BLUE, category="Voice Move", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
-        embed.add_field(name="From", value=f"🔊 {before.name}", inline=True)
-        embed.add_field(name="To", value=f"🔊 {after.name}", inline=True)
+        embed.add_field(name="Moved", value=f"{before.name} → {after.name}", inline=True)
         self._set_user_thumbnail(embed, member)
 
         await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
@@ -1300,13 +1423,16 @@ class LoggingService:
         channel_name: str,
         channel_type: str,
         moderator: Optional[discord.Member] = None,
+        channel_id: Optional[int] = None,
     ) -> None:
         """Log a channel deletion."""
         if not self.enabled:
             return
 
         embed = self._create_embed("📁 Channel Deleted", EmbedColors.LOG_NEGATIVE, category="Channel Delete")
-        embed.add_field(name="Channel", value=f"`{channel_name}`", inline=True)
+        # Show both mention (for searchability) and name (since deleted channels show as #deleted-channel)
+        channel_value = f"<#{channel_id}> · `{channel_name}`" if channel_id else f"`{channel_name}`"
+        embed.add_field(name="Channel", value=channel_value, inline=True)
         embed.add_field(name="Type", value=channel_type.title(), inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
@@ -1400,30 +1526,40 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("😀 Emoji Created", EmbedColors.SUCCESS, category="Emoji Create")
+        user_id = moderator.id if moderator else None
+        embed = self._create_embed("😀 Emoji Created", EmbedColors.SUCCESS, category="Emoji Create", user_id=user_id)
         embed.add_field(name="Emoji", value=f"{emoji} `:{emoji.name}:`", inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
+        # Additional info
+        embed.add_field(name="Animated", value="Yes" if emoji.animated else "No", inline=True)
+        embed.add_field(name="ID", value=f"`{emoji.id}`", inline=True)
+
+        # Show emoji as thumbnail
         embed.set_thumbnail(url=emoji.url)
 
-        await self._send_log(LogCategory.EMOJI_STICKERS, embed)
+        await self._send_log(LogCategory.EMOJI_STICKERS, embed, user_id=user_id)
 
     async def log_emoji_delete(
         self,
         emoji_name: str,
+        emoji_id: Optional[int] = None,
         moderator: Optional[discord.Member] = None,
     ) -> None:
         """Log an emoji deletion."""
         if not self.enabled:
             return
 
-        embed = self._create_embed("😀 Emoji Deleted", EmbedColors.LOG_NEGATIVE, category="Emoji Delete")
+        user_id = moderator.id if moderator else None
+        embed = self._create_embed("😀 Emoji Deleted", EmbedColors.LOG_NEGATIVE, category="Emoji Delete", user_id=user_id)
         embed.add_field(name="Emoji", value=f"`:{emoji_name}:`", inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
+        if emoji_id:
+            embed.add_field(name="ID", value=f"`{emoji_id}`", inline=True)
 
-        await self._send_log(LogCategory.EMOJI_STICKERS, embed)
+        await self._send_log(LogCategory.EMOJI_STICKERS, embed, user_id=user_id)
 
     async def log_sticker_create(
         self,
@@ -1434,30 +1570,42 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("🎨 Sticker Created", EmbedColors.SUCCESS, category="Sticker Create")
-        embed.add_field(name="Sticker", value=sticker.name, inline=True)
+        user_id = moderator.id if moderator else None
+        embed = self._create_embed("🎨 Sticker Created", EmbedColors.SUCCESS, category="Sticker Create", user_id=user_id)
+        embed.add_field(name="Sticker", value=f"`{sticker.name}`", inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
+        # Additional info
+        if sticker.description:
+            embed.add_field(name="Description", value=sticker.description[:100], inline=True)
+        embed.add_field(name="Emoji", value=sticker.emoji or "None", inline=True)
+        embed.add_field(name="ID", value=f"`{sticker.id}`", inline=True)
+
+        # Show sticker as thumbnail
         embed.set_thumbnail(url=sticker.url)
 
-        await self._send_log(LogCategory.EMOJI_STICKERS, embed)
+        await self._send_log(LogCategory.EMOJI_STICKERS, embed, user_id=user_id)
 
     async def log_sticker_delete(
         self,
         sticker_name: str,
+        sticker_id: Optional[int] = None,
         moderator: Optional[discord.Member] = None,
     ) -> None:
         """Log a sticker deletion."""
         if not self.enabled:
             return
 
-        embed = self._create_embed("🎨 Sticker Deleted", EmbedColors.LOG_NEGATIVE, category="Sticker Delete")
-        embed.add_field(name="Sticker", value=sticker_name, inline=True)
+        user_id = moderator.id if moderator else None
+        embed = self._create_embed("🎨 Sticker Deleted", EmbedColors.LOG_NEGATIVE, category="Sticker Delete", user_id=user_id)
+        embed.add_field(name="Sticker", value=f"`{sticker_name}`", inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
+        if sticker_id:
+            embed.add_field(name="ID", value=f"`{sticker_id}`", inline=True)
 
-        await self._send_log(LogCategory.EMOJI_STICKERS, embed)
+        await self._send_log(LogCategory.EMOJI_STICKERS, embed, user_id=user_id)
 
     # =========================================================================
     # Server Settings
@@ -1659,6 +1807,7 @@ class LoggingService:
         webhook_name: str,
         channel_name: str,
         moderator: Optional[discord.Member] = None,
+        channel_id: Optional[int] = None,
     ) -> None:
         """Log a webhook being deleted."""
         if not self.enabled:
@@ -1666,7 +1815,8 @@ class LoggingService:
 
         embed = self._create_embed("🪝 Webhook Deleted", EmbedColors.LOG_NEGATIVE, category="Webhook Delete")
         embed.add_field(name="Name", value=f"`{webhook_name}`", inline=True)
-        embed.add_field(name="Channel", value=f"`{channel_name}`", inline=True)
+        channel_value = f"<#{channel_id}>" if channel_id else f"`{channel_name}`"
+        embed.add_field(name="Channel", value=channel_value, inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
@@ -1948,20 +2098,19 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("➕ Reaction Added", EmbedColors.INFO, category="Reaction Add", user_id=user.id)
+        embed = self._create_embed("➕ Reaction Added", EmbedColors.SUCCESS, category="Reaction Add", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
-        embed.add_field(name="Emoji", value=str(reaction.emoji), inline=True)
-        embed.add_field(name="Channel", value=self._format_channel(message.channel), inline=True)
-        embed.add_field(name="Message", value=f"[Jump]({message.jump_url})", inline=True)
+        embed.add_field(name="Reacted", value=f"{reaction.emoji} in {self._format_channel(message.channel)}", inline=True)
 
-        # Show message preview
+        # Show message preview in code block
         if message.content:
             preview = message.content[:100] + "..." if len(message.content) > 100 else message.content
-            embed.add_field(name="Message Preview", value=f"```{preview}```", inline=False)
+            embed.add_field(name="Message", value=f"```{preview}```", inline=False)
 
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.REACTIONS, embed, user_id=user.id)
+        view = ReactionLogView(user.id, user.guild.id, message.jump_url)
+        await self._send_log(LogCategory.REACTIONS, embed, view=view)
 
     async def log_reaction_remove(
         self,
@@ -1973,14 +2122,13 @@ class LoggingService:
         if not self.enabled:
             return
 
-        embed = self._create_embed("➖ Reaction Removed", EmbedColors.WARNING, category="Reaction Remove", user_id=user.id)
+        embed = self._create_embed("➖ Reaction Removed", EmbedColors.LOG_NEGATIVE, category="Reaction Remove", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
-        embed.add_field(name="Emoji", value=str(reaction.emoji), inline=True)
-        embed.add_field(name="Channel", value=self._format_channel(message.channel), inline=True)
-        embed.add_field(name="Message", value=f"[Jump]({message.jump_url})", inline=True)
+        embed.add_field(name="Removed", value=f"{reaction.emoji} from {self._format_channel(message.channel)}", inline=True)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.REACTIONS, embed, user_id=user.id)
+        view = ReactionLogView(user.id, user.guild.id, message.jump_url)
+        await self._send_log(LogCategory.REACTIONS, embed, view=view)
 
     async def log_reaction_clear(
         self,
@@ -1993,11 +2141,19 @@ class LoggingService:
 
         embed = self._create_embed("🗑️ Reactions Cleared", EmbedColors.LOG_NEGATIVE, category="Reaction Clear")
         embed.add_field(name="Channel", value=self._format_channel(message.channel), inline=True)
-        embed.add_field(name="Message", value=f"[Jump]({message.jump_url})", inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
-        await self._send_log(LogCategory.REACTIONS, embed)
+        # Message button
+        view = discord.ui.View(timeout=None)
+        view.add_item(discord.ui.Button(
+            label="Message",
+            url=message.jump_url,
+            style=discord.ButtonStyle.link,
+            emoji=MESSAGE_EMOJI,
+        ))
+
+        await self._send_log(LogCategory.REACTIONS, embed, view=view)
 
     # =========================================================================
     # Stage Activity
@@ -2028,6 +2184,7 @@ class LoggingService:
         channel_name: str,
         topic: str,
         moderator: Optional[discord.Member] = None,
+        channel_id: Optional[int] = None,
     ) -> None:
         """Log a stage instance ending."""
         if not self.enabled:
@@ -2035,7 +2192,8 @@ class LoggingService:
 
         embed = self._create_embed("🎤 Stage Ended", EmbedColors.LOG_NEGATIVE, category="Stage End")
         embed.add_field(name="Topic", value=f"`{topic}`", inline=True)
-        embed.add_field(name="Channel", value=f"`{channel_name}`", inline=True)
+        channel_value = f"🔊 <#{channel_id}>" if channel_id else f"🔊 `{channel_name}`"
+        embed.add_field(name="Channel", value=channel_value, inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
@@ -2120,14 +2278,17 @@ class LoggingService:
             if moderator:
                 embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
-            embed.add_field(name="Message", value=f"[Jump to message]({message.jump_url})", inline=True)
-
             # Show message preview
             if message.content:
                 preview = message.content[:200] + "..." if len(message.content) > 200 else message.content
                 embed.add_field(name="Content Preview", value=f"```{preview}```", inline=False)
 
             self._set_user_thumbnail(embed, message.author)
+
+            # Add Message button + UserID/Avatar
+            view = MessageLogView(message.author.id, message.guild.id if message.guild else 0, message_url=message.jump_url)
+            await self._send_log(LogCategory.MESSAGES, embed, user_id=user_id, view=view)
+            return
         else:
             # Fallback when message can't be fetched
             if channel:
@@ -2258,6 +2419,7 @@ class LoggingService:
         channel_name: str,
         uses: Optional[int] = None,
         moderator: Optional[discord.Member] = None,
+        channel_id: Optional[int] = None,
     ) -> None:
         """Log an invite being deleted."""
         if not self.enabled:
@@ -2265,7 +2427,8 @@ class LoggingService:
 
         embed = self._create_embed("🔗 Invite Deleted", EmbedColors.LOG_NEGATIVE, category="Invite Delete")
         embed.add_field(name="Code", value=f"`{invite_code}`", inline=True)
-        embed.add_field(name="Channel", value=f"`{channel_name}`", inline=True)
+        channel_value = f"<#{channel_id}>" if channel_id else f"`{channel_name}`"
+        embed.add_field(name="Channel", value=channel_value, inline=True)
 
         if uses is not None:
             embed.add_field(name="Times Used", value=str(uses), inline=True)
@@ -2299,7 +2462,7 @@ class LoggingService:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         if member.voice and member.voice.channel:
-            embed.add_field(name="Channel", value=f"🔊 {member.voice.channel.name}", inline=True)
+            embed.add_field(name="Channel", value=f"🔊 {self._format_channel(member.voice.channel)}", inline=True)
 
         self._set_user_thumbnail(embed, member)
 
@@ -2325,7 +2488,7 @@ class LoggingService:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         if member.voice and member.voice.channel:
-            embed.add_field(name="Channel", value=f"🔊 {member.voice.channel.name}", inline=True)
+            embed.add_field(name="Channel", value=f"🔊 {self._format_channel(member.voice.channel)}", inline=True)
 
         self._set_user_thumbnail(embed, member)
 
@@ -2399,6 +2562,7 @@ class LoggingService:
         target: discord.Member,
         channel_name: str,
         moderator: Optional[discord.Member] = None,
+        channel_id: Optional[int] = None,
     ) -> None:
         """Log when a mod disconnects a user from voice."""
         if not self.enabled:
@@ -2406,7 +2570,8 @@ class LoggingService:
 
         embed = self._create_embed("🔌 Voice Disconnected", EmbedColors.LOG_NEGATIVE, category="Voice Disconnect", user_id=target.id)
         embed.add_field(name="User", value=self._format_user_field(target), inline=True)
-        embed.add_field(name="From Channel", value=f"🔊 {channel_name}", inline=True)
+        channel_value = f"🔊 <#{channel_id}>" if channel_id else f"🔊 {channel_name}"
+        embed.add_field(name="From Channel", value=channel_value, inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
@@ -3498,7 +3663,21 @@ class LoggingService:
             embed.add_field(name="Appeal Reason", value=reason[:500], inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.APPEALS, embed, user_id=user.id)
+        # Create view with Case button
+        view = discord.ui.View(timeout=None)
+        db = get_db()
+        case = db.get_case_log(user.id)
+        if case:
+            case_url = f"https://discord.com/channels/{case['guild_id']}/{case['thread_id']}"
+            view.add_item(discord.ui.Button(
+                label="Case",
+                url=case_url,
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+            ))
+        view.add_item(UserIdButton(user.id))
+
+        await self._send_log(LogCategory.APPEALS, embed, view=view, user_id=user.id)
 
     async def log_appeal_approved(
         self,
@@ -3528,7 +3707,21 @@ class LoggingService:
             embed.add_field(name="Reason", value=reason[:500], inline=False)
         self._set_user_thumbnail(embed, approved_by)
 
-        await self._send_log(LogCategory.APPEALS, embed, user_id=user.id)
+        # Create view with Case button
+        view = discord.ui.View(timeout=None)
+        db = get_db()
+        case = db.get_case_log(user.id)
+        if case:
+            case_url = f"https://discord.com/channels/{case['guild_id']}/{case['thread_id']}"
+            view.add_item(discord.ui.Button(
+                label="Case",
+                url=case_url,
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+            ))
+        view.add_item(UserIdButton(user.id))
+
+        await self._send_log(LogCategory.APPEALS, embed, view=view, user_id=user.id)
 
     async def log_appeal_denied(
         self,
@@ -3558,7 +3751,21 @@ class LoggingService:
             embed.add_field(name="Reason", value=reason[:500], inline=False)
         self._set_user_thumbnail(embed, denied_by)
 
-        await self._send_log(LogCategory.APPEALS, embed, user_id=user.id)
+        # Create view with Case button
+        view = discord.ui.View(timeout=None)
+        db = get_db()
+        case = db.get_case_log(user.id)
+        if case:
+            case_url = f"https://discord.com/channels/{case['guild_id']}/{case['thread_id']}"
+            view.add_item(discord.ui.Button(
+                label="Case",
+                url=case_url,
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+            ))
+        view.add_item(UserIdButton(user.id))
+
+        await self._send_log(LogCategory.APPEALS, embed, view=view, user_id=user.id)
 
     # =========================================================================
     # Modmail Logging
@@ -3581,10 +3788,22 @@ class LoggingService:
         )
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         embed.add_field(name="Status", value="Banned User", inline=True)
-        embed.add_field(name="Thread", value=f"<#{thread_id}>", inline=True)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.MODMAIL, embed, user_id=user.id)
+        # Create view with Thread and UserID buttons
+        view = discord.ui.View(timeout=None)
+        guild_id = self.config.logging_guild_id or self.config.mod_guild_id or 0
+        if guild_id and thread_id:
+            thread_url = f"https://discord.com/channels/{guild_id}/{thread_id}"
+            view.add_item(discord.ui.Button(
+                label="Thread",
+                url=thread_url,
+                style=discord.ButtonStyle.link,
+                emoji=MESSAGE_EMOJI,
+            ))
+        view.add_item(UserIdButton(user.id))
+
+        await self._send_log(LogCategory.MODMAIL, embed, view=view, user_id=user.id)
 
     async def log_modmail_closed(
         self,
@@ -3604,10 +3823,22 @@ class LoggingService:
         )
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         embed.add_field(name="Closed By", value=self._format_user_field(closed_by), inline=True)
-        embed.add_field(name="Thread", value=f"<#{thread_id}>", inline=True)
         self._set_user_thumbnail(embed, closed_by)
 
-        await self._send_log(LogCategory.MODMAIL, embed, user_id=user.id)
+        # Create view with Thread and UserID buttons
+        view = discord.ui.View(timeout=None)
+        guild_id = self.config.logging_guild_id or self.config.mod_guild_id or 0
+        if guild_id and thread_id:
+            thread_url = f"https://discord.com/channels/{guild_id}/{thread_id}"
+            view.add_item(discord.ui.Button(
+                label="Thread",
+                url=thread_url,
+                style=discord.ButtonStyle.link,
+                emoji=MESSAGE_EMOJI,
+            ))
+        view.add_item(UserIdButton(user.id))
+
+        await self._send_log(LogCategory.MODMAIL, embed, view=view, user_id=user.id)
 
     async def log_modmail_message(
         self,
@@ -3639,7 +3870,11 @@ class LoggingService:
         embed.add_field(name="Content", value=content[:500] if content else "*No content*", inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.MODMAIL, embed, user_id=user.id)
+        # Create view with UserID button
+        view = discord.ui.View(timeout=None)
+        view.add_item(UserIdButton(user.id))
+
+        await self._send_log(LogCategory.MODMAIL, embed, view=view, user_id=user.id)
 
     # =========================================================================
     # Warning Logging
@@ -3669,7 +3904,21 @@ class LoggingService:
         embed.add_field(name="Reason", value=reason[:500] if reason else "No reason provided", inline=False)
         self._set_user_thumbnail(embed, user)
 
-        await self._send_log(LogCategory.WARNINGS, embed, user_id=user.id)
+        # Create view with Case and UserID buttons
+        view = discord.ui.View(timeout=None)
+        db = get_db()
+        case = db.get_case_log(user.id)
+        if case:
+            case_url = f"https://discord.com/channels/{guild_id}/{case['thread_id']}"
+            view.add_item(discord.ui.Button(
+                label="Case",
+                url=case_url,
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+            ))
+        view.add_item(UserIdButton(user.id))
+
+        await self._send_log(LogCategory.WARNINGS, embed, view=view, user_id=user.id)
 
     async def log_warning_removed(
         self,
@@ -3694,7 +3943,22 @@ class LoggingService:
         embed.add_field(name="Remaining", value=str(remaining_count), inline=True)
         self._set_user_thumbnail(embed, moderator)
 
-        await self._send_log(LogCategory.WARNINGS, embed, user_id=user.id)
+        # Create view with Case and UserID buttons
+        view = discord.ui.View(timeout=None)
+        db = get_db()
+        case = db.get_case_log(user.id)
+        if case:
+            guild_id = self.config.logging_guild_id or case.get('guild_id', 0)
+            case_url = f"https://discord.com/channels/{guild_id}/{case['thread_id']}"
+            view.add_item(discord.ui.Button(
+                label="Case",
+                url=case_url,
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+            ))
+        view.add_item(UserIdButton(user.id))
+
+        await self._send_log(LogCategory.WARNINGS, embed, view=view, user_id=user.id)
 
     # =========================================================================
     # Audit Raw Logging

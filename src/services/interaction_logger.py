@@ -2,19 +2,22 @@
 Azab Discord Bot - Interaction Logger Service
 ==============================================
 
-Logs all button interactions to a Discord webhook in the mods server.
+Logs all bot interactions to a Discord webhook in the mods server.
 
 Features:
 - Embed batching (up to 10 embeds per request)
 - Automatic flush on timeout or batch full
+- Rate limit handling with exponential backoff
 - Centralized colors from EmbedColors
 - Timestamps on all embeds
 
 Tracked interactions:
-- Ticket actions (create, claim, close, reopen, transcript)
-- Appeal actions (approve, deny, contact user)
-- Modmail actions (close)
-- All button/select menu clicks
+- Slash command usage (with args and errors)
+- Button interactions (with action context)
+- Ticket actions (create, claim, close, reopen, priority, assign, transcript)
+- Appeal actions (approve, deny, contact, ticket opened)
+- Modmail actions (create, close)
+- Generic events
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -107,11 +110,22 @@ class InteractionLogger:
         return False
 
     async def verify_webhook(self) -> bool:
-        """Send a startup verification message to confirm webhook is working."""
+        """Check if webhook URL is configured."""
         if not self.webhook_url:
             logger.warning("Interaction Logger", [
                 ("Status", "No webhook URL configured"),
             ])
+            return False
+
+        # Webhook URL is configured, assume it's valid
+        logger.info("Interaction Logger", [
+            ("Status", "Webhook configured"),
+        ])
+        return True
+
+    async def _verify_webhook_unused(self) -> bool:
+        """Send a startup verification message to confirm webhook is working. (Disabled - too spammy)"""
+        if not self.webhook_url:
             return False
 
         try:
@@ -129,14 +143,8 @@ class InteractionLogger:
 
             success = await self._send_with_retry(payload)
             if success:
-                logger.info("Interaction Logger", [
-                    ("Status", "Webhook verified"),
-                ])
                 return True
             else:
-                logger.warning("Interaction Logger", [
-                    ("Status", "Webhook verification failed"),
-                ])
                 return False
         except Exception as e:
             logger.error("Interaction Logger", [
@@ -226,7 +234,7 @@ class InteractionLogger:
         """Log when a ticket is created."""
         embed = self._create_embed("🎫 Ticket Created", EmbedColors.TICKET)
         embed.set_thumbnail(url=user.display_avatar.url)
-        embed.add_field(name="User", value=f"{user.mention} `[{user.id}]`", inline=True)
+        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}` `[{user.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Category", value=f"`{category.title()}`", inline=True)
         embed.add_field(name="Subject", value=f"`{subject[:50]}{'...' if len(subject) > 50 else ''}`", inline=False)
@@ -245,7 +253,7 @@ class InteractionLogger:
         """Log when a ticket is claimed."""
         embed = self._create_embed("✋ Ticket Claimed", EmbedColors.PRIORITY_HIGH)
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Staff", value=f"{staff.mention} `[{staff.id}]`", inline=True)
+        embed.add_field(name="Staff", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Ticket Owner", value=f"{user.mention}", inline=True)
 
@@ -259,7 +267,7 @@ class InteractionLogger:
         """Log when a ticket is unclaimed."""
         embed = self._create_embed("👐 Ticket Unclaimed", EmbedColors.BLURPLE)
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Staff", value=f"{staff.mention} `[{staff.id}]`", inline=True)
+        embed.add_field(name="Staff", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
 
         await self._queue_embed(embed)
@@ -274,7 +282,7 @@ class InteractionLogger:
         """Log when a ticket is closed."""
         embed = self._create_embed("🔒 Ticket Closed", EmbedColors.LOG_NEGATIVE)
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Closed By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
+        embed.add_field(name="Closed By", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Ticket Owner", value=f"{user.mention}", inline=True)
         if reason:
@@ -291,7 +299,7 @@ class InteractionLogger:
         """Log when a ticket is reopened."""
         embed = self._create_embed("🔓 Ticket Reopened", EmbedColors.SUCCESS)
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Reopened By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
+        embed.add_field(name="Reopened By", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Ticket Owner", value=f"{user.mention}", inline=True)
 
@@ -313,7 +321,7 @@ class InteractionLogger:
 
         embed = self._create_embed("🏷️ Priority Changed", priority_colors.get(priority, EmbedColors.BLURPLE))
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Changed By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
+        embed.add_field(name="Changed By", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Priority", value=f"`{priority.upper()}`", inline=True)
 
@@ -328,7 +336,7 @@ class InteractionLogger:
         """Log when a ticket is assigned."""
         embed = self._create_embed("👤 Ticket Assigned", EmbedColors.BLURPLE)
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Assigned By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
+        embed.add_field(name="Assigned By", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Assigned To", value=f"{assigned_to.mention}", inline=True)
 
@@ -343,9 +351,9 @@ class InteractionLogger:
         """Log when a user is added to a ticket."""
         embed = self._create_embed("➕ User Added to Ticket", EmbedColors.SUCCESS)
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Added By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
+        embed.add_field(name="Added By", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
-        embed.add_field(name="User Added", value=f"{added_user.mention} `[{added_user.id}]`", inline=True)
+        embed.add_field(name="User Added", value=f"{added_user.mention}\n`{added_user.name}` `[{added_user.id}]`", inline=True)
 
         await self._queue_embed(embed)
 
@@ -357,7 +365,7 @@ class InteractionLogger:
         """Log when a ticket transcript is requested."""
         embed = self._create_embed("📜 Transcript Requested", EmbedColors.BLURPLE)
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Requested By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
+        embed.add_field(name="Requested By", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
 
         await self._queue_embed(embed)
@@ -377,7 +385,7 @@ class InteractionLogger:
         """Log when an appeal is approved."""
         embed = self._create_embed("✅ Appeal Approved", EmbedColors.SUCCESS)
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Approved By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
+        embed.add_field(name="Approved By", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
         embed.add_field(name="Appeal", value=f"`{appeal_id}`", inline=True)
         embed.add_field(name="Case", value=f"`{case_id}`", inline=True)
         embed.add_field(name="Type", value=f"`{action_type.title()}`", inline=True)
@@ -396,7 +404,7 @@ class InteractionLogger:
         """Log when an appeal is denied."""
         embed = self._create_embed("❌ Appeal Denied", EmbedColors.LOG_NEGATIVE)
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Denied By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
+        embed.add_field(name="Denied By", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
         embed.add_field(name="Appeal", value=f"`{appeal_id}`", inline=True)
         embed.add_field(name="Case", value=f"`{case_id}`", inline=True)
         embed.add_field(name="Type", value=f"`{action_type.title()}`", inline=True)
@@ -413,9 +421,9 @@ class InteractionLogger:
         """Log when staff contacts a banned user about their appeal."""
         embed = self._create_embed("📬 Appeal Contact Initiated", EmbedColors.APPEAL)
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Staff", value=f"{staff.mention} `[{staff.id}]`", inline=True)
+        embed.add_field(name="Staff", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
         embed.add_field(name="Appeal", value=f"`{appeal_id}`", inline=True)
-        embed.add_field(name="User Contacted", value=f"{user.mention} `[{user.id}]`", inline=True)
+        embed.add_field(name="User Contacted", value=f"{user.mention}\n`{user.name}` `[{user.id}]`", inline=True)
 
         await self._queue_embed(embed)
 
@@ -429,10 +437,10 @@ class InteractionLogger:
         """Log when a ticket is opened for appeal discussion."""
         embed = self._create_embed("🎫 Appeal Ticket Opened", EmbedColors.APPEAL)
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Staff", value=f"{staff.mention} `[{staff.id}]`", inline=True)
+        embed.add_field(name="Staff", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
         embed.add_field(name="Appeal", value=f"`{appeal_id}`", inline=True)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
-        embed.add_field(name="User", value=f"{user.mention} `[{user.id}]`", inline=True)
+        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}` `[{user.id}]`", inline=True)
 
         await self._queue_embed(embed)
 
@@ -449,7 +457,7 @@ class InteractionLogger:
         """Log when a modmail thread is created."""
         embed = self._create_embed("📬 Modmail Created", EmbedColors.MODMAIL)
         embed.set_thumbnail(url=user.display_avatar.url)
-        embed.add_field(name="User", value=f"{user.mention} `[{user.id}]`", inline=True)
+        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}` `[{user.id}]`", inline=True)
         embed.add_field(name="Status", value="`Banned User`", inline=True)
 
         thread_link = f"https://discord.com/channels/{guild_id}/{thread_id}"
@@ -466,9 +474,76 @@ class InteractionLogger:
         """Log when a modmail thread is closed."""
         embed = self._create_embed("🔒 Modmail Closed", EmbedColors.LOG_NEGATIVE)
         embed.set_thumbnail(url=staff.display_avatar.url)
-        embed.add_field(name="Closed By", value=f"{staff.mention} `[{staff.id}]`", inline=True)
-        embed.add_field(name="User", value=f"{user.mention} `[{user.id}]`", inline=True)
+        embed.add_field(name="Closed By", value=f"{staff.mention}\n`{staff.name}` `[{staff.id}]`", inline=True)
+        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}` `[{user.id}]`", inline=True)
         embed.add_field(name="Thread ID", value=f"`{thread_id}`", inline=True)
+
+        await self._queue_embed(embed)
+
+    # =========================================================================
+    # Command Events
+    # =========================================================================
+
+    async def log_command(
+        self,
+        interaction: discord.Interaction,
+        command_name: str,
+        success: bool = True,
+        error: Optional[str] = None,
+        **kwargs
+    ) -> None:
+        """Log when a slash command is used."""
+        user = interaction.user
+        color = EmbedColors.BLURPLE if success else EmbedColors.LOG_NEGATIVE
+        status = "✅" if success else "❌"
+
+        embed = self._create_embed(f"⚡ /{command_name} {status}", color)
+        embed.set_thumbnail(url=user.display_avatar.url)
+        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}` `[{user.id}]`", inline=True)
+
+        # Add command arguments
+        if kwargs:
+            args_str = " • ".join([f"**{k}:** `{v}`" for k, v in kwargs.items()])
+            embed.add_field(name="Args", value=args_str, inline=False)
+
+        # Add error info if failed
+        if error:
+            embed.add_field(name="Error", value=f"```{error[:200]}```", inline=False)
+
+        # Add channel link if available
+        if interaction.channel and interaction.guild:
+            channel_name = getattr(interaction.channel, 'name', 'Unknown')
+            channel_link = f"https://discord.com/channels/{interaction.guild.id}/{interaction.channel.id}"
+            embed.add_field(name="Channel", value=f"[#{channel_name}]({channel_link})", inline=True)
+
+        await self._queue_embed(embed)
+
+    # =========================================================================
+    # Button Events
+    # =========================================================================
+
+    async def log_button(
+        self,
+        interaction: discord.Interaction,
+        button_label: str,
+        action: str,
+        success: bool = True,
+    ) -> None:
+        """Log when a button is pressed."""
+        user = interaction.user
+        color = EmbedColors.ORANGE if success else EmbedColors.LOG_NEGATIVE
+        status = "✅" if success else "❌"
+
+        embed = self._create_embed(f"🔘 {button_label} {status}", color)
+        embed.set_thumbnail(url=user.display_avatar.url)
+        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}` `[{user.id}]`", inline=True)
+        embed.add_field(name="Action", value=f"`{action}`", inline=True)
+
+        # Add channel link if available
+        if interaction.channel and interaction.guild:
+            channel_name = getattr(interaction.channel, 'name', 'Unknown')
+            channel_link = f"https://discord.com/channels/{interaction.guild.id}/{interaction.channel.id}"
+            embed.add_field(name="Channel", value=f"[#{channel_name}]({channel_link})", inline=True)
 
         await self._queue_embed(embed)
 
@@ -490,10 +565,37 @@ class InteractionLogger:
 
         embed = self._create_embed(f"{status} {button_name}", color)
         embed.set_thumbnail(url=user.display_avatar.url)
-        embed.add_field(name="User", value=f"{user.mention} `[{user.id}]`", inline=True)
+        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}` `[{user.id}]`", inline=True)
 
         if details:
             embed.add_field(name="Details", value=f"`{details[:100]}`", inline=False)
+
+        for name, value in fields.items():
+            embed.add_field(name=name, value=str(value), inline=True)
+
+        await self._queue_embed(embed)
+
+    async def log_event(
+        self,
+        title: str,
+        description: Optional[str] = None,
+        user: Optional[discord.User] = None,
+        color: int = EmbedColors.BLURPLE,
+        success: bool = True,
+        **fields
+    ) -> None:
+        """Log a generic event."""
+        status = "✅" if success else "❌"
+        final_color = color if success else EmbedColors.LOG_NEGATIVE
+
+        embed = self._create_embed(f"{title} {status}", final_color)
+
+        if description:
+            embed.description = description
+
+        if user:
+            embed.set_thumbnail(url=user.display_avatar.url)
+            embed.add_field(name="User", value=f"{user.mention}\n`{user.name}` `[{user.id}]`", inline=True)
 
         for name, value in fields.items():
             embed.add_field(name=name, value=str(value), inline=True)

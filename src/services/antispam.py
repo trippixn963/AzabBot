@@ -106,6 +106,11 @@ IMAGE_DUPLICATE_TIME_WINDOW = 60  # seconds
 WEBHOOK_MESSAGE_LIMIT = 5
 WEBHOOK_TIME_WINDOW = 10  # seconds
 
+# Whitelisted webhook IDs (e.g., live logs webhook)
+WHITELISTED_WEBHOOK_IDS = frozenset([
+    1455223536150122578,  # Live logs webhook
+])
+
 # Memory bounds: Maximum tracked users per guild to prevent unbounded growth
 MAX_TRACKED_USERS_PER_GUILD = 5000
 
@@ -1004,6 +1009,10 @@ class AntiSpamService:
     def _check_webhook_spam(self, message: discord.Message, now: datetime) -> bool:
         """Check if webhook is spamming."""
         if not message.webhook_id:
+            return False
+
+        # Skip whitelisted webhooks (e.g., live logs)
+        if message.webhook_id in WHITELISTED_WEBHOOK_IDS:
             return False
 
         state = self._webhook_states[message.webhook_id]

@@ -757,13 +757,15 @@ class AuditLogEvents(commands.Cog):
             elif entry.action == discord.AuditLogAction.member_disconnect:
                 if entry.extra and hasattr(entry.extra, 'count'):
                     channel_name = "Unknown"
+                    channel_id = None
                     if hasattr(entry.extra, 'channel') and entry.extra.channel:
                         channel_name = entry.extra.channel.name
+                        channel_id = entry.extra.channel.id
 
                     if entry.extra.count == 1 and entry.target:
                         if isinstance(entry.target, discord.Member):
                             await self.bot.logging_service.log_voice_disconnect(
-                                target=entry.target, channel_name=channel_name, moderator=moderator,
+                                target=entry.target, channel_name=channel_name, moderator=moderator, channel_id=channel_id,
                             )
 
             # Mod message delete
@@ -975,10 +977,12 @@ class AuditLogEvents(commands.Cog):
             elif entry.action == discord.AuditLogAction.webhook_delete:
                 webhook_name = getattr(entry.before, 'name', 'Unknown')
                 channel_name = "Unknown"
+                channel_id = None
                 if hasattr(entry.before, 'channel') and entry.before.channel:
                     channel_name = entry.before.channel.name
+                    channel_id = entry.before.channel.id
                 await self.bot.logging_service.log_webhook_delete(
-                    webhook_name=webhook_name, channel_name=channel_name, moderator=moderator,
+                    webhook_name=webhook_name, channel_name=channel_name, moderator=moderator, channel_id=channel_id,
                 )
 
             # Message pin/unpin

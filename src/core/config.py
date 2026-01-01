@@ -199,6 +199,7 @@ class Config:
     alert_webhook_url: Optional[str] = None
     error_webhook_url: Optional[str] = None
     interaction_webhook_url: Optional[str] = None
+    live_logs_webhook_url: Optional[str] = None
 
     # -------------------------------------------------------------------------
     # Optional: Logging Exclusions
@@ -537,6 +538,7 @@ def load_config() -> Config:
         alert_webhook_url=_validate_url(os.getenv("ALERT_WEBHOOK_URL"), "ALERT_WEBHOOK_URL"),
         error_webhook_url=_validate_url(os.getenv("ERROR_WEBHOOK_URL"), "ERROR_WEBHOOK_URL"),
         interaction_webhook_url=_validate_url(os.getenv("INTERACTION_WEBHOOK_URL"), "INTERACTION_WEBHOOK_URL"),
+        live_logs_webhook_url=_validate_url(os.getenv("LIVE_LOGS_WEBHOOK_URL"), "LIVE_LOGS_WEBHOOK_URL"),
         ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,
         lockdown_exclude_ids=lockdown_exclude_ids if lockdown_exclude_ids else None,
         link_allowed_user_ids=link_allowed_user_ids if link_allowed_user_ids else None,

@@ -9,7 +9,8 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, Optional
 
 import discord
 from discord.ext import commands
@@ -28,6 +29,24 @@ class ChannelEvents(commands.Cog):
         self.bot = bot
         self.config = get_config()
 
+    async def _get_audit_moderator(
+        self,
+        guild: discord.Guild,
+        action: discord.AuditLogAction,
+    ) -> Optional[discord.Member]:
+        """Get the moderator from the most recent audit log entry for an action."""
+        try:
+            await asyncio.sleep(0.5)  # Wait for audit log to be available
+            async for entry in guild.audit_logs(action=action, limit=1):
+                if entry.user and isinstance(entry.user, discord.Member):
+                    return entry.user
+                elif entry.user:
+                    # Try to get as member
+                    return guild.get_member(entry.user.id)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+        return None
+
     # =========================================================================
     # Channel Events
     # =========================================================================
@@ -44,7 +63,7 @@ class ChannelEvents(commands.Cog):
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> None:
         """Log channel deletions."""
         if self.bot.logging_service and self.bot.logging_service.enabled:
-            await self.bot.logging_service.log_channel_delete(channel.name, str(channel.type))
+            await self.bot.logging_service.log_channel_delete(channel.name, str(channel.type), channel_id=channel.id)
 
     # =========================================================================
     # Role Events
@@ -80,13 +99,18 @@ class ChannelEvents(commands.Cog):
         before_ids = {e.id for e in before}
         after_ids = {e.id for e in after}
 
+        # Check for new emojis
         for emoji in after:
             if emoji.id not in before_ids:
-                await self.bot.logging_service.log_emoji_create(emoji)
+                # Try to get moderator from audit log
+                moderator = await self._get_audit_moderator(emoji.guild, discord.AuditLogAction.emoji_create)
+                await self.bot.logging_service.log_emoji_create(emoji, moderator=moderator)
 
+        # Check for deleted emojis
         for emoji in before:
             if emoji.id not in after_ids:
-                await self.bot.logging_service.log_emoji_delete(emoji.name)
+                moderator = await self._get_audit_moderator(emoji.guild, discord.AuditLogAction.emoji_delete)
+                await self.bot.logging_service.log_emoji_delete(emoji.name, emoji_id=emoji.id, moderator=moderator)
 
     @commands.Cog.listener()
     async def on_guild_stickers_update(
@@ -102,13 +126,17 @@ class ChannelEvents(commands.Cog):
         before_ids = {s.id for s in before}
         after_ids = {s.id for s in after}
 
+        # Check for new stickers
         for sticker in after:
             if sticker.id not in before_ids:
-                await self.bot.logging_service.log_sticker_create(sticker)
+                moderator = await self._get_audit_moderator(guild, discord.AuditLogAction.sticker_create)
+                await self.bot.logging_service.log_sticker_create(sticker, moderator=moderator)
 
+        # Check for deleted stickers
         for sticker in before:
             if sticker.id not in after_ids:
-                await self.bot.logging_service.log_sticker_delete(sticker.name)
+                moderator = await self._get_audit_moderator(guild, discord.AuditLogAction.sticker_delete)
+                await self.bot.logging_service.log_sticker_delete(sticker.name, sticker_id=sticker.id, moderator=moderator)
 
     # =========================================================================
     # Invite Events
@@ -129,10 +157,12 @@ class ChannelEvents(commands.Cog):
 
         if self.bot.logging_service and self.bot.logging_service.enabled:
             channel_name = invite.channel.name if invite.channel else "Unknown"
+            channel_id = invite.channel.id if invite.channel else None
             await self.bot.logging_service.log_invite_delete(
                 invite_code=invite.code,
                 channel_name=channel_name,
                 uses=uses,
+                channel_id=channel_id,
             )
 
     # =========================================================================
@@ -343,7 +373,8 @@ class ChannelEvents(commands.Cog):
         """Log stage instance ending."""
         if self.bot.logging_service and self.bot.logging_service.enabled:
             channel_name = stage.channel.name if stage.channel else "Unknown"
-            await self.bot.logging_service.log_stage_end(channel_name, stage.topic)
+            channel_id = stage.channel.id if stage.channel else None
+            await self.bot.logging_service.log_stage_end(channel_name, stage.topic, channel_id=channel_id)
 
     @commands.Cog.listener()
     async def on_stage_instance_update(

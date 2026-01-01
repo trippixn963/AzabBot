@@ -64,11 +64,15 @@ class SnipeCog(commands.Cog):
     # =========================================================================
 
     @app_commands.command(name="snipe", description="View deleted messages in this channel")
-    @app_commands.describe(number="Which deleted message to view (1=most recent, up to 10)")
+    @app_commands.describe(
+        number="Which deleted message to view (1=most recent, up to 10)",
+        user="Filter by a specific user's deleted messages",
+    )
     async def snipe(
         self,
         interaction: discord.Interaction,
         number: Optional[app_commands.Range[int, 1, 10]] = 1,
+        user: Optional[discord.User] = None,
     ) -> None:
         """Show deleted messages in the current channel."""
         if not interaction.guild or not interaction.channel:
@@ -81,8 +85,9 @@ class SnipeCog(commands.Cog):
         try:
             channel_id = interaction.channel.id
 
-            # Get snipes from database
-            snipes = self.db.get_snipes(channel_id, limit=10)
+            # Get snipes from database (fetch more if filtering by user)
+            fetch_limit = 50 if user else 10
+            snipes = self.db.get_snipes(channel_id, limit=fetch_limit)
 
             if not snipes:
                 logger.debug(f"Snipe attempted but no cache for channel {channel_id}")
@@ -100,6 +105,22 @@ class SnipeCog(commands.Cog):
                 and s.get("author_id") != self.config.developer_id
             ]
 
+            # Apply user filter if specified
+            if user:
+                fresh_snipes = [s for s in fresh_snipes if s.get("author_id") == user.id]
+
+                if not fresh_snipes:
+                    logger.info("Snipe User Filter Empty", [
+                        ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                        ("Channel", f"#{interaction.channel.name}"),
+                        ("Filter User", f"{user} ({user.id})"),
+                    ])
+                    await interaction.response.send_message(
+                        f"No recently deleted messages from {user.mention} in this channel.",
+                        ephemeral=True,
+                    )
+                    return
+
             if not fresh_snipes:
                 await interaction.response.send_message(
                     "No recently deleted messages in this channel.",
@@ -110,8 +131,9 @@ class SnipeCog(commands.Cog):
             # Check if requested number exists
             index = number - 1
             if index >= len(fresh_snipes):
+                filter_text = f" from {user.mention}" if user else ""
                 await interaction.response.send_message(
-                    f"Only {len(fresh_snipes)} deleted message(s) cached. Use `/snipe {len(fresh_snipes)}` or lower.",
+                    f"Only {len(fresh_snipes)} deleted message(s){filter_text} cached. Use `/snipe {len(fresh_snipes)}` or lower.",
                     ephemeral=True,
                 )
                 return
@@ -131,32 +153,36 @@ class SnipeCog(commands.Cog):
 
             # Tree logging
             content_preview = (content[:50] + "...") if len(content) > 50 else (content or "(no text)")
-            logger.tree("SNIPE USED", [
+            log_details = [
                 ("Moderator", f"{interaction.user} ({interaction.user.id})"),
                 ("Channel", f"#{interaction.channel.name} ({channel_id})"),
                 ("Target", f"{author_name} ({author_id})"),
                 ("Message #", str(number)),
+            ]
+            if user:
+                log_details.append(("Filter", f"{user} ({user.id})"))
+            log_details.extend([
                 ("Content", content_preview),
                 ("Attachments", str(len(attachment_urls))),
                 ("Cached Files", str(len(attachment_data))),
                 ("Stickers", str(len(sticker_urls))),
-            ], emoji="🎯")
+            ])
+            logger.tree("SNIPE USED", log_details, emoji="🎯")
 
-            # Build embed for better attachment display
-            embed = discord.Embed(
-                description=content[:4000] if content else None,
-                color=EmbedColors.INFO,
-                timestamp=datetime.fromtimestamp(deleted_at, tz=NY_TZ),
-            )
-            embed.set_author(
-                name=f"{author_display} ({author_name})",
-                icon_url=author_avatar,
-            )
-            embed.set_footer(text=f"Deleted • Message #{number}")
+            # Build plain text message
+            lines = []
+
+            # Author line - mention with display name
+            lines.append(f"<@{author_id}> ({author_display})")
+
+            # Content in quote block
+            if content:
+                # Split content into lines and quote each
+                for line in content[:2000].split("\n"):
+                    lines.append(f"> {line}")
 
             # Prepare files to upload from database cache
             files_to_send: List[discord.File] = []
-            first_image_filename = None
 
             if attachment_data:
                 # We have actual file bytes stored in DB - create discord.File objects
@@ -168,70 +194,33 @@ class SnipeCog(commands.Cog):
                             file_bytes = base64.b64decode(data_b64)
                             file_obj = discord.File(BytesIO(file_bytes), filename=filename)
                             files_to_send.append(file_obj)
-                            # Track first image for embed
-                            if not first_image_filename:
-                                ext = filename.lower().split(".")[-1] if "." in filename else ""
-                                if ext in ("png", "jpg", "jpeg", "gif", "webp"):
-                                    first_image_filename = filename
                     except Exception as e:
                         logger.warning("Snipe Attachment Decode Failed", [
                             ("Filename", att.get("filename", "unknown")),
                             ("Error", str(e)[:50]),
                         ])
 
-                # Set embed image to first uploaded image
-                if first_image_filename:
-                    embed.set_image(url=f"attachment://{first_image_filename}")
-            else:
-                # Fallback to URLs (may be expired)
-                image_url = None
-                other_attachments = []
-                for att in attachment_urls:
-                    content_type = att.get("content_type", "") or ""
-                    if content_type.startswith("image/") and not image_url:
-                        image_url = att.get("url")
-                    else:
-                        other_attachments.append(att)
-
-                if image_url:
-                    embed.set_image(url=image_url)
-
-                # Add other attachments as field (links may be expired)
-                if other_attachments:
-                    att_links = []
-                    for att in other_attachments[:5]:
-                        filename = att.get("filename", "file")
-                        url = att.get("url", "")
-                        att_links.append(f"[{filename}]({url})")
-                    embed.add_field(
-                        name="Attachments (links may be expired)",
-                        value="\n".join(att_links),
-                        inline=False,
-                    )
+            # Show attachment info (URLs may be expired but show filenames)
+            if attachment_urls and not files_to_send:
+                att_names = [att.get("filename", "file") for att in attachment_urls[:5]]
+                lines.append(f"📎 {', '.join(att_names)}")
 
             # Add stickers
             if sticker_urls:
-                sticker_info = []
-                for sticker in sticker_urls[:3]:
-                    name = sticker.get("name", "sticker")
-                    url = sticker.get("url", "")
-                    sticker_info.append(f"[{name}]({url})")
-                embed.add_field(
-                    name="Stickers",
-                    value="\n".join(sticker_info),
-                    inline=False,
-                )
-                # If no image set and sticker has image, show it
-                if not first_image_filename and sticker_urls[0].get("url"):
-                    embed.set_thumbnail(url=sticker_urls[0].get("url"))
+                sticker_names = [s.get("name", "sticker") for s in sticker_urls[:3]]
+                lines.append(f"🎨 Stickers: {', '.join(sticker_names)}")
 
-            set_footer(embed)
+            # Relative timestamp footer
+            deleted_timestamp = int(deleted_at)
+            lines.append(f"-# Deleted <t:{deleted_timestamp}:R>")
 
-            # Send public message with embed and any cached files
+            message_content = "\n".join(lines)
+
+            # Send public message with files if any
             if files_to_send:
-                await interaction.response.send_message(embed=embed, files=files_to_send)
+                await interaction.response.send_message(content=message_content, files=files_to_send)
             else:
-                await interaction.response.send_message(embed=embed)
+                await interaction.response.send_message(content=message_content)
 
             # Log to server logs
             await self._log_snipe_usage(
@@ -240,6 +229,7 @@ class SnipeCog(commands.Cog):
                 target_name=author_name,
                 message_number=number,
                 content_preview=content_preview,
+                filter_user=user,
             )
 
         except discord.HTTPException as e:
@@ -281,11 +271,15 @@ class SnipeCog(commands.Cog):
     # =========================================================================
 
     @app_commands.command(name="editsnipe", description="View edited messages in this channel")
-    @app_commands.describe(number="Which edited message to view (1=most recent, up to 10)")
+    @app_commands.describe(
+        number="Which edited message to view (1=most recent, up to 10)",
+        user="Filter by a specific user's edited messages",
+    )
     async def editsnipe(
         self,
         interaction: discord.Interaction,
         number: Optional[app_commands.Range[int, 1, 10]] = 1,
+        user: Optional[discord.User] = None,
     ) -> None:
         """Show edited messages in the current channel."""
         if not interaction.guild or not interaction.channel:
@@ -318,6 +312,22 @@ class SnipeCog(commands.Cog):
                 and e.get("author_id") != self.config.developer_id
             ]
 
+            # Apply user filter if specified
+            if user:
+                fresh_edits = [e for e in fresh_edits if e.get("author_id") == user.id]
+
+                if not fresh_edits:
+                    logger.info("Editsnipe User Filter Empty", [
+                        ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                        ("Channel", f"#{interaction.channel.name}"),
+                        ("Filter User", f"{user} ({user.id})"),
+                    ])
+                    await interaction.response.send_message(
+                        f"No recently edited messages from {user.mention} in this channel.",
+                        ephemeral=True,
+                    )
+                    return
+
             if not fresh_edits:
                 await interaction.response.send_message(
                     "No recently edited messages in this channel.",
@@ -328,8 +338,9 @@ class SnipeCog(commands.Cog):
             # Check if requested number exists
             index = number - 1
             if index >= len(fresh_edits):
+                filter_text = f" from {user.mention}" if user else ""
                 await interaction.response.send_message(
-                    f"Only {len(fresh_edits)} edited message(s) cached. Use `/editsnipe {len(fresh_edits)}` or lower.",
+                    f"Only {len(fresh_edits)} edited message(s){filter_text} cached. Use `/editsnipe {len(fresh_edits)}` or lower.",
                     ephemeral=True,
                 )
                 return
@@ -355,69 +366,67 @@ class SnipeCog(commands.Cog):
             # Tree logging
             before_preview = (before_content[:30] + "...") if len(before_content) > 30 else (before_content or "(empty)")
             after_preview = (after_content[:30] + "...") if len(after_content) > 30 else (after_content or "(empty)")
-            logger.tree("EDITSNIPE USED", [
+            log_details = [
                 ("Moderator", f"{interaction.user} ({interaction.user.id})"),
                 ("Channel", f"#{interaction.channel.name} ({channel_id})"),
                 ("Target", f"{author_name} ({author_id})"),
                 ("Message #", str(number)),
+            ]
+            if user:
+                log_details.append(("Filter", f"{user} ({user.id})"))
+            log_details.extend([
                 ("Before", before_preview),
                 ("After", after_preview),
                 ("Removed Attachments", str(len(removed_attachments))),
-            ], emoji="✏️")
+            ])
+            logger.tree("EDITSNIPE USED", log_details, emoji="✏️")
 
-            # Build embed for better attachment display
-            embed = discord.Embed(
-                color=EmbedColors.WARNING,
-                timestamp=datetime.fromtimestamp(edited_at, tz=NY_TZ),
-            )
-            embed.set_author(
-                name=f"{author_display} ({author_name})",
-                icon_url=author_avatar,
-            )
+            # Build plain text message
+            lines = []
 
-            # Add before/after content
-            if before_content or after_content:
-                before_display = before_content[:1000] if before_content else "*(empty)*"
-                after_display = after_content[:1000] if after_content else "*(empty)*"
-                embed.add_field(name="Before", value=before_display, inline=False)
-                embed.add_field(name="After", value=after_display, inline=False)
+            # Author line - mention with display name
+            lines.append(f"<@{author_id}> ({author_display})")
+
+            # Before content
+            lines.append("**Before:**")
+            if before_content:
+                for line in before_content[:1000].split("\n"):
+                    lines.append(f"> {line}")
+            else:
+                lines.append("> *(empty)*")
+
+            # After content
+            lines.append("**After:**")
+            if after_content:
+                for line in after_content[:1000].split("\n"):
+                    lines.append(f"> {line}")
+            else:
+                lines.append("> *(empty)*")
 
             # Show removed attachments
             if removed_attachments:
-                # Find first removed image to display
-                removed_image_url = None
-                removed_other = []
-                for att in removed_attachments:
-                    content_type = att.get("content_type", "") or ""
-                    if content_type.startswith("image/") and not removed_image_url:
-                        removed_image_url = att.get("url")
-                    else:
-                        removed_other.append(att)
+                att_names = [att.get("filename", "file") for att in removed_attachments[:5]]
+                lines.append(f"📎 Removed: {', '.join(att_names)}")
 
-                if removed_image_url:
-                    embed.set_image(url=removed_image_url)
+            # Relative timestamp footer
+            edited_timestamp = int(edited_at)
+            lines.append(f"-# Edited <t:{edited_timestamp}:R>")
 
-                # List removed attachments
-                att_links = []
-                for att in removed_attachments[:5]:
-                    filename = att.get("filename", "file")
-                    url = att.get("url", "")
-                    att_links.append(f"[{filename}]({url})")
-                embed.add_field(
-                    name="Removed Attachments",
-                    value="\n".join(att_links),
-                    inline=False,
-                )
+            message_content = "\n".join(lines)
 
-            # Add jump link
+            # Create view with jump button if we have a URL
+            view = None
             if jump_url:
-                embed.add_field(name="Message", value=f"[Jump to message]({jump_url})", inline=True)
-
-            embed.set_footer(text=f"Edited • Message #{number}")
-            set_footer(embed)
+                view = discord.ui.View()
+                view.add_item(discord.ui.Button(
+                    label="Message",
+                    url=jump_url,
+                    style=discord.ButtonStyle.link,
+                    emoji=discord.PartialEmoji(name="message", id=1452783032460247150),
+                ))
 
             # Send public message (not ephemeral)
-            await interaction.response.send_message(embed=embed)
+            await interaction.response.send_message(content=message_content, view=view)
 
             # Log to server logs
             await self._log_editsnipe_usage(
@@ -427,6 +436,7 @@ class SnipeCog(commands.Cog):
                 message_number=number,
                 before_preview=before_preview,
                 after_preview=after_preview,
+                filter_user=user,
             )
 
         except discord.HTTPException as e:
@@ -574,6 +584,7 @@ class SnipeCog(commands.Cog):
         target_name: str,
         message_number: int,
         content_preview: str,
+        filter_user: Optional[discord.User] = None,
     ) -> None:
         """Log snipe usage to server logs."""
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
@@ -606,6 +617,12 @@ class SnipeCog(commands.Cog):
                 value=f"`{message_number}`",
                 inline=True,
             )
+            if filter_user:
+                embed.add_field(
+                    name="Filter",
+                    value=f"{filter_user.mention}\n`{filter_user.id}`",
+                    inline=True,
+                )
             embed.add_field(
                 name="Content Preview",
                 value=f"```{content_preview[:100]}```" if content_preview else "*(empty)*",
@@ -630,6 +647,7 @@ class SnipeCog(commands.Cog):
         message_number: int,
         before_preview: str,
         after_preview: str,
+        filter_user: Optional[discord.User] = None,
     ) -> None:
         """Log editsnipe usage to server logs."""
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
@@ -662,6 +680,12 @@ class SnipeCog(commands.Cog):
                 value=f"`{message_number}`",
                 inline=True,
             )
+            if filter_user:
+                embed.add_field(
+                    name="Filter",
+                    value=f"{filter_user.mention}\n`{filter_user.id}`",
+                    inline=True,
+                )
             embed.add_field(
                 name="Before",
                 value=f"```{before_preview[:100]}```" if before_preview else "*(empty)*",

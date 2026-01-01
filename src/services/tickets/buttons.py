@@ -19,6 +19,7 @@ import discord
 from discord.ext import commands
 
 from src.core.logger import logger
+from src.core.config import get_config
 from .constants import (
     APPROVE_EMOJI,
     DENY_EMOJI,
@@ -33,6 +34,16 @@ from .constants import (
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
+
+
+def _is_ticket_staff(user: discord.Member) -> bool:
+    """Check if user is ticket staff (has manage_messages OR is developer)."""
+    config = get_config()
+    # Developer can always access
+    if config.developer_id and user.id == config.developer_id:
+        return True
+    # Check for manage_messages permission
+    return user.guild_permissions.manage_messages
 
 
 # =============================================================================
@@ -72,17 +83,21 @@ class ClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clai
             return
 
         ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
-        if ticket and interaction.user.id == ticket["user_id"]:
+
+        # Check if user has staff permissions (or is developer)
+        if not _is_ticket_staff(interaction.user):
             await interaction.response.send_message(
-                "Only staff can claim tickets.",
+                "You don't have permission to claim tickets.",
                 ephemeral=True,
             )
             return
 
-        # Check if user has staff permissions
-        if not interaction.user.guild_permissions.manage_messages:
+        # Ticket owner can't claim their own ticket (unless they're developer)
+        config = get_config()
+        is_developer = config.developer_id and interaction.user.id == config.developer_id
+        if ticket and interaction.user.id == ticket["user_id"] and not is_developer:
             await interaction.response.send_message(
-                "You don't have permission to claim tickets.",
+                "Only staff can claim tickets.",
                 ephemeral=True,
             )
             return
@@ -147,7 +162,7 @@ class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clos
             )
             return
 
-        is_staff = interaction.user.guild_permissions.manage_messages
+        is_staff = _is_ticket_staff(interaction.user)
         is_ticket_owner = ticket["user_id"] == interaction.user.id
 
         if is_staff:
@@ -210,15 +225,9 @@ class AddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_ad
             return
 
         ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
-        if ticket and interaction.user.id == ticket["user_id"]:
-            await interaction.response.send_message(
-                "Only staff can add users to tickets.",
-                ephemeral=True,
-            )
-            return
 
-        # Check if user has staff permissions
-        if not interaction.user.guild_permissions.manage_messages:
+        # Check if user has staff permissions (or is developer)
+        if not _is_ticket_staff(interaction.user):
             await interaction.response.send_message(
                 "You don't have permission to add users to tickets.",
                 ephemeral=True,
@@ -264,8 +273,8 @@ class ReopenButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_reo
             )
             return
 
-        # Check if user has staff permissions
-        if not interaction.user.guild_permissions.manage_messages:
+        # Check if user has staff permissions (or is developer)
+        if not _is_ticket_staff(interaction.user):
             await interaction.response.send_message(
                 "Only staff can reopen tickets.",
                 ephemeral=True,
@@ -321,8 +330,8 @@ class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt
             )
             return
 
-        # Check if user has staff permissions
-        if not interaction.user.guild_permissions.manage_messages:
+        # Check if user has staff permissions (or is developer)
+        if not _is_ticket_staff(interaction.user):
             await interaction.response.send_message(
                 "Only staff can view transcripts.",
                 ephemeral=True,
@@ -445,15 +454,27 @@ class InfoSelectView(discord.ui.View):
         bot: "AzabBot" = interaction.client
         await interaction.response.defer(ephemeral=True)
 
-        choice = select.values[0]
+        try:
+            choice = select.values[0]
 
-        if choice == "user_info":
-            embed = await self._build_user_info_embed(bot, interaction.guild)
-        else:
-            embed = await self._build_criminal_history_embed(bot)
+            if choice == "user_info":
+                embed = await self._build_user_info_embed(bot, interaction.guild)
+            else:
+                embed = await self._build_criminal_history_embed(bot)
 
-        await interaction.followup.send(embed=embed, ephemeral=True)
-        self.stop()
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except Exception as e:
+            logger.error("Info Select Failed", [
+                ("Ticket", self.ticket_id),
+                ("User ID", str(self.user_id)),
+                ("Choice", select.values[0] if select.values else "none"),
+                ("Error", str(e)[:100]),
+            ])
+            await interaction.followup.send(
+                f"Failed to load information: {str(e)[:100]}",
+                ephemeral=True,
+            )
+        # Don't stop the view - allow multiple selections until timeout
 
     async def _build_user_info_embed(
         self,
@@ -758,16 +779,8 @@ class TransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_t
             )
             return
 
-        # Check if user is ticket opener (not allowed to use staff buttons)
-        if interaction.user.id == ticket["user_id"]:
-            await interaction.response.send_message(
-                "Only staff can transfer tickets.",
-                ephemeral=True,
-            )
-            return
-
-        # Check if user has staff permissions
-        if not interaction.user.guild_permissions.manage_messages:
+        # Check if user has staff permissions (or is developer)
+        if not _is_ticket_staff(interaction.user):
             await interaction.response.send_message(
                 "You don't have permission to transfer tickets.",
                 ephemeral=True,
@@ -905,8 +918,8 @@ class CloseApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"t
             )
             return
 
-        # Check if user has staff permissions
-        if not interaction.user.guild_permissions.manage_messages:
+        # Check if user has staff permissions (or is developer)
+        if not _is_ticket_staff(interaction.user):
             await interaction.response.send_message(
                 "Only staff can approve close requests.",
                 ephemeral=True,
@@ -969,8 +982,8 @@ class CloseDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_
             )
             return
 
-        # Check if user has staff permissions
-        if not interaction.user.guild_permissions.manage_messages:
+        # Check if user has staff permissions (or is developer)
+        if not _is_ticket_staff(interaction.user):
             await interaction.response.send_message(
                 "Only staff can deny close requests.",
                 ephemeral=True,

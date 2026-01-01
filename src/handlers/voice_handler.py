@@ -188,6 +188,7 @@ class VoiceHandler:
                 member=member,
                 channel_name=channel_name,
                 timeout_duration=timeout_duration,
+                channel_id=after.channel.id if after.channel else None,
             )
 
         # -----------------------------------------------------------------
