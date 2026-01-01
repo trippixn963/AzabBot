@@ -26,10 +26,8 @@ from .constants import (
     UNLOCK_EMOJI,
     TRANSCRIPT_EMOJI,
     EXTEND_EMOJI,
-    HISTORY_EMOJI,
     INFO_EMOJI,
     TRANSFER_EMOJI,
-    STATUS_EMOJI,
     TICKET_CATEGORIES,
 )
 
@@ -357,11 +355,11 @@ class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt
 
 
 # =============================================================================
-# Info Button
+# Info Button (with dropdown for User Info / Criminal History)
 # =============================================================================
 
 class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_info:(?P<ticket_id>T\d+)"):
-    """Button to view detailed ticket information."""
+    """Button to view user info and criminal history via dropdown."""
 
     def __init__(self, ticket_id: str):
         self.ticket_id = ticket_id
@@ -392,125 +390,316 @@ class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_info:
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
-
         ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
         if not ticket:
-            await interaction.followup.send("Ticket not found.", ephemeral=True)
+            await interaction.response.send_message(
+                "Ticket not found.",
+                ephemeral=True,
+            )
             return
 
-        # Fetch ticket user
-        try:
-            ticket_user = await bot.fetch_user(ticket["user_id"])
-            user_display = f"{ticket_user.mention} (`{ticket_user.name}`)"
-        except Exception:
-            user_display = f"<@{ticket['user_id']}>"
+        # Show dropdown to select info type
+        view = InfoSelectView(
+            ticket_id=self.ticket_id,
+            user_id=ticket["user_id"],
+            guild_id=ticket.get("guild_id", interaction.guild.id),
+        )
+        await interaction.response.send_message(
+            "Select information to view:",
+            view=view,
+            ephemeral=True,
+        )
 
-        # Build info embed
+
+class InfoSelectView(discord.ui.View):
+    """View with dropdown for selecting User Info or Criminal History."""
+
+    def __init__(self, ticket_id: str, user_id: int, guild_id: int):
+        super().__init__(timeout=60)
+        self.ticket_id = ticket_id
+        self.user_id = user_id
+        self.guild_id = guild_id
+
+    @discord.ui.select(
+        placeholder="Choose info type...",
+        options=[
+            discord.SelectOption(
+                label="User Info",
+                value="user_info",
+                description="Account age, join date, ticket stats",
+                emoji="👤",
+            ),
+            discord.SelectOption(
+                label="Criminal History",
+                value="criminal_history",
+                description="Warns, mutes, bans with details",
+                emoji="⚠️",
+            ),
+        ],
+    )
+    async def info_select(
+        self,
+        interaction: discord.Interaction,
+        select: discord.ui.Select,
+    ) -> None:
+        bot: "AzabBot" = interaction.client
+        await interaction.response.defer(ephemeral=True)
+
+        choice = select.values[0]
+
+        if choice == "user_info":
+            embed = await self._build_user_info_embed(bot, interaction.guild)
+        else:
+            embed = await self._build_criminal_history_embed(bot)
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        self.stop()
+
+    async def _build_user_info_embed(
+        self,
+        bot: "AzabBot",
+        guild: discord.Guild,
+    ) -> discord.Embed:
+        """Build user info embed with account age, join date, etc."""
         from src.core.config import EmbedColors
         from src.utils.footer import set_footer
+        from datetime import datetime, timezone
 
-        status = ticket.get("status", "open")
-        category = ticket.get("category", "support")
-        cat_info = TICKET_CATEGORIES.get(category, TICKET_CATEGORIES["support"])
+        # Fetch user
+        try:
+            user = await bot.fetch_user(self.user_id)
+        except Exception:
+            user = None
+
+        # Get member for join date
+        member = guild.get_member(self.user_id) if guild else None
 
         embed = discord.Embed(
-            title=f"{INFO_EMOJI} Ticket Information",
+            title="👤 User Information",
             color=EmbedColors.GREEN,
         )
 
-        # Basic Info
-        embed.add_field(
-            name="Ticket",
-            value=f"`#{ticket['ticket_id']}`",
-            inline=True,
-        )
-        embed.add_field(
-            name="Status",
-            value=f"{STATUS_EMOJI.get(status, '⚪')} {status.title()}",
-            inline=True,
-        )
-        embed.add_field(
-            name="Category",
-            value=f"{cat_info['emoji']} {cat_info['label']}",
-            inline=True,
-        )
+        if user:
+            embed.set_thumbnail(url=user.display_avatar.url)
 
-        # User Info
-        embed.add_field(
-            name="Created By",
-            value=user_display,
-            inline=True,
-        )
-
-        # Timestamps
-        if ticket.get("created_at"):
+            # Username
             embed.add_field(
-                name="Created",
-                value=f"<t:{int(ticket['created_at'])}:F>\n(<t:{int(ticket['created_at'])}:R>)",
+                name="User",
+                value=f"{user.mention}\n`{user.name}`",
                 inline=True,
             )
 
-        if ticket.get("claimed_by"):
+            # User ID
             embed.add_field(
-                name="Claimed By",
-                value=f"<@{ticket['claimed_by']}>",
+                name="ID",
+                value=f"`{user.id}`",
                 inline=True,
             )
-            if ticket.get("claimed_at"):
-                embed.add_field(
-                    name="Claimed At",
-                    value=f"<t:{int(ticket['claimed_at'])}:R>",
-                    inline=True,
-                )
 
-        if ticket.get("closed_at"):
+            # Account Created
+            created_at = user.created_at
+            now = datetime.now(timezone.utc)
+            age_days = (now - created_at).days
+
+            if age_days < 30:
+                age_str = f"{age_days} day{'s' if age_days != 1 else ''}"
+            elif age_days < 365:
+                months = age_days // 30
+                age_str = f"{months} month{'s' if months != 1 else ''}"
+            else:
+                years = age_days // 365
+                remaining_months = (age_days % 365) // 30
+                if remaining_months > 0:
+                    age_str = f"{years}y {remaining_months}mo"
+                else:
+                    age_str = f"{years} year{'s' if years != 1 else ''}"
+
             embed.add_field(
-                name="Closed At",
-                value=f"<t:{int(ticket['closed_at'])}:F>",
+                name="Account Age",
+                value=f"**{age_str}**\n<t:{int(created_at.timestamp())}:D>",
                 inline=True,
             )
-            if ticket.get("closed_by"):
-                embed.add_field(
-                    name="Closed By",
-                    value=f"<@{ticket['closed_by']}>",
-                    inline=True,
-                )
-
-        # Subject
-        if ticket.get("subject"):
-            subject = ticket["subject"]
-            if len(subject) > 200:
-                subject = subject[:197] + "..."
+        else:
             embed.add_field(
-                name="Subject",
-                value=subject,
+                name="User",
+                value=f"<@{self.user_id}>",
+                inline=True,
+            )
+
+        # Server Join Date (if member is in guild)
+        if member and member.joined_at:
+            join_days = (datetime.now(timezone.utc) - member.joined_at).days
+            embed.add_field(
+                name="Joined Server",
+                value=f"<t:{int(member.joined_at.timestamp())}:D>\n({join_days} days ago)",
+                inline=True,
+            )
+        else:
+            embed.add_field(
+                name="Joined Server",
+                value="Not in server",
+                inline=True,
+            )
+
+        # Ticket Stats
+        ticket_history = bot.ticket_service.db.get_user_tickets(self.user_id, self.guild_id)
+        if ticket_history:
+            total = len(ticket_history)
+            open_count = sum(1 for t in ticket_history if t["status"] == "open")
+            claimed_count = sum(1 for t in ticket_history if t["status"] == "claimed")
+            closed_count = sum(1 for t in ticket_history if t["status"] == "closed")
+            embed.add_field(
+                name="Ticket Stats",
+                value=(
+                    f"🎫 **{total}** total\n"
+                    f"🟢 {open_count} open │ 🔵 {claimed_count} claimed │ 🔴 {closed_count} closed"
+                ),
+                inline=True,
+            )
+        else:
+            embed.add_field(
+                name="Ticket Stats",
+                value="No previous tickets",
+                inline=True,
+            )
+
+        # Mod Stats Summary
+        cases = bot.ticket_service.db.get_user_cases(self.user_id, self.guild_id, limit=100)
+        if cases:
+            warns = sum(1 for c in cases if c.get("action_type") == "warn")
+            mutes = sum(1 for c in cases if c.get("action_type") == "mute")
+            bans = sum(1 for c in cases if c.get("action_type") == "ban")
+            embed.add_field(
+                name="Mod Record",
+                value=f"⚠️ {warns} warns │ 🔇 {mutes} mutes │ 🔨 {bans} bans",
                 inline=False,
             )
-
-        # Close reason
-        if ticket.get("close_reason"):
+        else:
             embed.add_field(
-                name="Close Reason",
-                value=ticket["close_reason"][:200],
-                inline=False,
-            )
-
-        # User's ticket stats
-        user_tickets = bot.ticket_service.db.get_user_tickets(ticket["user_id"], ticket.get("guild_id", 0))
-        if user_tickets:
-            total = len(user_tickets)
-            open_count = sum(1 for t in user_tickets if t["status"] == "open")
-            claimed_count = sum(1 for t in user_tickets if t["status"] == "claimed")
-            closed_count = sum(1 for t in user_tickets if t["status"] == "closed")
-            embed.add_field(
-                name="User's Ticket Stats",
-                value=f"🎫 Total: **{total}** │ 🟢 Open: **{open_count}** │ 🔵 Claimed: **{claimed_count}** │ 🔴 Closed: **{closed_count}**",
+                name="Mod Record",
+                value="✅ Clean record",
                 inline=False,
             )
 
         set_footer(embed)
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        return embed
+
+    async def _build_criminal_history_embed(self, bot: "AzabBot") -> discord.Embed:
+        """Build criminal history embed with warns, mutes, bans."""
+        from src.core.config import EmbedColors
+        from src.utils.footer import set_footer
+
+        # Fetch user for thumbnail
+        try:
+            user = await bot.fetch_user(self.user_id)
+            user_display = f"{user.mention} (`{user.name}`)"
+            avatar_url = user.display_avatar.url
+        except Exception:
+            user_display = f"<@{self.user_id}>"
+            avatar_url = None
+
+        embed = discord.Embed(
+            title="⚠️ Criminal History",
+            color=EmbedColors.GOLD,
+        )
+
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
+
+        embed.add_field(
+            name="User",
+            value=user_display,
+            inline=False,
+        )
+
+        # Get all cases
+        cases = bot.ticket_service.db.get_user_cases(self.user_id, self.guild_id, limit=25)
+
+        if not cases:
+            embed.description = "✅ No moderation history found. Clean record!"
+            set_footer(embed)
+            return embed
+
+        # Count by type
+        warns = [c for c in cases if c.get("action_type") == "warn"]
+        mutes = [c for c in cases if c.get("action_type") == "mute"]
+        bans = [c for c in cases if c.get("action_type") == "ban"]
+
+        # Summary
+        embed.add_field(
+            name="Summary",
+            value=f"⚠️ **{len(warns)}** warns │ 🔇 **{len(mutes)}** mutes │ 🔨 **{len(bans)}** bans",
+            inline=False,
+        )
+
+        # Recent Warns (last 5)
+        if warns:
+            warn_lines = []
+            for case in warns[:5]:
+                reason = case.get("reason", "No reason")
+                if len(reason) > 40:
+                    reason = reason[:37] + "..."
+                mod_id = case.get("moderator_id")
+                created = case.get("created_at")
+                timestamp = f"<t:{int(created)}:R>" if created else "?"
+                warn_lines.append(
+                    f"• `{case['case_id']}` {reason}\n  └ by <@{mod_id}> {timestamp}"
+                )
+            embed.add_field(
+                name=f"⚠️ Warns ({len(warns)} total)",
+                value="\n".join(warn_lines) if warn_lines else "None",
+                inline=False,
+            )
+
+        # Recent Mutes (last 5)
+        if mutes:
+            mute_lines = []
+            for case in mutes[:5]:
+                reason = case.get("reason", "No reason")
+                if len(reason) > 40:
+                    reason = reason[:37] + "..."
+                mod_id = case.get("moderator_id")
+                created = case.get("created_at")
+                timestamp = f"<t:{int(created)}:R>" if created else "?"
+                duration = case.get("duration_seconds")
+                dur_str = ""
+                if duration:
+                    if duration >= 86400:
+                        dur_str = f" ({duration // 86400}d)"
+                    elif duration >= 3600:
+                        dur_str = f" ({duration // 3600}h)"
+                    else:
+                        dur_str = f" ({duration // 60}m)"
+                mute_lines.append(
+                    f"• `{case['case_id']}`{dur_str} {reason}\n  └ by <@{mod_id}> {timestamp}"
+                )
+            embed.add_field(
+                name=f"🔇 Mutes ({len(mutes)} total)",
+                value="\n".join(mute_lines) if mute_lines else "None",
+                inline=False,
+            )
+
+        # Recent Bans (last 5)
+        if bans:
+            ban_lines = []
+            for case in bans[:5]:
+                reason = case.get("reason", "No reason")
+                if len(reason) > 40:
+                    reason = reason[:37] + "..."
+                mod_id = case.get("moderator_id")
+                created = case.get("created_at")
+                timestamp = f"<t:{int(created)}:R>" if created else "?"
+                ban_lines.append(
+                    f"• `{case['case_id']}` {reason}\n  └ by <@{mod_id}> {timestamp}"
+                )
+            embed.add_field(
+                name=f"🔨 Bans ({len(bans)} total)",
+                value="\n".join(ban_lines) if ban_lines else "None",
+                inline=False,
+            )
+
+        set_footer(embed)
+        return embed
 
 
 # =============================================================================
@@ -680,168 +869,6 @@ class TransferSelectView(discord.ui.View):
 
 
 # =============================================================================
-# History Button
-# =============================================================================
-
-class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_history:(?P<user_id>\d+):(?P<guild_id>\d+)"):
-    """Button to view user's ticket history."""
-
-    def __init__(self, user_id: int, guild_id: int):
-        self.user_id = user_id
-        self.guild_id = guild_id
-        super().__init__(
-            discord.ui.Button(
-                label="History",
-                style=discord.ButtonStyle.secondary,
-                custom_id=f"tkt_history:{user_id}:{guild_id}",
-                emoji=HISTORY_EMOJI,
-            )
-        )
-
-    @classmethod
-    async def from_custom_id(
-        cls,
-        interaction: discord.Interaction,
-        item: discord.ui.Button,
-        match: re.Match[str],
-    ) -> "HistoryButton":
-        return cls(int(match.group("user_id")), int(match.group("guild_id")))
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        bot: "AzabBot" = interaction.client
-        if not hasattr(bot, "ticket_service") or not bot.ticket_service:
-            await interaction.response.send_message(
-                "Ticket system is not available.",
-                ephemeral=True,
-            )
-            return
-
-        # Check if user has staff permissions
-        if not interaction.user.guild_permissions.manage_messages:
-            await interaction.response.send_message(
-                "Only staff can view user history.",
-                ephemeral=True,
-            )
-            return
-
-        await interaction.response.defer(ephemeral=True)
-
-        # Get ticket history
-        ticket_history = bot.ticket_service.db.get_user_tickets(self.user_id, self.guild_id)
-
-        # Get moderation history
-        mod_history = bot.ticket_service.db.get_user_warnings(self.user_id, self.guild_id)
-
-        # Fetch user info
-        try:
-            user = await bot.fetch_user(self.user_id)
-            user_display = f"{user.display_name} (`{user.name}`)"
-            user_avatar = user.display_avatar.url
-        except Exception:
-            user_display = f"User ID: {self.user_id}"
-            user_avatar = None
-
-        # Build history embed with cleaner design
-        from src.core.config import EmbedColors
-        from src.utils.footer import set_footer
-        from src.core.constants import EMOJI_MUTE, EMOJI_BAN, EMOJI_WARN, EMOJI_KICK
-
-        embed = discord.Embed(
-            title=f"{HISTORY_EMOJI} User History",
-            color=EmbedColors.GOLD,
-        )
-
-        if user_avatar:
-            embed.set_thumbnail(url=user_avatar)
-
-        embed.add_field(
-            name="User",
-            value=f"<@{self.user_id}>\n{user_display}",
-            inline=True,
-        )
-
-        # Ticket stats summary
-        if ticket_history:
-            total = len(ticket_history)
-            open_count = sum(1 for t in ticket_history if t["status"] == "open")
-            closed_count = sum(1 for t in ticket_history if t["status"] == "closed")
-            embed.add_field(
-                name="Ticket Stats",
-                value=f"🎫 **{total}** total\n🟢 **{open_count}** open │ 🔴 **{closed_count}** closed",
-                inline=True,
-            )
-        else:
-            embed.add_field(
-                name="Ticket Stats",
-                value="No tickets",
-                inline=True,
-            )
-
-        # Mod stats summary
-        if mod_history:
-            warns = sum(1 for m in mod_history if m.get("action_type") == "warn")
-            mutes = sum(1 for m in mod_history if m.get("action_type") == "mute")
-            bans = sum(1 for m in mod_history if m.get("action_type") == "ban")
-            embed.add_field(
-                name="Mod Stats",
-                value=f"{EMOJI_WARN} **{warns}** │ {EMOJI_MUTE} **{mutes}** │ {EMOJI_BAN} **{bans}**",
-                inline=True,
-            )
-        else:
-            embed.add_field(
-                name="Mod Stats",
-                value="Clean record",
-                inline=True,
-            )
-
-        # Recent tickets (last 5)
-        if ticket_history:
-            ticket_lines = []
-            for ticket in ticket_history[:5]:
-                status_emoji = STATUS_EMOJI.get(ticket["status"], "⚪")
-                created = f"<t:{int(ticket['created_at'])}:R>" if ticket.get("created_at") else "?"
-                subject = ticket.get("subject", "No subject")[:30]
-                if len(ticket.get("subject", "")) > 30:
-                    subject += "..."
-                ticket_lines.append(
-                    f"{status_emoji} `#{ticket['ticket_id']}` {ticket['category'].title()} - {subject} ({created})"
-                )
-            embed.add_field(
-                name="📋 Recent Tickets",
-                value="\n".join(ticket_lines) or "None",
-                inline=False,
-            )
-
-        # Recent mod actions (last 5)
-        if mod_history:
-            action_emojis = {
-                "warn": EMOJI_WARN,
-                "mute": EMOJI_MUTE,
-                "ban": EMOJI_BAN,
-                "kick": EMOJI_KICK,
-            }
-            mod_lines = []
-            for action in mod_history[:5]:
-                emoji = action_emojis.get(action.get("action_type", ""), "📝")
-                action_type = action.get("action_type", "action").title()
-                reason = action.get("reason", "No reason")[:30]
-                if len(action.get("reason", "")) > 30:
-                    reason += "..."
-                timestamp = f"<t:{int(action['timestamp'])}:R>" if action.get("timestamp") else "?"
-                mod_lines.append(
-                    f"{emoji} **{action_type}** - {reason} ({timestamp})"
-                )
-            embed.add_field(
-                name="⚠️ Recent Mod Actions",
-                value="\n".join(mod_lines) or "None",
-                inline=False,
-            )
-
-        set_footer(embed)
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-# =============================================================================
 # Close Request Buttons
 # =============================================================================
 
@@ -982,10 +1009,9 @@ def setup_ticket_buttons(bot: commands.Bot) -> None:
         TranscriptButton,
         InfoButton,
         TransferButton,
-        HistoryButton,
         CloseApproveButton,
         CloseDenyButton,
     )
     logger.tree("Ticket Buttons Registered", [
-        ("Buttons", "Claim, Close, AddUser, Reopen, Transcript, Info, Transfer, History, CloseApprove, CloseDeny"),
+        ("Buttons", "Claim, Close, AddUser, Reopen, Transcript, Info, Transfer, CloseApprove, CloseDeny"),
     ], emoji="🎫")
