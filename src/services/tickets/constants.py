@@ -113,6 +113,7 @@ STATUS_COLOR = {
 MAX_OPEN_TICKETS_PER_USER = 1
 INACTIVE_WARNING_DAYS = 3      # Warn after 3 days of inactivity
 INACTIVE_CLOSE_DAYS = 5        # Close after 5 days of inactivity
+DELETE_AFTER_CLOSE_DAYS = 7    # Delete thread 7 days after closing
 MAX_TRANSCRIPT_MESSAGES = 500  # Max messages to include in transcript
 
 
@@ -145,6 +146,7 @@ __all__ = [
     "MAX_OPEN_TICKETS_PER_USER",
     "INACTIVE_WARNING_DAYS",
     "INACTIVE_CLOSE_DAYS",
+    "DELETE_AFTER_CLOSE_DAYS",
     "MAX_TRANSCRIPT_MESSAGES",
     # Timeouts (from core)
     "TICKET_CREATION_COOLDOWN",

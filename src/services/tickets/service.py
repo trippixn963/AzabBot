@@ -33,6 +33,7 @@ from .constants import (
     MAX_OPEN_TICKETS_PER_USER,
     INACTIVE_WARNING_DAYS,
     INACTIVE_CLOSE_DAYS,
+    DELETE_AFTER_CLOSE_DAYS,
     TRANSCRIPT_EMOJI,
 )
 from .embeds import (
@@ -120,6 +121,7 @@ class TicketService:
         )
         logger.tree("Ticket Service Started", [
             ("Auto-close", f"Enabled (warn: {INACTIVE_WARNING_DAYS}d, close: {INACTIVE_CLOSE_DAYS}d)"),
+            ("Auto-delete", f"Enabled ({DELETE_AFTER_CLOSE_DAYS}d after close)"),
             ("Check interval", f"{AUTO_CLOSE_CHECK_INTERVAL}s"),
         ], emoji="🎫")
 
@@ -166,6 +168,7 @@ class TicketService:
         now = time.time()
         warning_threshold = now - (INACTIVE_WARNING_DAYS * 86400)
         close_threshold = now - (INACTIVE_CLOSE_DAYS * 86400)
+        delete_threshold = now - (DELETE_AFTER_CLOSE_DAYS * 86400)
 
         # Get tickets that need warning
         unwarned_tickets = self.db.get_unwarned_inactive_tickets(
@@ -180,6 +183,13 @@ class TicketService:
         )
         for ticket in warned_tickets:
             await self._auto_close_ticket(ticket)
+
+        # Get closed tickets that need deletion
+        closed_tickets = self.db.get_closed_tickets_ready_to_delete(
+            guild_id, delete_threshold
+        )
+        for ticket in closed_tickets:
+            await self._auto_delete_ticket(ticket)
 
     async def _send_inactivity_warning(self, ticket: dict) -> None:
         """Send inactivity warning to ticket thread."""
@@ -231,6 +241,33 @@ class TicketService:
                 ("Ticket ID", ticket["ticket_id"]),
                 ("Reason", "Inactivity"),
             ], emoji="🔒")
+
+    async def _auto_delete_ticket(self, ticket: dict) -> None:
+        """Auto-delete a closed ticket thread after retention period."""
+        ticket_id = ticket["ticket_id"]
+        thread_id = ticket["thread_id"]
+
+        # Delete the thread
+        thread = await self._get_ticket_thread(thread_id)
+        if thread:
+            try:
+                await thread.delete()
+            except discord.NotFound:
+                pass  # Already deleted
+            except discord.HTTPException as e:
+                logger.error("Failed to delete ticket thread", [
+                    ("Ticket ID", ticket_id),
+                    ("Error", str(e)),
+                ])
+                return
+
+        # Delete from database
+        self.db.delete_ticket(ticket_id)
+
+        logger.tree("Ticket Auto-Deleted", [
+            ("Ticket ID", ticket_id),
+            ("Days After Close", str(DELETE_AFTER_CLOSE_DAYS)),
+        ], emoji="🗑️")
 
     # =========================================================================
     # Activity Tracking

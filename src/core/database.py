@@ -5490,6 +5490,46 @@ class DatabaseManager:
         )
         return [TicketRecord(**dict(row)) for row in rows]
 
+    def get_closed_tickets_ready_to_delete(
+        self,
+        guild_id: int,
+        closed_before: float,
+    ) -> List[TicketRecord]:
+        """
+        Get closed tickets that are ready for deletion.
+
+        Args:
+            guild_id: Guild ID.
+            closed_before: Unix timestamp - tickets closed before this time.
+
+        Returns:
+            List of closed ticket records ready to delete.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM tickets
+               WHERE guild_id = ? AND status = 'closed'
+               AND closed_at IS NOT NULL AND closed_at < ?
+               ORDER BY closed_at ASC""",
+            (guild_id, closed_before)
+        )
+        return [TicketRecord(**dict(row)) for row in rows]
+
+    def delete_ticket(self, ticket_id: str) -> bool:
+        """
+        Delete a ticket from the database.
+
+        Args:
+            ticket_id: Ticket ID.
+
+        Returns:
+            True if deleted.
+        """
+        cursor = self.execute(
+            "DELETE FROM tickets WHERE ticket_id = ?",
+            (ticket_id,)
+        )
+        return cursor.rowcount > 0
+
     def mark_ticket_warned(self, ticket_id: str) -> bool:
         """
         Mark a ticket as warned about inactivity.
