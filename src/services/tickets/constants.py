@@ -89,8 +89,8 @@ STATUS_EMOJI = {
 
 STATUS_COLOR = {
     "open": EmbedColors.GREEN,
-    "claimed": EmbedColors.BLUE,
-    "closed": EmbedColors.RED,
+    "claimed": EmbedColors.GOLD,
+    "closed": EmbedColors.GOLD,
 }
 
 

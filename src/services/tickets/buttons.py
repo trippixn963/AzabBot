@@ -73,6 +73,14 @@ class ClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clai
             )
             return
 
+        ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
+        if ticket and interaction.user.id == ticket["user_id"]:
+            await interaction.response.send_message(
+                "Only staff can claim tickets.",
+                ephemeral=True,
+            )
+            return
+
         # Check if user has staff permissions
         if not interaction.user.guild_permissions.manage_messages:
             await interaction.response.send_message(
@@ -199,6 +207,14 @@ class AddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_ad
         if not hasattr(bot, "ticket_service") or not bot.ticket_service:
             await interaction.response.send_message(
                 "Ticket system is not available.",
+                ephemeral=True,
+            )
+            return
+
+        ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
+        if ticket and interaction.user.id == ticket["user_id"]:
+            await interaction.response.send_message(
+                "Only staff can add users to tickets.",
                 ephemeral=True,
             )
             return
@@ -400,7 +416,7 @@ class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_info:
 
         embed = discord.Embed(
             title=f"{INFO_EMOJI} Ticket Information",
-            color=EmbedColors.BLUE,
+            color=EmbedColors.GREEN,
         )
 
         # Basic Info
@@ -501,6 +517,18 @@ class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_info:
 # Transfer Button
 # =============================================================================
 
+def _get_ticket_staff_ids(config) -> set:
+    """Get all allowed ticket staff user IDs from config."""
+    staff_ids = set()
+    if config.ticket_support_user_ids:
+        staff_ids.update(config.ticket_support_user_ids)
+    if config.ticket_partnership_user_id:
+        staff_ids.add(config.ticket_partnership_user_id)
+    if config.ticket_suggestion_user_id:
+        staff_ids.add(config.ticket_suggestion_user_id)
+    return staff_ids
+
+
 class TransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_transfer:(?P<ticket_id>T\d+)"):
     """Button to transfer a ticket to another staff member."""
 
@@ -533,18 +561,26 @@ class TransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_t
             )
             return
 
-        # Check if user has staff permissions
-        if not interaction.user.guild_permissions.manage_messages:
-            await interaction.response.send_message(
-                "You don't have permission to transfer tickets.",
-                ephemeral=True,
-            )
-            return
-
         ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
         if not ticket:
             await interaction.response.send_message(
                 "Ticket not found.",
+                ephemeral=True,
+            )
+            return
+
+        # Check if user is ticket opener (not allowed to use staff buttons)
+        if interaction.user.id == ticket["user_id"]:
+            await interaction.response.send_message(
+                "Only staff can transfer tickets.",
+                ephemeral=True,
+            )
+            return
+
+        # Check if user has staff permissions
+        if not interaction.user.guild_permissions.manage_messages:
+            await interaction.response.send_message(
+                "You don't have permission to transfer tickets.",
                 ephemeral=True,
             )
             return
@@ -556,8 +592,41 @@ class TransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_t
             )
             return
 
-        # Show user select for transfer
-        view = TransferSelectView(self.ticket_id, ticket.get("claimed_by"))
+        # Get allowed staff IDs from config
+        config = bot.ticket_service.config
+        staff_ids = _get_ticket_staff_ids(config)
+
+        # Filter out current claimer
+        current_claimer = ticket.get("claimed_by")
+        available_staff_ids = [sid for sid in staff_ids if sid != current_claimer]
+
+        if not available_staff_ids:
+            await interaction.response.send_message(
+                "No other staff members available to transfer to.",
+                ephemeral=True,
+            )
+            return
+
+        # Build options for available staff
+        options = []
+        for staff_id in available_staff_ids:
+            member = interaction.guild.get_member(staff_id)
+            if member:
+                options.append(discord.SelectOption(
+                    label=member.display_name,
+                    value=str(staff_id),
+                    description=f"@{member.name}",
+                ))
+
+        if not options:
+            await interaction.response.send_message(
+                "No available staff members found in this server.",
+                ephemeral=True,
+            )
+            return
+
+        # Show select for transfer
+        view = TransferSelectView(self.ticket_id, options)
         await interaction.response.send_message(
             "Select a staff member to transfer this ticket to:",
             view=view,
@@ -566,46 +635,31 @@ class TransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_t
 
 
 class TransferSelectView(discord.ui.View):
-    """View with user select for ticket transfer."""
+    """View with select for ticket transfer."""
 
-    def __init__(self, ticket_id: str, current_claimer: int = None):
+    def __init__(self, ticket_id: str, options: list):
         super().__init__(timeout=60)
         self.ticket_id = ticket_id
-        self.current_claimer = current_claimer
 
-    @discord.ui.select(
-        cls=discord.ui.UserSelect,
-        placeholder="Select staff member...",
-        min_values=1,
-        max_values=1,
-    )
-    async def user_select(
-        self,
-        interaction: discord.Interaction,
-        select: discord.ui.UserSelect,
-    ) -> None:
+        # Add the select with options
+        select = discord.ui.Select(
+            placeholder="Select staff member...",
+            options=options,
+            min_values=1,
+            max_values=1,
+        )
+        select.callback = self.on_select
+        self.add_item(select)
+
+    async def on_select(self, interaction: discord.Interaction) -> None:
         bot: "AzabBot" = interaction.client
-        target = select.values[0]
+        target_id = int(interaction.data["values"][0])
 
-        # Validate target is staff
-        if isinstance(target, discord.Member):
-            if not target.guild_permissions.manage_messages:
-                await interaction.response.send_message(
-                    f"{target.mention} is not a staff member.",
-                    ephemeral=True,
-                )
-                return
-        else:
+        # Get the member
+        target = interaction.guild.get_member(target_id)
+        if not target:
             await interaction.response.send_message(
-                "Please select a server member.",
-                ephemeral=True,
-            )
-            return
-
-        # Check if target is same as current
-        if self.current_claimer and target.id == self.current_claimer:
-            await interaction.response.send_message(
-                "This ticket is already claimed by that person.",
+                "Staff member not found in server.",
                 ephemeral=True,
             )
             return
@@ -620,7 +674,6 @@ class TransferSelectView(discord.ui.View):
 
         if success:
             await interaction.followup.send(f"✅ {message}", ephemeral=True)
-            # Disable the view
             self.stop()
         else:
             await interaction.followup.send(f"❌ {message}", ephemeral=True)

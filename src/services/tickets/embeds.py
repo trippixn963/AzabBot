@@ -170,7 +170,7 @@ def build_claim_notification(
     """Build notification when ticket is claimed."""
     embed = discord.Embed(
         description=f"✅ {staff.mention} has claimed this ticket and will assist you shortly.",
-        color=EmbedColors.BLUE,
+        color=EmbedColors.GOLD,
     )
     embed.set_thumbnail(url=staff.display_avatar.url)
     set_footer(embed)
@@ -188,7 +188,7 @@ def build_close_notification(
 
     embed = discord.Embed(
         description=description,
-        color=EmbedColors.RED,
+        color=EmbedColors.GOLD,
     )
     set_footer(embed)
     return embed
@@ -213,7 +213,7 @@ def build_user_added_notification(
     """Build notification when user is added to ticket."""
     embed = discord.Embed(
         description=f"👤 {added_user.mention} has been added to this ticket by {added_by.mention}.",
-        color=EmbedColors.BLUE,
+        color=EmbedColors.GOLD,
     )
     set_footer(embed)
     return embed
@@ -226,7 +226,7 @@ def build_transfer_notification(
     """Build notification when ticket is transferred."""
     embed = discord.Embed(
         description=f"{TRANSFER_EMOJI} This ticket has been transferred to {new_staff.mention} by {transferred_by.mention}.",
-        color=EmbedColors.BLUE,
+        color=EmbedColors.GOLD,
     )
     set_footer(embed)
     return embed
@@ -317,7 +317,7 @@ def build_ticket_claimed_dm(
             f"Your ticket in **{guild_name}** has been claimed by **{staff.display_name}**.\n\n"
             f"They will assist you shortly."
         ),
-        color=EmbedColors.BLUE,
+        color=EmbedColors.GOLD,
     )
     set_footer(embed)
     return embed
