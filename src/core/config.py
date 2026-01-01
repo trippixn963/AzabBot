@@ -207,6 +207,12 @@ class Config:
 
     ignored_bot_ids: Set[int] = None  # Bot IDs to exclude from logging
 
+    # -------------------------------------------------------------------------
+    # Optional: Antispam Exclusions
+    # -------------------------------------------------------------------------
+
+    whitelisted_webhook_ids: Set[int] = None  # Webhook IDs to exclude from spam detection
+
 
 # =============================================================================
 # Embed Colors
@@ -484,6 +490,7 @@ def load_config() -> Config:
     link_allowed_user_ids = _parse_int_set(os.getenv("LINK_ALLOWED_USER_IDS"))
     appeal_allowed_user_ids = _parse_int_set(os.getenv("APPEAL_ALLOWED_USER_IDS"))
     modmail_forum_id = _parse_int_optional(os.getenv("MODMAIL_FORUM_ID"))
+    whitelisted_webhook_ids = _parse_int_set(os.getenv("WHITELISTED_WEBHOOK_IDS"))
 
     # -------------------------------------------------------------------------
     # Build Config Object
@@ -544,6 +551,7 @@ def load_config() -> Config:
         link_allowed_user_ids=link_allowed_user_ids if link_allowed_user_ids else None,
         appeal_allowed_user_ids=appeal_allowed_user_ids if appeal_allowed_user_ids else None,
         modmail_forum_id=modmail_forum_id,
+        whitelisted_webhook_ids=whitelisted_webhook_ids if whitelisted_webhook_ids else None,
     )
 
 

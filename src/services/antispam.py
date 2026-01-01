@@ -106,13 +106,6 @@ IMAGE_DUPLICATE_TIME_WINDOW = 60  # seconds
 WEBHOOK_MESSAGE_LIMIT = 5
 WEBHOOK_TIME_WINDOW = 10  # seconds
 
-# Whitelisted webhook IDs (bot log webhooks)
-WHITELISTED_WEBHOOK_IDS = frozenset([
-    1455223536150122578,  # AzabBot live logs
-    1378463625911730317,  # OthmanBot logs
-    1378540050006147114,  # TahaBot logs
-    1389664379695534190,  # TrippixnBot logs
-])
 
 # Memory bounds: Maximum tracked users per guild to prevent unbounded growth
 MAX_TRACKED_USERS_PER_GUILD = 5000
@@ -1014,8 +1007,8 @@ class AntiSpamService:
         if not message.webhook_id:
             return False
 
-        # Skip whitelisted webhooks (e.g., live logs)
-        if message.webhook_id in WHITELISTED_WEBHOOK_IDS:
+        # Skip whitelisted webhooks (e.g., bot log webhooks)
+        if self.config.whitelisted_webhook_ids and message.webhook_id in self.config.whitelisted_webhook_ids:
             return False
 
         state = self._webhook_states[message.webhook_id]
