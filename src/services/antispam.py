@@ -1042,6 +1042,10 @@ class AntiSpamService:
         if not message.guild:
             return None
 
+        # Skip mod server entirely (logs, webhooks, etc.)
+        if self.config.mod_server_id and message.guild.id == self.config.mod_server_id:
+            return None
+
         guild_id = message.guild.id
         user_id = message.author.id
         now = datetime.now(NY_TZ)
