@@ -20,7 +20,6 @@ from .constants import (
     TICKET_CATEGORIES,
     STATUS_EMOJI,
     STATUS_COLOR,
-    TRANSFER_EMOJI,
 )
 
 
@@ -196,6 +195,7 @@ def build_close_notification(
         description=description,
         color=EmbedColors.GOLD,
     )
+    embed.set_thumbnail(url=closed_by.display_avatar.url)
     set_footer(embed)
     return embed
 
@@ -208,6 +208,7 @@ def build_reopen_notification(
         description=f"🔓 This ticket has been reopened by {reopened_by.mention}.",
         color=EmbedColors.GREEN,
     )
+    embed.set_thumbnail(url=reopened_by.display_avatar.url)
     set_footer(embed)
     return embed
 
@@ -221,6 +222,7 @@ def build_user_added_notification(
         description=f"👤 {added_user.mention} has been added to this ticket by {added_by.mention}.",
         color=EmbedColors.GOLD,
     )
+    embed.set_thumbnail(url=added_user.display_avatar.url)
     set_footer(embed)
     return embed
 
@@ -231,9 +233,10 @@ def build_transfer_notification(
 ) -> discord.Embed:
     """Build notification when ticket is transferred."""
     embed = discord.Embed(
-        description=f"{TRANSFER_EMOJI} This ticket has been transferred to {new_staff.mention} by {transferred_by.mention}.",
+        description=f"🔄 This ticket has been transferred to {new_staff.mention} by {transferred_by.mention}.",
         color=EmbedColors.GOLD,
     )
+    embed.set_thumbnail(url=new_staff.display_avatar.url)
     set_footer(embed)
     return embed
 
