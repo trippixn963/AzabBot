@@ -49,7 +49,7 @@ class TicketPanelView(discord.ui.View):
             button = discord.ui.Button(
                 label=info["label"],
                 style=discord.ButtonStyle.secondary,
-                custom_id=f"ticket:panel:{key}",
+                custom_id=f"tkt_cat:{key}",
                 emoji=info["emoji"],
             )
             button.callback = self._make_callback(key)
@@ -62,7 +62,7 @@ class TicketPanelView(discord.ui.View):
         return callback
 
 
-class TicketPanelButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:panel:(?P<category>\w+)"):
+class TicketPanelButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_cat:(?P<category>\w+)"):
     """Dynamic item for ticket panel category buttons (persistence)."""
 
     def __init__(self, category: str):
@@ -72,7 +72,7 @@ class TicketPanelButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ti
             discord.ui.Button(
                 label=info["label"],
                 style=discord.ButtonStyle.secondary,
-                custom_id=f"ticket:panel:{category}",
+                custom_id=f"tkt_cat:{category}",
                 emoji=info["emoji"],
             )
         )

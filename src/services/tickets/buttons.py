@@ -5,6 +5,9 @@ Ticket System Buttons
 Dynamic button items for the ticket control panel.
 All buttons use custom_id prefixes for persistence across restarts.
 
+NOTE: custom_id patterns MUST match the old ticket_service.py patterns
+for backward compatibility with existing tickets.
+
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
@@ -31,26 +34,10 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
-# Base Dynamic Item Pattern
-# =============================================================================
-
-# Custom ID patterns for persistence
-CLAIM_PATTERN = re.compile(r"^ticket:claim:(?P<ticket_id>\w+)$")
-CLOSE_PATTERN = re.compile(r"^ticket:close:(?P<ticket_id>\w+)$")
-ADD_USER_PATTERN = re.compile(r"^ticket:adduser:(?P<ticket_id>\w+)$")
-REOPEN_PATTERN = re.compile(r"^ticket:reopen:(?P<ticket_id>\w+)$")
-TRANSCRIPT_PATTERN = re.compile(r"^ticket:transcript:(?P<ticket_id>\w+)$")
-PRIORITY_PATTERN = re.compile(r"^ticket:priority:(?P<ticket_id>\w+):(?P<priority>\w+)$")
-HISTORY_PATTERN = re.compile(r"^ticket:history:(?P<user_id>\d+):(?P<guild_id>\d+)$")
-CLOSE_APPROVE_PATTERN = re.compile(r"^ticket:closeapprove:(?P<ticket_id>\w+)$")
-CLOSE_DENY_PATTERN = re.compile(r"^ticket:closedeny:(?P<ticket_id>\w+)$")
-
-
-# =============================================================================
 # Claim Button
 # =============================================================================
 
-class ClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:claim:(?P<ticket_id>\w+)"):
+class ClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_claim:(?P<ticket_id>T\d+)"):
     """Button to claim a ticket. Only shown when status is 'open'."""
 
     def __init__(self, ticket_id: str):
@@ -59,7 +46,7 @@ class ClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:c
             discord.ui.Button(
                 label="Claim",
                 style=discord.ButtonStyle.primary,
-                custom_id=f"ticket:claim:{ticket_id}",
+                custom_id=f"tkt_claim:{ticket_id}",
                 emoji=APPROVE_EMOJI,
             )
         )
@@ -85,7 +72,7 @@ class ClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:c
         # Check if user has staff permissions
         if not interaction.user.guild_permissions.manage_messages:
             await interaction.response.send_message(
-                "❌ You don't have permission to claim tickets.",
+                "You don't have permission to claim tickets.",
                 ephemeral=True,
             )
             return
@@ -107,7 +94,7 @@ class ClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:c
 # Close Button
 # =============================================================================
 
-class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:close:(?P<ticket_id>\w+)"):
+class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_close:(?P<ticket_id>T\d+)"):
     """Button to close a ticket. Opens modal for reason."""
 
     def __init__(self, ticket_id: str):
@@ -116,7 +103,7 @@ class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:c
             discord.ui.Button(
                 label="Close",
                 style=discord.ButtonStyle.danger,
-                custom_id=f"ticket:close:{ticket_id}",
+                custom_id=f"tkt_close:{ticket_id}",
                 emoji=LOCK_EMOJI,
             )
         )
@@ -145,7 +132,7 @@ class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:c
         ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
         if not ticket:
             await interaction.response.send_message(
-                "❌ Ticket not found.",
+                "Ticket not found.",
                 ephemeral=True,
             )
             return
@@ -169,7 +156,7 @@ class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:c
                 await interaction.followup.send(f"❌ {message}", ephemeral=True)
         else:
             await interaction.response.send_message(
-                "❌ Only the ticket owner or staff can close this ticket.",
+                "Only the ticket owner or staff can close this ticket.",
                 ephemeral=True,
             )
 
@@ -178,7 +165,7 @@ class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:c
 # Add User Button
 # =============================================================================
 
-class AddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:adduser:(?P<ticket_id>\w+)"):
+class AddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_adduser:(?P<ticket_id>T\d+)"):
     """Button to add a user to the ticket thread."""
 
     def __init__(self, ticket_id: str):
@@ -187,7 +174,7 @@ class AddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket
             discord.ui.Button(
                 label="Add User",
                 style=discord.ButtonStyle.secondary,
-                custom_id=f"ticket:adduser:{ticket_id}",
+                custom_id=f"tkt_adduser:{ticket_id}",
                 emoji=EXTEND_EMOJI,
             )
         )
@@ -215,7 +202,7 @@ class AddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket
         # Check if user has staff permissions
         if not interaction.user.guild_permissions.manage_messages:
             await interaction.response.send_message(
-                "❌ You don't have permission to add users to tickets.",
+                "You don't have permission to add users to tickets.",
                 ephemeral=True,
             )
             return
@@ -227,7 +214,7 @@ class AddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket
 # Reopen Button
 # =============================================================================
 
-class ReopenButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:reopen:(?P<ticket_id>\w+)"):
+class ReopenButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_reopen:(?P<ticket_id>T\d+)"):
     """Button to reopen a closed ticket."""
 
     def __init__(self, ticket_id: str):
@@ -236,7 +223,7 @@ class ReopenButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:
             discord.ui.Button(
                 label="Reopen",
                 style=discord.ButtonStyle.success,
-                custom_id=f"ticket:reopen:{ticket_id}",
+                custom_id=f"tkt_reopen:{ticket_id}",
                 emoji=UNLOCK_EMOJI,
             )
         )
@@ -262,7 +249,7 @@ class ReopenButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:
         # Check if user has staff permissions
         if not interaction.user.guild_permissions.manage_messages:
             await interaction.response.send_message(
-                "❌ Only staff can reopen tickets.",
+                "Only staff can reopen tickets.",
                 ephemeral=True,
             )
             return
@@ -284,7 +271,7 @@ class ReopenButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:
 # Transcript Button
 # =============================================================================
 
-class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:transcript:(?P<ticket_id>\w+)"):
+class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_transcript:(?P<ticket_id>T\d+)"):
     """Button to generate/view ticket transcript."""
 
     def __init__(self, ticket_id: str):
@@ -293,7 +280,7 @@ class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tic
             discord.ui.Button(
                 label="Transcript",
                 style=discord.ButtonStyle.secondary,
-                custom_id=f"ticket:transcript:{ticket_id}",
+                custom_id=f"tkt_transcript:{ticket_id}",
                 emoji=TRANSCRIPT_EMOJI,
             )
         )
@@ -319,7 +306,7 @@ class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tic
         # Check if user has staff permissions
         if not interaction.user.guild_permissions.manage_messages:
             await interaction.response.send_message(
-                "❌ Only staff can view transcripts.",
+                "Only staff can view transcripts.",
                 ephemeral=True,
             )
             return
@@ -328,7 +315,7 @@ class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tic
         transcript = bot.ticket_service.db.get_ticket_transcript(self.ticket_id)
         if not transcript:
             await interaction.response.send_message(
-                "❌ No transcript found for this ticket.",
+                "No transcript found for this ticket.",
                 ephemeral=True,
             )
             return
@@ -350,77 +337,10 @@ class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tic
 
 
 # =============================================================================
-# Priority Button
-# =============================================================================
-
-class PriorityButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:priority:(?P<ticket_id>\w+):(?P<priority>\w+)"):
-    """Button to change ticket priority."""
-
-    def __init__(self, ticket_id: str, priority: str, label: str, emoji: str):
-        self.ticket_id = ticket_id
-        self.priority = priority
-        super().__init__(
-            discord.ui.Button(
-                label=label,
-                style=discord.ButtonStyle.secondary,
-                custom_id=f"ticket:priority:{ticket_id}:{priority}",
-                emoji=emoji,
-            )
-        )
-
-    @classmethod
-    async def from_custom_id(
-        cls,
-        interaction: discord.Interaction,
-        item: discord.ui.Button,
-        match: re.Match[str],
-    ) -> "PriorityButton":
-        from .constants import PRIORITY_CONFIG
-        priority = match.group("priority")
-        info = PRIORITY_CONFIG.get(priority, PRIORITY_CONFIG["normal"])
-        return cls(
-            match.group("ticket_id"),
-            priority,
-            priority.title(),
-            info["emoji"],
-        )
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        bot: "AzabBot" = interaction.client
-        if not hasattr(bot, "ticket_service") or not bot.ticket_service:
-            await interaction.response.send_message(
-                "Ticket system is not available.",
-                ephemeral=True,
-            )
-            return
-
-        # Check if user has staff permissions
-        if not interaction.user.guild_permissions.manage_messages:
-            await interaction.response.send_message(
-                "❌ Only staff can change ticket priority.",
-                ephemeral=True,
-            )
-            return
-
-        await interaction.response.defer(ephemeral=True)
-
-        success, message = await bot.ticket_service.set_priority(
-            ticket_id=self.ticket_id,
-            priority=self.priority,
-            changed_by=interaction.user,
-        )
-
-        if success:
-            await interaction.followup.send(f"✅ {message}", ephemeral=True)
-        else:
-            await interaction.followup.send(f"❌ {message}", ephemeral=True)
-
-
-# =============================================================================
 # History Button
 # =============================================================================
 
-class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:history:(?P<user_id>\d+):(?P<guild_id>\d+)"):
+class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_history:(?P<user_id>\d+):(?P<guild_id>\d+)"):
     """Button to view user's ticket history."""
 
     def __init__(self, user_id: int, guild_id: int):
@@ -430,7 +350,7 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket
             discord.ui.Button(
                 label="History",
                 style=discord.ButtonStyle.secondary,
-                custom_id=f"ticket:history:{user_id}:{guild_id}",
+                custom_id=f"tkt_history:{user_id}:{guild_id}",
                 emoji=HISTORY_EMOJI,
             )
         )
@@ -456,7 +376,7 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket
         # Check if user has staff permissions
         if not interaction.user.guild_permissions.manage_messages:
             await interaction.response.send_message(
-                "❌ Only staff can view ticket history.",
+                "Only staff can view ticket history.",
                 ephemeral=True,
             )
             return
@@ -501,16 +421,17 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket
 # Close Request Buttons
 # =============================================================================
 
-class CloseApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:closeapprove:(?P<ticket_id>\w+)"):
+class CloseApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_cr_accept:(?P<ticket_id>T\d+):(?P<requester_id>\d+)"):
     """Button for staff to approve a close request."""
 
-    def __init__(self, ticket_id: str):
+    def __init__(self, ticket_id: str, requester_id: int = 0):
         self.ticket_id = ticket_id
+        self.requester_id = requester_id
         super().__init__(
             discord.ui.Button(
                 label="Approve",
                 style=discord.ButtonStyle.success,
-                custom_id=f"ticket:closeapprove:{ticket_id}",
+                custom_id=f"tkt_cr_accept:{ticket_id}:{requester_id}",
                 emoji=APPROVE_EMOJI,
             )
         )
@@ -522,7 +443,7 @@ class CloseApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"t
         item: discord.ui.Button,
         match: re.Match[str],
     ) -> "CloseApproveButton":
-        return cls(match.group("ticket_id"))
+        return cls(match.group("ticket_id"), int(match.group("requester_id")))
 
     async def callback(self, interaction: discord.Interaction) -> None:
         bot: "AzabBot" = interaction.client
@@ -536,7 +457,7 @@ class CloseApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"t
         # Check if user has staff permissions
         if not interaction.user.guild_permissions.manage_messages:
             await interaction.response.send_message(
-                "❌ Only staff can approve close requests.",
+                "Only staff can approve close requests.",
                 ephemeral=True,
             )
             return
@@ -564,16 +485,17 @@ class CloseApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"t
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 
-class CloseDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ticket:closedeny:(?P<ticket_id>\w+)"):
+class CloseDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_cr_deny:(?P<ticket_id>T\d+):(?P<requester_id>\d+)"):
     """Button for staff to deny a close request."""
 
-    def __init__(self, ticket_id: str):
+    def __init__(self, ticket_id: str, requester_id: int = 0):
         self.ticket_id = ticket_id
+        self.requester_id = requester_id
         super().__init__(
             discord.ui.Button(
                 label="Deny",
                 style=discord.ButtonStyle.danger,
-                custom_id=f"ticket:closedeny:{ticket_id}",
+                custom_id=f"tkt_cr_deny:{ticket_id}:{requester_id}",
                 emoji=DENY_EMOJI,
             )
         )
@@ -585,7 +507,7 @@ class CloseDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tick
         item: discord.ui.Button,
         match: re.Match[str],
     ) -> "CloseDenyButton":
-        return cls(match.group("ticket_id"))
+        return cls(match.group("ticket_id"), int(match.group("requester_id")))
 
     async def callback(self, interaction: discord.Interaction) -> None:
         bot: "AzabBot" = interaction.client
@@ -599,15 +521,15 @@ class CloseDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tick
         # Check if user has staff permissions
         if not interaction.user.guild_permissions.manage_messages:
             await interaction.response.send_message(
-                "❌ Only staff can deny close requests.",
+                "Only staff can deny close requests.",
                 ephemeral=True,
             )
             return
 
         await interaction.response.defer(ephemeral=True)
 
-        # Clear close request status
-        bot.ticket_service.db.clear_close_request(self.ticket_id)
+        # Clear close request cooldown
+        bot.ticket_service._close_request_cooldowns.pop(self.ticket_id, None)
 
         # Edit the close request message to show it was denied
         try:
@@ -634,11 +556,10 @@ def setup_ticket_buttons(bot: commands.Bot) -> None:
         AddUserButton,
         ReopenButton,
         TranscriptButton,
-        PriorityButton,
         HistoryButton,
         CloseApproveButton,
         CloseDenyButton,
     )
     logger.tree("Ticket Buttons Registered", [
-        ("Buttons", "ClaimButton, CloseButton, AddUserButton, ReopenButton, TranscriptButton, PriorityButton, HistoryButton, CloseApproveButton, CloseDenyButton"),
+        ("Buttons", "Claim, Close, AddUser, Reopen, Transcript, History, CloseApprove, CloseDeny"),
     ], emoji="🎫")
