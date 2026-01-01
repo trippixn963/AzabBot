@@ -1192,7 +1192,7 @@ class LoggingService:
                 if message.attachments and before_url:
                     old_avatar_url = message.attachments[0].url
                     view.add_item(discord.ui.Button(
-                        label="Old",
+                        label="Avatar (Old)",
                         url=old_avatar_url,
                         style=discord.ButtonStyle.link,
                         emoji=DOWNLOAD_EMOJI,
@@ -1201,7 +1201,7 @@ class LoggingService:
                 # New avatar button
                 if after_url:
                     view.add_item(discord.ui.Button(
-                        label="New",
+                        label="Avatar (New)",
                         url=after_url,
                         style=discord.ButtonStyle.link,
                         emoji=DOWNLOAD_EMOJI,
