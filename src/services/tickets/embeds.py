@@ -21,6 +21,7 @@ from .constants import (
     STATUS_EMOJI,
     STATUS_COLOR,
     PRIORITY_CONFIG,
+    TRANSFER_EMOJI,
 )
 
 
@@ -237,7 +238,7 @@ def build_transfer_notification(
 ) -> discord.Embed:
     """Build notification when ticket is transferred."""
     embed = discord.Embed(
-        description=f"↔️ This ticket has been transferred to {new_staff.mention} by {transferred_by.mention}.",
+        description=f"{TRANSFER_EMOJI} This ticket has been transferred to {new_staff.mention} by {transferred_by.mention}.",
         color=EmbedColors.BLUE,
     )
     set_footer(embed)

@@ -28,6 +28,7 @@ from .constants import (
     EXTEND_EMOJI,
     HISTORY_EMOJI,
     INFO_EMOJI,
+    TRANSFER_EMOJI,
     STATUS_EMOJI,
     TICKET_CATEGORIES,
     PRIORITY_CONFIG,
@@ -523,7 +524,7 @@ class TransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_t
                 label="Transfer",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"tkt_transfer:{ticket_id}",
-                emoji="↔️",
+                emoji=TRANSFER_EMOJI,
             )
         )
 

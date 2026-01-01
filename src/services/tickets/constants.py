@@ -24,6 +24,7 @@ from src.core.constants import (
     EMOJI_ID_EXTEND,
     EMOJI_ID_HISTORY,
     EMOJI_ID_INFO,
+    EMOJI_ID_TRANSFER,
     TICKET_CREATION_COOLDOWN,
     AUTO_CLOSE_CHECK_INTERVAL,
     THREAD_DELETE_DELAY,
@@ -47,6 +48,7 @@ UNLOCK_EMOJI = discord.PartialEmoji(name="unlock", id=EMOJI_ID_UNLOCK)
 EXTEND_EMOJI = discord.PartialEmoji(name="extend", id=EMOJI_ID_EXTEND)
 HISTORY_EMOJI = discord.PartialEmoji(name="history", id=EMOJI_ID_HISTORY)
 INFO_EMOJI = discord.PartialEmoji(name="info", id=EMOJI_ID_INFO)
+TRANSFER_EMOJI = discord.PartialEmoji(name="transfer", id=EMOJI_ID_TRANSFER)
 
 
 # =============================================================================
@@ -132,6 +134,7 @@ __all__ = [
     "EXTEND_EMOJI",
     "HISTORY_EMOJI",
     "INFO_EMOJI",
+    "TRANSFER_EMOJI",
     # Categories
     "TICKET_CATEGORIES",
     "PRIORITY_CONFIG",
