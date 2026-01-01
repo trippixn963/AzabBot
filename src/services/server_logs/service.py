@@ -1183,19 +1183,31 @@ class LoggingService:
 
         message = await self._send_log(LogCategory.AVATAR_CHANGES, embed, files, user_id=user.id)
 
-        # Add download button for old avatar after message is sent (to get attachment URL)
-        if message and message.attachments and before_url:
+        # Add download buttons for old and new avatars
+        if message:
             try:
-                old_avatar_url = message.attachments[0].url
                 view = discord.ui.View(timeout=None)
-                view.add_item(discord.ui.Button(
-                    label="Old",
-                    url=old_avatar_url,
-                    style=discord.ButtonStyle.link,
-                    emoji=DOWNLOAD_EMOJI,
-                ))
+
+                # Old avatar button (from attachment)
+                if message.attachments and before_url:
+                    old_avatar_url = message.attachments[0].url
+                    view.add_item(discord.ui.Button(
+                        label="Old",
+                        url=old_avatar_url,
+                        style=discord.ButtonStyle.link,
+                        emoji=DOWNLOAD_EMOJI,
+                    ))
+
+                # New avatar button
+                if after_url:
+                    view.add_item(discord.ui.Button(
+                        label="New",
+                        url=after_url,
+                        style=discord.ButtonStyle.link,
+                        emoji=DOWNLOAD_EMOJI,
+                    ))
+
                 view.add_item(UserIdButton(user.id))
-                view.add_item(DownloadButton(user.id))  # "Avatar" button for current avatar
                 await message.edit(view=view)
             except Exception:
                 pass
