@@ -60,7 +60,6 @@ class Config:
         prison_channel_ids: Set of channel IDs where prisoners can be roasted.
         general_channel_id: Main server channel ID.
         muted_role_id: Role ID assigned to muted/timed-out users.
-        openai_api_key: OpenAI API key for AI responses.
     """
 
     # -------------------------------------------------------------------------
@@ -83,12 +82,6 @@ class Config:
     # -------------------------------------------------------------------------
 
     muted_role_id: int
-
-    # -------------------------------------------------------------------------
-    # Required: OpenAI
-    # -------------------------------------------------------------------------
-
-    openai_api_key: str
 
     # -------------------------------------------------------------------------
     # Optional: Channels
@@ -156,14 +149,6 @@ class Config:
 
     link_allowed_user_ids: Set[int] = None  # User IDs allowed to use /link command
     appeal_allowed_user_ids: Set[int] = None  # User IDs allowed to approve/deny appeals
-
-    # -------------------------------------------------------------------------
-    # Optional: AI Settings
-    # -------------------------------------------------------------------------
-
-    ai_model: str = "gpt-4o-mini"
-    response_probability: int = 70
-    max_response_length: int = 150
 
     # -------------------------------------------------------------------------
     # Optional: Rate Limiting
@@ -451,10 +436,6 @@ def load_config() -> Config:
     if not muted_role_id_str:
         missing.append("MUTED_ROLE_ID")
 
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
-        missing.append("OPENAI_API_KEY")
-
     # -------------------------------------------------------------------------
     # Fail Fast on Missing Required
     # -------------------------------------------------------------------------
@@ -514,7 +495,6 @@ def load_config() -> Config:
         prison_channel_ids=prison_channel_ids,
         general_channel_id=general_channel_id,
         muted_role_id=muted_role_id,
-        openai_api_key=openai_api_key,
         polls_only_channel_id=polls_only_channel_id,
         permanent_polls_channel_id=permanent_polls_channel_id,
         case_log_forum_id=case_log_forum_id,
@@ -533,13 +513,6 @@ def load_config() -> Config:
         ticket_support_user_ids=ticket_support_user_ids,
         server_logs_forum_id=server_logs_forum_id,
         logging_guild_id=logging_guild_id,
-        ai_model=os.getenv("AI_MODEL", "gpt-4o-mini"),
-        response_probability=_parse_int_with_default(
-            os.getenv("RESPONSE_PROBABILITY"), 70, "RESPONSE_PROBABILITY", min_val=0, max_val=100
-        ),
-        max_response_length=_parse_int_with_default(
-            os.getenv("MAX_RESPONSE_LENGTH"), 150, "MAX_RESPONSE_LENGTH", min_val=10, max_val=2000
-        ),
         cooldown_seconds=_parse_int_with_default(
             os.getenv("COOLDOWN_SECONDS"), 10, "COOLDOWN_SECONDS", min_val=0, max_val=300
         ),
@@ -646,7 +619,6 @@ def validate_and_log_config() -> None:
         ("Required", "✅ All required variables set"),
         ("Optional Features", ", ".join(optional_features) if optional_features else "None"),
         ("Prison Channels", str(len(config.prison_channel_ids))),
-        ("AI Model", config.ai_model),
     ], emoji="⚙️")
 
 

@@ -5,7 +5,7 @@ Azab Discord Bot - Prison Handler
 Handles prisoner welcome and release functionality.
 
 This module manages:
-- New prisoner welcome messages with AI roasts
+- New prisoner welcome messages
 - Prisoner release notifications
 - VC kick with progressive timeout
 - Daily prison channel cleanup
@@ -18,7 +18,7 @@ Server: discord.gg/syria
 import discord
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any, List, TYPE_CHECKING
+from typing import Optional, Dict, Any, TYPE_CHECKING
 from collections import OrderedDict
 
 from src.core.logger import logger
@@ -31,7 +31,6 @@ from src.utils.retry import safe_fetch_channel
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
-    from src.services.ai_service import AIService
 
 
 # =============================================================================
@@ -43,28 +42,26 @@ class PrisonHandler:
     Manages prisoner welcome and release operations.
 
     DESIGN: Central handler for all prisoner-related events.
-    Coordinates between Discord events, AI service, and database.
+    Coordinates between Discord events and database.
     """
 
     # =========================================================================
     # Initialization
     # =========================================================================
 
-    def __init__(self, bot: "AzabBot", ai_service: "AIService") -> None:
+    def __init__(self, bot: "AzabBot") -> None:
         """
         Initialize the prison handler.
 
         Args:
             bot: Main bot instance
-            ai_service: AI service for generating roasts
         """
         self.bot = bot
-        self.ai = ai_service
         self.config = get_config()
 
         # =================================================================
         # Mute Reason Tracking (OrderedDict with LRU eviction)
-        # DESIGN: Stores mute reasons by user_id or username for AI context
+        # DESIGN: Stores mute reasons by user_id or username for context
         # =================================================================
         self.mute_reasons: OrderedDict[Any, str] = OrderedDict()
         self._mute_reasons_limit: int = 1000  # Max entries
@@ -87,7 +84,6 @@ class PrisonHandler:
         logger.tree("Prison Handler Loaded", [
             ("Features", "Welcome, release, VC kick"),
             ("VC Timeout", "1st warn, 2nd 5m, 3rd+ 30m"),
-            ("AI Service", "Enabled" if ai_service else "Disabled"),
         ], emoji="⛓️")
 
     # =========================================================================
@@ -102,7 +98,7 @@ class PrisonHandler:
         1. Kick from VC if connected
         2. Send mute notification to last active channel
         3. Get mute reason from logs
-        4. Generate AI welcome message
+        4. Create welcome embed
         5. Record mute in database
         """
         try:
@@ -154,11 +150,6 @@ class PrisonHandler:
 
             # Get prisoner stats for personalized message
             prisoner_stats = await self.bot.db.get_prisoner_stats(member.id)
-
-            # AI welcome message - DISABLED
-            # response = await self._generate_welcome_message(
-            #     member, mute_reason, prisoner_stats
-            # )
 
             # Create welcome embed
             visit_num = prisoner_stats['total_mutes'] + 1
@@ -377,16 +368,6 @@ class PrisonHandler:
     ) -> None:
         """Send mute notification to channel where user was active."""
         try:
-            if self.ai:
-                mute_announcement = await self.ai.generate_response(
-                    "Someone just got muted. Mock them briefly about getting muted. Be savage but concise.",
-                    member.display_name,
-                    False,
-                    None,
-                )
-            else:
-                mute_announcement = "Welcome to prison!"
-
             embed = discord.Embed(
                 title="🔒 Sent to Prison",
                 description=f"**{member.display_name}** has been sent to prison.",
@@ -398,7 +379,7 @@ class PrisonHandler:
             )
             set_footer(embed)
 
-            await channel.send(f"{member.mention} {mute_announcement}", embed=embed)
+            await channel.send(member.mention, embed=embed)
 
         except Exception as e:
             logger.warning(f"Mute Notification Failed: {e}")
@@ -419,46 +400,6 @@ class PrisonHandler:
                         break
         except Exception as e:
             logger.warning(f"Log Scan Failed: {e}")
-
-    async def _generate_welcome_message(
-        self,
-        member: discord.Member,
-        mute_reason: Optional[str],
-        prisoner_stats: Dict[str, Any],
-    ) -> str:
-        """Generate AI welcome message for new prisoner."""
-        if not self.ai:
-            return "Welcome to prison!"
-
-        if mute_reason:
-            prompt = f"Welcome a prisoner jailed for: '{mute_reason}'. Mock them about their offense."
-            if prisoner_stats["total_mutes"] > 0:
-                total_time = format_duration(prisoner_stats["total_minutes"] or 0)
-                prompt += f" This is visit #{prisoner_stats['total_mutes'] + 1}. They've spent {total_time} locked up."
-        else:
-            prompt = "Welcome a prisoner to jail. Mock them for getting locked up."
-
-        return await self.ai.generate_response(
-            prompt, member.display_name, True, mute_reason
-        )
-
-    async def _generate_release_message(
-        self,
-        member: discord.Member,
-        mute_reason: Optional[str],
-    ) -> str:
-        """Generate AI release message for freed prisoner."""
-        if not self.ai:
-            return "You're free... for now."
-
-        if mute_reason:
-            prompt = f"Someone was released from prison for: '{mute_reason}'. Mock them sarcastically."
-        else:
-            prompt = "Someone got released from prison. Mock them about finally being free."
-
-        return await self.ai.generate_response(
-            prompt, member.display_name, False, mute_reason
-        )
 
     # =========================================================================
     # Cleanup Tasks

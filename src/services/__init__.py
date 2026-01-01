@@ -4,7 +4,7 @@ Azab Discord Bot - Services Package
 
 External service integrations for the Azab Discord bot.
 This package contains integrations with third-party services
-like AI providers and other external APIs.
+and background tasks.
 
 DESIGN:
     Services are standalone classes that handle external API calls.
@@ -20,7 +20,6 @@ DESIGN:
     4. Initialize in bot.py and pass to handlers as needed
 
 Available Services:
-    AIService: OpenAI GPT-4o-mini integration for AI-powered responses
     MuteScheduler: Background service for automatic mute expiration
     CaseLogService: Forum thread logging for moderation cases
     ModTrackerService: Mod activity tracking in forum threads
@@ -34,7 +33,6 @@ Server: discord.gg/syria
 # Service Imports
 # =============================================================================
 
-from .ai_service import AIService
 from .mute_scheduler import MuteScheduler
 from .case_log import CaseLogService
 from .mod_tracker import ModTrackerService
@@ -47,7 +45,6 @@ from .webhook_alerts import WebhookAlertService, get_alert_service
 # =============================================================================
 
 __all__ = [
-    "AIService",
     "MuteScheduler",
     "CaseLogService",
     "ModTrackerService",

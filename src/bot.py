@@ -84,7 +84,6 @@ class AzabBot(commands.Bot):
         self.disabled: bool = False
 
         # Service placeholders
-        self.ai_service = None
         self.prison_handler = None
         self.mute_handler = None
         self.presence_handler = None
@@ -247,7 +246,6 @@ class AzabBot(commands.Bot):
         await self._check_lockdown_state()
 
         logger.tree("AZAB READY", [
-            ("AI Service", "Online" if self.ai_service else "Offline"),
             ("Prison Handler", "Ready" if self.prison_handler else "Missing"),
             ("Mute Scheduler", "Running" if self.mute_scheduler else "Stopped"),
             ("Case Log", "Enabled" if self.case_log_service and self.case_log_service.enabled else "Disabled"),
@@ -297,11 +295,8 @@ class AzabBot(commands.Bot):
     async def _init_services(self) -> None:
         """Initialize all services after Discord connection."""
         try:
-            from src.services.ai_service import AIService
-            self.ai_service = AIService(self.config.openai_api_key)
-
             from src.handlers.prison_handler import PrisonHandler
-            self.prison_handler = PrisonHandler(self, self.ai_service)
+            self.prison_handler = PrisonHandler(self)
             logger.info("Prison Handler Initialized")
 
             from src.handlers.mute_handler import MuteHandler
