@@ -29,7 +29,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from src.core.logger import logger
-from src.core.config import get_config, is_developer, has_mod_role, EmbedColors, NY_TZ
+from src.core.config import get_config, has_mod_role, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.core.moderation_validation import (
     validate_moderation_target,

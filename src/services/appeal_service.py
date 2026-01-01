@@ -121,7 +121,10 @@ class AppealService:
             if now - cached_at < self.THREAD_CACHE_TTL:
                 return cached_thread
             else:
-                del self._thread_cache[thread_id]
+                try:
+                    del self._thread_cache[thread_id]
+                except KeyError:
+                    pass  # Already removed
 
         # Fetch thread
         channel = await safe_fetch_channel(self.bot, thread_id)

@@ -346,6 +346,8 @@ class MiniTreeLogger:
             prefix = TreeSymbols.LAST if is_last else TreeSymbols.BRANCH
             self._write_raw(f"  {prefix} {key}: {value}", also_to_error=True)
 
+        # Add empty line after error tree for readability
+        self._write_raw("", also_to_error=True)
         self._last_was_tree = True
         self._send_error_webhook(title, items, color, emoji)
 

@@ -65,38 +65,38 @@ if TYPE_CHECKING:
 # Constants - Thresholds (Not Too Strict)
 # =============================================================================
 
-# Message flood: X messages in Y seconds (lenient for active chat)
-FLOOD_MESSAGE_LIMIT = 8
+# Message flood: X messages in Y seconds
+FLOOD_MESSAGE_LIMIT = 6  # 6 messages in 5 seconds = spam
 FLOOD_TIME_WINDOW = 5  # seconds
 
 # Duplicate spam: Similar messages X times in Y seconds
-DUPLICATE_LIMIT = 5  # need 5 similar messages to trigger
+DUPLICATE_LIMIT = 3  # 3 similar messages = spam
 DUPLICATE_TIME_WINDOW = 30  # seconds
-DUPLICATE_SIMILARITY_THRESHOLD = 0.92  # 92% similar = duplicate (stricter matching)
+DUPLICATE_SIMILARITY_THRESHOLD = 0.85  # 85% similar = duplicate
 
 # Mention spam: X mentions in one message
-MENTION_LIMIT = 6
+MENTION_LIMIT = 5
 
 # Emoji spam: X emojis in one message
-EMOJI_LIMIT = 30  # very lenient for expressive chat
+EMOJI_LIMIT = 20  # reasonable for expressive chat
 
 # Link flood: X links in Y seconds
-LINK_LIMIT = 4
+LINK_LIMIT = 3
 LINK_TIME_WINDOW = 30  # seconds
 
-# Invite spam: X invites in Y seconds (stricter)
-INVITE_LIMIT = 2
+# Invite spam: X invites in Y seconds (strict)
+INVITE_LIMIT = 1  # any invite is suspicious
 INVITE_TIME_WINDOW = 60  # seconds
 
 # Caps spam: X% caps in message with min length
-CAPS_PERCENTAGE = 80
-CAPS_MIN_LENGTH = 15
+CAPS_PERCENTAGE = 75
+CAPS_MIN_LENGTH = 12
 
-# Newline spam: X newlines in one message (high limit for Quran verses)
-NEWLINE_LIMIT = 30
+# Newline spam: X newlines in one message (still lenient for Quran verses)
+NEWLINE_LIMIT = 20
 
-# Character spam: Same char repeated X+ times (lenient - only catches extreme cases)
-CHAR_REPEAT_LIMIT = 30
+# Character spam: Same char repeated X+ times
+CHAR_REPEAT_LIMIT = 15
 
 # Image duplicate: Same image X times in Y seconds
 IMAGE_DUPLICATE_LIMIT = 3

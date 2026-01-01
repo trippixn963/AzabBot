@@ -1263,7 +1263,7 @@ class TicketService:
             finally:
                 self._pending_deletions.pop(ticket_id, None)
 
-        self._pending_deletions[ticket_id] = asyncio.create_task(delete_after_delay())
+        self._pending_deletions[ticket_id] = create_safe_task(delete_after_delay(), name=f"ticket_delete_{ticket_id}")
         logger.tree("Thread Deletion Scheduled", [
             ("Ticket ID", ticket_id),
             ("Delete In", f"{THREAD_DELETE_DELAY // 60} minutes"),

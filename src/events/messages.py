@@ -10,9 +10,10 @@ Server: discord.gg/syria
 
 import asyncio
 import re
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from collections import deque
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Dict, List
 
 import discord
 from discord.ext import commands
@@ -34,6 +35,15 @@ INVITE_PATTERN = re.compile(
     re.IGNORECASE
 )
 
+# =============================================================================
+# Prisoner Ping Rate Limiting Constants
+# =============================================================================
+
+PRISONER_PING_WINDOW = 60  # Time window in seconds for tracking pings
+PRISONER_PING_MAX = 3  # Max pings allowed in the window before timeout
+PRISONER_PING_TIMEOUT = timedelta(hours=1)  # Discord timeout duration
+PRISONER_WARNING_COOLDOWN = 30  # Seconds between warning messages per user
+
 
 class MessageEvents(commands.Cog):
     """Message event handlers."""
@@ -41,6 +51,125 @@ class MessageEvents(commands.Cog):
     def __init__(self, bot: "AzabBot") -> None:
         self.bot = bot
         self.config = get_config()
+
+        # Prisoner ping abuse tracking
+        self._prisoner_ping_violations: Dict[int, List[float]] = {}
+        self._prisoner_warning_times: Dict[int, float] = {}
+        self._ping_lock = asyncio.Lock()
+
+    # =========================================================================
+    # Prisoner Ping Violation Handler
+    # =========================================================================
+
+    async def _handle_prisoner_ping_violation(self, message: discord.Message) -> None:
+        """
+        Handle a prisoner attempting to ping.
+
+        Progressive response:
+        1. Delete the message
+        2. Track violations in sliding window
+        3. After 3 violations in 60 seconds: Apply 1 hour Discord timeout
+        4. Rate-limit warning messages to prevent spam
+        """
+        user_id = message.author.id
+        now = time.time()
+
+        # Always try to delete the message first
+        try:
+            await message.delete()
+        except discord.Forbidden:
+            logger.warning("Prisoner Ping Delete Failed", [
+                ("User", f"{message.author} ({message.author.id})"),
+                ("Reason", "Missing permissions"),
+            ])
+            return
+        except discord.HTTPException as e:
+            logger.warning("Prisoner Ping Delete Failed", [
+                ("User", f"{message.author} ({message.author.id})"),
+                ("Error", str(e)[:50]),
+            ])
+            return
+
+        # Track violations with lock for thread safety
+        async with self._ping_lock:
+            if user_id not in self._prisoner_ping_violations:
+                self._prisoner_ping_violations[user_id] = []
+
+            # Clean old violations outside the window
+            cutoff = now - PRISONER_PING_WINDOW
+            self._prisoner_ping_violations[user_id] = [
+                ts for ts in self._prisoner_ping_violations[user_id]
+                if ts > cutoff
+            ]
+
+            # Add this violation
+            self._prisoner_ping_violations[user_id].append(now)
+            violation_count = len(self._prisoner_ping_violations[user_id])
+
+        # Check if exceeded limit -> apply timeout
+        if violation_count >= PRISONER_PING_MAX:
+            try:
+                if isinstance(message.author, discord.Member):
+                    await message.author.timeout(
+                        PRISONER_PING_TIMEOUT,
+                        reason=f"Ping spam in prison ({violation_count} pings in {PRISONER_PING_WINDOW}s)"
+                    )
+
+                    logger.tree("PRISONER PING SPAM - TIMEOUT", [
+                        ("User", f"{message.author} ({message.author.id})"),
+                        ("Violations", f"{violation_count} in {PRISONER_PING_WINDOW}s"),
+                        ("Timeout", "1 hour"),
+                    ], emoji="⏰")
+
+                    # Send timeout notification
+                    try:
+                        await message.channel.send(
+                            f"🔇 {message.author.mention} has been timed out for 1 hour for ping spam.",
+                            delete_after=10.0,
+                        )
+                    except discord.HTTPException:
+                        pass
+
+                    # Clear violations after timeout
+                    async with self._ping_lock:
+                        self._prisoner_ping_violations[user_id] = []
+
+            except discord.Forbidden:
+                logger.warning("Prisoner Timeout Failed", [
+                    ("User", f"{message.author} ({message.author.id})"),
+                    ("Reason", "Missing permissions"),
+                ])
+            except discord.HTTPException as e:
+                logger.warning("Prisoner Timeout Failed", [
+                    ("User", f"{message.author} ({message.author.id})"),
+                    ("Error", str(e)[:50]),
+                ])
+            return
+
+        # Rate-limit warning messages
+        should_warn = False
+        async with self._ping_lock:
+            last_warning = self._prisoner_warning_times.get(user_id, 0)
+            if now - last_warning >= PRISONER_WARNING_COOLDOWN:
+                self._prisoner_warning_times[user_id] = now
+                should_warn = True
+
+        if should_warn:
+            try:
+                remaining = PRISONER_PING_MAX - violation_count
+                await message.channel.send(
+                    f"{message.author.mention} Prisoners cannot ping others. "
+                    f"({remaining} more = 1h timeout)",
+                    delete_after=5.0,
+                )
+            except discord.HTTPException:
+                pass
+
+        logger.tree("PRISONER PING BLOCKED", [
+            ("User", f"{message.author} ({message.author.id})"),
+            ("Violations", f"{violation_count}/{PRISONER_PING_MAX}"),
+            ("Warning", "Yes" if should_warn else "No (cooldown)"),
+        ], emoji="🚫")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -275,8 +404,7 @@ class MessageEvents(commands.Cog):
                 if self.config.moderation_role_id:
                     is_mod = any(r.id == self.config.moderation_role_id for r in message.author.roles)
 
-                # If prisoner (not mod) and has explicit pings, delete the message
-                # Note: Replies are allowed - only block explicit @mentions
+                # If prisoner (not mod) and has explicit pings, handle violation
                 if is_prisoner and not is_mod:
                     # Get mentions that are NOT from a reply
                     explicit_mentions = list(message.mentions)
@@ -292,31 +420,7 @@ class MessageEvents(commands.Cog):
                         message.mention_everyone  # @everyone/@here
                     )
                     if has_pings:
-                        try:
-                            await message.delete()
-                            logger.tree("PRISONER PING BLOCKED", [
-                                ("User", f"{message.author} ({message.author.id})"),
-                                ("Channel", f"#{message.channel.name}"),
-                                ("Mentions", str(len(message.mentions) + len(message.role_mentions))),
-                            ], emoji="🚫")
-
-                            # Send warning (ephemeral-like, delete after a few seconds)
-                            warning = await message.channel.send(
-                                f"{message.author.mention} Prisoners cannot ping others.",
-                                delete_after=5.0,
-                            )
-                        except discord.Forbidden:
-                            logger.warning("Prisoner Ping Block Failed", [
-                                ("User", f"{message.author} ({message.author.id})"),
-                                ("Channel", f"#{message.channel.name}"),
-                                ("Reason", "Missing permissions to delete message"),
-                            ])
-                        except discord.HTTPException as e:
-                            logger.warning("Prisoner Ping Block Failed", [
-                                ("User", f"{message.author} ({message.author.id})"),
-                                ("Channel", f"#{message.channel.name}"),
-                                ("Error", str(e)[:50]),
-                            ])
+                        await self._handle_prisoner_ping_violation(message)
                         return  # Stop processing this message
 
         # -----------------------------------------------------------------

@@ -29,7 +29,7 @@ Server: discord.gg/syria
 """
 
 import discord
-from typing import Optional, List, Tuple, Any, Union
+from typing import Optional, List, Tuple, Union
 
 from src.core.logger import logger
 from src.core.config import EmbedColors

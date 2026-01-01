@@ -125,7 +125,10 @@ class ResponseCache:
                 data, timestamp = self._cache[key]
                 if time.time() - timestamp < self.ttl:
                     return data
-                del self._cache[key]
+                try:
+                    del self._cache[key]
+                except KeyError:
+                    pass  # Already removed
         return None
 
     async def set(self, key: str, data: Dict) -> None:

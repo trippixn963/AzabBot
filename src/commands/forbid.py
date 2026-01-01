@@ -31,14 +31,14 @@ Server: discord.gg/syria
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from src.core.logger import logger
-from src.core.config import get_config, EmbedColors, NY_TZ, is_developer, has_mod_role
+from src.core.config import get_config, EmbedColors, NY_TZ, has_mod_role
 from src.core.database import get_db
 from src.core.moderation_validation import (
     validate_self_action,

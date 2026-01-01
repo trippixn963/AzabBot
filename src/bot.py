@@ -183,7 +183,7 @@ class AzabBot(commands.Bot):
         from src.services.appeal_service import setup_appeal_views
         setup_appeal_views(self)
 
-        from src.services.ticket_service import setup_ticket_views
+        from src.services.tickets import setup_ticket_views
         setup_ticket_views(self)
 
         from src.services.modmail_service import setup_modmail_views
@@ -402,7 +402,7 @@ class AzabBot(commands.Bot):
             else:
                 logger.info("Appeal Service Disabled (no forum configured)")
 
-            from src.services.ticket_service import TicketService
+            from src.services.tickets import TicketService
             self.ticket_service = TicketService(self)
             await self.ticket_service.start()
             if self.ticket_service.enabled:

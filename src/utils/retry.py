@@ -9,7 +9,6 @@ Server: discord.gg/syria
 """
 
 import asyncio
-from functools import wraps
 from typing import TypeVar, Callable, Any, Optional, Tuple, Type
 
 import discord

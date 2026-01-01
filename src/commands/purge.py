@@ -29,7 +29,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config, has_mod_role, EmbedColors, NY_TZ
-from src.core.constants import MAX_PURGE_AMOUNT, DEFAULT_PURGE_AMOUNT, BULK_DELETE_LIMIT
+from src.core.constants import MAX_PURGE_AMOUNT, BULK_DELETE_LIMIT
 from src.utils.footer import set_footer
 
 if TYPE_CHECKING:

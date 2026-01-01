@@ -39,6 +39,7 @@ from src.core.moderation_validation import (
 from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
 from src.utils.duration import format_duration
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -455,12 +456,13 @@ class BanCog(commands.Cog):
         # -----------------------------------------------------------------
 
         if not is_softban and self.bot.alt_detection and self.bot.alt_detection.enabled and case_info:
-            asyncio.create_task(
+            create_safe_task(
                 self.bot.alt_detection.detect_alts_for_ban(
                     banned_user=user,
                     guild=interaction.guild,
                     case_thread_id=case_info["thread_id"],
-                )
+                ),
+                name="alt_detection_ban",
             )
 
         return True

@@ -223,6 +223,7 @@ class DatabaseManager:
         # Cache for expensive queries (TTL-based)
         self._prisoner_stats_cache: Dict[int, tuple] = {}  # user_id -> (stats, timestamp)
         self._prisoner_stats_ttl: int = 60  # 60 seconds
+        self._prisoner_stats_lock = asyncio.Lock()  # Protect concurrent cache access
 
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         self._connect()
@@ -1196,6 +1197,10 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE tickets ADD COLUMN transcript_html TEXT")
         except sqlite3.OperationalError:
             pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE tickets ADD COLUMN control_panel_message_id INTEGER")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_tickets_user ON tickets(user_id, guild_id)"
         )
@@ -1470,12 +1475,14 @@ class DatabaseManager:
         Returns:
             Dict with total_mutes, total_minutes, last_mute, etc.
         """
-        # Check cache first
         now = time.time()
-        if user_id in self._prisoner_stats_cache:
-            cached_stats, cached_at = self._prisoner_stats_cache[user_id]
-            if now - cached_at < self._prisoner_stats_ttl:
-                return cached_stats
+
+        # Check cache first (with lock)
+        async with self._prisoner_stats_lock:
+            if user_id in self._prisoner_stats_cache:
+                cached_stats, cached_at = self._prisoner_stats_cache[user_id]
+                if now - cached_at < self._prisoner_stats_ttl:
+                    return cached_stats
 
         def _get():
             with metrics.timer("db.get_prisoner_stats"):
@@ -1515,17 +1522,18 @@ class DatabaseManager:
 
         stats = await asyncio.to_thread(_get)
 
-        # Cache the result
-        self._prisoner_stats_cache[user_id] = (stats, now)
+        # Cache the result (with lock)
+        async with self._prisoner_stats_lock:
+            self._prisoner_stats_cache[user_id] = (stats, now)
 
-        # Evict old cache entries (keep max 1000)
-        if len(self._prisoner_stats_cache) > 1000:
-            try:
-                oldest_key = min(self._prisoner_stats_cache.keys(),
-                               key=lambda k: self._prisoner_stats_cache[k][1])
-                del self._prisoner_stats_cache[oldest_key]
-            except (KeyError, ValueError):
-                pass  # Entry already removed by another coroutine
+            # Evict old cache entries (keep max 1000)
+            if len(self._prisoner_stats_cache) > 1000:
+                try:
+                    oldest_key = min(self._prisoner_stats_cache.keys(),
+                                   key=lambda k: self._prisoner_stats_cache[k][1])
+                    del self._prisoner_stats_cache[oldest_key]
+                except (KeyError, ValueError):
+                    pass  # Entry already removed by another coroutine
 
         return stats
 
@@ -5546,6 +5554,38 @@ class DatabaseManager:
             (ticket_id,)
         )
         return row["transcript_html"] if row and row["transcript_html"] else None
+
+    def set_control_panel_message(self, ticket_id: str, message_id: int) -> bool:
+        """
+        Set the control panel message ID for a ticket.
+
+        Args:
+            ticket_id: Ticket ID.
+            message_id: Discord message ID of the control panel.
+
+        Returns:
+            True if successful.
+        """
+        cursor = self.execute(
+            "UPDATE tickets SET control_panel_message_id = ? WHERE ticket_id = ?",
+            (message_id, ticket_id)
+        )
+        return cursor.rowcount > 0
+
+    def clear_close_request(self, ticket_id: str) -> bool:
+        """
+        Clear close request status for a ticket.
+
+        This is a no-op for database since close requests are tracked in memory.
+        Kept for API compatibility.
+
+        Args:
+            ticket_id: Ticket ID.
+
+        Returns:
+            True always.
+        """
+        return True
 
     # =========================================================================
     # Modmail Operations

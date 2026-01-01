@@ -17,6 +17,7 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config
 from src.core.database import get_db
+from src.utils.async_utils import create_safe_task
 
 # Verification role delay - another bot handles this, but we act as failsafe backup
 VERIFICATION_DELAY = 5  # seconds to wait before checking
@@ -234,7 +235,7 @@ class MemberEvents(commands.Cog):
             await self.bot.mod_tracker.check_ban_evasion_on_join(member)
 
         # Failsafe: Check verification role after delay (backup for other bot)
-        asyncio.create_task(self._check_verification_role(member))
+        create_safe_task(self._check_verification_role(member), name="verification_check")
 
     async def _check_mute_evasion(self, member: discord.Member) -> None:
         """Check if rejoining member has an active mute and re-apply it."""

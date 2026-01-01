@@ -27,6 +27,7 @@ from src.utils.footer import set_footer
 from src.utils.rate_limiter import rate_limit
 from src.utils.duration import format_duration_from_minutes as format_duration
 from src.utils.async_utils import create_safe_task
+from src.utils.retry import safe_fetch_channel
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -113,20 +114,20 @@ class PrisonHandler:
             # Handle VC kick with progressive timeout
             await self._handle_vc_kick(member)
 
-            # Get channels
-            logs_channel = self.bot.get_channel(self.config.logs_channel_id)
+            # Get channels (use safe_fetch to handle cache misses)
+            logs_channel = await safe_fetch_channel(self.bot, self.config.logs_channel_id)
 
             # Get first prison channel
             prison_channel = None
             if self.config.prison_channel_ids:
-                prison_channel = self.bot.get_channel(
-                    next(iter(self.config.prison_channel_ids))
+                prison_channel = await safe_fetch_channel(
+                    self.bot, next(iter(self.config.prison_channel_ids))
                 )
 
             if not logs_channel or not prison_channel:
                 logger.error("Required Channels Not Found", [
                     ("Logs", str(self.config.logs_channel_id)),
-                    ("Prison", str(self.config.prison_channel_ids)),
+                    ("Prison", str(next(iter(self.config.prison_channel_ids)) if self.config.prison_channel_ids else "None")),
                 ])
                 return
 
@@ -190,12 +191,13 @@ class PrisonHandler:
 
             # Update presence
             if self.bot.presence_handler:
-                asyncio.create_task(
+                create_safe_task(
                     self.bot.presence_handler.show_prisoner_arrived(
                         username=member.name,
                         reason=mute_reason,
                         mute_count=prisoner_stats.get("total_mutes", 1),
-                    )
+                    ),
+                    name="presence_prisoner_arrived",
                 )
 
             # Record mute in database
@@ -247,11 +249,12 @@ class PrisonHandler:
 
             # Update presence
             if self.bot.presence_handler:
-                asyncio.create_task(
+                create_safe_task(
                     self.bot.presence_handler.show_prisoner_released(
                         username=member.name,
                         duration_minutes=current_duration,
-                    )
+                    ),
+                    name="presence_prisoner_released",
                 )
 
             # Record unmute in database
@@ -264,7 +267,7 @@ class PrisonHandler:
                 self.vc_kick_counts.pop(member.id, None)
 
             # Schedule delayed message cleanup (1 hour)
-            asyncio.create_task(self._delayed_message_cleanup(member))
+            create_safe_task(self._delayed_message_cleanup(member), name=f"msg_cleanup_{member.id}")
 
             logger.tree("Prisoner Release Complete", [
                 ("Ex-Prisoner", str(member)),
