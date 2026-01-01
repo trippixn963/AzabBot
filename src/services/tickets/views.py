@@ -20,6 +20,8 @@ from .buttons import (
     AddUserButton,
     ReopenButton,
     TranscriptButton,
+    InfoButton,
+    TransferButton,
     HistoryButton,
     CloseApproveButton,
     CloseDenyButton,
@@ -126,22 +128,26 @@ class TicketControlPanelView(discord.ui.View):
     def _add_buttons(self) -> None:
         """Add buttons based on current ticket status."""
         if self.status == "open":
-            # Open tickets: Claim, Close, AddUser, History
+            # Open tickets: Claim, Close, AddUser, Info, History
             self.add_item(ClaimButton(self.ticket_id))
             self.add_item(CloseButton(self.ticket_id))
             self.add_item(AddUserButton(self.ticket_id))
+            self.add_item(InfoButton(self.ticket_id))
             self.add_item(HistoryButton(self.user_id, self.guild_id))
 
         elif self.status == "claimed":
-            # Claimed tickets: Close, AddUser, History
+            # Claimed tickets: Close, Transfer, AddUser, Info, History
             self.add_item(CloseButton(self.ticket_id))
+            self.add_item(TransferButton(self.ticket_id))
             self.add_item(AddUserButton(self.ticket_id))
+            self.add_item(InfoButton(self.ticket_id))
             self.add_item(HistoryButton(self.user_id, self.guild_id))
 
         elif self.status == "closed":
-            # Closed tickets: Reopen, Transcript, History
+            # Closed tickets: Reopen, Transcript, Info, History
             self.add_item(ReopenButton(self.ticket_id))
             self.add_item(TranscriptButton(self.ticket_id))
+            self.add_item(InfoButton(self.ticket_id))
             self.add_item(HistoryButton(self.user_id, self.guild_id))
 
     @classmethod

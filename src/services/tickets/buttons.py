@@ -27,6 +27,10 @@ from .constants import (
     TRANSCRIPT_EMOJI,
     EXTEND_EMOJI,
     HISTORY_EMOJI,
+    INFO_EMOJI,
+    STATUS_EMOJI,
+    TICKET_CATEGORIES,
+    PRIORITY_CONFIG,
 )
 
 if TYPE_CHECKING:
@@ -337,6 +341,304 @@ class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt
 
 
 # =============================================================================
+# Info Button
+# =============================================================================
+
+class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_info:(?P<ticket_id>T\d+)"):
+    """Button to view detailed ticket information."""
+
+    def __init__(self, ticket_id: str):
+        self.ticket_id = ticket_id
+        super().__init__(
+            discord.ui.Button(
+                label="Info",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"tkt_info:{ticket_id}",
+                emoji=INFO_EMOJI,
+            )
+        )
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match: re.Match[str],
+    ) -> "InfoButton":
+        return cls(match.group("ticket_id"))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        bot: "AzabBot" = interaction.client
+        if not hasattr(bot, "ticket_service") or not bot.ticket_service:
+            await interaction.response.send_message(
+                "Ticket system is not available.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
+        if not ticket:
+            await interaction.followup.send("Ticket not found.", ephemeral=True)
+            return
+
+        # Fetch ticket user
+        try:
+            ticket_user = await bot.fetch_user(ticket["user_id"])
+            user_display = f"{ticket_user.mention} (`{ticket_user.name}`)"
+        except Exception:
+            user_display = f"<@{ticket['user_id']}>"
+
+        # Build info embed
+        from src.core.config import EmbedColors
+        from src.utils.footer import set_footer
+
+        status = ticket.get("status", "open")
+        category = ticket.get("category", "support")
+        cat_info = TICKET_CATEGORIES.get(category, TICKET_CATEGORIES["support"])
+        priority = ticket.get("priority", "normal")
+        priority_info = PRIORITY_CONFIG.get(priority, PRIORITY_CONFIG["normal"])
+
+        embed = discord.Embed(
+            title=f"{INFO_EMOJI} Ticket Information",
+            color=EmbedColors.BLUE,
+        )
+
+        # Basic Info
+        embed.add_field(
+            name="Ticket",
+            value=f"`#{ticket['ticket_id']}`",
+            inline=True,
+        )
+        embed.add_field(
+            name="Status",
+            value=f"{STATUS_EMOJI.get(status, '⚪')} {status.title()}",
+            inline=True,
+        )
+        embed.add_field(
+            name="Category",
+            value=f"{cat_info['emoji']} {cat_info['label']}",
+            inline=True,
+        )
+
+        # User Info
+        embed.add_field(
+            name="Created By",
+            value=user_display,
+            inline=True,
+        )
+        embed.add_field(
+            name="Priority",
+            value=f"{priority_info['emoji']} {priority.title()}",
+            inline=True,
+        )
+        embed.add_field(
+            name="\u200b",
+            value="\u200b",
+            inline=True,
+        )
+
+        # Timestamps
+        if ticket.get("created_at"):
+            embed.add_field(
+                name="Created",
+                value=f"<t:{int(ticket['created_at'])}:F>\n(<t:{int(ticket['created_at'])}:R>)",
+                inline=True,
+            )
+
+        if ticket.get("claimed_by"):
+            embed.add_field(
+                name="Claimed By",
+                value=f"<@{ticket['claimed_by']}>",
+                inline=True,
+            )
+            if ticket.get("claimed_at"):
+                embed.add_field(
+                    name="Claimed At",
+                    value=f"<t:{int(ticket['claimed_at'])}:R>",
+                    inline=True,
+                )
+
+        if ticket.get("closed_at"):
+            embed.add_field(
+                name="Closed At",
+                value=f"<t:{int(ticket['closed_at'])}:F>",
+                inline=True,
+            )
+            if ticket.get("closed_by"):
+                embed.add_field(
+                    name="Closed By",
+                    value=f"<@{ticket['closed_by']}>",
+                    inline=True,
+                )
+
+        # Subject
+        if ticket.get("subject"):
+            subject = ticket["subject"]
+            if len(subject) > 200:
+                subject = subject[:197] + "..."
+            embed.add_field(
+                name="Subject",
+                value=subject,
+                inline=False,
+            )
+
+        # Close reason
+        if ticket.get("close_reason"):
+            embed.add_field(
+                name="Close Reason",
+                value=ticket["close_reason"][:200],
+                inline=False,
+            )
+
+        # User's ticket stats
+        user_tickets = bot.ticket_service.db.get_user_tickets(ticket["user_id"], ticket.get("guild_id", 0))
+        if user_tickets:
+            total = len(user_tickets)
+            open_count = sum(1 for t in user_tickets if t["status"] == "open")
+            claimed_count = sum(1 for t in user_tickets if t["status"] == "claimed")
+            closed_count = sum(1 for t in user_tickets if t["status"] == "closed")
+            embed.add_field(
+                name="User's Ticket Stats",
+                value=f"🎫 Total: **{total}** │ 🟢 Open: **{open_count}** │ 🔵 Claimed: **{claimed_count}** │ 🔴 Closed: **{closed_count}**",
+                inline=False,
+            )
+
+        set_footer(embed)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+# =============================================================================
+# Transfer Button
+# =============================================================================
+
+class TransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_transfer:(?P<ticket_id>T\d+)"):
+    """Button to transfer a ticket to another staff member."""
+
+    def __init__(self, ticket_id: str):
+        self.ticket_id = ticket_id
+        super().__init__(
+            discord.ui.Button(
+                label="Transfer",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"tkt_transfer:{ticket_id}",
+                emoji="↔️",
+            )
+        )
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match: re.Match[str],
+    ) -> "TransferButton":
+        return cls(match.group("ticket_id"))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        bot: "AzabBot" = interaction.client
+        if not hasattr(bot, "ticket_service") or not bot.ticket_service:
+            await interaction.response.send_message(
+                "Ticket system is not available.",
+                ephemeral=True,
+            )
+            return
+
+        # Check if user has staff permissions
+        if not interaction.user.guild_permissions.manage_messages:
+            await interaction.response.send_message(
+                "You don't have permission to transfer tickets.",
+                ephemeral=True,
+            )
+            return
+
+        ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
+        if not ticket:
+            await interaction.response.send_message(
+                "Ticket not found.",
+                ephemeral=True,
+            )
+            return
+
+        if ticket["status"] == "closed":
+            await interaction.response.send_message(
+                "Cannot transfer a closed ticket.",
+                ephemeral=True,
+            )
+            return
+
+        # Show user select for transfer
+        view = TransferSelectView(self.ticket_id, ticket.get("claimed_by"))
+        await interaction.response.send_message(
+            "Select a staff member to transfer this ticket to:",
+            view=view,
+            ephemeral=True,
+        )
+
+
+class TransferSelectView(discord.ui.View):
+    """View with user select for ticket transfer."""
+
+    def __init__(self, ticket_id: str, current_claimer: int = None):
+        super().__init__(timeout=60)
+        self.ticket_id = ticket_id
+        self.current_claimer = current_claimer
+
+    @discord.ui.select(
+        cls=discord.ui.UserSelect,
+        placeholder="Select staff member...",
+        min_values=1,
+        max_values=1,
+    )
+    async def user_select(
+        self,
+        interaction: discord.Interaction,
+        select: discord.ui.UserSelect,
+    ) -> None:
+        bot: "AzabBot" = interaction.client
+        target = select.values[0]
+
+        # Validate target is staff
+        if isinstance(target, discord.Member):
+            if not target.guild_permissions.manage_messages:
+                await interaction.response.send_message(
+                    f"{target.mention} is not a staff member.",
+                    ephemeral=True,
+                )
+                return
+        else:
+            await interaction.response.send_message(
+                "Please select a server member.",
+                ephemeral=True,
+            )
+            return
+
+        # Check if target is same as current
+        if self.current_claimer and target.id == self.current_claimer:
+            await interaction.response.send_message(
+                "This ticket is already claimed by that person.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        success, message = await bot.ticket_service.transfer_ticket(
+            ticket_id=self.ticket_id,
+            new_staff=target,
+            transferred_by=interaction.user,
+        )
+
+        if success:
+            await interaction.followup.send(f"✅ {message}", ephemeral=True)
+            # Disable the view
+            self.stop()
+        else:
+            await interaction.followup.send(f"❌ {message}", ephemeral=True)
+
+
+# =============================================================================
 # History Button
 # =============================================================================
 
@@ -376,40 +678,121 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_hi
         # Check if user has staff permissions
         if not interaction.user.guild_permissions.manage_messages:
             await interaction.response.send_message(
-                "Only staff can view ticket history.",
+                "Only staff can view user history.",
                 ephemeral=True,
             )
             return
 
         await interaction.response.defer(ephemeral=True)
 
-        history = bot.ticket_service.db.get_user_tickets(self.user_id, limit=10)
+        # Get ticket history
+        ticket_history = bot.ticket_service.db.get_user_tickets(self.user_id, self.guild_id)
 
-        if not history:
-            await interaction.followup.send(
-                "📋 No ticket history found for this user.",
-                ephemeral=True,
-            )
-            return
+        # Get moderation history
+        mod_history = bot.ticket_service.db.get_user_warnings(self.user_id, self.guild_id)
 
-        # Build history embed
+        # Fetch user info
+        try:
+            user = await bot.fetch_user(self.user_id)
+            user_display = f"{user.display_name} (`{user.name}`)"
+            user_avatar = user.display_avatar.url
+        except Exception:
+            user_display = f"User ID: {self.user_id}"
+            user_avatar = None
+
+        # Build history embed with cleaner design
         from src.core.config import EmbedColors
         from src.utils.footer import set_footer
+        from src.core.constants import EMOJI_MUTE, EMOJI_BAN, EMOJI_WARN, EMOJI_KICK
 
         embed = discord.Embed(
-            title="📋 Ticket History",
-            description=f"Recent tickets for <@{self.user_id}>:",
-            color=EmbedColors.BLUE,
+            title=f"{HISTORY_EMOJI} User History",
+            color=EmbedColors.GOLD,
         )
 
-        for ticket in history[:10]:
-            status_emoji = {"open": "🟢", "claimed": "🔵", "closed": "🔴"}.get(
-                ticket["status"], "⚪"
-            )
-            created = f"<t:{int(ticket['created_at'])}:R>" if ticket.get("created_at") else "Unknown"
+        if user_avatar:
+            embed.set_thumbnail(url=user_avatar)
+
+        embed.add_field(
+            name="User",
+            value=f"<@{self.user_id}>\n{user_display}",
+            inline=True,
+        )
+
+        # Ticket stats summary
+        if ticket_history:
+            total = len(ticket_history)
+            open_count = sum(1 for t in ticket_history if t["status"] == "open")
+            closed_count = sum(1 for t in ticket_history if t["status"] == "closed")
             embed.add_field(
-                name=f"{status_emoji} #{ticket['ticket_id']} - {ticket['category'].title()}",
-                value=f"Subject: {ticket.get('subject', 'N/A')[:50]}\nCreated: {created}",
+                name="Ticket Stats",
+                value=f"🎫 **{total}** total\n🟢 **{open_count}** open │ 🔴 **{closed_count}** closed",
+                inline=True,
+            )
+        else:
+            embed.add_field(
+                name="Ticket Stats",
+                value="No tickets",
+                inline=True,
+            )
+
+        # Mod stats summary
+        if mod_history:
+            warns = sum(1 for m in mod_history if m.get("action_type") == "warn")
+            mutes = sum(1 for m in mod_history if m.get("action_type") == "mute")
+            bans = sum(1 for m in mod_history if m.get("action_type") == "ban")
+            embed.add_field(
+                name="Mod Stats",
+                value=f"{EMOJI_WARN} **{warns}** │ {EMOJI_MUTE} **{mutes}** │ {EMOJI_BAN} **{bans}**",
+                inline=True,
+            )
+        else:
+            embed.add_field(
+                name="Mod Stats",
+                value="Clean record",
+                inline=True,
+            )
+
+        # Recent tickets (last 5)
+        if ticket_history:
+            ticket_lines = []
+            for ticket in ticket_history[:5]:
+                status_emoji = STATUS_EMOJI.get(ticket["status"], "⚪")
+                created = f"<t:{int(ticket['created_at'])}:R>" if ticket.get("created_at") else "?"
+                subject = ticket.get("subject", "No subject")[:30]
+                if len(ticket.get("subject", "")) > 30:
+                    subject += "..."
+                ticket_lines.append(
+                    f"{status_emoji} `#{ticket['ticket_id']}` {ticket['category'].title()} - {subject} ({created})"
+                )
+            embed.add_field(
+                name="📋 Recent Tickets",
+                value="\n".join(ticket_lines) or "None",
+                inline=False,
+            )
+
+        # Recent mod actions (last 5)
+        if mod_history:
+            action_emojis = {
+                "warn": EMOJI_WARN,
+                "mute": EMOJI_MUTE,
+                "ban": EMOJI_BAN,
+                "kick": EMOJI_KICK,
+            }
+            mod_lines = []
+            for action in mod_history[:5]:
+                emoji = action_emojis.get(action.get("action_type", ""), "📝")
+                action_type = action.get("action_type", "action").title()
+                reason = action.get("reason", "No reason")[:30]
+                if len(action.get("reason", "")) > 30:
+                    reason += "..."
+                timestamp = f"<t:{int(action['timestamp'])}:R>" if action.get("timestamp") else "?"
+                mod_lines.append(
+                    f"{emoji} **{action_type}** - {reason} ({timestamp})"
+                )
+            embed.add_field(
+                name="⚠️ Recent Mod Actions",
+                value="\n".join(mod_lines) or "None",
                 inline=False,
             )
 
@@ -556,10 +939,12 @@ def setup_ticket_buttons(bot: commands.Bot) -> None:
         AddUserButton,
         ReopenButton,
         TranscriptButton,
+        InfoButton,
+        TransferButton,
         HistoryButton,
         CloseApproveButton,
         CloseDenyButton,
     )
     logger.tree("Ticket Buttons Registered", [
-        ("Buttons", "Claim, Close, AddUser, Reopen, Transcript, History, CloseApprove, CloseDeny"),
+        ("Buttons", "Claim, Close, AddUser, Reopen, Transcript, Info, Transfer, History, CloseApprove, CloseDeny"),
     ], emoji="🎫")

@@ -231,6 +231,19 @@ def build_user_added_notification(
     return embed
 
 
+def build_transfer_notification(
+    new_staff: discord.Member,
+    transferred_by: discord.Member,
+) -> discord.Embed:
+    """Build notification when ticket is transferred."""
+    embed = discord.Embed(
+        description=f"↔️ This ticket has been transferred to {new_staff.mention} by {transferred_by.mention}.",
+        color=EmbedColors.BLUE,
+    )
+    set_footer(embed)
+    return embed
+
+
 def build_priority_notification(
     changed_by: discord.Member,
     old_priority: str,

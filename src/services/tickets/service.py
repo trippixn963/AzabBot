@@ -42,6 +42,7 @@ from .embeds import (
     build_close_notification,
     build_reopen_notification,
     build_user_added_notification,
+    build_transfer_notification,
     build_priority_notification,
     build_inactivity_warning,
     build_close_request_embed,
@@ -762,6 +763,48 @@ class TicketService:
         ], emoji="👤")
 
         return (True, f"Added {user.mention} to the ticket.")
+
+    async def transfer_ticket(
+        self,
+        ticket_id: str,
+        new_staff: discord.Member,
+        transferred_by: discord.Member,
+    ) -> Tuple[bool, str]:
+        """Transfer a ticket to another staff member."""
+        ticket = self.db.get_ticket(ticket_id)
+        if not ticket:
+            return (False, "Ticket not found.")
+
+        if ticket["status"] == "closed":
+            return (False, "Cannot transfer a closed ticket.")
+
+        # Update claimed_by in database
+        if not self.db.claim_ticket(ticket_id, new_staff.id):
+            return (False, "Failed to transfer ticket.")
+
+        # Get thread
+        thread = await self._get_ticket_thread(ticket["thread_id"])
+        if thread:
+            # Add new staff to thread
+            try:
+                await thread.add_user(new_staff)
+            except discord.HTTPException:
+                pass
+
+            # Update control panel
+            await self._update_control_panel(ticket_id, thread)
+
+            # Send transfer notification
+            transfer_embed = build_transfer_notification(new_staff, transferred_by)
+            await safe_send(thread, embed=transfer_embed)
+
+        logger.tree("Ticket Transferred", [
+            ("Ticket ID", ticket_id),
+            ("New Staff", f"{new_staff} ({new_staff.id})"),
+            ("Transferred By", f"{transferred_by} ({transferred_by.id})"),
+        ], emoji="↔️")
+
+        return (True, f"Ticket transferred to {new_staff.mention}.")
 
     async def request_close(
         self,
