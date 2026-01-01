@@ -121,11 +121,9 @@ MEMBERS_REMOVED_ALERT = 50            # Members removed to trigger alert
 THREAD_DELETE_DELAY = SECONDS_PER_HOUR  # 1 hour - delay before deleting thread
 
 # =============================================================================
-# AI/Prison Constants
+# Prison Constants
 # =============================================================================
 
-RESPONSE_PROBABILITY = 70             # % chance to respond
-MAX_RESPONSE_LENGTH = 150             # Max AI response length
 PRISON_MESSAGE_SCAN_LIMIT = 500       # Messages to scan for context
 MESSAGE_HISTORY_SIZE = 10             # Conversation history size
 DEFAULT_TIMEOUT_MINUTES = 30          # Default timeout for prisoners

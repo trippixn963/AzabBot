@@ -6,10 +6,9 @@
 
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Discord.py](https://img.shields.io/badge/Discord.py-2.3.2+-5865F2?style=flat-square&logo=discord&logoColor=white)
-![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-412991?style=flat-square&logo=openai&logoColor=white)
 ![License](https://img.shields.io/badge/License-Source%20Available-red?style=flat-square)
 
-**AI-Powered Moderation Bot for Discord**
+**Comprehensive Moderation Bot for Discord**
 
 *Built for [discord.gg/syria](https://discord.gg/syria)*
 
@@ -22,7 +21,7 @@
 
 ## Overview
 
-AzabBot is a comprehensive moderation bot featuring AI-powered prison interactions, a full ticketing system, appeal handling, and extensive server logging. When users get muted, the bot welcomes them to "prison" and responds to their messages with contextual AI-generated responses.
+AzabBot is a comprehensive moderation bot featuring a prison system for muted users, a full ticketing system, appeal handling, and extensive server logging. When users get muted, the bot welcomes them to "prison" with personalized embeds showing their mute history.
 
 **Live Stats Dashboard**: [trippixn.com/azab](https://trippixn.com/azab)
 
@@ -34,8 +33,8 @@ AzabBot is a comprehensive moderation bot featuring AI-powered prison interactio
 
 | Feature | Description |
 |---------|-------------|
-| **Prison System** | AI-powered responses to muted users with conversation context |
-| **Ticketing System** | Forum-based tickets with categories, claiming, and priority levels |
+| **Prison System** | Automated welcome/release messages for muted users with history tracking |
+| **Ticketing System** | Forum-based tickets with categories (Support, Partnership, Suggestion) |
 | **Appeal System** | DM-based appeals for bans and mutes with staff review |
 | **Server Logging** | Comprehensive logging for joins, leaves, edits, deletes, and mod actions |
 | **Case Management** | Full moderation history with case linking and notes |
@@ -71,7 +70,6 @@ AzabBot is a comprehensive moderation bot featuring AI-powered prison interactio
 
 - **Python 3.13+** - Async runtime
 - **Discord.py 2.3+** - Discord API wrapper
-- **OpenAI GPT-4o-mini** - AI responses
 - **SQLite** - State persistence with WAL mode
 - **aiohttp** - Async HTTP client
 
@@ -83,7 +81,7 @@ AzabBot is a comprehensive moderation bot featuring AI-powered prison interactio
 AzabBot/
 ├── src/
 │   ├── core/           # Bot initialization, config, database, logging
-│   ├── services/       # AI, tickets, appeals, logging, protection systems
+│   ├── services/       # Tickets, appeals, logging, protection systems
 │   ├── handlers/       # Event handlers (prison, presence, messages)
 │   ├── commands/       # Slash commands (ban, mute, warn, purge, etc.)
 │   ├── events/         # Discord event listeners

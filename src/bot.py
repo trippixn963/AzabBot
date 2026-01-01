@@ -3,10 +3,9 @@ Azab Discord Bot - Main Bot Class
 ==================================
 
 Core Discord client for the Syria Discord server providing
-AI-powered roasting of muted users (prisoners).
+comprehensive moderation for muted users (prisoners).
 
 Features:
-- AI-powered roasting of muted users
 - Prisoner tracking with message batching
 - Dynamic presence updates
 - Polls-only channel enforcement
@@ -54,7 +53,6 @@ class AzabBot(commands.Bot):
        - Command tree syncing
 
     2. on_ready:
-       - AI Service (OpenAI integration)
        - Prison Handler (mute/unmute tracking)
        - Mute Handler (embed parsing)
        - Presence Handler (status updates)
@@ -427,7 +425,6 @@ class AzabBot(commands.Bot):
 
             # Summary of all initialized services
             logger.tree("ALL SERVICES INITIALIZED", [
-                ("AI Service", "✓ Ready"),
                 ("Prison Handler", "✓ Ready"),
                 ("Mute Scheduler", "✓ Running"),
                 ("Case Log", "✓ Enabled" if self.case_log_service.enabled else "✗ Disabled"),

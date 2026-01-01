@@ -10,7 +10,7 @@ DESIGN:
     The package follows a layered architecture:
     - core/: Foundation services (config, database, logging, health)
     - handlers/: Discord event handlers (prison, mute, presence)
-    - services/: External integrations (AI, future APIs)
+    - services/: External integrations (tickets, appeals, etc.)
     - commands/: Slash command implementations (as cogs)
     - utils/: Helper functions and utilities
 

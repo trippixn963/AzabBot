@@ -448,7 +448,7 @@ class DatabaseManager:
 
         # -----------------------------------------------------------------
         # Messages Table
-        # DESIGN: Logs messages for AI context
+        # DESIGN: Logs messages for context and history
         # -----------------------------------------------------------------
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS messages (
@@ -495,7 +495,7 @@ class DatabaseManager:
 
         # -----------------------------------------------------------------
         # Roast History Table
-        # DESIGN: Tracks AI-generated roasts to avoid repetition
+        # DESIGN: Tracks roasts to avoid repetition (legacy table)
         # -----------------------------------------------------------------
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS roast_history (
@@ -514,7 +514,7 @@ class DatabaseManager:
 
         # -----------------------------------------------------------------
         # User Profiles Table
-        # DESIGN: AI personalization data
+        # DESIGN: User personalization data (legacy table)
         # -----------------------------------------------------------------
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_profiles (
@@ -1562,7 +1562,7 @@ class DatabaseManager:
         """
         Save a roast to history.
 
-        DESIGN: Tracks roasts to avoid repetition in AI generation.
+        DESIGN: Tracks roasts to avoid repetition (legacy).
         """
         def _save():
             timestamp = datetime.now(NY_TZ).strftime("%Y-%m-%d %H:%M:%S")

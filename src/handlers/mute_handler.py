@@ -8,7 +8,7 @@ DESIGN:
     This handler parses mod bot embeds to extract mute information.
     When a user is muted, the reason is often logged in an embed
     by moderation bots like Carl-bot, MEE6, or Dyno. This handler
-    captures that information for use in AI roasts.
+    captures that information for display in prison notifications.
 
     Supports multiple embed formats to handle different mod bots.
 
@@ -36,7 +36,7 @@ class MuteHandler:
 
     DESIGN:
         Parses embed structure to find user ID, username, and mute reason.
-        Stores reasons in the prison handler for AI context.
+        Stores reasons in the prison handler for context.
         Handles multiple mod bot formats gracefully.
 
     Attributes:

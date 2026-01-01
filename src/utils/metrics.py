@@ -106,7 +106,7 @@ class MetricsCollector:
         Record a metric sample.
 
         Args:
-            name: Metric name (e.g., "db.query", "api.openai").
+            name: Metric name (e.g., "db.query", "api.discord").
             duration_ms: Duration in milliseconds.
             metadata: Optional metadata dictionary.
         """
@@ -240,8 +240,8 @@ class MetricsCollector:
             name: Metric name.
 
         Example:
-            @metrics.timed("api.openai")
-            async def call_openai():
+            @metrics.timed("api.discord")
+            async def call_api():
                 ...
         """
         def decorator(func: Callable) -> Callable:

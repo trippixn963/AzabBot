@@ -435,7 +435,7 @@ class MessageEvents(commands.Cog):
                 message.guild.id,
             )
 
-            # Track message history for AI context (OrderedDict LRU)
+            # Track message history for context (OrderedDict LRU)
             if message.author.id not in self.bot.last_messages:
                 # Evict oldest user if at limit
                 while len(self.bot.last_messages) >= self.bot._last_messages_limit:
