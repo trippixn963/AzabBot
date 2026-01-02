@@ -130,10 +130,12 @@ class ForbidCog(commands.Cog):
         # Start background tasks (using create_safe_task for error logging)
         self._scan_task = create_safe_task(self._start_nightly_scan(), "Forbid Nightly Scan")
         self._expiry_task = create_safe_task(self._start_expiry_scheduler(), "Forbid Expiry Scheduler")
+        self._startup_scan_task = create_safe_task(self._run_startup_scan(), "Forbid Startup Scan")
 
         logger.tree("Forbid Cog Loaded", [
             ("Commands", "/forbid, /unforbid"),
             ("Restrictions", str(len(RESTRICTIONS))),
+            ("Startup Scan", "30s after ready"),
             ("Nightly Scan", "3 AM NY Time"),
         ], emoji="🚫")
 
@@ -841,6 +843,38 @@ class ForbidCog(commands.Cog):
                         await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system: new channel")
             except (discord.Forbidden, discord.HTTPException):
                 pass
+
+    # =========================================================================
+    # Startup Scan Task
+    # =========================================================================
+
+    async def _run_startup_scan(self) -> None:
+        """Run forbid permission scan on bot startup (delayed to not slow startup)."""
+        await self.bot.wait_until_ready()
+
+        # Wait 30 seconds after ready to not slow down startup
+        await asyncio.sleep(30)
+
+        try:
+            logger.tree("Forbid Startup Scan Started", [], emoji="🔍")
+
+            total_fixed = 0
+            for guild in self.bot.guilds:
+                try:
+                    fixed = await self._scan_guild_forbids(guild)
+                    total_fixed += fixed
+                except Exception as e:
+                    logger.debug(f"Forbid startup scan error for {guild.name}: {e}")
+
+            logger.tree("Forbid Startup Scan Complete", [
+                ("Guilds Scanned", str(len(self.bot.guilds))),
+                ("Overwrites Fixed", str(total_fixed)),
+            ], emoji="✅")
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug(f"Forbid startup scan error: {e}")
 
     # =========================================================================
     # Nightly Scan Task
