@@ -410,8 +410,10 @@ class ForbidCog(commands.Cog):
 
             # Tree logging
             logger.tree("USER FORBIDDEN", [
-                ("Moderator", f"{moderator} ({moderator.id})"),
-                ("Target", f"{user} ({user.id})"),
+                ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
+                ("Mod ID", str(moderator.id)),
+                ("Target", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                ("Target ID", str(user.id)),
                 ("Restrictions", ", ".join(applied) if applied else "None new"),
                 ("Duration", duration_display),
                 ("Reason", (reason or "None")[:50]),
@@ -480,7 +482,8 @@ class ForbidCog(commands.Cog):
                 except asyncio.TimeoutError:
                     logger.warning("Case Log Timeout", [
                         ("Action", "Forbid"),
-                        ("User", f"{user} ({user.id})"),
+                        ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                        ("ID", str(user.id)),
                     ])
                     if self.bot.webhook_alert_service:
                         await self.bot.webhook_alert_service.send_error_alert(
@@ -490,7 +493,8 @@ class ForbidCog(commands.Cog):
                 except Exception as e:
                     logger.error("Case Log Failed", [
                         ("Action", "Forbid"),
-                        ("User", f"{user} ({user.id})"),
+                        ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                        ("ID", str(user.id)),
                         ("Error", str(e)[:100]),
                     ])
                     if self.bot.webhook_alert_service:
@@ -502,8 +506,10 @@ class ForbidCog(commands.Cog):
         except discord.HTTPException as e:
             logger.error("Forbid Command Failed (HTTP)", [
                 ("Error", str(e)),
-                ("User", f"{interaction.user} ({interaction.user.id})"),
-                ("Target", f"{user} ({user.id})"),
+                ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("User ID", str(interaction.user.id)),
+                ("Target", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                ("Target ID", str(user.id)),
             ])
             try:
                 await interaction.followup.send(
@@ -517,7 +523,8 @@ class ForbidCog(commands.Cog):
             logger.error("Forbid Command Failed", [
                 ("Error", str(e)),
                 ("Type", type(e).__name__),
-                ("User", f"{interaction.user} ({interaction.user.id})"),
+                ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("User ID", str(interaction.user.id)),
             ])
             try:
                 if not interaction.response.is_done():
@@ -616,8 +623,10 @@ class ForbidCog(commands.Cog):
 
             # Tree logging
             logger.tree("USER UNFORBIDDEN", [
-                ("Moderator", f"{moderator} ({moderator.id})"),
-                ("Target", f"{user} ({user.id})"),
+                ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
+                ("Mod ID", str(moderator.id)),
+                ("Target", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                ("Target ID", str(user.id)),
                 ("Removed", ", ".join(removed)),
             ], emoji="✅")
 
@@ -664,7 +673,8 @@ class ForbidCog(commands.Cog):
                 except asyncio.TimeoutError:
                     logger.warning("Case Log Timeout", [
                         ("Action", "Unforbid"),
-                        ("User", f"{user} ({user.id})"),
+                        ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                        ("ID", str(user.id)),
                     ])
                     if self.bot.webhook_alert_service:
                         await self.bot.webhook_alert_service.send_error_alert(
@@ -674,7 +684,8 @@ class ForbidCog(commands.Cog):
                 except Exception as e:
                     logger.error("Case Log Failed", [
                         ("Action", "Unforbid"),
-                        ("User", f"{user} ({user.id})"),
+                        ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                        ("ID", str(user.id)),
                         ("Error", str(e)[:100]),
                     ])
                     if self.bot.webhook_alert_service:
@@ -687,7 +698,8 @@ class ForbidCog(commands.Cog):
             logger.error("Unforbid Command Failed", [
                 ("Error", str(e)),
                 ("Type", type(e).__name__),
-                ("User", f"{interaction.user} ({interaction.user.id})"),
+                ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("User ID", str(interaction.user.id)),
             ])
             try:
                 if not interaction.response.is_done():
@@ -987,7 +999,8 @@ class ForbidCog(commands.Cog):
                 self.db.remove_forbid(user_id, guild_id, restriction_type, self.bot.user.id)
 
                 logger.tree("FORBID EXPIRED", [
-                    ("User", f"{member} ({member.id})"),
+                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                    ("ID", str(member.id)),
                     ("Restriction", restriction_type),
                     ("Guild", guild.name),
                 ], emoji="⏰")
@@ -1008,7 +1021,8 @@ class ForbidCog(commands.Cog):
                     logger.debug(f"Forbid expiry DM blocked: {member} ({member.id}) has DMs disabled")
                 except discord.HTTPException as e:
                     logger.warning("Forbid Expiry DM Failed", [
-                        ("User", f"{member} ({member.id})"),
+                        ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                    ("ID", str(member.id)),
                         ("Restriction", restriction_type),
                         ("Error", str(e)[:50]),
                     ])

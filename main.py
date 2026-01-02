@@ -266,10 +266,9 @@ async def main() -> None:
         ])
         sys.exit(1)
 
-    logger.tree("🔥 AZAB STARTING", [
+    logger.tree("📦 AZAB STARTING", [
         ("Purpose", "Prison Warden Bot"),
         ("Features", "AI roasts, prisoner tracking, moderation"),
-        ("Server", "discord.gg/syria"),
         ("Lock File", str(LOCK_FILE_PATH)),
         ("PID", str(os.getpid())),
     ])

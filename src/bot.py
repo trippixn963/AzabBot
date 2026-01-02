@@ -100,7 +100,6 @@ class AzabBot(commands.Bot):
         self.appeal_service = None
         self.ticket_service = None
         self.modmail_service = None
-        self.interaction_logger = None
         self.stats_api = None
 
         # Shared HTTP session for all services
@@ -253,40 +252,6 @@ class AzabBot(commands.Bot):
         ], emoji="🔥")
 
     # =========================================================================
-    # Interaction Logging (All Buttons)
-    # =========================================================================
-
-    async def on_interaction(self, interaction: discord.Interaction) -> None:
-        """Log all button and select menu interactions."""
-        # Only log component interactions (buttons, select menus)
-        if interaction.type != discord.InteractionType.component:
-            return
-
-        # Skip if interaction logger not initialized
-        if not self.interaction_logger:
-            return
-
-        # Get component data
-        custom_id = interaction.data.get("custom_id", "unknown") if interaction.data else "unknown"
-        component_type = interaction.data.get("component_type", 0) if interaction.data else 0
-
-        # Component type 2 = Button, 3 = Select Menu
-        component_name = "Button" if component_type == 2 else "Select Menu" if component_type == 3 else "Component"
-
-        # Get channel info
-        channel_name = getattr(interaction.channel, "name", "DM") if interaction.channel else "Unknown"
-
-        # Log the interaction
-        await self.interaction_logger.log_button_interaction(
-            user=interaction.user,
-            button_name=f"{component_name} Click",
-            success=True,
-            details=custom_id[:100],
-            Channel=f"#{channel_name}",
-            Guild=interaction.guild.name if interaction.guild else "DM",
-        )
-
-    # =========================================================================
     # Service Initialization
     # =========================================================================
 
@@ -415,13 +380,6 @@ class AzabBot(commands.Bot):
                 ], emoji="📬")
             else:
                 logger.info("Modmail Service Disabled (no forum configured)")
-
-            from src.services.interaction_logger import InteractionLogger
-            self.interaction_logger = InteractionLogger(self)
-            webhook_ok = await self.interaction_logger.verify_webhook()
-            logger.tree("Interaction Logger Initialized", [
-                ("Webhook", "✓ Verified" if webhook_ok else "⚠ Not verified"),
-            ], emoji="📝")
 
             # Summary of all initialized services
             logger.tree("ALL SERVICES INITIALIZED", [
@@ -701,10 +659,6 @@ class AzabBot(commands.Bot):
 
         if self.stats_api:
             await self.stats_api.stop()
-
-        # Close interaction logger (flushes pending embeds)
-        if self.interaction_logger:
-            await self.interaction_logger.close()
 
         # Close shared HTTP session
         if self._http_session and not self._http_session.closed:

@@ -144,8 +144,10 @@ class HistoryCog(commands.Cog):
 
             # Tree logging
             logger.tree("HISTORY VIEWED", [
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
-                ("Target", f"{user} ({user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("Mod ID", str(interaction.user.id)),
+                ("Target", user.name),
+                ("Target ID", str(user.id)),
                 ("Mutes", str(mute_count)),
                 ("Bans", str(ban_count)),
                 ("Warns", f"{active_warns} active / {total_warns} total"),
@@ -392,8 +394,10 @@ class HistoryCog(commands.Cog):
         except discord.HTTPException as e:
             logger.error("History Command Failed (HTTP)", [
                 ("Error", str(e)),
-                ("User", f"{interaction.user} ({interaction.user.id})"),
-                ("Target", f"{user} ({user.id})"),
+                ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("User ID", str(interaction.user.id)),
+                ("Target", user.name),
+                ("Target ID", str(user.id)),
             ])
             try:
                 await interaction.followup.send(
@@ -407,8 +411,10 @@ class HistoryCog(commands.Cog):
             logger.error("History Command Failed", [
                 ("Error", str(e)),
                 ("Type", type(e).__name__),
-                ("User", f"{interaction.user} ({interaction.user.id})"),
-                ("Target", f"{user} ({user.id})"),
+                ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("User ID", str(interaction.user.id)),
+                ("Target", user.name),
+                ("Target ID", str(user.id)),
             ])
             try:
                 if not interaction.response.is_done():

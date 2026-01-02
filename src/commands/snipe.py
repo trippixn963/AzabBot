@@ -111,7 +111,8 @@ class SnipeCog(commands.Cog):
 
                 if not fresh_snipes:
                     logger.info("Snipe User Filter Empty", [
-                        ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                        ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                        ("Mod ID", str(interaction.user.id)),
                         ("Channel", f"#{interaction.channel.name}"),
                         ("Filter User", f"{user} ({user.id})"),
                     ])
@@ -154,7 +155,8 @@ class SnipeCog(commands.Cog):
             # Tree logging
             content_preview = (content[:50] + "...") if len(content) > 50 else (content or "(no text)")
             log_details = [
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                        ("Mod ID", str(interaction.user.id)),
                 ("Channel", f"#{interaction.channel.name} ({channel_id})"),
                 ("Target", f"{author_name} ({author_id})"),
                 ("Message #", str(number)),
@@ -205,10 +207,24 @@ class SnipeCog(commands.Cog):
                 att_names = [att.get("filename", "file") for att in attachment_urls[:5]]
                 lines.append(f"📎 {', '.join(att_names)}")
 
-            # Add stickers
-            if sticker_urls:
-                sticker_names = [s.get("name", "sticker") for s in sticker_urls[:3]]
-                lines.append(f"🎨 Stickers: {', '.join(sticker_names)}")
+            # Try to get actual stickers to send
+            stickers_to_send: List[discord.GuildSticker] = []
+            if sticker_urls and interaction.guild:
+                for sticker_data in sticker_urls[:1]:  # Discord only allows 1 sticker per message
+                    sticker_id = sticker_data.get("id")
+                    if sticker_id:
+                        try:
+                            sticker = await interaction.guild.fetch_sticker(sticker_id)
+                            if sticker:
+                                stickers_to_send.append(sticker)
+                        except (discord.NotFound, discord.HTTPException):
+                            # Sticker not found or not accessible, show name instead
+                            pass
+
+                # If we couldn't get the sticker, show the name
+                if not stickers_to_send:
+                    sticker_names = [s.get("name", "sticker") for s in sticker_urls[:3]]
+                    lines.append(f"🎨 Stickers: {', '.join(sticker_names)}")
 
             # Relative timestamp footer
             deleted_timestamp = int(deleted_at)
@@ -216,9 +232,13 @@ class SnipeCog(commands.Cog):
 
             message_content = "\n".join(lines)
 
-            # Send public message with files if any
-            if files_to_send:
+            # Send public message with files and/or stickers
+            if files_to_send and stickers_to_send:
+                await interaction.response.send_message(content=message_content, files=files_to_send, stickers=stickers_to_send)
+            elif files_to_send:
                 await interaction.response.send_message(content=message_content, files=files_to_send)
+            elif stickers_to_send:
+                await interaction.response.send_message(content=message_content, stickers=stickers_to_send)
             else:
                 await interaction.response.send_message(content=message_content)
 
@@ -235,7 +255,8 @@ class SnipeCog(commands.Cog):
         except discord.HTTPException as e:
             logger.error("Snipe Command Failed (HTTP)", [
                 ("Error", str(e)),
-                ("User", f"{interaction.user} ({interaction.user.id})"),
+                ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("User ID", str(interaction.user.id)),
                 ("Channel", str(interaction.channel.id) if interaction.channel else "Unknown"),
             ])
             try:
@@ -250,7 +271,8 @@ class SnipeCog(commands.Cog):
             logger.error("Snipe Command Failed", [
                 ("Error", str(e)),
                 ("Type", type(e).__name__),
-                ("User", f"{interaction.user} ({interaction.user.id})"),
+                ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("User ID", str(interaction.user.id)),
             ])
             try:
                 if not interaction.response.is_done():
@@ -318,7 +340,8 @@ class SnipeCog(commands.Cog):
 
                 if not fresh_edits:
                     logger.info("Editsnipe User Filter Empty", [
-                        ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                        ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                        ("Mod ID", str(interaction.user.id)),
                         ("Channel", f"#{interaction.channel.name}"),
                         ("Filter User", f"{user} ({user.id})"),
                     ])
@@ -367,7 +390,8 @@ class SnipeCog(commands.Cog):
             before_preview = (before_content[:30] + "...") if len(before_content) > 30 else (before_content or "(empty)")
             after_preview = (after_content[:30] + "...") if len(after_content) > 30 else (after_content or "(empty)")
             log_details = [
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                        ("Mod ID", str(interaction.user.id)),
                 ("Channel", f"#{interaction.channel.name} ({channel_id})"),
                 ("Target", f"{author_name} ({author_id})"),
                 ("Message #", str(number)),
@@ -442,7 +466,8 @@ class SnipeCog(commands.Cog):
         except discord.HTTPException as e:
             logger.error("Editsnipe Command Failed (HTTP)", [
                 ("Error", str(e)),
-                ("User", f"{interaction.user} ({interaction.user.id})"),
+                ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("User ID", str(interaction.user.id)),
                 ("Channel", str(interaction.channel.id) if interaction.channel else "Unknown"),
             ])
             try:
@@ -457,7 +482,8 @@ class SnipeCog(commands.Cog):
             logger.error("Editsnipe Command Failed", [
                 ("Error", str(e)),
                 ("Type", type(e).__name__),
-                ("User", f"{interaction.user} ({interaction.user.id})"),
+                ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("User ID", str(interaction.user.id)),
             ])
             try:
                 if not interaction.response.is_done():
@@ -525,9 +551,11 @@ class SnipeCog(commands.Cog):
             if target:
                 # Tree logging
                 logger.tree("SNIPE CACHE CLEARED (User)", [
-                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                    ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                        ("Mod ID", str(interaction.user.id)),
                     ("Channel", f"#{interaction.channel.name} ({channel_id})"),
-                    ("Target", f"{target} ({target.id})"),
+                    ("Target", f"{target.name} ({target.nick})" if hasattr(target, 'nick') and target.nick else target.name),
+                    ("Target ID", str(target.id)),
                     ("Deleted", f"{cleared_deleted} messages"),
                     ("Edits", f"{cleared_edits} messages"),
                 ], emoji="🧹")
@@ -539,7 +567,8 @@ class SnipeCog(commands.Cog):
             else:
                 # Tree logging
                 logger.tree("SNIPE CACHE CLEARED (All)", [
-                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                    ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                        ("Mod ID", str(interaction.user.id)),
                     ("Channel", f"#{interaction.channel.name} ({channel_id})"),
                     ("Deleted", f"{cleared_deleted} messages"),
                     ("Edits", f"{cleared_edits} messages"),
@@ -562,7 +591,8 @@ class SnipeCog(commands.Cog):
             logger.error("Clear Snipe Command Failed", [
                 ("Error", str(e)),
                 ("Type", type(e).__name__),
-                ("User", f"{interaction.user} ({interaction.user.id})"),
+                ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("User ID", str(interaction.user.id)),
             ])
             try:
                 if not interaction.response.is_done():

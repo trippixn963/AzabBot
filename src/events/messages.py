@@ -79,13 +79,15 @@ class MessageEvents(commands.Cog):
             await message.delete()
         except discord.Forbidden:
             logger.warning("Prisoner Ping Delete Failed", [
-                ("User", f"{message.author} ({message.author.id})"),
+                ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                ("ID", str(message.author.id)),
                 ("Reason", "Missing permissions"),
             ])
             return
         except discord.HTTPException as e:
             logger.warning("Prisoner Ping Delete Failed", [
-                ("User", f"{message.author} ({message.author.id})"),
+                ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                ("ID", str(message.author.id)),
                 ("Error", str(e)[:50]),
             ])
             return
@@ -116,7 +118,8 @@ class MessageEvents(commands.Cog):
                     )
 
                     logger.tree("PRISONER PING SPAM - TIMEOUT", [
-                        ("User", f"{message.author} ({message.author.id})"),
+                        ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                ("ID", str(message.author.id)),
                         ("Violations", f"{violation_count} in {PRISONER_PING_WINDOW}s"),
                         ("Timeout", "1 hour"),
                     ], emoji="⏰")
@@ -136,12 +139,14 @@ class MessageEvents(commands.Cog):
 
             except discord.Forbidden:
                 logger.warning("Prisoner Timeout Failed", [
-                    ("User", f"{message.author} ({message.author.id})"),
+                    ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                ("ID", str(message.author.id)),
                     ("Reason", "Missing permissions"),
                 ])
             except discord.HTTPException as e:
                 logger.warning("Prisoner Timeout Failed", [
-                    ("User", f"{message.author} ({message.author.id})"),
+                    ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                ("ID", str(message.author.id)),
                     ("Error", str(e)[:50]),
                 ])
             return
@@ -166,7 +171,8 @@ class MessageEvents(commands.Cog):
                 pass
 
         logger.tree("PRISONER PING BLOCKED", [
-            ("User", f"{message.author} ({message.author.id})"),
+            ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                ("ID", str(message.author.id)),
             ("Violations", f"{violation_count}/{PRISONER_PING_MAX}"),
             ("Warning", "Yes" if should_warn else "No (cooldown)"),
         ], emoji="🚫")
@@ -337,7 +343,8 @@ class MessageEvents(commands.Cog):
                 )
                 if is_links_allowed_channel:
                     logger.tree("INVITE LINK ALLOWED", [
-                        ("User", f"{message.author} ({message.author.id})"),
+                        ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                ("ID", str(message.author.id)),
                         ("Channel", f"#{message.channel.name}"),
                         ("Reason", "Links-allowed channel"),
                         ("Invite(s)", ", ".join(invite_matches)),
@@ -352,7 +359,8 @@ class MessageEvents(commands.Cog):
                     )
                     if is_mod:
                         logger.tree("INVITE LINK ALLOWED", [
-                            ("User", f"{message.author} ({message.author.id})"),
+                            ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                ("ID", str(message.author.id)),
                             ("Channel", f"#{message.channel.name}"),
                             ("Reason", "Management role holder"),
                             ("Invite(s)", ", ".join(invite_matches)),
@@ -366,7 +374,8 @@ class MessageEvents(commands.Cog):
                             return  # Stop processing - message deleted
                         else:
                             logger.tree("INVITE LINK ALLOWED", [
-                                ("User", f"{message.author} ({message.author.id})"),
+                                ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                ("ID", str(message.author.id)),
                                 ("Channel", f"#{message.channel.name}"),
                                 ("Reason", "Server invite (syria)"),
                                 ("Invite(s)", ", ".join(invite_matches)),
@@ -513,7 +522,8 @@ class MessageEvents(commands.Cog):
             self._partnership_cooldowns[cooldown_key] = datetime.now(NY_TZ).timestamp()
 
             logger.tree("PARTNERSHIP AUTO-RESPONSE", [
-                ("User", f"{message.author} ({message.author.id})"),
+                ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                ("ID", str(message.author.id)),
                 ("Channel", f"#{message.channel.name}"),
             ], emoji="🤝")
 
@@ -582,13 +592,15 @@ class MessageEvents(commands.Cog):
             message_deleted = True
         except discord.Forbidden:
             logger.tree("INVITE DELETE FAILED", [
-                ("User", f"{member} ({member.id})"),
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                 ("Channel", f"#{message.channel.name}"),
                 ("Reason", "Missing permissions"),
             ], emoji="❌")
         except discord.HTTPException as e:
             logger.tree("INVITE DELETE FAILED", [
-                ("User", f"{member} ({member.id})"),
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                 ("Channel", f"#{message.channel.name}"),
                 ("Error", str(e)[:50]),
             ], emoji="❌")
@@ -599,7 +611,8 @@ class MessageEvents(commands.Cog):
         muted_role = guild.get_role(self.config.muted_role_id)
         if not muted_role:
             logger.tree("INVITE MUTE FAILED", [
-                ("User", f"{member} ({member.id})"),
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                 ("Reason", "Muted role not found"),
                 ("Role ID", str(self.config.muted_role_id)),
             ], emoji="❌")
@@ -611,20 +624,23 @@ class MessageEvents(commands.Cog):
             mute_applied = True
         except discord.Forbidden:
             logger.tree("INVITE MUTE FAILED", [
-                ("User", f"{member} ({member.id})"),
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                 ("Reason", "Missing permissions"),
             ], emoji="❌")
             return
         except discord.HTTPException as e:
             logger.tree("INVITE MUTE FAILED", [
-                ("User", f"{member} ({member.id})"),
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                 ("Error", str(e)[:50]),
             ], emoji="❌")
             return
 
         # Comprehensive success log
         logger.tree("AUTO-MUTE: EXTERNAL INVITE", [
-            ("User", f"{member} ({member.id})"),
+            ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
             ("Display Name", member.display_name),
             ("Channel", f"#{message.channel.name}"),
             ("Invite Code", f"discord.gg/{invite_code}"),
@@ -698,17 +714,20 @@ class MessageEvents(commands.Cog):
                 await prison_channel.send(content=member.mention, embed=embed)
                 notification_sent = True
                 logger.tree("PRISON NOTIFICATION SENT", [
-                    ("User", f"{member} ({member.id})"),
+                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                     ("Channel", f"#{prison_channel.name}"),
                 ], emoji="📢")
             except discord.HTTPException as e:
                 logger.tree("PRISON NOTIFICATION FAILED", [
-                    ("User", f"{member} ({member.id})"),
+                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                     ("Error", str(e)[:50]),
                 ], emoji="❌")
         else:
             logger.tree("PRISON NOTIFICATION SKIPPED", [
-                ("User", f"{member} ({member.id})"),
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                 ("Reason", "No prison channel configured"),
             ], emoji="⚠️")
 
@@ -729,29 +748,34 @@ class MessageEvents(commands.Cog):
                 )
                 if case_result:
                     logger.tree("CASE LOG CREATED", [
-                        ("User", f"{member} ({member.id})"),
+                        ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                         ("Case Number", str(case_result.get("case_number", "N/A"))),
                         ("Thread", case_result.get("thread_name", "N/A")),
                     ], emoji="📋")
                 else:
                     logger.tree("CASE LOG FAILED", [
-                        ("User", f"{member} ({member.id})"),
+                        ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                         ("Reason", "log_mute returned None"),
                     ], emoji="❌")
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
                     ("Action", "Auto-Mute (Invite Link)"),
-                    ("User", f"{member} ({member.id})"),
+                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                 ])
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Auto-Mute (Invite Link)"),
-                    ("User", f"{member} ({member.id})"),
+                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                     ("Error", str(e)[:100]),
                 ])
         else:
             logger.tree("CASE LOG SKIPPED", [
-                ("User", f"{member} ({member.id})"),
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                 ("Reason", "Case log service not configured"),
             ], emoji="⚠️")
 
@@ -784,6 +808,7 @@ class MessageEvents(commands.Cog):
         if message.stickers:
             for sticker in message.stickers:
                 sticker_urls.append({
+                    "id": sticker.id,
                     "name": sticker.name,
                     "url": sticker.url,
                 })

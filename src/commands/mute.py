@@ -390,7 +390,8 @@ class MuteCog(commands.Cog):
 
             action = "EXTENDED" if is_extension else "MUTED"
             log_items = [
-                ("User", f"{user} ({user.id})"),
+                ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                ("ID", str(user.id)),
                 ("Moderator", str(interaction.user)),
                 ("Duration", duration_display),
                 ("Reason", (reason or "None")[:50]),
@@ -427,7 +428,8 @@ class MuteCog(commands.Cog):
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
                     ("Action", "Mute"),
-                    ("User", f"{target_member} ({target_member.id})"),
+                    ("User", f"{target_member.name} ({target_member.nick})" if target_member.nick else target_member.name),
+                    ("ID", str(target_member.id)),
                 ])
                 if self.bot.webhook_alert_service:
                     await self.bot.webhook_alert_service.send_error_alert(
@@ -437,7 +439,8 @@ class MuteCog(commands.Cog):
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Mute"),
-                    ("User", f"{target_member} ({target_member.id})"),
+                    ("User", f"{target_member.name} ({target_member.nick})" if target_member.nick else target_member.name),
+                    ("ID", str(target_member.id)),
                     ("Error", str(e)[:100]),
                 ])
                 if self.bot.webhook_alert_service:
@@ -718,7 +721,8 @@ class MuteCog(commands.Cog):
             )
 
             log_items = [
-                ("User", f"{user} ({user.id})"),
+                ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                ("ID", str(user.id)),
                 ("Moderator", str(interaction.user)),
                 ("Was Muted For", muted_duration or "Unknown"),
                 ("Reason", (reason or "None")[:50]),
@@ -754,7 +758,8 @@ class MuteCog(commands.Cog):
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
                     ("Action", "Unmute"),
-                    ("User", f"{target_member} ({target_member.id})"),
+                    ("User", f"{target_member.name} ({target_member.nick})" if target_member.nick else target_member.name),
+                    ("ID", str(target_member.id)),
                 ])
                 if self.bot.webhook_alert_service:
                     await self.bot.webhook_alert_service.send_error_alert(
@@ -764,7 +769,8 @@ class MuteCog(commands.Cog):
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Unmute"),
-                    ("User", f"{target_member} ({target_member.id})"),
+                    ("User", f"{target_member.name} ({target_member.nick})" if target_member.nick else target_member.name),
+                    ("ID", str(target_member.id)),
                     ("Error", str(e)[:100]),
                 ])
                 if self.bot.webhook_alert_service:

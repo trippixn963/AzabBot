@@ -1054,12 +1054,14 @@ class UnmuteModal(discord.ui.Modal, title="Unmute User"):
                 except asyncio.TimeoutError:
                     logger.warning("Case Log Timeout", [
                         ("Action", "Unmute (Button)"),
-                        ("User", f"{member} ({member.id})"),
+                        ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                        ("ID", str(member.id)),
                     ])
                 except Exception as e:
                     logger.error("Case Log Failed", [
                         ("Action", "Unmute (Button)"),
-                        ("User", f"{member} ({member.id})"),
+                        ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                        ("ID", str(member.id)),
                         ("Error", str(e)[:100]),
                     ])
 

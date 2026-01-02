@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from src.core.config import get_config
+
 from .buttons import (
     ClaimButton,
     CloseButton,
@@ -141,12 +143,14 @@ class TicketControlPanelView(discord.ui.View):
             # Closed tickets: Reopen, Transcript (direct link), Info
             self.add_item(ReopenButton(self.ticket_id))
             # Direct link button for transcript (no extra message)
-            self.add_item(discord.ui.Button(
-                label="Transcript",
-                style=discord.ButtonStyle.link,
-                url=f"https://trippixn.com/api/azab/transcripts/{self.ticket_id}",
-                emoji=TRANSCRIPT_EMOJI,
-            ))
+            config = get_config()
+            if config.transcript_base_url:
+                self.add_item(discord.ui.Button(
+                    label="Transcript",
+                    style=discord.ButtonStyle.link,
+                    url=f"{config.transcript_base_url}/{self.ticket_id}",
+                    emoji=TRANSCRIPT_EMOJI,
+                ))
             self.add_item(InfoButton(self.ticket_id))
 
     @classmethod

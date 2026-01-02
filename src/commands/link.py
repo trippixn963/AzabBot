@@ -363,7 +363,8 @@ class LinkCog(commands.Cog):
                 allowed_ids |= self.config.link_allowed_user_ids
             if interaction.user.id not in allowed_ids:
                 logger.tree("Link Command Denied", [
-                    ("User", f"{interaction.user} ({interaction.user.id})"),
+                    ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                    ("User ID", str(interaction.user.id)),
                     ("Reason", "Not in allowed user list"),
                 ], emoji="🚫")
                 await interaction.response.send_message(
@@ -434,7 +435,8 @@ class LinkCog(commands.Cog):
                 return
 
             logger.tree("Link Command Started", [
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("Mod ID", str(interaction.user.id)),
                 ("Message ID", str(msg_id)),
                 ("Target Member", f"{member} ({member.id})"),
                 ("Target Guild", target_guild.name),

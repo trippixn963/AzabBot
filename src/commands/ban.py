@@ -258,7 +258,8 @@ class BanCog(commands.Cog):
                 logger.debug(f"Ban DM blocked: {user} ({user.id}) has DMs disabled")
             except discord.HTTPException as e:
                 logger.warning("Ban DM Failed", [
-                    ("User", f"{user} ({user.id})"),
+                    ("User", user.name),
+                    ("ID", str(user.id)),
                     ("Error", str(e)[:50]),
                 ])
 
@@ -313,7 +314,8 @@ class BanCog(commands.Cog):
 
         log_type = "USER SOFTBANNED" if is_softban else "USER BANNED"
         log_items = [
-            ("User", f"{user} ({user.id})"),
+            ("User", user.name),
+                    ("ID", str(user.id)),
             ("Moderator", str(interaction.user)),
             ("Reason", (reason or "None")[:50]),
             ("Evidence", (evidence or "None")[:50]),
@@ -343,7 +345,8 @@ class BanCog(commands.Cog):
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
                     ("Action", "Ban"),
-                    ("User", f"{user} ({user.id})"),
+                    ("User", user.name),
+                    ("ID", str(user.id)),
                 ])
                 if self.bot.webhook_alert_service:
                     await self.bot.webhook_alert_service.send_error_alert(
@@ -353,7 +356,8 @@ class BanCog(commands.Cog):
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Ban"),
-                    ("User", f"{user} ({user.id})"),
+                    ("User", user.name),
+                    ("ID", str(user.id)),
                     ("Error", str(e)[:100]),
                 ])
                 if self.bot.webhook_alert_service:
@@ -434,20 +438,23 @@ class BanCog(commands.Cog):
 
                 await user.send(embed=appeal_embed, view=appeal_view)
                 logger.tree("Appeal DM Sent", [
-                    ("User", f"{user} ({user.id})"),
+                    ("User", user.name),
+                    ("ID", str(user.id)),
                     ("Case", case_info["case_id"]),
                 ], emoji="📝")
             except discord.Forbidden:
                 logger.debug(f"Appeal DM blocked: {user} ({user.id}) has DMs disabled")
             except discord.HTTPException as e:
                 logger.warning("Appeal DM Failed", [
-                    ("User", f"{user} ({user.id})"),
+                    ("User", user.name),
+                    ("ID", str(user.id)),
                     ("Case", case_info["case_id"]),
                     ("Error", str(e)[:50]),
                 ])
             except Exception as e:
                 logger.error("Appeal DM Failed", [
-                    ("User", f"{user} ({user.id})"),
+                    ("User", user.name),
+                    ("ID", str(user.id)),
                     ("Error", str(e)[:50]),
                 ])
 
@@ -680,7 +687,8 @@ class BanCog(commands.Cog):
         # -----------------------------------------------------------------
 
         log_items = [
-            ("User", f"{target_user} ({target_user.id})"),
+            ("User", target_user.name),
+            ("ID", str(target_user.id)),
             ("Moderator", str(interaction.user)),
             ("Reason", (reason or "None")[:50]),
             ("Evidence", (evidence_result.url or "None")[:50]),
@@ -708,7 +716,8 @@ class BanCog(commands.Cog):
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
                     ("Action", "Unban"),
-                    ("User", f"{target_user} ({target_user.id})"),
+                    ("User", target_user.name),
+            ("ID", str(target_user.id)),
                 ])
                 if self.bot.webhook_alert_service:
                     await self.bot.webhook_alert_service.send_error_alert(
@@ -718,7 +727,8 @@ class BanCog(commands.Cog):
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Unban"),
-                    ("User", f"{target_user} ({target_user.id})"),
+                    ("User", target_user.name),
+            ("ID", str(target_user.id)),
                     ("Error", str(e)[:100]),
                 ])
                 if self.bot.webhook_alert_service:

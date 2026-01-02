@@ -175,7 +175,8 @@ class VoiceHandler:
         # 3. Tree Logging
         # -----------------------------------------------------------------
         logger.tree("MUTED USER VC VIOLATION", [
-            ("User", f"{member} ({member.id})"),
+            ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+            ("ID", str(member.id)),
             ("Attempted Channel", channel_name),
             ("Action", "Disconnected + 1h Timeout"),
         ], emoji="🔇")
@@ -208,12 +209,14 @@ class VoiceHandler:
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
                     ("Action", "Muted VC Violation"),
-                    ("User", f"{member} ({member.id})"),
+                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+            ("ID", str(member.id)),
                 ])
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Muted VC Violation"),
-                    ("User", f"{member} ({member.id})"),
+                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+            ("ID", str(member.id)),
                     ("Error", str(e)[:100]),
                 ])
 

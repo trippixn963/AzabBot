@@ -172,9 +172,11 @@ class AltDetectionService:
 
         try:
             logger.tree("Alt Detection Started", [
-                ("Banned User", f"{banned_user} ({banned_user.id})"),
+                ("Banned User", f"{banned_user.name} ({banned_user.id})"),
                 ("Guild", guild.name),
                 ("Case Thread", str(case_thread_id)),
+                ("Thresholds", f"H:{CONFIDENCE_THRESHOLDS['HIGH']}+ M:{CONFIDENCE_THRESHOLDS['MEDIUM']}+ L:{CONFIDENCE_THRESHOLDS['LOW']}+"),
+                ("Max Scan", str(self.MAX_MEMBERS_TO_SCAN)),
             ], emoji="🔍")
 
             # Get banned user's data for comparison
@@ -231,12 +233,12 @@ class AltDetectionService:
             low_conf_count = len([a for a in potential_alts if a['confidence'] == 'LOW'])
 
             logger.tree("Alt Detection Complete", [
-                ("Banned User", f"{banned_user} ({banned_user.id})"),
+                ("Banned User", f"{banned_user.name} ({banned_user.id})"),
                 ("Members Scanned", str(member_count)),
+                ("Total Flagged", str(len(potential_alts))),
                 ("High Confidence", str(high_conf_count)),
                 ("Medium Confidence", str(medium_conf_count)),
                 ("Low Confidence", str(low_conf_count)),
-                ("Total Flagged", str(len(potential_alts))),
             ], emoji="✅")
 
             return potential_alts
@@ -599,7 +601,11 @@ class AltDetectionService:
         # Get case thread
         thread = await safe_fetch_channel(self.bot, case_thread_id)
         if not thread:
-            logger.warning(f"Alt Detection: Could not find case thread {case_thread_id}")
+            logger.warning("Alt Detection Thread Not Found", [
+                ("Thread ID", str(case_thread_id)),
+                ("Banned User", f"{banned_user.name} ({banned_user.id})"),
+                ("Alts Found", str(len(potential_alts))),
+            ])
             return
 
         # Build alert embed

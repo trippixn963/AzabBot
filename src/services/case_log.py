@@ -424,7 +424,10 @@ class CaseLogService:
                 success_count += 1
             except Exception as e:
                 fail_count += 1
-                logger.warning(f"Failed to update profile stats for {user_id}: {str(e)[:50]}")
+                logger.warning("Profile Stats Update Failed", [
+                    ("User ID", str(user_id)),
+                    ("Error", str(e)[:50]),
+                ])
 
         logger.tree("PROFILE STATS UPDATED", [
             ("Processed", str(success_count)),
@@ -508,7 +511,9 @@ class CaseLogService:
         # Cache miss or expired - fetch forum with retry
         channel = await safe_fetch_channel(self.bot, self.config.case_log_forum_id)
         if channel is None:
-            logger.warning(f"Failed To Get Case Log Forum: {self.config.case_log_forum_id}")
+            logger.warning("Case Log Forum Not Found", [
+                ("Forum ID", str(self.config.case_log_forum_id)),
+            ])
             return None
 
         if isinstance(channel, discord.ForumChannel):
@@ -516,7 +521,11 @@ class CaseLogService:
             self._forum_cache_time = now
             return self._forum
 
-        logger.warning(f"Channel {self.config.case_log_forum_id} is not a ForumChannel")
+        logger.warning("Invalid Case Log Forum Channel", [
+            ("Channel ID", str(self.config.case_log_forum_id)),
+            ("Expected", "ForumChannel"),
+            ("Got", type(channel).__name__),
+        ])
         return None
 
     async def _get_case_thread(self, thread_id: int) -> Optional[discord.Thread]:
@@ -546,7 +555,9 @@ class CaseLogService:
         # Cache miss - fetch thread with retry
         channel = await safe_fetch_channel(self.bot, thread_id)
         if channel is None:
-            logger.warning(f"Case Thread Not Found: {thread_id}")
+            logger.warning("Case Thread Not Found", [
+                ("Thread ID", str(thread_id)),
+            ])
             return None
 
         if isinstance(channel, discord.Thread):
@@ -561,7 +572,11 @@ class CaseLogService:
                     pass  # Entry already removed by another coroutine
             return channel
 
-        logger.warning(f"Channel {thread_id} is not a Thread: {type(channel)}")
+        logger.warning("Invalid Case Thread Channel", [
+            ("Thread ID", str(thread_id)),
+            ("Expected", "Thread"),
+            ("Got", type(channel).__name__),
+        ])
         return None
 
     # =========================================================================
@@ -609,7 +624,10 @@ class CaseLogService:
                 active_case = self.db.get_active_mute_case(user.id, guild_id)
                 if not active_case:
                     # No active case found, create new one
-                    logger.warning(f"log_mute extension: No active mute case for {user.id}, creating new case")
+                    logger.warning("Mute Extension - No Active Case", [
+                        ("User ID", str(user.id)),
+                        ("Action", "Creating new case"),
+                    ])
                     is_extension = False  # Treat as new mute
                 else:
                     case = active_case
@@ -628,7 +646,10 @@ class CaseLogService:
             case_thread = await self._get_case_thread(case["thread_id"])
 
             if not case_thread:
-                logger.warning(f"log_mute: Thread {case['thread_id']} not found, returning early")
+                logger.warning("Mute Log Thread Not Found", [
+                    ("Thread ID", str(case["thread_id"])),
+                    ("User ID", str(user.id)),
+                ])
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             # Get mute count from new cases table
@@ -648,13 +669,17 @@ class CaseLogService:
                     if evidence_msg:
                         evidence_message_url = evidence_msg.jump_url
                         logger.tree("Evidence Stored", [
-                            ("User", f"{user.display_name} ({user.id})"),
+                            ("User", user.name),
+                            ("ID", str(user.id)),
                             ("Action", "Mute"),
                             ("Thread", str(case_thread.id)),
                             ("Message ID", str(evidence_msg.id)),
                         ], emoji="📎")
                     else:
-                        logger.warning(f"Evidence message failed to send for mute of {user.id}")
+                        logger.warning("Evidence Send Failed", [
+                            ("Action", "Mute"),
+                            ("User ID", str(user.id)),
+                        ])
                 except Exception as e:
                     logger.error(f"Evidence storage failed for mute: {e}")
 
@@ -673,7 +698,10 @@ class CaseLogService:
             )
             embed_message = await safe_send(case_thread, embed=embed, view=view)
             if not embed_message:
-                logger.warning(f"log_mute: Failed to send embed to thread {case_thread.id}")
+                logger.warning("Mute Embed Send Failed", [
+                    ("Thread ID", str(case_thread.id)),
+                    ("User ID", str(user.id)),
+                ])
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             # If no reason provided, ping moderator to add one
@@ -713,7 +741,8 @@ class CaseLogService:
             log_type = "Mute Extended" if is_extension else "Mute Case Created"
 
             logger.tree(f"Case Log: {log_type}", [
-                ("User", f"{user.display_name} ({user.id})"),
+                ("User", user.name),
+                            ("ID", str(user.id)),
                 ("Case ID", case['case_id']),
                 ("Muted By", f"{moderator.display_name}"),
                 ("Duration", duration),
@@ -781,7 +810,10 @@ class CaseLogService:
             case_thread = await self._get_case_thread(case["thread_id"])
 
             if not case_thread:
-                logger.warning(f"log_warn: Thread {case['thread_id']} not found, returning early")
+                logger.warning("Warn Log Thread Not Found", [
+                    ("Thread ID", str(case["thread_id"])),
+                    ("User ID", str(user.id)),
+                ])
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             # Update legacy case_logs for backward compatibility stats
@@ -795,13 +827,17 @@ class CaseLogService:
                     if evidence_msg:
                         evidence_message_url = evidence_msg.jump_url
                         logger.tree("Evidence Stored", [
-                            ("User", f"{user.display_name} ({user.id})"),
+                            ("User", user.name),
+                            ("ID", str(user.id)),
                             ("Action", "Warn"),
                             ("Thread", str(case_thread.id)),
                             ("Message ID", str(evidence_msg.id)),
                         ], emoji="📎")
                     else:
-                        logger.warning(f"Evidence message failed to send for warn of {user.id}")
+                        logger.warning("Evidence Send Failed", [
+                            ("Action", "Warn"),
+                            ("User ID", str(user.id)),
+                        ])
                 except Exception as e:
                     logger.error(f"Evidence storage failed for warn: {e}")
 
@@ -817,7 +853,10 @@ class CaseLogService:
             )
             embed_message = await safe_send(case_thread, embed=embed, view=view)
             if not embed_message:
-                logger.warning(f"log_warn: Failed to send embed to thread {case_thread.id}")
+                logger.warning("Warn Embed Send Failed", [
+                    ("Thread ID", str(case_thread.id)),
+                    ("User ID", str(user.id)),
+                ])
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             # If no reason provided, ping moderator to add one
@@ -851,7 +890,8 @@ class CaseLogService:
                 await safe_send(case_thread, embed=alert_embed)
 
             logger.tree("Case Log: Warning Case Created", [
-                ("User", f"{user.display_name} ({user.id})"),
+                ("User", user.name),
+                            ("ID", str(user.id)),
                 ("Case ID", case['case_id']),
                 ("Warned By", f"{moderator.display_name}"),
                 ("Active Warnings", str(active_warns)),
@@ -1047,7 +1087,9 @@ class CaseLogService:
                 )
                 embed_message = await safe_send(case_thread, embed=embed, view=view)
                 if not embed_message:
-                    logger.warning(f"log_unmute: Failed to send embed to thread {case_thread.id}")
+                    logger.warning("Unmute Embed Send Failed", [
+                        ("Thread ID", str(case_thread.id)),
+                    ])
 
                 # If no reason provided, ping moderator and track pending reason
                 if not reason and embed_message:
@@ -1189,7 +1231,9 @@ class CaseLogService:
             case_thread = await self._get_case_thread(case["thread_id"])
 
             if not case_thread:
-                logger.warning(f"log_timeout: Thread {case['thread_id']} not found")
+                logger.warning("Timeout Log Thread Not Found", [
+                    ("Thread ID", str(case["thread_id"])),
+                ])
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             # Get moderator
@@ -1222,7 +1266,8 @@ class CaseLogService:
                     if evidence_msg:
                         evidence_message_url = evidence_msg.jump_url
                         logger.tree("Evidence Stored", [
-                            ("User", f"{user.display_name} ({user.id})"),
+                            ("User", user.name),
+                            ("ID", str(user.id)),
                             ("Action", "Timeout"),
                             ("Thread", str(case_thread.id)),
                             ("Message ID", str(evidence_msg.id)),
@@ -1263,7 +1308,8 @@ class CaseLogService:
                     )
 
             logger.tree("Case Log: Timeout Logged", [
-                ("User", f"{user.display_name} ({user.id})"),
+                ("User", user.name),
+                            ("ID", str(user.id)),
                 ("Case ID", case['case_id']),
                 ("Timeout By", mod_name),
                 ("Duration", duration),
@@ -1329,7 +1375,10 @@ class CaseLogService:
             case_thread = await self._get_case_thread(case["thread_id"])
 
             if not case_thread:
-                logger.warning(f"log_ban: Thread {case['thread_id']} not found, returning early")
+                logger.warning("Ban Log Thread Not Found", [
+                    ("Thread ID", str(case["thread_id"])),
+                    ("User ID", str(user.id)),
+                ])
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             now = datetime.now(NY_TZ)
@@ -1342,13 +1391,17 @@ class CaseLogService:
                     if evidence_msg:
                         evidence_message_url = evidence_msg.jump_url
                         logger.tree("Evidence Stored", [
-                            ("User", f"{user.display_name} ({user.id})"),
+                            ("User", user.name),
+                            ("ID", str(user.id)),
                             ("Action", "Ban"),
                             ("Thread", str(case_thread.id)),
                             ("Message ID", str(evidence_msg.id)),
                         ], emoji="📎")
                     else:
-                        logger.warning(f"Evidence message failed to send for ban of {user.id}")
+                        logger.warning("Evidence Send Failed", [
+                            ("Action", "Ban"),
+                            ("User ID", str(user.id)),
+                        ])
                 except Exception as e:
                     logger.error(f"Evidence storage failed for ban: {e}")
 
@@ -1412,7 +1465,10 @@ class CaseLogService:
             )
             embed_message = await safe_send(case_thread, embed=embed, view=view)
             if not embed_message:
-                logger.warning(f"log_ban: Failed to send embed to thread {case_thread.id}")
+                logger.warning("Ban Embed Send Failed", [
+                    ("Thread ID", str(case_thread.id)),
+                    ("User ID", str(user.id)),
+                ])
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             # If no reason provided, ping moderator to add one
@@ -1436,7 +1492,8 @@ class CaseLogService:
                     )
 
             logger.tree("Case Log: Ban Case Created", [
-                ("User", f"{user} ({user.id})"),
+                ("User", user.name),
+                ("ID", str(user.id)),
                 ("Case ID", case['case_id']),
                 ("Banned By", f"{moderator.display_name}"),
             ], emoji="🔨")
@@ -1497,7 +1554,9 @@ class CaseLogService:
                 case_thread = await self._get_case_thread(active_ban_case["thread_id"])
 
                 if not case_thread:
-                    logger.warning(f"log_unban: Thread {active_ban_case['thread_id']} not found")
+                    logger.warning("Unban Log Thread Not Found", [
+                        ("Thread ID", str(active_ban_case["thread_id"])),
+                    ])
                     return {"case_id": active_ban_case["case_id"], "thread_id": active_ban_case["thread_id"]}
 
                 now = datetime.now(NY_TZ)
@@ -1950,7 +2009,8 @@ class CaseLogService:
                     await safe_send(case_thread, pings)
 
                 logger.tree("Case Log: Mute Evasion Return", [
-                    ("User", f"{member} ({member.id})"),
+                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                    ("ID", str(member.id)),
                     ("Case ID", case['case_id']),
                     ("Mods Pinged", str(len(moderator_ids))),
                 ], emoji="⚠️")
@@ -2078,7 +2138,9 @@ class CaseLogService:
             case_thread = await self._get_case_thread(case["thread_id"])
 
             if not case_thread:
-                logger.warning(f"log_forbid: Thread {case['thread_id']} not found")
+                logger.warning("Forbid Log Thread Not Found", [
+                    ("Thread ID", str(case["thread_id"])),
+                ])
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             # Build and send forbid embed
@@ -2114,7 +2176,8 @@ class CaseLogService:
                     )
 
             logger.tree("Case Log: Forbid", [
-                ("User", f"{user} ({user.id})"),
+                ("User", user.name),
+                ("ID", str(user.id)),
                 ("Case ID", case['case_id']),
                 ("Restrictions", ", ".join(restrictions)),
                 ("Duration", duration or "Permanent"),
@@ -2232,7 +2295,9 @@ class CaseLogService:
             case_thread = await self._get_case_thread(case["thread_id"])
 
             if not case_thread:
-                logger.warning(f"log_unforbid: Thread {case['thread_id']} not found")
+                logger.warning("Unforbid Log Thread Not Found", [
+                    ("Thread ID", str(case["thread_id"])),
+                ])
                 return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
 
             # Build and send unforbid embed
@@ -2248,7 +2313,8 @@ class CaseLogService:
             await safe_send(case_thread, embed=embed, view=view)
 
             logger.tree("Case Log: Unforbid", [
-                ("User", f"{user} ({user.id})"),
+                ("User", user.name),
+                ("ID", str(user.id)),
                 ("Case ID", case['case_id']),
                 ("Removed", ", ".join(restrictions)),
             ], emoji="✅")
@@ -2369,7 +2435,8 @@ class CaseLogService:
             self._thread_cache[thread.id] = (thread, datetime.now(NY_TZ))
 
             logger.tree("ACTION CASE CREATED", [
-                ("User", f"{user} ({user.id})"),
+                ("User", user.name),
+                ("ID", str(user.id)),
                 ("Action", action_type.title()),
                 ("Case ID", case_id),
                 ("Thread ID", str(thread.id)),
@@ -2408,7 +2475,9 @@ class CaseLogService:
         """
         forum = await self._get_forum()
         if not forum:
-            logger.warning("_create_action_thread: Forum not found")
+            logger.warning("Create Action Thread Failed", [
+                ("Reason", "Forum not found"),
+            ])
             return None
 
         # Build user profile embed
@@ -2471,7 +2540,10 @@ class CaseLogService:
                 if thread_with_msg.message:
                     await thread_with_msg.message.pin()
             except Exception as pin_error:
-                logger.warning(f"Failed to pin profile in action case {case_id}: {str(pin_error)[:50]}")
+                logger.warning("Pin Profile Failed", [
+                    ("Case ID", case_id),
+                    ("Error", str(pin_error)[:50]),
+                ])
 
             return thread_with_msg.thread
 
@@ -2512,7 +2584,8 @@ class CaseLogService:
             self._thread_cache[thread.id] = (thread, datetime.now(NY_TZ))
 
             logger.tree("CASE THREAD CREATED", [
-                ("User", f"{user} ({user.id})"),
+                ("User", user.name),
+                ("ID", str(user.id)),
                 ("Case ID", case_id),
                 ("Thread ID", str(thread.id)),
             ], emoji="📂")
@@ -2549,7 +2622,9 @@ class CaseLogService:
         """
         forum = await self._get_forum()
         if not forum:
-            logger.warning(f"_create_case_thread: Forum not found, cannot create thread")
+            logger.warning("Create Case Thread Failed", [
+                ("Reason", "Forum not found"),
+            ])
             return None
 
         # Build user profile embed
@@ -2608,13 +2683,17 @@ class CaseLogService:
                     # Store the message ID for future updates
                     self.db.set_profile_message_id(user.id, thread_with_msg.message.id)
             except Exception as pin_error:
-                logger.warning(f"Failed To Pin User Profile: Case {case_id} - {str(pin_error)[:50]}")
+                logger.warning("Pin User Profile Failed", [
+                    ("Case ID", case_id),
+                    ("Error", str(pin_error)[:50]),
+                ])
 
             return thread_with_msg.thread
 
         except Exception as e:
             logger.error("Failed To Create Case Thread", [
-                ("User", f"{user.display_name} ({user.id})"),
+                ("User", user.name),
+                            ("ID", str(user.id)),
                 ("Case ID", case_id),
                 ("Error Type", type(e).__name__),
                 ("Error", str(e)[:100]),
@@ -2728,7 +2807,9 @@ class CaseLogService:
             await safe_edit(profile_msg, embed=embed)
 
         except Exception as e:
-            logger.warning(f"Failed to update profile stats: {str(e)[:50]}")
+            logger.warning("Profile Stats Update Failed", [
+                ("Error", str(e)[:50]),
+            ])
 
     # =========================================================================
     # Embed Builders
@@ -3125,12 +3206,15 @@ class CaseLogService:
                         logger.tree("Evidence Stored (Reply)", [
                             ("Target", f"{pending['target_user_id']}"),
                             ("Action", action_type.capitalize()),
-                            ("Moderator", f"{message.author} ({message.author.id})"),
+                            ("Moderator", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                        ("Mod ID", str(message.author.id)),
                             ("Thread", str(thread.id)),
                             ("Message ID", str(evidence_msg.id)),
                         ], emoji="📎")
                     else:
-                        logger.warning(f"Evidence reply message failed to send in thread {thread.id}")
+                        logger.warning("Evidence Reply Failed", [
+                            ("Thread ID", str(thread.id)),
+                        ])
                 except Exception as e:
                     logger.error(f"Evidence reply storage failed: {e}")
             elif is_voice_chat:
@@ -3181,7 +3265,8 @@ class CaseLogService:
                     logger.tree("Voice Chat Evidence Verified", [
                         ("Target", f"{target_user_id}"),
                         ("Action", action_type.capitalize()),
-                        ("Moderator", f"{message.author} ({message.author.id})"),
+                        ("Moderator", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                        ("Mod ID", str(message.author.id)),
                         ("VC Events", str(len(vc_activity))),
                     ], emoji="🎙️")
                 else:
@@ -3203,7 +3288,8 @@ class CaseLogService:
                     logger.tree("Voice Chat Evidence - No VC Activity", [
                         ("Target", f"{target_user_id}"),
                         ("Action", action_type.capitalize()),
-                        ("Moderator", f"{message.author} ({message.author.id})"),
+                        ("Moderator", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                        ("Mod ID", str(message.author.id)),
                     ], emoji="⚠️")
 
             # Preserve the view (buttons) when editing
@@ -3256,7 +3342,8 @@ class CaseLogService:
             # Log success
             logger.tree("Case Log: Reason Updated", [
                 ("Thread ID", str(thread.id)),
-                ("Moderator", f"{message.author} ({message.author.id})"),
+                ("Moderator", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                        ("Mod ID", str(message.author.id)),
                 ("Action", action_type),
                 ("Reason", reason[:50] if reason else "N/A"),
                 ("Evidence", "Uploaded" if evidence_message_url else "N/A"),

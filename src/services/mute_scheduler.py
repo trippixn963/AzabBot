@@ -171,6 +171,12 @@ class MuteScheduler:
         for mute in expired_mutes:
             mutes_by_guild[mute["guild_id"]].append(mute)
 
+        # Track outcomes for detailed logging
+        success_count = 0
+        skipped_guild = 0
+        skipped_role = 0
+        failed_count = 0
+
         # Process each guild's mutes with cached role
         batch_size = 25
         for guild_id, guild_mutes in mutes_by_guild.items():
@@ -190,6 +196,7 @@ class MuteScheduler:
                         moderator_id=self.bot.user.id,
                         reason="Auto-unmute (guild not accessible)",
                     )
+                skipped_guild += len(guild_mutes)
                 continue
 
             muted_role = guild.get_role(self.config.muted_role_id)
@@ -201,16 +208,31 @@ class MuteScheduler:
                     ("Role ID", str(self.config.muted_role_id)),
                     ("Affected Mutes", str(len(guild_mutes))),
                 ])
+                skipped_role += len(guild_mutes)
 
             for i in range(0, len(guild_mutes), batch_size):
                 batch = guild_mutes[i:i + batch_size]
                 tasks = [self._safe_auto_unmute(mute, guild, muted_role) for mute in batch]
-                await asyncio.gather(*tasks, return_exceptions=True)
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for result in results:
+                    if isinstance(result, Exception):
+                        failed_count += 1
+                    else:
+                        success_count += 1
 
-        logger.tree("EXPIRED MUTES PROCESSED", [
-            ("Total", str(total_count)),
+        log_items = [
+            ("Total Expired", str(total_count)),
             ("Guilds", str(len(mutes_by_guild))),
-        ], emoji="⏰")
+            ("Processed", str(success_count)),
+        ]
+        if skipped_guild > 0:
+            log_items.append(("Skipped (Guild)", str(skipped_guild)))
+        if skipped_role > 0:
+            log_items.append(("Skipped (Role)", str(skipped_role)))
+        if failed_count > 0:
+            log_items.append(("Failed", str(failed_count)))
+
+        logger.tree("EXPIRED MUTES PROCESSED", log_items, emoji="⏰")
 
     async def _safe_auto_unmute(
         self,
@@ -320,12 +342,14 @@ class MuteScheduler:
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
                     ("Action", "Mute Expired"),
-                    ("User", f"{member} ({member.id})"),
+                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                    ("ID", str(member.id)),
                 ])
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Mute Expired"),
-                    ("User", f"{member} ({member.id})"),
+                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                    ("ID", str(member.id)),
                     ("Error", str(e)[:100]),
                 ])
 
@@ -418,7 +442,11 @@ class MuteScheduler:
             mutes_by_guild[mute["guild_id"]].append(mute)
 
         synced = 0
-        removed = 0
+        # Track removal reasons for detailed logging
+        removed_guild_inaccessible = 0
+        removed_role_missing = 0
+        removed_user_left = 0
+        removed_role_removed = 0
 
         # Process each guild's mutes
         for guild_id, guild_mutes in mutes_by_guild.items():
@@ -432,7 +460,7 @@ class MuteScheduler:
                         moderator_id=self.bot.user.id,
                         reason="Sync: Guild not accessible",
                     )
-                removed += len(guild_mutes)
+                removed_guild_inaccessible += len(guild_mutes)
                 continue
 
             # Get muted role once per guild
@@ -452,7 +480,7 @@ class MuteScheduler:
                         moderator_id=self.bot.user.id,
                         reason="Sync: Role not found",
                     )
-                removed += len(guild_mutes)
+                removed_role_missing += len(guild_mutes)
                 continue
 
             # Process each mute in this guild
@@ -465,7 +493,7 @@ class MuteScheduler:
                         moderator_id=self.bot.user.id,
                         reason="Sync: User left server",
                     )
-                    removed += 1
+                    removed_user_left += 1
                     continue
 
                 if muted_role not in member.roles:
@@ -475,18 +503,32 @@ class MuteScheduler:
                         moderator_id=self.bot.user.id,
                         reason="Sync: Role manually removed",
                     )
-                    removed += 1
+                    removed_role_removed += 1
                     continue
 
                 synced += 1
 
+        total_removed = removed_guild_inaccessible + removed_role_missing + removed_user_left + removed_role_removed
+
         if active_mutes:
-            logger.tree("Mute State Synced", [
-                ("Active Mutes", str(synced)),
-                ("Removed Stale", str(removed)),
+            log_items = [
                 ("Total Checked", str(len(active_mutes))),
                 ("Guilds Processed", str(len(mutes_by_guild))),
-            ], emoji="🔄")
+                ("Still Active", str(synced)),
+                ("Total Removed", str(total_removed)),
+            ]
+            # Add removal breakdown only if there were removals
+            if total_removed > 0:
+                if removed_user_left > 0:
+                    log_items.append(("└ User Left", str(removed_user_left)))
+                if removed_role_removed > 0:
+                    log_items.append(("└ Role Removed", str(removed_role_removed)))
+                if removed_guild_inaccessible > 0:
+                    log_items.append(("└ Guild Gone", str(removed_guild_inaccessible)))
+                if removed_role_missing > 0:
+                    log_items.append(("└ Role Missing", str(removed_role_missing)))
+
+            logger.tree("Mute State Synced", log_items, emoji="🔄")
 
 
 # =============================================================================

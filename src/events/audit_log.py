@@ -710,12 +710,14 @@ class AuditLogEvents(commands.Cog):
                             except asyncio.TimeoutError:
                                 logger.warning("Case Log Timeout", [
                                     ("Action", "Timeout"),
-                                    ("User", f"{entry.target} ({entry.target.id})"),
+                                    ("User", entry.target.name if hasattr(entry.target, 'name') else str(entry.target)),
+                                    ("ID", str(entry.target.id)),
                                 ])
                             except Exception as e:
                                 logger.error("Case Log Failed", [
                                     ("Action", "Timeout"),
-                                    ("User", f"{entry.target} ({entry.target.id})"),
+                                    ("User", entry.target.name if hasattr(entry.target, 'name') else str(entry.target)),
+                                    ("ID", str(entry.target.id)),
                                     ("Error", str(e)[:100]),
                                 ])
 

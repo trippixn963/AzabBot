@@ -597,7 +597,9 @@ class AntiSpamService:
                 if decayed > 0:
                     logger.debug(f"Decayed {decayed} spam violation records")
             except Exception as e:
-                logger.warning(f"Anti-spam cleanup error: {e}")
+                logger.warning("Anti-Spam Cleanup Error", [
+                    ("Error", str(e)[:50]),
+                ])
 
     async def _reputation_loop(self) -> None:
         """Periodically update reputation scores for active users."""
@@ -606,7 +608,9 @@ class AntiSpamService:
             try:
                 await self._update_reputations()
             except Exception as e:
-                logger.warning(f"Reputation update error: {e}")
+                logger.warning("Reputation Update Error", [
+                    ("Error", str(e)[:50]),
+                ])
 
     async def _update_reputations(self) -> None:
         """Update reputation for all tracked users."""
@@ -1333,7 +1337,9 @@ class AntiSpamService:
 
             logger.tree("AUTO-SLOWMODE ENABLED", [
                 ("Channel", f"#{channel.name}"),
+                ("Channel ID", str(channel.id)),
                 ("Duration", f"{SLOWMODE_DURATION}s"),
+                ("Trigger", f"{SLOWMODE_TRIGGER_MESSAGES} msgs in {SLOWMODE_TIME_WINDOW}s"),
             ], emoji="🐌")
 
             await asyncio.sleep(SLOWMODE_DURATION)
@@ -1342,14 +1348,21 @@ class AntiSpamService:
                 await channel.edit(slowmode_delay=original_slowmode)
                 logger.tree("AUTO-SLOWMODE DISABLED", [
                     ("Channel", f"#{channel.name}"),
+                    ("Channel ID", str(channel.id)),
                 ], emoji="🐌")
             except discord.HTTPException:
                 pass
 
         except discord.Forbidden:
-            logger.warning(f"Cannot set slowmode in #{channel.name} - missing permissions")
+            logger.warning("Slowmode Permission Denied", [
+                ("Channel", f"#{channel.name}"),
+                ("Channel ID", str(channel.id)),
+            ])
         except discord.HTTPException as e:
-            logger.warning(f"Failed to set slowmode: {e}")
+            logger.warning("Slowmode Failed", [
+                ("Channel", f"#{channel.name}"),
+                ("Error", str(e)[:50]),
+            ])
 
     # =========================================================================
     # Punishment Handling
@@ -1535,9 +1548,16 @@ class AntiSpamService:
             await channel.send(embed=embed, view=view, delete_after=15)
 
         except discord.Forbidden:
-            logger.warning(f"Cannot mute {member} - missing permissions")
+            logger.warning("Auto-Mute Permission Denied", [
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
+            ])
         except discord.HTTPException as e:
-            logger.warning(f"Failed to mute {member}: {e}")
+            logger.warning("Auto-Mute Failed", [
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
+                ("Error", str(e)[:50]),
+            ])
 
     async def _open_spam_case(
         self,
@@ -1571,13 +1591,15 @@ class AntiSpamService:
         except asyncio.TimeoutError:
             logger.warning("Case Log Timeout", [
                 ("Action", "Auto-Spam Mute"),
-                ("User", f"{member} ({member.id})"),
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
             ])
             return None
         except Exception as e:
             logger.error("Case Log Failed", [
                 ("Action", "Auto-Spam Mute"),
-                ("User", f"{member} ({member.id})"),
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                 ("Error", str(e)[:100]),
             ])
             return None
@@ -1609,8 +1631,10 @@ class AntiSpamService:
         }.get(spam_type, spam_type)
 
         action_str = "warned" if action == "warning" else f"muted ({mute_duration}s)"
+        author = message.author
         logger.tree("SPAM DETECTED", [
-            ("User", f"{message.author} ({message.author.id})"),
+            ("User", f"{author.name} ({author.nick})" if hasattr(author, 'nick') and author.nick else author.name),
+            ("ID", str(author.id)),
             ("Type", spam_display),
             ("Action", action_str),
             ("Violations", str(violation_count)),

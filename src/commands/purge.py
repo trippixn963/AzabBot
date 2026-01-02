@@ -163,7 +163,8 @@ class PurgeCog(commands.Cog):
             logger.tree("PURGE BLOCKED", [
                 ("Reason", "Missing permissions"),
                 ("Channel", f"{channel.name} ({channel.id})"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("Mod ID", str(interaction.user.id)),
             ], emoji="🚫")
             await interaction.followup.send(
                 "I don't have permission to read message history in this channel.",
@@ -204,7 +205,8 @@ class PurgeCog(commands.Cog):
                 logger.tree("PURGE BLOCKED", [
                     ("Reason", "Cannot delete messages"),
                     ("Channel", f"{channel.name} ({channel.id})"),
-                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                    ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("Mod ID", str(interaction.user.id)),
                 ], emoji="🚫")
                 await interaction.followup.send(
                     "I don't have permission to delete messages in this channel.",
@@ -280,7 +282,8 @@ class PurgeCog(commands.Cog):
         # Log the purge action
         logger.tree("MESSAGES PURGED", [
             ("Channel", f"#{channel.name} ({channel.id})"),
-            ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+            ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("Mod ID", str(interaction.user.id)),
             ("Type", description),
             ("Deleted", str(total_deleted)),
             ("Old (14d+)", str(old_deleted)),
@@ -360,7 +363,8 @@ class PurgeCog(commands.Cog):
         elif filter_value == PurgeFilter.USER:
             if not user:
                 logger.tree("PURGE VALIDATION FAILED", [
-                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                    ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("Mod ID", str(interaction.user.id)),
                     ("Filter", "From User"),
                     ("Reason", "User parameter not provided"),
                 ], emoji="⚠️")
@@ -385,7 +389,8 @@ class PurgeCog(commands.Cog):
         elif filter_value == PurgeFilter.CONTAINS:
             if not text:
                 logger.tree("PURGE VALIDATION FAILED", [
-                    ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                    ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("Mod ID", str(interaction.user.id)),
                     ("Filter", "Containing Text"),
                     ("Reason", "Text parameter not provided"),
                 ], emoji="⚠️")

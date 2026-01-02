@@ -20,11 +20,12 @@ import discord
 from src.core.config import NY_TZ
 from src.core.logger import logger
 
-from .constants import TICKET_CATEGORIES, MAX_TRANSCRIPT_MESSAGES
+from .constants import TICKET_CATEGORIES, MAX_TRANSCRIPT_MESSAGES, MAX_TRANSCRIPT_USER_LOOKUPS
 
 
 async def collect_transcript_messages(
     thread: discord.Thread,
+    bot: discord.Client,
     limit: int = MAX_TRANSCRIPT_MESSAGES,
 ) -> tuple[List[Dict[str, Any]], Dict[int, str]]:
     """
@@ -32,6 +33,7 @@ async def collect_transcript_messages(
 
     Args:
         thread: The ticket thread
+        bot: The bot client for API calls
         limit: Maximum number of messages to collect
 
     Returns:
@@ -82,22 +84,39 @@ async def collect_transcript_messages(
                 "is_staff": msg.author.guild_permissions.manage_messages if hasattr(msg.author, 'guild_permissions') else False,
             })
 
-        # Resolve raw mention IDs to usernames
+        # Resolve raw mention IDs to usernames (limited to prevent API spam)
         if raw_mention_ids and thread.guild:
+            api_calls = 0
             for user_id in raw_mention_ids:
+                # Try to get member from guild cache first (no API call)
+                member = thread.guild.get_member(user_id)
+                if member:
+                    user_map[user_id] = member.display_name
+                    continue
+
+                # Try bot's user cache (no API call)
+                cached_user = bot.get_user(user_id)
+                if cached_user:
+                    user_map[user_id] = cached_user.display_name
+                    continue
+
+                # Only make API call if under limit
+                if api_calls >= MAX_TRANSCRIPT_USER_LOOKUPS:
+                    continue  # Leave unresolved, don't spam API
+
                 try:
-                    # Try to get member from guild first
-                    member = thread.guild.get_member(user_id)
-                    if member:
-                        user_map[user_id] = member.display_name
-                    else:
-                        # Fetch user from Discord API
-                        user = await thread.guild._state._get_client().fetch_user(user_id)
-                        if user:
-                            user_map[user_id] = user.display_name
-                except Exception:
-                    # If we can't resolve, leave it unresolved
-                    pass
+                    user = await bot.fetch_user(user_id)
+                    if user:
+                        user_map[user_id] = user.display_name
+                    api_calls += 1
+                except discord.NotFound:
+                    api_calls += 1  # Count failed lookups too
+                except discord.HTTPException as e:
+                    api_calls += 1
+                    logger.warning("Failed to fetch user for transcript", [
+                        ("User ID", str(user_id)),
+                        ("Error", str(e)),
+                    ])
 
     except Exception as e:
         logger.error("Failed to collect transcript messages", [

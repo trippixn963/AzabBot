@@ -223,7 +223,8 @@ class ModmailService:
             )
 
             logger.tree("Modmail Thread Created", [
-                ("User", f"{user.name} ({user.id})"),
+                ("User", user.name),
+                ("ID", str(user.id)),
                 ("Thread", str(thread.id)),
             ], emoji=MODMAIL_EMOJI)
 
@@ -396,7 +397,8 @@ class ModmailService:
         await self.relay_dm_to_thread(message, thread)
 
         logger.tree("Modmail DM Relayed", [
-            ("User", f"{user.name} ({user.id})"),
+            ("User", user.name),
+                ("ID", str(user.id)),
             ("Content", message.content[:50] + "..." if len(message.content) > 50 else message.content),
         ], emoji=MODMAIL_EMOJI)
 
@@ -595,16 +597,6 @@ class ModmailCloseButton(
         )
 
         if success:
-            # Log to webhook
-            if hasattr(bot, "interaction_logger") and bot.interaction_logger:
-                try:
-                    user = await bot.fetch_user(self.user_id)
-                    await bot.interaction_logger.log_modmail_closed(
-                        interaction.user, user, interaction.channel.id
-                    )
-                except Exception:
-                    pass
-
             await interaction.followup.send(
                 f"{CLOSE_EMOJI} Modmail closed by {interaction.user.mention}",
                 allowed_mentions=discord.AllowedMentions.none()

@@ -100,7 +100,9 @@ class AppealService:
         # Fetch forum
         channel = await safe_fetch_channel(self.bot, self.config.appeal_forum_id)
         if channel is None:
-            logger.warning(f"Appeal Forum Not Found: {self.config.appeal_forum_id}")
+            logger.warning("Appeal Forum Not Found", [
+                ("Forum ID", str(self.config.appeal_forum_id)),
+            ])
             return None
 
         if isinstance(channel, discord.ForumChannel):
@@ -108,7 +110,11 @@ class AppealService:
             self._forum_cache_time = now
             return self._forum
 
-        logger.warning(f"Channel {self.config.appeal_forum_id} is not a ForumChannel")
+        logger.warning("Invalid Appeal Forum Channel", [
+            ("Channel ID", str(self.config.appeal_forum_id)),
+            ("Expected", "ForumChannel"),
+            ("Got", type(channel).__name__),
+        ])
         return None
 
     async def _get_appeal_thread(self, thread_id: int) -> Optional[discord.Thread]:
@@ -295,11 +301,14 @@ class AppealService:
             self._thread_cache[thread.thread.id] = (thread.thread, datetime.now(NY_TZ))
 
             # Log
+            prior_appeals = appeals_this_week  # Already calculated above
             logger.tree("APPEAL CREATED", [
                 ("Appeal ID", appeal_id),
                 ("Case ID", case_id),
-                ("User", f"{user} ({user.id})"),
+                ("User", user.name),
+                ("ID", str(user.id)),
                 ("Action", action_type.title()),
+                ("Prior Appeals", f"{prior_appeals} this week"),
                 ("Thread ID", str(thread.thread.id)),
             ], emoji="📝")
 
@@ -469,7 +478,11 @@ class AppealService:
                 except discord.NotFound:
                     pass  # User not banned or doesn't exist
                 except discord.HTTPException as e:
-                    logger.warning(f"Failed to unban user {user_id}: {e}")
+                    logger.warning("Appeal Unban Failed", [
+                        ("User ID", str(user_id)),
+                        ("Appeal ID", appeal_id),
+                        ("Error", str(e)[:50]),
+                    ])
 
             elif action_type == "mute":
                 # Remove muted role
@@ -483,7 +496,11 @@ class AppealService:
                                 reason=f"Appeal {appeal_id} approved by {moderator}"
                             )
                         except discord.HTTPException as e:
-                            logger.warning(f"Failed to unmute user {user_id}: {e}")
+                            logger.warning("Appeal Unmute Failed", [
+                                ("User ID", str(user_id)),
+                                ("Appeal ID", appeal_id),
+                                ("Error", str(e)[:50]),
+                            ])
 
                     # Remove timeout if any
                     if member.is_timed_out():
@@ -534,7 +551,8 @@ class AppealService:
             logger.tree("APPEAL APPROVED", [
                 ("Appeal ID", appeal_id),
                 ("Case ID", case_id),
-                ("Moderator", f"{moderator} ({moderator.id})"),
+                ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
+                ("Mod ID", str(moderator.id)),
                 ("Action", action_type.title()),
             ], emoji="✅")
 
@@ -663,7 +681,8 @@ class AppealService:
             logger.tree("APPEAL DENIED", [
                 ("Appeal ID", appeal_id),
                 ("Case ID", case_id),
-                ("Moderator", f"{moderator} ({moderator.id})"),
+                ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
+                ("Mod ID", str(moderator.id)),
             ], emoji="❌")
 
             # Log to server logs
@@ -1024,18 +1043,15 @@ class OpenAppealTicketButton(discord.ui.DynamicItem[discord.ui.Button], template
         )
 
         if success:
+            staff = interaction.user
             logger.tree("Appeal Ticket Created", [
                 ("Appeal ID", self.appeal_id),
                 ("Ticket ID", ticket_id),
-                ("User", f"{member} ({member.id})"),
-                ("Created By", f"{interaction.user} ({interaction.user.id})"),
+                ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
+                ("User ID", str(member.id)),
+                ("Created By", f"{staff.name} ({staff.nick})" if hasattr(staff, 'nick') and staff.nick else staff.name),
+                ("Staff ID", str(staff.id)),
             ], emoji="🎫")
-
-            # Log to webhook
-            if hasattr(bot, "interaction_logger") and bot.interaction_logger and ticket_id:
-                await bot.interaction_logger.log_appeal_ticket_opened(
-                    interaction.user, self.appeal_id, ticket_id, member
-                )
 
             await interaction.followup.send(
                 f"✅ {message}\n\nTicket created for appeal discussion.",
@@ -1192,18 +1208,15 @@ class ContactBannedUserButton(discord.ui.DynamicItem[discord.ui.Button], templat
         except discord.HTTPException:
             pass
 
+        staff = interaction.user
         logger.tree("Appeal Contact Initiated", [
             ("Appeal ID", self.appeal_id),
-            ("User", f"{user} ({user.id})"),
-            ("Initiated By", f"{interaction.user} ({interaction.user.id})"),
+            ("User", user.name),
+            ("User ID", str(user.id)),
+            ("Initiated By", f"{staff.name} ({staff.nick})" if hasattr(staff, 'nick') and staff.nick else staff.name),
+            ("Staff ID", str(staff.id)),
             ("Thread", str(thread.id)),
         ], emoji="📬")
-
-        # Log to webhook
-        if hasattr(bot, "interaction_logger") and bot.interaction_logger:
-            await bot.interaction_logger.log_appeal_contact(
-                interaction.user, self.appeal_id, user
-            )
 
         await interaction.followup.send(
             f"✅ Modmail initiated with **{user}**.\n\n"
@@ -1255,26 +1268,12 @@ class AppealReasonModal(discord.ui.Modal):
                 interaction.user,
                 reason,
             )
-            if success and hasattr(bot, "interaction_logger") and bot.interaction_logger:
-                appeal = bot.appeal_service.db.get_appeal(self.appeal_id)
-                if appeal:
-                    await bot.interaction_logger.log_appeal_approved(
-                        interaction.user, self.appeal_id, self.case_id,
-                        appeal.get("user_id"), appeal.get("action_type", "unknown")
-                    )
         else:
             success, message = await bot.appeal_service.deny_appeal(
                 self.appeal_id,
                 interaction.user,
                 reason,
             )
-            if success and hasattr(bot, "interaction_logger") and bot.interaction_logger:
-                appeal = bot.appeal_service.db.get_appeal(self.appeal_id)
-                if appeal:
-                    await bot.interaction_logger.log_appeal_denied(
-                        interaction.user, self.appeal_id, self.case_id,
-                        appeal.get("user_id"), appeal.get("action_type", "unknown")
-                    )
 
         await interaction.followup.send(message, ephemeral=True)
 

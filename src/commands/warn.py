@@ -245,7 +245,8 @@ class WarnCog(commands.Cog):
         active_warns, total_warns = self.db.get_warn_counts(user.id, target_guild.id)
 
         log_items = [
-            ("User", f"{user} ({user.id})"),
+            ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                    ("ID", str(user.id)),
             ("Moderator", str(interaction.user)),
             ("Active Warnings", str(active_warns)),
             ("Total Warnings", str(total_warns)),
@@ -276,7 +277,8 @@ class WarnCog(commands.Cog):
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
                     ("Action", "Warn"),
-                    ("User", f"{user} ({user.id})"),
+                    ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                    ("ID", str(user.id)),
                 ])
                 if self.bot.webhook_alert_service:
                     await self.bot.webhook_alert_service.send_error_alert(
@@ -286,7 +288,8 @@ class WarnCog(commands.Cog):
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Warn"),
-                    ("User", f"{user} ({user.id})"),
+                    ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                    ("ID", str(user.id)),
                     ("Error", str(e)[:100]),
                 ])
                 if self.bot.webhook_alert_service:

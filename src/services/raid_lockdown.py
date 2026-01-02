@@ -162,11 +162,19 @@ class RaidLockdownService:
             return True
 
         except discord.Forbidden:
-            logger.warning("Cannot trigger auto-lockdown - missing permissions")
+            logger.warning("Auto-Lockdown Permission Denied", [
+                ("Guild", guild.name),
+                ("Guild ID", str(guild.id)),
+                ("Action", "Clearing saved permissions"),
+            ])
             self.db.clear_lockdown_permissions(guild.id)
             return False
         except discord.HTTPException as e:
-            logger.warning(f"Auto-lockdown failed: {e}")
+            logger.warning("Auto-Lockdown HTTP Failed", [
+                ("Guild", guild.name),
+                ("Guild ID", str(guild.id)),
+                ("Error", str(e)[:50]),
+            ])
             self.db.clear_lockdown_permissions(guild.id)
             return False
 
@@ -227,7 +235,11 @@ class RaidLockdownService:
         except asyncio.CancelledError:
             logger.debug("Auto-unlock task cancelled (manual unlock)")
         except Exception as e:
-            logger.warning(f"Auto-unlock failed: {e}")
+            logger.warning("Auto-Unlock Failed", [
+                ("Guild", guild.name),
+                ("Guild ID", str(guild.id)),
+                ("Error", str(e)[:50]),
+            ])
 
     async def _send_lockdown_announcement(
         self,

@@ -123,6 +123,7 @@ class Config:
     ticket_partnership_user_id: Optional[int] = None  # User to assign partnership tickets
     ticket_suggestion_user_id: Optional[int] = None  # User to assign suggestion tickets
     ticket_support_user_ids: Set[int] = None  # Users to assign support tickets
+    transcript_base_url: Optional[str] = None  # Base URL for transcript viewer (e.g., https://example.com/api/azab/transcripts)
 
     # -------------------------------------------------------------------------
     # Optional: Modmail (for banned users)
@@ -198,7 +199,6 @@ class Config:
 
     alert_webhook_url: Optional[str] = None
     error_webhook_url: Optional[str] = None
-    interaction_webhook_url: Optional[str] = None
     live_logs_webhook_url: Optional[str] = None
 
     # -------------------------------------------------------------------------
@@ -482,6 +482,7 @@ def load_config() -> Config:
     ticket_partnership_user_id = _parse_int_optional(os.getenv("TICKET_PARTNERSHIP_USER_ID"))
     ticket_suggestion_user_id = _parse_int_optional(os.getenv("TICKET_SUGGESTION_USER_ID"))
     ticket_support_user_ids = _parse_int_set(os.getenv("TICKET_SUPPORT_USER_IDS", ""))
+    transcript_base_url = os.getenv("TRANSCRIPT_BASE_URL") or None
     server_logs_forum_id = _parse_int_optional(os.getenv("SERVER_LOGS_FORUM_ID"))
     logging_guild_id = _parse_int_optional(os.getenv("LOGGING_GUILD_ID"))
     moderator_ids = _parse_int_set(os.getenv("MODERATOR_IDS"))
@@ -519,6 +520,7 @@ def load_config() -> Config:
         ticket_partnership_user_id=ticket_partnership_user_id,
         ticket_suggestion_user_id=ticket_suggestion_user_id,
         ticket_support_user_ids=ticket_support_user_ids,
+        transcript_base_url=transcript_base_url,
         server_logs_forum_id=server_logs_forum_id,
         logging_guild_id=logging_guild_id,
         cooldown_seconds=_parse_int_with_default(
@@ -544,7 +546,6 @@ def load_config() -> Config:
         moderator_ids=moderator_ids if moderator_ids else None,
         alert_webhook_url=_validate_url(os.getenv("ALERT_WEBHOOK_URL"), "ALERT_WEBHOOK_URL"),
         error_webhook_url=_validate_url(os.getenv("ERROR_WEBHOOK_URL"), "ERROR_WEBHOOK_URL"),
-        interaction_webhook_url=_validate_url(os.getenv("INTERACTION_WEBHOOK_URL"), "INTERACTION_WEBHOOK_URL"),
         live_logs_webhook_url=_validate_url(os.getenv("LIVE_LOGS_WEBHOOK_URL"), "LIVE_LOGS_WEBHOOK_URL"),
         ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,
         lockdown_exclude_ids=lockdown_exclude_ids if lockdown_exclude_ids else None,

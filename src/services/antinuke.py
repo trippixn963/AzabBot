@@ -215,7 +215,8 @@ class AntiNukeService:
         # Check if exempt
         if self._is_exempt(member):
             logger.tree("NUKE DETECTED (EXEMPT USER)", [
-                ("User", f"{member} ({member.id})"),
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
                 ("Type", nuke_type),
                 ("Count", str(count)),
                 ("Action", "None (exempt)"),
@@ -231,7 +232,8 @@ class AntiNukeService:
         }.get(nuke_type, nuke_type)
 
         logger.tree("🚨 NUKE DETECTED", [
-            ("User", f"{member} ({member.id})"),
+            ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+            ("ID", str(member.id)),
             ("Type", nuke_display),
             ("Count", f"{count} in {TIME_WINDOW}s"),
             ("Action", "Stripping permissions"),

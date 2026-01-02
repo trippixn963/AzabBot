@@ -18,6 +18,7 @@ Server: discord.gg/syria
 
 import os
 import asyncio
+import time
 import aiohttp
 import psutil
 from datetime import datetime, timedelta
@@ -109,8 +110,9 @@ class WebhookAlertService:
     def __init__(self, webhook_url: Optional[str] = None) -> None:
         # Read environment variables at runtime (after load_dotenv has been called)
         self.webhook_url = webhook_url or os.getenv("ALERT_WEBHOOK_URL")  # Hourly status + shutdown
-        self._error_webhook_url = os.getenv("ALERT_ERROR_WEBHOOK_URL")  # Error alerts
-        self._logging_webhook_url = os.getenv("LOGGING_WEBHOOK_URL")  # General logging (recovery, latency, etc.)
+        # Error/logging webhooks disabled - use tree logs in logger.py instead
+        self._error_webhook_url = None
+        self._logging_webhook_url = None
         self.enabled = bool(self.webhook_url)
         self._hourly_task: Optional[asyncio.Task] = None
         self._bot: Optional["AzabBot"] = None
@@ -208,6 +210,13 @@ class WebhookAlertService:
             logger.debug("Webhook Skipped: Not enabled")
             return False
 
+        # Determine webhook type for logging
+        webhook_type = "status"
+        if use_error_webhook and self._error_webhook_url:
+            webhook_type = "error"
+        elif use_logging_webhook and self._logging_webhook_url:
+            webhook_type = "logging"
+
         # Choose webhook URL (guaranteed non-None from check above)
         # Priority: error > logging > status
         webhook_url: str = self.webhook_url
@@ -223,6 +232,9 @@ class WebhookAlertService:
         if content:
             payload["content"] = content
 
+        alert_title = embed.get("title", "Unknown")
+        start_time = time.monotonic()
+
         # Retry with exponential backoff
         for attempt in range(MAX_RETRIES):
             try:
@@ -233,37 +245,64 @@ class WebhookAlertService:
                         timeout=aiohttp.ClientTimeout(total=10)
                     ) as response:
                         if response.status == 204:
+                            duration_ms = int((time.monotonic() - start_time) * 1000)
                             logger.tree("Webhook Sent", [
-                                ("Title", embed.get("title", "Unknown")),
-                                ("Attempt", str(attempt + 1)),
+                                ("Type", webhook_type),
+                                ("Title", alert_title),
+                                ("Attempt", f"{attempt + 1}/{MAX_RETRIES}"),
+                                ("Duration", f"{duration_ms}ms"),
                             ], emoji="📤")
                             return True
                         elif response.status == 429:
                             # Rate limited, wait and retry
                             retry_after = float(response.headers.get("Retry-After", 5))
-                            logger.warning(f"Webhook Rate Limited: Retry after {retry_after}s")
+                            logger.warning("Webhook Rate Limited", [
+                                ("Type", webhook_type),
+                                ("Title", alert_title),
+                                ("Retry After", f"{retry_after}s"),
+                                ("Attempt", f"{attempt + 1}/{MAX_RETRIES}"),
+                            ])
                             await asyncio.sleep(retry_after)
                             continue
                         else:
-                            logger.warning(f"Webhook Failed: Status {response.status}, {embed.get('title', 'Unknown')}, attempt {attempt + 1}")
+                            logger.warning("Webhook Failed", [
+                                ("Type", webhook_type),
+                                ("Title", alert_title),
+                                ("Status", str(response.status)),
+                                ("Attempt", f"{attempt + 1}/{MAX_RETRIES}"),
+                            ])
 
             except asyncio.TimeoutError:
-                logger.warning(f"Webhook Timeout: {embed.get('title', 'Unknown')}, attempt {attempt + 1}")
+                logger.warning("Webhook Timeout", [
+                    ("Type", webhook_type),
+                    ("Title", alert_title),
+                    ("Attempt", f"{attempt + 1}/{MAX_RETRIES}"),
+                ])
             except Exception as e:
-                logger.warning(f"Webhook Error: {e}, {embed.get('title', 'Unknown')}, attempt {attempt + 1}")
+                logger.warning("Webhook Error", [
+                    ("Type", webhook_type),
+                    ("Title", alert_title),
+                    ("Error", str(e)[:50]),
+                    ("Attempt", f"{attempt + 1}/{MAX_RETRIES}"),
+                ])
 
             # Exponential backoff before retry
             if attempt < MAX_RETRIES - 1:
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 await asyncio.sleep(delay)
 
-        logger.warning(f"Webhook Failed After {MAX_RETRIES} Retries: {embed.get('title', 'Unknown')}")
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+        logger.error("Webhook Failed After All Retries", [
+            ("Type", webhook_type),
+            ("Title", alert_title),
+            ("Attempts", str(MAX_RETRIES)),
+            ("Total Duration", f"{duration_ms}ms"),
+        ])
         return False
 
     def _get_bot_stats(self) -> dict:
         """Get AzabBot-specific stats."""
         stats = {
-            "total_prisoners": 0,
             "active_mutes": 0,
         }
 
@@ -302,7 +341,7 @@ class WebhookAlertService:
             # Run ID for restart tracking
             description += f"\n**Run ID:** `{logger.run_id}`"
 
-            # AzabBot-specific stats
+            # AzabBot-specific stats (hidden if zero)
             bot_stats = self._get_bot_stats()
             if bot_stats["active_mutes"] > 0:
                 description += f"\n\n**Prison Stats**"
@@ -363,13 +402,12 @@ class WebhookAlertService:
                 logger.debug(f"Error Alert Skipped (Cooldown): {error_type}, {int(ERROR_THROTTLE_SECONDS - elapsed)}s remaining")
                 return
 
-        logger.warning(f"Sending Error Alert: {error_type} - {error_message[:50]}")
+        # Just log - error webhooks handled by logger.py tree logs
+        logger.warning(f"Error Alert: {error_type}", [
+            ("Message", error_message[:100]),
+            ("Uptime", self._get_uptime()),
+        ])
         self._last_error_time = now
-
-        embed = self._create_status_embed("Error", COLOR_OFFLINE)
-        embed["description"] = f"**Uptime:** {self._get_uptime()}\n\n**Error:** {error_type}\n```{error_message[:500]}```"
-
-        _create_background_task(self._send_webhook(embed, use_error_webhook=True))
 
     async def send_shutdown_alert(self) -> None:
         """Send shutdown alert (awaited)."""
@@ -381,7 +419,7 @@ class WebhookAlertService:
         await self._send_webhook(embed)
 
     async def send_latency_alert(self, latency_ms: int) -> None:
-        """Send high latency alert (10min cooldown)."""
+        """Log high latency alert (10min cooldown)."""
         now = datetime.now(NY_TZ)
         if self._last_latency_alert_time:
             elapsed = (now - self._last_latency_alert_time).total_seconds()
@@ -389,36 +427,26 @@ class WebhookAlertService:
                 logger.debug(f"Latency Alert Skipped (Cooldown): {latency_ms}ms, {int(LATENCY_THROTTLE_SECONDS - elapsed)}s remaining")
                 return
 
-        logger.warning(f"Sending Latency Alert: {latency_ms}ms (threshold: {LATENCY_THRESHOLD_MS}ms)")
+        # Just log - latency alerts handled by tree logs
+        logger.warning("High Latency Alert", [
+            ("Latency", f"{latency_ms}ms"),
+            ("Threshold", f"{LATENCY_THRESHOLD_MS}ms"),
+            ("Uptime", self._get_uptime()),
+        ])
         self._last_latency_alert_time = now
-
-        embed = self._create_status_embed("High Latency", COLOR_WARNING)
-        embed["description"] = (
-            f"**Uptime:** {self._get_uptime()}\n\n"
-            f"**Latency:** `{latency_ms}ms` (threshold: `{LATENCY_THRESHOLD_MS}ms`)\n\n"
-            "Discord connection may be experiencing issues."
-        )
-
-        _create_background_task(self._send_webhook(embed, use_logging_webhook=True))
 
     async def send_recovery_alert(self, recovery_type: str) -> None:
         """
-        Send recovery alert when bot recovers from a degraded state.
+        Log recovery alert when bot recovers from a degraded state.
 
         Args:
             recovery_type: Type of recovery (e.g., "Latency")
         """
-        logger.tree("Sending Recovery Alert", [
+        # Just log - recovery alerts handled by tree logs
+        logger.tree("Recovery Alert", [
             ("Type", recovery_type),
+            ("Uptime", self._get_uptime()),
         ], emoji="💚")
-
-        embed = self._create_status_embed("Recovered", COLOR_ONLINE)
-        embed["description"] = (
-            f"**Uptime:** {self._get_uptime()}\n\n"
-            f"**{recovery_type}** has recovered and is now healthy."
-        )
-
-        _create_background_task(self._send_webhook(embed, use_logging_webhook=True))
 
     def check_latency(self) -> None:
         """Check latency and send alert if too high, or recovery if normalized."""

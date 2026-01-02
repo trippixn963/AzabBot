@@ -103,6 +103,7 @@ INACTIVE_WARNING_DAYS = 3      # Warn after 3 days of inactivity
 INACTIVE_CLOSE_DAYS = 5        # Close after 5 days of inactivity
 DELETE_AFTER_CLOSE_DAYS = 7    # Delete thread 7 days after closing
 MAX_TRANSCRIPT_MESSAGES = 500  # Max messages to include in transcript
+MAX_TRANSCRIPT_USER_LOOKUPS = 15  # Max API calls for unresolved mentions
 
 
 # =============================================================================
@@ -135,6 +136,7 @@ __all__ = [
     "INACTIVE_CLOSE_DAYS",
     "DELETE_AFTER_CLOSE_DAYS",
     "MAX_TRANSCRIPT_MESSAGES",
+    "MAX_TRANSCRIPT_USER_LOOKUPS",
     # Timeouts (from core)
     "TICKET_CREATION_COOLDOWN",
     "AUTO_CLOSE_CHECK_INTERVAL",

@@ -55,6 +55,7 @@ from .views import (
     TicketControlPanelView,
     CloseRequestView,
 )
+from .buttons import UserAddedView, TransferNotificationView
 from .transcript import (
     collect_transcript_messages,
     generate_html_transcript,
@@ -94,6 +95,10 @@ class TicketService:
         self._creation_cooldowns: Dict[int, float] = {}
         self._close_request_cooldowns: Dict[str, float] = {}
         self._pending_deletions: Dict[str, asyncio.Task] = {}
+        self._cache_lookup_count: int = 0  # Counter for periodic cache cleanup
+        # Locks for thread-safe dict access
+        self._cooldowns_lock = asyncio.Lock()
+        self._deletions_lock = asyncio.Lock()
 
     # =========================================================================
     # Properties
@@ -135,10 +140,11 @@ class TicketService:
                 pass
 
         # Cancel pending deletions
-        for task in self._pending_deletions.values():
-            if not task.done():
-                task.cancel()
-        self._pending_deletions.clear()
+        async with self._deletions_lock:
+            for task in self._pending_deletions.values():
+                if not task.done():
+                    task.cancel()
+            self._pending_deletions.clear()
 
         logger.debug("Ticket Service Stopped")
 
@@ -160,10 +166,10 @@ class TicketService:
 
     async def _check_inactive_tickets(self) -> None:
         """Check and handle inactive tickets."""
-        if not self.config.guild_id:
+        if not self.config.logging_guild_id:
             return
 
-        guild_id = self.config.guild_id
+        guild_id = self.config.logging_guild_id
         now = time.time()
         warning_threshold = now - (INACTIVE_WARNING_DAYS * 86400)
         close_threshold = now - (INACTIVE_CLOSE_DAYS * 86400)
@@ -221,7 +227,7 @@ class TicketService:
     async def _auto_close_ticket(self, ticket: dict) -> None:
         """Auto-close an inactive ticket."""
         # Use bot as closer
-        guild = self.bot.get_guild(self.config.guild_id)
+        guild = self.bot.get_guild(self.config.logging_guild_id)
         if not guild:
             return
 
@@ -312,17 +318,27 @@ class TicketService:
 
     async def _get_ticket_thread(self, thread_id: int) -> Optional[discord.Thread]:
         """Get a ticket thread with caching."""
+        now = datetime.now()
+
+        # Periodic cache cleanup (every 50 lookups or when cache is large)
+        self._cache_lookup_count += 1
+        if self._cache_lookup_count >= 50 or len(self._thread_cache) > 100:
+            self._cleanup_thread_cache(now)
+            self._cache_lookup_count = 0
+
         # Check cache
         if thread_id in self._thread_cache:
             thread, cached_at = self._thread_cache[thread_id]
-            if datetime.now() - cached_at < self.THREAD_CACHE_TTL:
+            if now - cached_at < self.THREAD_CACHE_TTL:
                 return thread
+            # Expired entry, remove it
+            self._thread_cache.pop(thread_id, None)
 
         # Fetch thread
         try:
             thread = await self.bot.fetch_channel(thread_id)
             if isinstance(thread, discord.Thread):
-                self._thread_cache[thread_id] = (thread, datetime.now())
+                self._thread_cache[thread_id] = (thread, now)
                 return thread
         except discord.NotFound:
             # Thread deleted, remove from cache
@@ -331,6 +347,21 @@ class TicketService:
             pass
 
         return None
+
+    def _cleanup_thread_cache(self, now: Optional[datetime] = None) -> None:
+        """Remove expired entries from thread cache."""
+        if now is None:
+            now = datetime.now()
+
+        expired_keys = [
+            thread_id for thread_id, (_, cached_at) in self._thread_cache.items()
+            if now - cached_at >= self.THREAD_CACHE_TTL
+        ]
+        for key in expired_keys:
+            self._thread_cache.pop(key, None)
+
+        if expired_keys:
+            logger.debug(f"Cleaned up {len(expired_keys)} expired thread cache entries")
 
     def has_staff_permission(self, member: discord.Member) -> bool:
         """Check if a member has staff permissions."""
@@ -356,19 +387,22 @@ class TicketService:
         if not self.enabled:
             return (False, "Ticket system is not enabled.", None)
 
-        # Check cooldown (skip for staff)
+        # Check cooldown (skip for staff) - atomic check-and-set to prevent race condition
         if not self.has_staff_permission(user):
-            now = time.time()
-            last_created = self._creation_cooldowns.get(user.id, 0)
-            remaining = TICKET_CREATION_COOLDOWN - (now - last_created)
-            if remaining > 0:
-                mins = int(remaining // 60)
-                secs = int(remaining % 60)
-                return (
-                    False,
-                    f"Please wait {mins}m {secs}s before creating another ticket.",
-                    None,
-                )
+            async with self._cooldowns_lock:
+                now = time.time()
+                last_created = self._creation_cooldowns.get(user.id, 0)
+                remaining = TICKET_CREATION_COOLDOWN - (now - last_created)
+                if remaining > 0:
+                    mins = int(remaining // 60)
+                    secs = int(remaining % 60)
+                    return (
+                        False,
+                        f"Please wait {mins}m {secs}s before creating another ticket.",
+                        None,
+                    )
+                # Set cooldown immediately to prevent race condition
+                self._creation_cooldowns[user.id] = now
 
         # Check open ticket limit
         open_count = self.db.get_user_open_ticket_count(user.id, user.guild.id)
@@ -470,13 +504,11 @@ class TicketService:
             else:
                 await thread.send(embed=welcome_embed)
 
-            # Update cooldown
-            self._creation_cooldowns[user.id] = time.time()
-
             logger.tree("Ticket Created", [
                 ("Ticket ID", ticket_id),
                 ("Category", category),
-                ("User", f"{user} ({user.id})"),
+                ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                ("ID", str(user.id)),
                 ("Thread", str(thread.id)),
             ], emoji="🎫")
 
@@ -496,7 +528,8 @@ class TicketService:
         except discord.HTTPException as e:
             logger.error("Ticket Creation Failed", [
                 ("Error", str(e)),
-                ("User", f"{user} ({user.id})"),
+                ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                ("ID", str(user.id)),
             ])
             return (False, f"Failed to create ticket: {e}", None)
 
@@ -505,9 +538,11 @@ class TicketService:
         ticket_id: str,
         closed_by: discord.Member,
         reason: Optional[str] = None,
+        ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
         """Close a ticket."""
-        ticket = self.db.get_ticket(ticket_id)
+        if ticket is None:
+            ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return (False, "Ticket not found.")
 
@@ -531,7 +566,7 @@ class TicketService:
 
         if thread:
             # Collect transcript with mention map
-            transcript_messages, mention_map = await collect_transcript_messages(thread)
+            transcript_messages, mention_map = await collect_transcript_messages(thread, self.bot)
 
             # Save transcript to database
             if transcript_messages and ticket_user:
@@ -552,10 +587,13 @@ class TicketService:
                     logger.error("Failed to save transcript", [("Error", str(e))])
 
             # Update control panel embed with closed_by for thumbnail
-            await self._update_control_panel(ticket_id, thread, closed_by)
+            await self._update_control_panel(ticket_id, thread, closed_by, ticket_user=ticket_user)
 
-            # Send close notification (no buttons)
-            close_embed = build_close_notification(closed_by, reason)
+            # Get staff stats (after close, so count includes this ticket)
+            staff_stats = self.db.get_staff_ticket_stats(closed_by.id, closed_by.guild.id)
+
+            # Send close notification with staff stats
+            close_embed = build_close_notification(closed_by, reason, stats=staff_stats)
             await safe_send(thread, embed=close_embed)
 
             # Archive and lock thread
@@ -565,7 +603,7 @@ class TicketService:
                 pass
 
             # Schedule thread deletion
-            self._schedule_thread_deletion(ticket_id, thread.id)
+            await self._schedule_thread_deletion(ticket_id, thread.id)
 
         # DM the user
         if ticket_user:
@@ -577,20 +615,24 @@ class TicketService:
                     closed_by=closed_by,
                     guild_name=closed_by.guild.name if closed_by.guild else "Server",
                 )
-                dm_view = discord.ui.View()
-                dm_view.add_item(discord.ui.Button(
-                    label="Transcript",
-                    style=discord.ButtonStyle.link,
-                    url=f"https://trippixn.com/api/azab/transcripts/{ticket_id}",
-                    emoji=TRANSCRIPT_EMOJI,
-                ))
-                await ticket_user.send(embed=dm_embed, view=dm_view)
+                if self.config.transcript_base_url:
+                    dm_view = discord.ui.View()
+                    dm_view.add_item(discord.ui.Button(
+                        label="Transcript",
+                        style=discord.ButtonStyle.link,
+                        url=f"{self.config.transcript_base_url}/{ticket_id}",
+                        emoji=TRANSCRIPT_EMOJI,
+                    ))
+                    await ticket_user.send(embed=dm_embed, view=dm_view)
+                else:
+                    await ticket_user.send(embed=dm_embed)
             except (discord.Forbidden, discord.HTTPException):
                 pass
 
         logger.tree("Ticket Closed", [
             ("Ticket ID", ticket_id),
-            ("Closed By", f"{closed_by} ({closed_by.id})"),
+            ("Closed By", f"{closed_by.name} ({closed_by.nick})" if hasattr(closed_by, 'nick') and closed_by.nick else closed_by.name),
+            ("Staff ID", str(closed_by.id)),
             ("Reason", reason or "None"),
         ], emoji="🔒")
 
@@ -626,9 +668,11 @@ class TicketService:
         self,
         ticket_id: str,
         reopened_by: discord.Member,
+        ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
         """Reopen a closed ticket."""
-        ticket = self.db.get_ticket(ticket_id)
+        if ticket is None:
+            ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return (False, "Ticket not found.")
 
@@ -640,7 +684,13 @@ class TicketService:
             return (False, "Failed to reopen ticket.")
 
         # Cancel pending deletion
-        self._cancel_thread_deletion(ticket_id)
+        await self._cancel_thread_deletion(ticket_id)
+
+        # Get ticket user for control panel and logging
+        try:
+            ticket_user = await self.bot.fetch_user(ticket["user_id"])
+        except Exception:
+            ticket_user = None
 
         # Get thread
         thread = await self._get_ticket_thread(ticket["thread_id"])
@@ -652,10 +702,13 @@ class TicketService:
                 pass
 
             # Update control panel
-            await self._update_control_panel(ticket_id, thread)
+            await self._update_control_panel(ticket_id, thread, ticket_user=ticket_user)
 
-            # Send reopen notification
-            reopen_embed = build_reopen_notification(reopened_by)
+            # Get staff stats
+            staff_stats = self.db.get_staff_ticket_stats(reopened_by.id, reopened_by.guild.id)
+
+            # Send reopen notification with staff stats
+            reopen_embed = build_reopen_notification(reopened_by, stats=staff_stats)
             await safe_send(thread, embed=reopen_embed)
 
         logger.tree("Ticket Reopened", [
@@ -664,9 +717,8 @@ class TicketService:
         ], emoji="🔓")
 
         # Log to server logs
-        if hasattr(self.bot, "logging_service") and self.bot.logging_service:
+        if hasattr(self.bot, "logging_service") and self.bot.logging_service and ticket_user:
             try:
-                ticket_user = await self.bot.fetch_user(ticket["user_id"])
                 await self.bot.logging_service.log_ticket_reopened(
                     ticket_id=ticket_id,
                     user=ticket_user,
@@ -684,9 +736,11 @@ class TicketService:
         self,
         ticket_id: str,
         staff: discord.Member,
+        ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
         """Claim a ticket."""
-        ticket = self.db.get_ticket(ticket_id)
+        if ticket is None:
+            ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return (False, "Ticket not found.")
 
@@ -702,20 +756,22 @@ class TicketService:
         if not self.db.claim_ticket(ticket_id, staff.id):
             return (False, "Failed to claim ticket.")
 
-        # Get thread
+        # Get ticket user for notification and control panel
+        try:
+            ticket_user = await self.bot.fetch_user(ticket["user_id"])
+        except Exception:
+            ticket_user = None
+
         thread = await self._get_ticket_thread(ticket["thread_id"])
         if thread:
             # Update control panel
-            await self._update_control_panel(ticket_id, thread)
+            await self._update_control_panel(ticket_id, thread, ticket_user=ticket_user)
 
-            # Get ticket user for notification
-            try:
-                ticket_user = await self.bot.fetch_user(ticket["user_id"])
-            except Exception:
-                ticket_user = None
+            # Get staff ticket stats
+            staff_stats = self.db.get_staff_ticket_stats(staff.id, staff.guild.id)
 
             # Send claim notification with user ping outside embed
-            claim_embed = build_claim_notification(staff)
+            claim_embed = build_claim_notification(staff, stats=staff_stats)
             if ticket_user:
                 await safe_send(thread, content=ticket_user.mention, embed=claim_embed)
             else:
@@ -735,7 +791,8 @@ class TicketService:
 
         logger.tree("Ticket Claimed", [
             ("Ticket ID", ticket_id),
-            ("Claimed By", f"{staff} ({staff.id})"),
+            ("Claimed By", f"{staff.name} ({staff.nick})" if hasattr(staff, 'nick') and staff.nick else staff.name),
+            ("Staff ID", str(staff.id)),
         ], emoji="✋")
 
         # Log to server logs
@@ -760,9 +817,11 @@ class TicketService:
         ticket_id: str,
         user: discord.Member,
         added_by: discord.Member,
+        ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
         """Add a user to a ticket thread."""
-        ticket = self.db.get_ticket(ticket_id)
+        if ticket is None:
+            ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return (False, "Ticket not found.")
 
@@ -780,9 +839,10 @@ class TicketService:
         except discord.HTTPException as e:
             return (False, f"Failed to add user: {e}")
 
-        # Send notification
+        # Send notification with remove button
         add_embed = build_user_added_notification(added_by, user)
-        await safe_send(thread, embed=add_embed)
+        add_view = UserAddedView(ticket_id, user.id)
+        await safe_send(thread, embed=add_embed, view=add_view)
 
         logger.tree("User Added to Ticket", [
             ("Ticket ID", ticket_id),
@@ -812,18 +872,29 @@ class TicketService:
         ticket_id: str,
         new_staff: discord.Member,
         transferred_by: discord.Member,
+        ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
         """Transfer a ticket to another staff member."""
-        ticket = self.db.get_ticket(ticket_id)
+        if ticket is None:
+            ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return (False, "Ticket not found.")
 
         if ticket["status"] == "closed":
             return (False, "Cannot transfer a closed ticket.")
 
-        # Update claimed_by in database
-        if not self.db.claim_ticket(ticket_id, new_staff.id):
+        # Store original claimer for revert button
+        original_claimer_id = ticket.get("claimed_by")
+
+        # Update claimed_by in database (use transfer_ticket, not claim_ticket)
+        if not self.db.transfer_ticket(ticket_id, new_staff.id):
             return (False, "Failed to transfer ticket.")
+
+        # Get ticket user for control panel and logging
+        try:
+            ticket_user = await self.bot.fetch_user(ticket["user_id"])
+        except Exception:
+            ticket_user = None
 
         # Get thread
         thread = await self._get_ticket_thread(ticket["thread_id"])
@@ -835,11 +906,18 @@ class TicketService:
                 pass
 
             # Update control panel
-            await self._update_control_panel(ticket_id, thread)
+            await self._update_control_panel(ticket_id, thread, ticket_user=ticket_user)
 
-            # Send transfer notification
-            transfer_embed = build_transfer_notification(new_staff, transferred_by)
-            await safe_send(thread, embed=transfer_embed)
+            # Get new staff stats
+            new_staff_stats = self.db.get_staff_ticket_stats(new_staff.id, new_staff.guild.id)
+
+            # Send transfer notification with new staff ping, stats, and revert button
+            transfer_embed = build_transfer_notification(new_staff, transferred_by, stats=new_staff_stats)
+            if original_claimer_id:
+                transfer_view = TransferNotificationView(ticket_id, original_claimer_id)
+                await safe_send(thread, content=new_staff.mention, embed=transfer_embed, view=transfer_view)
+            else:
+                await safe_send(thread, content=new_staff.mention, embed=transfer_embed)
 
         logger.tree("Ticket Transferred", [
             ("Ticket ID", ticket_id),
@@ -848,9 +926,8 @@ class TicketService:
         ], emoji="↔️")
 
         # Log to server logs
-        if hasattr(self.bot, "logging_service") and self.bot.logging_service:
+        if hasattr(self.bot, "logging_service") and self.bot.logging_service and ticket_user:
             try:
-                ticket_user = await self.bot.fetch_user(ticket["user_id"])
                 await self.bot.logging_service.log_ticket_transferred(
                     ticket_id=ticket_id,
                     ticket_user=ticket_user,
@@ -869,35 +946,54 @@ class TicketService:
         self,
         ticket_id: str,
         requester: discord.Member,
+        ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
         """Request to close a ticket (for ticket owner)."""
-        ticket = self.db.get_ticket(ticket_id)
+        if ticket is None:
+            ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return (False, "Ticket not found.")
 
         if ticket["status"] == "closed":
             return (False, "Ticket is already closed.")
 
-        # Check cooldown
-        now = time.time()
-        last_request = self._close_request_cooldowns.get(ticket_id, 0)
-        remaining = CLOSE_REQUEST_COOLDOWN - (now - last_request)
-        if remaining > 0:
-            mins = int(remaining // 60)
-            return (False, f"Please wait {mins} minutes before requesting again.")
+        # Check cooldown - atomic check-and-set to prevent race condition
+        async with self._cooldowns_lock:
+            now = time.time()
+            last_request = self._close_request_cooldowns.get(ticket_id, 0)
+            remaining = CLOSE_REQUEST_COOLDOWN - (now - last_request)
+            if remaining > 0:
+                mins = int(remaining // 60)
+                return (False, f"Please wait {mins} minutes before requesting again.")
+            # Set cooldown immediately to prevent race condition
+            self._close_request_cooldowns[ticket_id] = now
 
         # Get thread
         thread = await self._get_ticket_thread(ticket["thread_id"])
         if not thread:
             return (False, "Ticket thread not found.")
 
+        # Determine who to ping
+        # Priority: claimed_by > category-specific > support staff
+        if ticket.get("claimed_by"):
+            ping_content = f"<@{ticket['claimed_by']}>"
+        else:
+            category = ticket.get("category", "support")
+            if category == "partnership" and self.config.ticket_partnership_user_id:
+                ping_content = f"<@{self.config.ticket_partnership_user_id}>"
+            elif category == "suggestion" and self.config.ticket_suggestion_user_id:
+                ping_content = f"<@{self.config.ticket_suggestion_user_id}>"
+            elif self.config.ticket_support_user_ids:
+                ping_content = " ".join(
+                    f"<@{uid}>" for uid in self.config.ticket_support_user_ids
+                )
+            else:
+                ping_content = None
+
         # Send close request embed with approve/deny buttons
         request_embed = build_close_request_embed(requester)
         request_view = CloseRequestView(ticket_id)
-        await thread.send(embed=request_embed, view=request_view)
-
-        # Update cooldown
-        self._close_request_cooldowns[ticket_id] = now
+        await thread.send(content=ping_content, embed=request_embed, view=request_view)
 
         return (True, "Close request sent. A staff member will review it.")
 
@@ -926,7 +1022,7 @@ class TicketService:
         except Exception:
             return (False, "Could not fetch ticket user.", None)
 
-        messages, mention_map = await collect_transcript_messages(thread)
+        messages, mention_map = await collect_transcript_messages(thread, self.bot)
         if not messages:
             return (False, "No messages found in ticket.", None)
 
@@ -949,22 +1045,26 @@ class TicketService:
         ticket_id: str,
         thread: discord.Thread,
         closed_by: Optional[discord.Member] = None,
+        ticket: Optional[dict] = None,
+        ticket_user: Optional[discord.User] = None,
     ) -> None:
         """Update the control panel embed in a ticket thread."""
-        ticket = self.db.get_ticket(ticket_id)
+        if ticket is None:
+            ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return
 
-        # Get ticket user
-        try:
-            ticket_user = await self.bot.fetch_user(ticket["user_id"])
-        except Exception:
-            ticket_user = None
+        # Get ticket user if not passed
+        if ticket_user is None:
+            try:
+                ticket_user = await self.bot.fetch_user(ticket["user_id"])
+            except Exception:
+                ticket_user = None
 
         # Get closed_by member if ticket is closed and not passed
         if ticket["status"] == "closed" and not closed_by and ticket.get("closed_by"):
             try:
-                guild = thread.guild or self.bot.get_guild(self.config.guild_id)
+                guild = thread.guild or self.bot.get_guild(self.config.logging_guild_id)
                 if guild:
                     closed_by = guild.get_member(ticket["closed_by"])
             except Exception:
@@ -1023,9 +1123,9 @@ class TicketService:
     # Thread Deletion
     # =========================================================================
 
-    def _schedule_thread_deletion(self, ticket_id: str, thread_id: int) -> None:
+    async def _schedule_thread_deletion(self, ticket_id: str, thread_id: int) -> None:
         """Schedule a thread for deletion after delay."""
-        self._cancel_thread_deletion(ticket_id)
+        await self._cancel_thread_deletion(ticket_id)
 
         async def delete_after_delay():
             await asyncio.sleep(THREAD_DELETE_DELAY)
@@ -1039,14 +1139,17 @@ class TicketService:
             except Exception as e:
                 logger.error(f"Failed to delete thread: {e}")
             finally:
-                self._pending_deletions.pop(ticket_id, None)
+                async with self._deletions_lock:
+                    self._pending_deletions.pop(ticket_id, None)
 
         task = create_safe_task(delete_after_delay(), f"Delete thread {ticket_id}")
-        self._pending_deletions[ticket_id] = task
+        async with self._deletions_lock:
+            self._pending_deletions[ticket_id] = task
 
-    def _cancel_thread_deletion(self, ticket_id: str) -> None:
+    async def _cancel_thread_deletion(self, ticket_id: str) -> None:
         """Cancel a scheduled thread deletion."""
-        task = self._pending_deletions.pop(ticket_id, None)
+        async with self._deletions_lock:
+            task = self._pending_deletions.pop(ticket_id, None)
         if task and not task.done():
             task.cancel()
 

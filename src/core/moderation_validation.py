@@ -128,7 +128,8 @@ def validate_self_action(
     if target.id == moderator.id:
         logger.tree(f"{action.upper()} BLOCKED", [
             ("Reason", "Self-action attempt"),
-            ("Moderator", f"{moderator} ({moderator.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
+            ("Mod ID", str(moderator.id)),
         ], emoji="🚫")
         return ValidationResult(
             is_valid=False,
@@ -183,8 +184,10 @@ def validate_target_not_bot(
     if target.bot and not is_developer(moderator.id):
         logger.tree(f"{action.upper()} BLOCKED", [
             ("Reason", "Target is a bot"),
-            ("Moderator", f"{moderator} ({moderator.id})"),
-            ("Target", f"{target} ({target.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
+            ("Mod ID", str(moderator.id)),
+            ("Target", f"{target.name} ({target.nick})" if hasattr(target, 'nick') and target.nick else target.name),
+            ("Target ID", str(target.id)),
         ], emoji="🚫")
         return ValidationResult(
             is_valid=False,
@@ -228,9 +231,11 @@ def validate_role_hierarchy(
     if target.top_role >= moderator.top_role:
         logger.tree(f"{action.upper()} BLOCKED", [
             ("Reason", "Role hierarchy"),
-            ("Moderator", f"{moderator} ({moderator.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
+            ("Mod ID", str(moderator.id)),
             ("Mod Role", moderator.top_role.name),
-            ("Target", f"{target} ({target.id})"),
+            ("Target", f"{target.name} ({target.nick})" if hasattr(target, 'nick') and target.nick else target.name),
+            ("Target ID", str(target.id)),
             ("Target Role", target.top_role.name),
         ], emoji="🚫")
         return ValidationResult(
@@ -290,8 +295,10 @@ def validate_management_protection(
     if target_has_management and mod_has_management:
         logger.tree(f"{action.upper()} BLOCKED", [
             ("Reason", "Management protection"),
-            ("Moderator", f"{moderator} ({moderator.id})"),
-            ("Target", f"{target} ({target.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
+            ("Mod ID", str(moderator.id)),
+            ("Target", f"{target.name} ({target.nick})" if hasattr(target, 'nick') and target.nick else target.name),
+            ("Target ID", str(target.id)),
         ], emoji="🚫")
         return ValidationResult(
             is_valid=False,

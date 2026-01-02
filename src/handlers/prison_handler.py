@@ -102,9 +102,21 @@ class PrisonHandler:
         5. Record mute in database
         """
         try:
+            # Calculate account age
+            now = datetime.now(NY_TZ)
+            created = member.created_at.replace(tzinfo=timezone.utc) if member.created_at.tzinfo is None else member.created_at
+            age_days = (now - created).days
+            if age_days < 30:
+                account_age = f"{age_days}d"
+            elif age_days < 365:
+                account_age = f"{age_days // 30}mo"
+            else:
+                account_age = f"{age_days // 365}y {(age_days % 365) // 30}mo"
+
             logger.tree("Processing New Prisoner", [
-                ("User", str(member)),
-                ("User ID", str(member.id)),
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
+                ("Account Age", account_age),
             ], emoji="⛓️")
 
             # Handle VC kick with progressive timeout
@@ -346,7 +358,11 @@ class PrisonHandler:
             ], emoji="🔇")
 
         except discord.Forbidden:
-            logger.warning(f"VC Kick Failed (Permissions): {member}")
+            logger.warning("VC Kick Failed (Permissions)", [
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
+                ("VC", vc_name),
+            ])
 
     # =========================================================================
     # Helper Methods
@@ -382,7 +398,12 @@ class PrisonHandler:
             await channel.send(member.mention, embed=embed)
 
         except Exception as e:
-            logger.warning(f"Mute Notification Failed: {e}")
+            logger.warning("Mute Notification Failed", [
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
+                ("Channel", f"#{channel.name}"),
+                ("Error", str(e)[:50]),
+            ])
 
     async def _scan_logs_for_reason(
         self,
@@ -399,7 +420,11 @@ class PrisonHandler:
                     if member.id in self.mute_reasons or member.name.lower() in self.mute_reasons:
                         break
         except Exception as e:
-            logger.warning(f"Log Scan Failed: {e}")
+            logger.warning("Log Scan Failed", [
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("ID", str(member.id)),
+                ("Error", str(e)[:50]),
+            ])
 
     # =========================================================================
     # Cleanup Tasks

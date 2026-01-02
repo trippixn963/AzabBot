@@ -13,7 +13,7 @@ Server: discord.gg/syria
 """
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import discord
 from discord.ext import commands
@@ -37,12 +37,19 @@ if TYPE_CHECKING:
 
 
 def _is_ticket_staff(user: discord.Member) -> bool:
-    """Check if user is ticket staff (has manage_messages OR is developer)."""
+    """Check if user is ticket staff (configured staff, has manage_messages, OR is developer)."""
     config = get_config()
     # Developer can always access
     if config.developer_id and user.id == config.developer_id:
         return True
-    # Check for manage_messages permission
+    # Check if user is in configured ticket staff
+    if config.ticket_support_user_ids and user.id in config.ticket_support_user_ids:
+        return True
+    if config.ticket_partnership_user_id and user.id == config.ticket_partnership_user_id:
+        return True
+    if config.ticket_suggestion_user_id and user.id == config.ticket_suggestion_user_id:
+        return True
+    # Fallback: check for manage_messages permission
     return user.guild_permissions.manage_messages
 
 
@@ -58,7 +65,7 @@ class ClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clai
         super().__init__(
             discord.ui.Button(
                 label="Claim",
-                style=discord.ButtonStyle.primary,
+                style=discord.ButtonStyle.secondary,
                 custom_id=f"tkt_claim:{ticket_id}",
                 emoji=APPROVE_EMOJI,
             )
@@ -107,11 +114,21 @@ class ClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clai
         success, message = await bot.ticket_service.claim_ticket(
             ticket_id=self.ticket_id,
             staff=interaction.user,
+            ticket=ticket,
         )
 
         if success:
-            await interaction.followup.send(f"✅ {message}", ephemeral=True)
+            logger.tree("Ticket Claimed (Button)", [
+                ("Ticket ID", self.ticket_id),
+                ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+            ], emoji="✋")
+            # No ephemeral message - the channel embed is sufficient
         else:
+            logger.tree("Ticket Claim Failed (Button)", [
+                ("Ticket ID", self.ticket_id),
+                ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Reason", message),
+            ], emoji="❌")
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 
@@ -127,7 +144,7 @@ class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clos
         super().__init__(
             discord.ui.Button(
                 label="Close",
-                style=discord.ButtonStyle.danger,
+                style=discord.ButtonStyle.secondary,
                 custom_id=f"tkt_close:{ticket_id}",
                 emoji=LOCK_EMOJI,
             )
@@ -167,6 +184,10 @@ class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clos
 
         if is_staff:
             # Staff can close directly with modal
+            logger.tree("Ticket Close Modal Opened", [
+                ("Ticket ID", self.ticket_id),
+                ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+            ], emoji="🔒")
             await interaction.response.send_modal(TicketCloseModal(self.ticket_id))
         elif is_ticket_owner:
             # User requests close, needs staff approval
@@ -174,10 +195,20 @@ class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clos
             success, message = await bot.ticket_service.request_close(
                 ticket_id=self.ticket_id,
                 requester=interaction.user,
+                ticket=ticket,
             )
             if success:
-                await interaction.followup.send(f"✅ {message}", ephemeral=True)
+                logger.tree("Close Request Sent", [
+                    ("Ticket ID", self.ticket_id),
+                    ("Requester", f"{interaction.user.name} ({interaction.user.id})"),
+                ], emoji="📝")
+                # No ephemeral message - the channel embed with ping is sufficient
             else:
+                logger.tree("Close Request Failed", [
+                    ("Ticket ID", self.ticket_id),
+                    ("Requester", f"{interaction.user.name} ({interaction.user.id})"),
+                    ("Reason", message),
+                ], emoji="❌")
                 await interaction.followup.send(f"❌ {message}", ephemeral=True)
         else:
             await interaction.response.send_message(
@@ -238,6 +269,237 @@ class AddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_ad
 
 
 # =============================================================================
+# Remove User Button
+# =============================================================================
+
+class RemoveUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_rmuser:(?P<ticket_id>T\d+):(?P<user_id>\d+)"):
+    """Button to remove a user from the ticket thread."""
+
+    def __init__(self, ticket_id: str, user_id: int = 0):
+        self.ticket_id = ticket_id
+        self.user_id = user_id
+        super().__init__(
+            discord.ui.Button(
+                label="Remove",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"tkt_rmuser:{ticket_id}:{user_id}",
+                emoji=DENY_EMOJI,
+            )
+        )
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match: re.Match[str],
+    ) -> "RemoveUserButton":
+        return cls(match.group("ticket_id"), int(match.group("user_id")))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        bot: "AzabBot" = interaction.client
+        if not hasattr(bot, "ticket_service") or not bot.ticket_service:
+            await interaction.response.send_message(
+                "Ticket system is not available.",
+                ephemeral=True,
+            )
+            return
+
+        # Check if user has staff permissions
+        if not _is_ticket_staff(interaction.user):
+            await interaction.response.send_message(
+                "Only staff can remove users from tickets.",
+                ephemeral=True,
+            )
+            return
+
+        ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
+        if not ticket:
+            await interaction.response.send_message(
+                "Ticket not found.",
+                ephemeral=True,
+            )
+            return
+
+        if ticket["status"] == "closed":
+            await interaction.response.send_message(
+                "Cannot remove users from a closed ticket.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        # Get the thread and remove the user
+        thread = await bot.ticket_service._get_ticket_thread(ticket["thread_id"])
+        if not thread:
+            await interaction.followup.send("Ticket thread not found.", ephemeral=True)
+            return
+
+        # Get the member to remove
+        member = interaction.guild.get_member(self.user_id)
+        if not member:
+            await interaction.followup.send("User not found in server.", ephemeral=True)
+            return
+
+        try:
+            await thread.remove_user(member)
+            logger.tree("User Removed from Ticket", [
+                ("Ticket ID", self.ticket_id),
+                ("Removed User", f"{member.name} ({member.id})"),
+                ("Removed By", f"{interaction.user.name} ({interaction.user.id})"),
+            ], emoji="👤")
+
+            # Edit the embed to show user was removed
+            try:
+                from src.core.config import EmbedColors
+                from src.utils.footer import set_footer
+
+                removed_embed = discord.Embed(
+                    description=f"👤 ~~{member.mention}~~ was removed from this ticket by {interaction.user.mention}.",
+                    color=EmbedColors.GOLD,
+                )
+                set_footer(removed_embed)
+                await interaction.message.edit(embed=removed_embed, view=None)
+            except discord.HTTPException:
+                pass
+
+        except discord.HTTPException as e:
+            logger.error("Failed to remove user from ticket", [
+                ("Ticket ID", self.ticket_id),
+                ("User ID", str(self.user_id)),
+                ("Error", str(e)),
+            ])
+            await interaction.followup.send(f"Failed to remove user: {e}", ephemeral=True)
+
+
+class UserAddedView(discord.ui.View):
+    """View with remove button for user added notification."""
+
+    def __init__(self, ticket_id: str, user_id: int):
+        super().__init__(timeout=None)
+        self.add_item(RemoveUserButton(ticket_id, user_id).item)
+
+
+# =============================================================================
+# Revert Transfer Button
+# =============================================================================
+
+REVERT_EMOJI = discord.PartialEmoji(name="unmute", id=1452964296572272703)
+
+
+class RevertTransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_revert:(?P<ticket_id>T\d+):(?P<original_staff_id>\d+)"):
+    """Button to revert a ticket transfer back to the original staff member."""
+
+    def __init__(self, ticket_id: str, original_staff_id: int = 0):
+        self.ticket_id = ticket_id
+        self.original_staff_id = original_staff_id
+        super().__init__(
+            discord.ui.Button(
+                label="Revert",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"tkt_revert:{ticket_id}:{original_staff_id}",
+                emoji=REVERT_EMOJI,
+            )
+        )
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match: re.Match[str],
+    ) -> "RevertTransferButton":
+        return cls(match.group("ticket_id"), int(match.group("original_staff_id")))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        bot: "AzabBot" = interaction.client
+        if not hasattr(bot, "ticket_service") or not bot.ticket_service:
+            await interaction.response.send_message(
+                "Ticket system is not available.",
+                ephemeral=True,
+            )
+            return
+
+        # Check if user has staff permissions
+        if not _is_ticket_staff(interaction.user):
+            await interaction.response.send_message(
+                "Only staff can revert transfers.",
+                ephemeral=True,
+            )
+            return
+
+        ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
+        if not ticket:
+            await interaction.response.send_message(
+                "Ticket not found.",
+                ephemeral=True,
+            )
+            return
+
+        if ticket["status"] == "closed":
+            await interaction.response.send_message(
+                "Cannot revert transfer on a closed ticket.",
+                ephemeral=True,
+            )
+            return
+
+        # Get the original staff member
+        original_staff = interaction.guild.get_member(self.original_staff_id)
+        if not original_staff:
+            await interaction.response.send_message(
+                "Original staff member not found in server.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        # Transfer back to original staff
+        success, message = await bot.ticket_service.transfer_ticket(
+            ticket_id=self.ticket_id,
+            new_staff=original_staff,
+            transferred_by=interaction.user,
+            ticket=ticket,
+        )
+
+        if success:
+            logger.tree("Transfer Reverted", [
+                ("Ticket ID", self.ticket_id),
+                ("Reverted To", f"{original_staff.name} ({original_staff.id})"),
+                ("Reverted By", f"{interaction.user.name} ({interaction.user.id})"),
+            ], emoji="↩️")
+            # Edit the message to show transfer was reverted
+            try:
+                from src.core.config import EmbedColors
+                from src.utils.footer import set_footer
+
+                reverted_embed = discord.Embed(
+                    description=f"↩️ Transfer reverted to {original_staff.mention} by {interaction.user.mention}.",
+                    color=EmbedColors.GOLD,
+                )
+                set_footer(reverted_embed)
+                await interaction.message.edit(content=None, embed=reverted_embed, view=None)
+            except discord.HTTPException:
+                pass
+        else:
+            logger.tree("Transfer Revert Failed", [
+                ("Ticket ID", self.ticket_id),
+                ("Original Staff", f"{original_staff.name} ({original_staff.id})"),
+                ("Reason", message),
+            ], emoji="❌")
+            await interaction.followup.send(f"❌ {message}", ephemeral=True)
+
+
+class TransferNotificationView(discord.ui.View):
+    """View with revert button for transfer notification."""
+
+    def __init__(self, ticket_id: str, original_staff_id: int):
+        super().__init__(timeout=None)
+        self.add_item(RevertTransferButton(ticket_id, original_staff_id).item)
+
+
+# =============================================================================
 # Reopen Button
 # =============================================================================
 
@@ -249,7 +511,7 @@ class ReopenButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_reo
         super().__init__(
             discord.ui.Button(
                 label="Reopen",
-                style=discord.ButtonStyle.success,
+                style=discord.ButtonStyle.secondary,
                 custom_id=f"tkt_reopen:{ticket_id}",
                 emoji=UNLOCK_EMOJI,
             )
@@ -289,8 +551,17 @@ class ReopenButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_reo
         )
 
         if success:
-            await interaction.followup.send(f"✅ {message}", ephemeral=True)
+            logger.tree("Ticket Reopened (Button)", [
+                ("Ticket ID", self.ticket_id),
+                ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+            ], emoji="🔓")
+            # No ephemeral message - the channel embed is sufficient
         else:
+            logger.tree("Ticket Reopen Failed (Button)", [
+                ("Ticket ID", self.ticket_id),
+                ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Reason", message),
+            ], emoji="❌")
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 
@@ -348,11 +619,19 @@ class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt
             return
 
         # Send link button to open transcript in browser (works on mobile)
+        config = get_config()
+        if not config.transcript_base_url:
+            await interaction.response.send_message(
+                "❌ Transcript viewer is not configured.",
+                ephemeral=True,
+            )
+            return
+
         view = discord.ui.View()
         view.add_item(discord.ui.Button(
             label="Transcript",
             style=discord.ButtonStyle.link,
-            url=f"https://trippixn.com/api/azab/transcripts/{self.ticket_id}",
+            url=f"{config.transcript_base_url}/{self.ticket_id}",
             emoji=TRANSCRIPT_EMOJI,
         ))
 
@@ -428,6 +707,10 @@ class InfoSelectView(discord.ui.View):
         self.ticket_id = ticket_id
         self.user_id = user_id
         self.guild_id = guild_id
+        # Cache to avoid duplicate queries
+        self._user_cache: Optional[discord.User] = None
+        self._cases_cache: Optional[list] = None
+        self._tickets_cache: Optional[list] = None
 
     @discord.ui.select(
         placeholder="Choose info type...",
@@ -486,11 +769,13 @@ class InfoSelectView(discord.ui.View):
         from src.utils.footer import set_footer
         from datetime import datetime, timezone
 
-        # Fetch user
-        try:
-            user = await bot.fetch_user(self.user_id)
-        except Exception:
-            user = None
+        # Fetch user (use cache if available)
+        if self._user_cache is None:
+            try:
+                self._user_cache = await bot.fetch_user(self.user_id)
+            except Exception:
+                pass
+        user = self._user_cache
 
         # Get member for join date
         member = guild.get_member(self.user_id) if guild else None
@@ -562,8 +847,10 @@ class InfoSelectView(discord.ui.View):
                 inline=True,
             )
 
-        # Ticket Stats
-        ticket_history = bot.ticket_service.db.get_user_tickets(self.user_id, self.guild_id)
+        # Ticket Stats (use cache if available)
+        if self._tickets_cache is None:
+            self._tickets_cache = bot.ticket_service.db.get_user_tickets(self.user_id, self.guild_id) or []
+        ticket_history = self._tickets_cache
         if ticket_history:
             total = len(ticket_history)
             open_count = sum(1 for t in ticket_history if t["status"] == "open")
@@ -584,8 +871,10 @@ class InfoSelectView(discord.ui.View):
                 inline=True,
             )
 
-        # Mod Stats Summary
-        cases = bot.ticket_service.db.get_user_cases(self.user_id, self.guild_id, limit=100)
+        # Mod Stats Summary (use cache if available)
+        if self._cases_cache is None:
+            self._cases_cache = bot.ticket_service.db.get_user_cases(self.user_id, self.guild_id, limit=100) or []
+        cases = self._cases_cache
         if cases:
             warns = sum(1 for c in cases if c.get("action_type") == "warn")
             mutes = sum(1 for c in cases if c.get("action_type") == "mute")
@@ -610,12 +899,18 @@ class InfoSelectView(discord.ui.View):
         from src.core.config import EmbedColors
         from src.utils.footer import set_footer
 
-        # Fetch user for thumbnail
-        try:
-            user = await bot.fetch_user(self.user_id)
+        # Fetch user for thumbnail (use cache if available)
+        if self._user_cache is None:
+            try:
+                self._user_cache = await bot.fetch_user(self.user_id)
+            except Exception:
+                pass
+
+        user = self._user_cache
+        if user:
             user_display = f"{user.mention} (`{user.name}`)"
             avatar_url = user.display_avatar.url
-        except Exception:
+        else:
             user_display = f"<@{self.user_id}>"
             avatar_url = None
 
@@ -633,8 +928,10 @@ class InfoSelectView(discord.ui.View):
             inline=False,
         )
 
-        # Get all cases
-        cases = bot.ticket_service.db.get_user_cases(self.user_id, self.guild_id, limit=25)
+        # Get all cases (use cache if available - already has 100 limit from user info)
+        if self._cases_cache is None:
+            self._cases_cache = bot.ticket_service.db.get_user_cases(self.user_id, self.guild_id, limit=100) or []
+        cases = self._cases_cache[:25]  # Only show 25 in criminal history
 
         if not cases:
             embed.description = "✅ No moderation history found. Clean record!"
@@ -828,7 +1125,7 @@ class TransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_t
             return
 
         # Show select for transfer
-        view = TransferSelectView(self.ticket_id, options)
+        view = TransferSelectView(self.ticket_id, options, ticket)
         await interaction.response.send_message(
             "Select a staff member to transfer this ticket to:",
             view=view,
@@ -839,9 +1136,10 @@ class TransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_t
 class TransferSelectView(discord.ui.View):
     """View with select for ticket transfer."""
 
-    def __init__(self, ticket_id: str, options: list):
+    def __init__(self, ticket_id: str, options: list, ticket: dict):
         super().__init__(timeout=60)
         self.ticket_id = ticket_id
+        self.ticket = ticket
 
         # Add the select with options
         select = discord.ui.Select(
@@ -872,12 +1170,24 @@ class TransferSelectView(discord.ui.View):
             ticket_id=self.ticket_id,
             new_staff=target,
             transferred_by=interaction.user,
+            ticket=self.ticket,
         )
 
         if success:
-            await interaction.followup.send(f"✅ {message}", ephemeral=True)
+            logger.tree("Ticket Transferred", [
+                ("Ticket ID", self.ticket_id),
+                ("From", f"{interaction.user.name} ({interaction.user.id})"),
+                ("To", f"{target.name} ({target.id})"),
+            ], emoji="🔄")
+            # No ephemeral message - the channel embed is sufficient
             self.stop()
         else:
+            logger.tree("Ticket Transfer Failed", [
+                ("Ticket ID", self.ticket_id),
+                ("From", f"{interaction.user.name} ({interaction.user.id})"),
+                ("To", f"{target.name} ({target.id})"),
+                ("Reason", message),
+            ], emoji="❌")
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 
@@ -894,7 +1204,7 @@ class CloseApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"t
         super().__init__(
             discord.ui.Button(
                 label="Approve",
-                style=discord.ButtonStyle.success,
+                style=discord.ButtonStyle.secondary,
                 custom_id=f"tkt_cr_accept:{ticket_id}:{requester_id}",
                 emoji=APPROVE_EMOJI,
             )
@@ -935,17 +1245,26 @@ class CloseApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"t
         )
 
         if success:
-            # Edit the close request message to show it was approved
+            logger.tree("Close Request Approved", [
+                ("Ticket ID", self.ticket_id),
+                ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Requester ID", str(self.requester_id)),
+            ], emoji="✅")
+            # Delete the close request message (close notification embed is sent by close_ticket)
             try:
-                await interaction.message.edit(
-                    content=f"✅ Close request approved by {interaction.user.mention}",
-                    embed=None,
-                    view=None,
-                )
-            except Exception:
-                pass
-            await interaction.followup.send(f"✅ {message}", ephemeral=True)
+                await interaction.message.delete()
+            except discord.HTTPException as e:
+                logger.warning("Failed to delete close request message", [
+                    ("Ticket ID", self.ticket_id),
+                    ("Error", str(e)),
+                ])
+            # No ephemeral message - the channel close embed is sufficient
         else:
+            logger.tree("Close Request Approve Failed", [
+                ("Ticket ID", self.ticket_id),
+                ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Reason", message),
+            ], emoji="❌")
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 
@@ -958,7 +1277,7 @@ class CloseDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_
         super().__init__(
             discord.ui.Button(
                 label="Deny",
-                style=discord.ButtonStyle.danger,
+                style=discord.ButtonStyle.secondary,
                 custom_id=f"tkt_cr_deny:{ticket_id}:{requester_id}",
                 emoji=DENY_EMOJI,
             )
@@ -992,20 +1311,64 @@ class CloseDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_
 
         await interaction.response.defer(ephemeral=True)
 
-        # Clear close request cooldown
-        bot.ticket_service._close_request_cooldowns.pop(self.ticket_id, None)
+        # Clear close request cooldown (use lock for thread safety)
+        async with bot.ticket_service._cooldowns_lock:
+            bot.ticket_service._close_request_cooldowns.pop(self.ticket_id, None)
 
-        # Edit the close request message to show it was denied
+        logger.tree("Close Request Denied", [
+            ("Ticket ID", self.ticket_id),
+            ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Requester ID", str(self.requester_id)),
+        ], emoji="❌")
+
+        # Get staff stats for the embed
+        staff_stats = bot.ticket_service.db.get_staff_ticket_stats(
+            interaction.user.id, interaction.guild.id
+        )
+
+        # Build deny embed with staff stats
+        from src.core.config import EmbedColors
+        from src.utils.footer import set_footer
+        deny_embed = discord.Embed(
+            description=f"❌ Close request denied by {interaction.user.mention}.\n\nThe ticket will remain open.",
+            color=EmbedColors.GOLD,
+        )
+        deny_embed.set_thumbnail(url=interaction.user.display_avatar.url)
+
+        if staff_stats:
+            deny_embed.add_field(
+                name="Tickets Claimed",
+                value=f"`{staff_stats.get('claimed', 0)}`",
+                inline=True,
+            )
+            deny_embed.add_field(
+                name="Tickets Closed",
+                value=f"`{staff_stats.get('closed', 0)}`",
+                inline=True,
+            )
+
+        if interaction.user.joined_at:
+            deny_embed.add_field(
+                name="Staff Since",
+                value=f"<t:{int(interaction.user.joined_at.timestamp())}:D>",
+                inline=True,
+            )
+
+        set_footer(deny_embed)
+
+        # Edit the close request message with the rich embed
         try:
             await interaction.message.edit(
-                content=f"❌ Close request denied by {interaction.user.mention}",
-                embed=None,
+                content=None,
+                embed=deny_embed,
                 view=None,
             )
-        except Exception:
-            pass
-
-        await interaction.followup.send("Close request denied.", ephemeral=True)
+        except discord.HTTPException as e:
+            logger.warning("Failed to edit close request message", [
+                ("Ticket ID", self.ticket_id),
+                ("Error", str(e)),
+            ])
+        # No ephemeral message needed - the embed is visible in the channel
 
 
 # =============================================================================
@@ -1018,6 +1381,8 @@ def setup_ticket_buttons(bot: commands.Bot) -> None:
         ClaimButton,
         CloseButton,
         AddUserButton,
+        RemoveUserButton,
+        RevertTransferButton,
         ReopenButton,
         TranscriptButton,
         InfoButton,
@@ -1026,5 +1391,5 @@ def setup_ticket_buttons(bot: commands.Bot) -> None:
         CloseDenyButton,
     )
     logger.tree("Ticket Buttons Registered", [
-        ("Buttons", "Claim, Close, AddUser, Reopen, Transcript, Info, Transfer, CloseApprove, CloseDeny"),
+        ("Buttons", "Claim, Close, AddUser, RemoveUser, RevertTransfer, Reopen, Transcript, Info, Transfer, CloseApprove, CloseDeny"),
     ], emoji="🎫")

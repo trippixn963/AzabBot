@@ -18,7 +18,6 @@ from src.utils.footer import set_footer
 
 from .constants import (
     TICKET_CATEGORIES,
-    STATUS_EMOJI,
     STATUS_COLOR,
 )
 
@@ -50,12 +49,6 @@ def build_control_panel_embed(
     category = ticket.get("category", "support")
     cat_info = TICKET_CATEGORIES.get(category, TICKET_CATEGORIES["support"])
 
-    # Build status display with all states
-    status_display = " → ".join([
-        f"**{STATUS_EMOJI[s]} {s.title()}**" if s == status else f"{STATUS_EMOJI[s]} {s.title()}"
-        for s in ["open", "claimed", "closed"]
-    ])
-
     embed = discord.Embed(
         title="🎫 Ticket Control Panel",
         color=STATUS_COLOR.get(status, EmbedColors.GREEN),
@@ -65,15 +58,10 @@ def build_control_panel_embed(
     if status == "closed" and closed_by:
         embed.set_thumbnail(url=closed_by.display_avatar.url)
 
-    # Row 1: Ticket ID, Status, Category
+    # Row 1: Ticket ID, Category
     embed.add_field(
         name="Ticket",
         value=f"`#{ticket['ticket_id']}`",
-        inline=True,
-    )
-    embed.add_field(
-        name="Status",
-        value=status_display,
         inline=True,
     )
     embed.add_field(
@@ -171,6 +159,7 @@ def build_welcome_embed(
 
 def build_claim_notification(
     staff: discord.Member,
+    stats: Optional[dict] = None,
 ) -> discord.Embed:
     """Build notification when ticket is claimed."""
     embed = discord.Embed(
@@ -178,6 +167,30 @@ def build_claim_notification(
         color=EmbedColors.GOLD,
     )
     embed.set_thumbnail(url=staff.display_avatar.url)
+
+    # Add staff stats if provided
+    if stats:
+        claimed = stats.get("claimed", 0)
+        closed = stats.get("closed", 0)
+        embed.add_field(
+            name="Tickets Claimed",
+            value=f"`{claimed}`",
+            inline=True,
+        )
+        embed.add_field(
+            name="Tickets Closed",
+            value=f"`{closed}`",
+            inline=True,
+        )
+
+    # Add join date
+    if staff.joined_at:
+        embed.add_field(
+            name="Staff Since",
+            value=f"<t:{int(staff.joined_at.timestamp())}:D>",
+            inline=True,
+        )
+
     set_footer(embed)
     return embed
 
@@ -185,30 +198,83 @@ def build_claim_notification(
 def build_close_notification(
     closed_by: discord.Member,
     reason: Optional[str] = None,
+    stats: Optional[dict] = None,
 ) -> discord.Embed:
     """Build notification when ticket is closed."""
+    import time
+    from .constants import DELETE_AFTER_CLOSE_DAYS
+
+    # Calculate deletion timestamp (7 days from now)
+    deletion_timestamp = int(time.time()) + (DELETE_AFTER_CLOSE_DAYS * 86400)
+
     description = f"🔒 This ticket has been closed by {closed_by.mention}."
     if reason:
         description += f"\n\n**Reason:** {reason}"
+    description += f"\n\n🗑️ This thread will be deleted <t:{deletion_timestamp}:F>"
 
     embed = discord.Embed(
         description=description,
         color=EmbedColors.GOLD,
     )
     embed.set_thumbnail(url=closed_by.display_avatar.url)
+
+    # Add staff stats if provided
+    if stats:
+        embed.add_field(
+            name="Tickets Claimed",
+            value=f"`{stats.get('claimed', 0)}`",
+            inline=True,
+        )
+        embed.add_field(
+            name="Tickets Closed",
+            value=f"`{stats.get('closed', 0)}`",
+            inline=True,
+        )
+
+    # Add join date
+    if closed_by.joined_at:
+        embed.add_field(
+            name="Staff Since",
+            value=f"<t:{int(closed_by.joined_at.timestamp())}:D>",
+            inline=True,
+        )
+
     set_footer(embed)
     return embed
 
 
 def build_reopen_notification(
     reopened_by: discord.Member,
+    stats: Optional[dict] = None,
 ) -> discord.Embed:
     """Build notification when ticket is reopened."""
     embed = discord.Embed(
         description=f"🔓 This ticket has been reopened by {reopened_by.mention}.",
-        color=EmbedColors.GREEN,
+        color=EmbedColors.GOLD,
     )
     embed.set_thumbnail(url=reopened_by.display_avatar.url)
+
+    # Add staff stats if provided
+    if stats:
+        embed.add_field(
+            name="Tickets Claimed",
+            value=f"`{stats.get('claimed', 0)}`",
+            inline=True,
+        )
+        embed.add_field(
+            name="Tickets Closed",
+            value=f"`{stats.get('closed', 0)}`",
+            inline=True,
+        )
+
+    # Add join date
+    if reopened_by.joined_at:
+        embed.add_field(
+            name="Staff Since",
+            value=f"<t:{int(reopened_by.joined_at.timestamp())}:D>",
+            inline=True,
+        )
+
     set_footer(embed)
     return embed
 
@@ -223,6 +289,30 @@ def build_user_added_notification(
         color=EmbedColors.GOLD,
     )
     embed.set_thumbnail(url=added_user.display_avatar.url)
+
+    # User info
+    embed.add_field(
+        name="User",
+        value=f"{added_user.mention}\n`{added_user.name}`",
+        inline=True,
+    )
+
+    # Account created
+    if added_user.created_at:
+        embed.add_field(
+            name="Account Created",
+            value=f"<t:{int(added_user.created_at.timestamp())}:D>",
+            inline=True,
+        )
+
+    # Joined server
+    if added_user.joined_at:
+        embed.add_field(
+            name="Joined Server",
+            value=f"<t:{int(added_user.joined_at.timestamp())}:D>",
+            inline=True,
+        )
+
     set_footer(embed)
     return embed
 
@@ -230,6 +320,7 @@ def build_user_added_notification(
 def build_transfer_notification(
     new_staff: discord.Member,
     transferred_by: discord.Member,
+    stats: Optional[dict] = None,
 ) -> discord.Embed:
     """Build notification when ticket is transferred."""
     embed = discord.Embed(
@@ -237,6 +328,28 @@ def build_transfer_notification(
         color=EmbedColors.GOLD,
     )
     embed.set_thumbnail(url=new_staff.display_avatar.url)
+
+    # Add new staff stats if provided
+    if stats:
+        embed.add_field(
+            name="Tickets Claimed",
+            value=f"`{stats.get('claimed', 0)}`",
+            inline=True,
+        )
+        embed.add_field(
+            name="Tickets Closed",
+            value=f"`{stats.get('closed', 0)}`",
+            inline=True,
+        )
+
+    # Add new staff join date
+    if new_staff.joined_at:
+        embed.add_field(
+            name="Staff Since",
+            value=f"<t:{int(new_staff.joined_at.timestamp())}:D>",
+            inline=True,
+        )
+
     set_footer(embed)
     return embed
 

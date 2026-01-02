@@ -74,22 +74,25 @@ class TicketCreateModal(discord.ui.Modal, title="Create Ticket"):
             )
 
             if success:
-                # Log to interaction webhook
-                if hasattr(bot, "interaction_logger") and bot.interaction_logger and ticket_id:
-                    ticket = bot.ticket_service.db.get_ticket(ticket_id)
-                    thread_id = ticket["thread_id"] if ticket else 0
-                    guild_id = interaction.guild.id if interaction.guild else 0
-                    await bot.interaction_logger.log_ticket_created(
-                        interaction.user, ticket_id, self.category, self.subject.value,
-                        thread_id, guild_id
-                    )
+                logger.tree("Ticket Created (Modal)", [
+                    ("Ticket ID", ticket_id),
+                    ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                    ("Category", self.category),
+                    ("Subject", self.subject.value[:50]),
+                ], emoji="🎫")
                 await interaction.followup.send(f"✅ {message}", ephemeral=True)
             else:
+                logger.tree("Ticket Creation Failed (Modal)", [
+                    ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                    ("Category", self.category),
+                    ("Reason", message),
+                ], emoji="❌")
                 await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
         except Exception as e:
             logger.error("Ticket Creation Modal Failed", [
-                ("User", f"{interaction.user} ({interaction.user.id})"),
+                ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("ID", str(interaction.user.id)),
                 ("Category", self.category),
                 ("Error", str(e)),
             ])
@@ -104,11 +107,18 @@ class TicketCreateModal(discord.ui.Modal, title="Create Ticket"):
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         """Handle modal errors."""
         logger.error("Ticket Modal Error", [
-            ("User", f"{interaction.user} ({interaction.user.id})"),
+            ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("ID", str(interaction.user.id)),
             ("Error", str(error)),
         ])
         try:
-            if not interaction.response.is_done():
+            response_done = False
+            try:
+                response_done = interaction.response.is_done()
+            except discord.HTTPException:
+                response_done = True  # Assume done if we can't check
+
+            if not response_done:
                 await interaction.response.send_message(
                     f"❌ An error occurred: {str(error)[:100]}",
                     ephemeral=True,
@@ -118,6 +128,8 @@ class TicketCreateModal(discord.ui.Modal, title="Create Ticket"):
                     f"❌ An error occurred: {str(error)[:100]}",
                     ephemeral=True,
                 )
+        except discord.HTTPException:
+            pass
         except Exception:
             pass
 
@@ -154,15 +166,6 @@ class TicketCloseModal(discord.ui.Modal, title="Close Ticket"):
             )
             return
 
-        # Get ticket info before closing
-        ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
-        ticket_user = None
-        if ticket:
-            try:
-                ticket_user = await bot.fetch_user(ticket["user_id"])
-            except Exception:
-                pass
-
         success, message = await bot.ticket_service.close_ticket(
             ticket_id=self.ticket_id,
             closed_by=interaction.user,
@@ -170,13 +173,18 @@ class TicketCloseModal(discord.ui.Modal, title="Close Ticket"):
         )
 
         if success:
-            # Log to interaction webhook
-            if ticket_user and hasattr(bot, "interaction_logger") and bot.interaction_logger:
-                await bot.interaction_logger.log_ticket_closed(
-                    interaction.user, self.ticket_id, ticket_user, self.reason.value
-                )
-            await interaction.followup.send(f"✅ {message}", ephemeral=True)
+            logger.tree("Ticket Closed (Modal)", [
+                ("Ticket ID", self.ticket_id),
+                ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Reason", (self.reason.value or "None")[:50]),
+            ], emoji="🔒")
+            # No ephemeral message - the channel embed is sufficient
         else:
+            logger.tree("Ticket Close Failed (Modal)", [
+                ("Ticket ID", self.ticket_id),
+                ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Reason", message),
+            ], emoji="❌")
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 
@@ -203,11 +211,9 @@ class TicketAddUserModal(discord.ui.Modal, title="Add User to Ticket"):
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         """Handle modal submission."""
-        await interaction.response.defer(ephemeral=True)
-
         bot: "AzabBot" = interaction.client
         if not hasattr(bot, "ticket_service") or not bot.ticket_service:
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 "Ticket system is not available.",
                 ephemeral=True,
             )
@@ -225,11 +231,12 @@ class TicketAddUserModal(discord.ui.Modal, title="Add User to Ticket"):
         else:
             logger.tree("Ticket Add User Failed", [
                 ("Ticket ID", self.ticket_id),
-                ("User", f"{interaction.user} ({interaction.user.id})"),
+                ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("ID", str(interaction.user.id)),
                 ("Input", user_input[:50]),
                 ("Reason", "Invalid user format"),
             ], emoji="❌")
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 "❌ Invalid user. Please enter a user ID or @mention.",
                 ephemeral=True,
             )
@@ -239,13 +246,13 @@ class TicketAddUserModal(discord.ui.Modal, title="Add User to Ticket"):
         try:
             user_to_add = await bot.fetch_user(user_id)
         except discord.NotFound:
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 "❌ User not found.",
                 ephemeral=True,
             )
             return
         except Exception as e:
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 f"❌ Failed to fetch user: {str(e)[:50]}",
                 ephemeral=True,
             )
@@ -253,7 +260,7 @@ class TicketAddUserModal(discord.ui.Modal, title="Add User to Ticket"):
 
         # Get member in guild
         if not interaction.guild:
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 "❌ This command can only be used in a server.",
                 ephemeral=True,
             )
@@ -261,11 +268,14 @@ class TicketAddUserModal(discord.ui.Modal, title="Add User to Ticket"):
 
         member = interaction.guild.get_member(user_id)
         if not member:
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 "❌ User is not a member of this server.",
                 ephemeral=True,
             )
             return
+
+        # Defer silently for successful case (channel embed is enough)
+        await interaction.response.defer()
 
         # Add user to ticket
         success, message = await bot.ticket_service.add_user_to_ticket(
@@ -275,19 +285,17 @@ class TicketAddUserModal(discord.ui.Modal, title="Add User to Ticket"):
         )
 
         if success:
-            # Log to interaction webhook
-            ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
-            ticket_user = None
-            if ticket:
-                try:
-                    ticket_user = await bot.fetch_user(ticket["user_id"])
-                except Exception:
-                    pass
-
-            if hasattr(bot, "interaction_logger") and bot.interaction_logger and ticket_user:
-                await bot.interaction_logger.log_ticket_user_added(
-                    interaction.user, self.ticket_id, member
-                )
-            await interaction.followup.send(f"✅ {message}", ephemeral=True)
+            logger.tree("User Added to Ticket (Modal)", [
+                ("Ticket ID", self.ticket_id),
+                ("Added User", f"{member.name} ({member.id})"),
+                ("Added By", f"{interaction.user.name} ({interaction.user.id})"),
+            ], emoji="➕")
+            # No followup - the channel embed is sufficient
         else:
+            logger.tree("Add User Failed (Modal)", [
+                ("Ticket ID", self.ticket_id),
+                ("User", f"{member.name} ({member.id})"),
+                ("Added By", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Reason", message),
+            ], emoji="❌")
             await interaction.followup.send(f"❌ {message}", ephemeral=True)

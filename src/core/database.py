@@ -5090,6 +5090,35 @@ class DatabaseManager:
         )
         return cursor.rowcount > 0
 
+    def transfer_ticket(self, ticket_id: str, new_staff_id: int) -> bool:
+        """
+        Transfer a ticket to a different staff member.
+
+        Works on tickets that are already claimed (unlike claim_ticket).
+
+        Args:
+            ticket_id: Ticket ID to transfer.
+            new_staff_id: Staff member to transfer to.
+
+        Returns:
+            True if transferred successfully.
+        """
+        import time
+        cursor = self.execute(
+            """UPDATE tickets
+               SET claimed_by = ?, claimed_at = ?
+               WHERE ticket_id = ? AND status IN ('open', 'claimed')""",
+            (new_staff_id, time.time(), ticket_id)
+        )
+
+        if cursor.rowcount > 0:
+            logger.tree("Ticket Transferred (DB)", [
+                ("Ticket ID", ticket_id),
+                ("New Staff ID", str(new_staff_id)),
+            ], emoji="🔄")
+            return True
+        return False
+
     def assign_ticket(self, ticket_id: str, staff_id: int) -> bool:
         """
         Assign a ticket to a staff member.
@@ -5231,6 +5260,33 @@ class DatabaseManager:
 
         return {
             "open": open_count["c"] if open_count else 0,
+            "claimed": claimed_count["c"] if claimed_count else 0,
+            "closed": closed_count["c"] if closed_count else 0,
+        }
+
+    def get_staff_ticket_stats(self, staff_id: int, guild_id: int) -> Dict[str, int]:
+        """
+        Get ticket statistics for a specific staff member.
+
+        Args:
+            staff_id: Staff member's user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Dict with claimed and closed counts.
+        """
+        claimed_count = self.fetchone(
+            """SELECT COUNT(*) as c FROM tickets
+               WHERE guild_id = ? AND claimed_by = ?""",
+            (guild_id, staff_id)
+        )
+        closed_count = self.fetchone(
+            """SELECT COUNT(*) as c FROM tickets
+               WHERE guild_id = ? AND closed_by = ?""",
+            (guild_id, staff_id)
+        )
+
+        return {
             "claimed": claimed_count["c"] if claimed_count else 0,
             "closed": closed_count["c"] if closed_count else 0,
         }

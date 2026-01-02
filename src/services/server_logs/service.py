@@ -3151,13 +3151,15 @@ class LoggingService:
 
         # Create view with Open Ticket + Transcript + Case buttons
         view = TicketLogView(guild_id, thread_id)
-        transcript_url = f"https://trippixn.com/api/azab/transcripts/{ticket_id}"
-        view.add_item(discord.ui.Button(
-            label="Transcript",
-            url=transcript_url,
-            style=discord.ButtonStyle.link,
-            emoji=TRANSCRIPT_EMOJI,
-        ))
+        config = get_config()
+        if config.transcript_base_url:
+            transcript_url = f"{config.transcript_base_url}/{ticket_id}"
+            view.add_item(discord.ui.Button(
+                label="Transcript",
+                url=transcript_url,
+                style=discord.ButtonStyle.link,
+                emoji=TRANSCRIPT_EMOJI,
+            ))
         # Add case button if user has a case log
         db = get_db()
         case = db.get_case_log(user.id)
@@ -3374,9 +3376,12 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, user)
 
-        # Create view with link button to website transcript
-        transcript_url = f"https://trippixn.com/api/azab/transcripts/{ticket_id}"
-        view = TranscriptLinkView(transcript_url)
+        # Create view with link button to website transcript (if configured)
+        config = get_config()
+        view = None
+        if config.transcript_base_url:
+            transcript_url = f"{config.transcript_base_url}/{ticket_id}"
+            view = TranscriptLinkView(transcript_url)
 
         await self._send_log(LogCategory.TICKET_TRANSCRIPTS, embed, files=[transcript_file], view=view, user_id=user.id)
 

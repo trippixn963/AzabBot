@@ -174,7 +174,8 @@ class LockdownCog(commands.Cog):
             # Log the action
             logger.tree("SERVER LOCKED", [
                 ("Guild", f"{guild.name} ({guild.id})"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("Mod ID", str(interaction.user.id)),
                 ("Method", "Role-based (instant)"),
                 ("Reason", reason or "None"),
             ], emoji="🔒")
@@ -326,7 +327,8 @@ class LockdownCog(commands.Cog):
             # Log the action
             logger.tree("SERVER UNLOCKED", [
                 ("Guild", f"{guild.name} ({guild.id})"),
-                ("Moderator", f"{interaction.user} ({interaction.user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
+                ("Mod ID", str(interaction.user.id)),
                 ("Duration", f"{int(duration_seconds)}s"),
             ], emoji="🔓")
 
