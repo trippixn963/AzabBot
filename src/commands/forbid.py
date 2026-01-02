@@ -237,7 +237,11 @@ class ForbidCog(commands.Cog):
 
         for channel in guild.channels:
             try:
-                if isinstance(channel, discord.TextChannel) and apply_to_text:
+                # Apply to categories (children inherit these permissions)
+                if isinstance(channel, discord.CategoryChannel):
+                    if apply_to_text or apply_to_voice:
+                        await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
+                elif isinstance(channel, discord.TextChannel) and apply_to_text:
                     await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
                 elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
                     # Voice channels need both voice AND text permissions (for VC text chat)
@@ -825,7 +829,11 @@ class ForbidCog(commands.Cog):
             perm_names = set(overwrite_kwargs.keys())
 
             try:
-                if isinstance(channel, (discord.TextChannel, discord.ForumChannel)) and (perm_names & text_perms):
+                # Apply to new categories (children inherit these permissions)
+                if isinstance(channel, discord.CategoryChannel):
+                    if perm_names & text_perms or perm_names & voice_perms:
+                        await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system: new category")
+                elif isinstance(channel, (discord.TextChannel, discord.ForumChannel)) and (perm_names & text_perms):
                     await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system: new channel")
                 elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
                     # Voice channels need both voice AND text permissions (for VC text chat)
@@ -917,8 +925,16 @@ class ForbidCog(commands.Cog):
                 try:
                     needs_fix = False
 
+                    # Check categories (children inherit these permissions)
+                    if isinstance(channel, discord.CategoryChannel):
+                        if perm_names & text_perms or perm_names & voice_perms:
+                            current = channel.overwrites_for(role)
+                            for perm_name in overwrite_kwargs:
+                                if getattr(current, perm_name) is not False:
+                                    needs_fix = True
+                                    break
                     # Check if this channel type needs the overwrite
-                    if isinstance(channel, (discord.TextChannel, discord.ForumChannel)) and (perm_names & text_perms):
+                    elif isinstance(channel, (discord.TextChannel, discord.ForumChannel)) and (perm_names & text_perms):
                         current = channel.overwrites_for(role)
                         for perm_name in overwrite_kwargs:
                             if getattr(current, perm_name) is not False:
