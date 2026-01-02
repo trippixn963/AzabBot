@@ -142,6 +142,8 @@ def _resolve_mentions(content: str, mention_map: Dict[int, str]) -> str:
         <@123456789> or <@!123456789> -> @username
         <#123456789> -> #channel-name
         <@&123456789> -> @role-name
+
+    Works with both raw and HTML-escaped content.
     """
     def replace_mention(match):
         mention_type = match.group(1)  # @, @!, #, or @&
@@ -160,8 +162,31 @@ def _resolve_mentions(content: str, mention_map: Dict[int, str]) -> str:
         return f'<span class="mention unknown">&lt;{mention_type}{user_id}&gt;</span>'
 
     # Match user mentions <@123> or <@!123>, channel mentions <#123>, role mentions <@&123>
+    # First try raw format
     pattern = r'<(@!?|#|@&)(\d+)>'
-    return re.sub(pattern, replace_mention, content)
+    result = re.sub(pattern, replace_mention, content)
+
+    # Also match HTML-escaped format: &lt;@123&gt;
+    escaped_pattern = r'&lt;(@!?|#|@&amp;)(\d+)&gt;'
+    def replace_escaped_mention(match):
+        mention_type = match.group(1).replace('&amp;', '&')  # Unescape &amp; back to &
+        user_id = int(match.group(2))
+
+        name = mention_map.get(user_id)
+        if name:
+            if mention_type in ('@', '@!'):
+                return f'<span class="mention">@{html_lib.escape(name)}</span>'
+            elif mention_type == '#':
+                return f'<span class="mention channel">#{html_lib.escape(name)}</span>'
+            elif mention_type == '@&':
+                return f'<span class="mention role">@{html_lib.escape(name)}</span>'
+
+        # Fallback: keep original but style it
+        return f'<span class="mention unknown">&lt;{mention_type}{user_id}&gt;</span>'
+
+    result = re.sub(escaped_pattern, replace_escaped_mention, result)
+
+    return result
 
 
 def generate_html_transcript(
