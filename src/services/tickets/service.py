@@ -592,9 +592,10 @@ class TicketService:
             # Get staff stats (after close, so count includes this ticket)
             staff_stats = self.db.get_staff_ticket_stats(closed_by.id, closed_by.guild.id)
 
-            # Send close notification with staff stats
+            # Send close notification with staff stats and ping ticket owner
             close_embed = build_close_notification(closed_by, reason, stats=staff_stats)
-            await safe_send(thread, embed=close_embed)
+            close_content = f"<@{ticket['user_id']}>" if ticket.get("user_id") else None
+            await safe_send(thread, content=close_content, embed=close_embed)
 
             # Archive and lock thread
             try:
