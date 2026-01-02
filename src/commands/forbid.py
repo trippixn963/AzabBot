@@ -928,8 +928,19 @@ class ForbidCog(commands.Cog):
         ], emoji="✅")
 
     async def _scan_guild_forbids(self, guild: discord.Guild) -> int:
-        """Scan a single guild for missing forbid overwrites. Returns count of fixes."""
+        """
+        Scan a single guild for missing forbid overwrites. Returns count of fixes.
+
+        OPTIMIZED: Iterates channels once, checking all forbid roles per channel.
+        """
         fixed = 0
+
+        # Pre-build role configs (only for roles that exist)
+        role_configs = []
+        text_perms = {"embed_links", "attach_files", "add_reactions",
+                      "use_external_emojis", "use_external_stickers",
+                      "create_public_threads", "create_private_threads"}
+        voice_perms = {"connect", "stream"}
 
         for restriction, config in RESTRICTIONS.items():
             role_name = self._get_role_name(restriction)
@@ -946,47 +957,53 @@ class ForbidCog(commands.Cog):
             else:
                 overwrite_kwargs[config["permission"]] = False
 
-            expected_overwrite = discord.PermissionOverwrite(**overwrite_kwargs)
-
-            # Check text/voice channels based on permission type
-            text_perms = {"embed_links", "attach_files", "add_reactions",
-                          "use_external_emojis", "use_external_stickers",
-                          "create_public_threads", "create_private_threads"}
-            voice_perms = {"connect", "stream"}
             perm_names = set(overwrite_kwargs.keys())
+            role_configs.append({
+                "role": role,
+                "overwrite": discord.PermissionOverwrite(**overwrite_kwargs),
+                "overwrite_kwargs": overwrite_kwargs,
+                "apply_to_text": bool(perm_names & text_perms),
+                "apply_to_voice": bool(perm_names & voice_perms),
+            })
 
-            for channel in guild.channels:
+        if not role_configs:
+            return 0
+
+        # Single pass through all channels
+        for channel in guild.channels:
+            is_category = isinstance(channel, discord.CategoryChannel)
+            is_text = isinstance(channel, (discord.TextChannel, discord.ForumChannel))
+            is_voice = isinstance(channel, (discord.VoiceChannel, discord.StageChannel))
+
+            for rc in role_configs:
                 try:
-                    needs_fix = False
+                    # Determine if this channel type needs this role's overwrite
+                    should_check = False
+                    if is_category and (rc["apply_to_text"] or rc["apply_to_voice"]):
+                        should_check = True
+                    elif is_text and rc["apply_to_text"]:
+                        should_check = True
+                    elif is_voice and (rc["apply_to_voice"] or rc["apply_to_text"]):
+                        should_check = True
 
-                    # Check categories (children inherit these permissions)
-                    if isinstance(channel, discord.CategoryChannel):
-                        if perm_names & text_perms or perm_names & voice_perms:
-                            current = channel.overwrites_for(role)
-                            for perm_name in overwrite_kwargs:
-                                if getattr(current, perm_name) is not False:
-                                    needs_fix = True
-                                    break
-                    # Check if this channel type needs the overwrite
-                    elif isinstance(channel, (discord.TextChannel, discord.ForumChannel)) and (perm_names & text_perms):
-                        current = channel.overwrites_for(role)
-                        for perm_name in overwrite_kwargs:
-                            if getattr(current, perm_name) is not False:
-                                needs_fix = True
-                                break
-                    elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
-                        # Voice channels need both voice AND text permissions (for VC text chat)
-                        if perm_names & voice_perms or perm_names & text_perms:
-                            current = channel.overwrites_for(role)
-                            for perm_name in overwrite_kwargs:
-                                if getattr(current, perm_name) is not False:
-                                    needs_fix = True
-                                    break
+                    if not should_check:
+                        continue
+
+                    # Check if overwrites are correct
+                    current = channel.overwrites_for(rc["role"])
+                    needs_fix = False
+                    for perm_name in rc["overwrite_kwargs"]:
+                        if getattr(current, perm_name) is not False:
+                            needs_fix = True
+                            break
 
                     if needs_fix:
-                        await channel.set_permissions(role, overwrite=expected_overwrite, reason="Forbid system: nightly scan fix")
+                        await channel.set_permissions(
+                            rc["role"],
+                            overwrite=rc["overwrite"],
+                            reason="Forbid system: scan fix"
+                        )
                         fixed += 1
-                        # Rate limit for permission changes
                         await rate_limit("role_modify")
 
                 except (discord.Forbidden, discord.HTTPException):

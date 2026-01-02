@@ -29,6 +29,7 @@ from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.views import CASE_EMOJI
 from src.utils.async_utils import create_safe_task
+from src.utils.rate_limiter import rate_limit
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -678,8 +679,8 @@ class MuteScheduler:
 
                 if needs_fix:
                     fixed += 1
-                    # Small delay to avoid rate limits
-                    await asyncio.sleep(0.1)
+                    # Use rate limiter for permission changes
+                    await rate_limit("role_modify")
 
             except (discord.Forbidden, discord.HTTPException):
                 continue
