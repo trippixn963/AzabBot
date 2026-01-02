@@ -93,8 +93,16 @@ class MuteScheduler:
         # Sync mute state on startup
         await self._sync_mute_state()
 
+        # Start mute role overwrites scan (delayed)
+        create_safe_task(self._run_startup_overwrites_scan(), "Mute Overwrites Scan")
+
+        # Start midnight scan loop
+        create_safe_task(self._midnight_scan_loop(), "Mute Midnight Scan")
+
         logger.tree("Mute Scheduler Started", [
             ("Check Interval", "30 seconds"),
+            ("Startup Scan", "30s after ready"),
+            ("Midnight Scan", "12:00 AM EST"),
             ("Status", "Running"),
         ], emoji="⏰")
 
@@ -529,6 +537,154 @@ class MuteScheduler:
                     log_items.append(("└ Role Missing", str(removed_role_missing)))
 
             logger.tree("Mute State Synced", log_items, emoji="🔄")
+
+
+    # =========================================================================
+    # Channel Overwrites Scan
+    # =========================================================================
+
+    async def _run_startup_overwrites_scan(self) -> None:
+        """Run muted role overwrites scan on startup (delayed)."""
+        await self.bot.wait_until_ready()
+
+        # Wait 30 seconds to not slow down startup
+        await asyncio.sleep(30)
+
+        try:
+            await self._scan_mute_role_overwrites()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error("Mute Overwrites Scan Error", [
+                ("Error", str(e)[:100]),
+            ])
+
+    async def _midnight_scan_loop(self) -> None:
+        """Run muted role overwrites scan at midnight EST daily."""
+        await self.bot.wait_until_ready()
+        from datetime import timedelta
+
+        while self.running:
+            try:
+                # Calculate time until midnight EST
+                now = datetime.now(NY_TZ)
+                target = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+                # If past midnight, schedule for tomorrow
+                if now >= target:
+                    target = target + timedelta(days=1)
+
+                seconds_until = (target - now).total_seconds()
+
+                # Wait until midnight
+                await asyncio.sleep(seconds_until)
+
+                # Run the scan
+                await self._scan_mute_role_overwrites()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Mute Midnight Scan Error", [
+                    ("Error", str(e)[:100]),
+                ])
+                # Wait an hour before retrying on error
+                await asyncio.sleep(3600)
+
+    async def _scan_mute_role_overwrites(self) -> None:
+        """
+        Scan all channels and ensure muted role has correct overwrites.
+
+        For regular channels/categories:
+            - send_messages = False
+            - view_channel = False (prisoners can't see other channels)
+
+        For prison channels:
+            - send_messages = True
+            - view_channel = True
+        """
+        logger.tree("Mute Role Overwrites Scan Started", [], emoji="🔍")
+
+        total_fixed = 0
+
+        for guild in self.bot.guilds:
+            try:
+                fixed = await self._scan_guild_mute_overwrites(guild)
+                total_fixed += fixed
+            except Exception as e:
+                logger.debug(f"Mute overwrites scan error for {guild.name}: {e}")
+
+        logger.tree("Mute Role Overwrites Scan Complete", [
+            ("Guilds Scanned", str(len(self.bot.guilds))),
+            ("Overwrites Fixed", str(total_fixed)),
+        ], emoji="✅")
+
+    async def _scan_guild_mute_overwrites(self, guild: discord.Guild) -> int:
+        """Scan a single guild for missing mute role overwrites. Returns count of fixes."""
+        fixed = 0
+
+        muted_role = guild.get_role(self.config.muted_role_id)
+        if not muted_role:
+            return 0
+
+        # Prison channels where muted users CAN talk and see
+        prison_channel_ids = self.config.prison_channel_ids
+
+        # Overwrites for regular channels (deny everything)
+        deny_overwrite = discord.PermissionOverwrite(
+            send_messages=False,
+            view_channel=False,
+            add_reactions=False,
+            speak=False,
+        )
+
+        # Overwrites for prison channels (allow)
+        allow_overwrite = discord.PermissionOverwrite(
+            send_messages=True,
+            view_channel=True,
+        )
+
+        for channel in guild.channels:
+            try:
+                is_prison = channel.id in prison_channel_ids
+
+                # Get parent category - if parent is prison, children should be too
+                if hasattr(channel, 'category') and channel.category:
+                    if channel.category.id in prison_channel_ids:
+                        is_prison = True
+
+                current = channel.overwrites_for(muted_role)
+                needs_fix = False
+
+                if is_prison:
+                    # Prison channel - should allow
+                    if current.send_messages is not True or current.view_channel is not True:
+                        needs_fix = True
+                        await channel.set_permissions(
+                            muted_role,
+                            overwrite=allow_overwrite,
+                            reason="Mute system: prison channel fix"
+                        )
+                else:
+                    # Regular channel - should deny
+                    if (current.send_messages is not False or
+                        current.view_channel is not False):
+                        needs_fix = True
+                        await channel.set_permissions(
+                            muted_role,
+                            overwrite=deny_overwrite,
+                            reason="Mute system: overwrites fix"
+                        )
+
+                if needs_fix:
+                    fixed += 1
+                    # Small delay to avoid rate limits
+                    await asyncio.sleep(0.1)
+
+            except (discord.Forbidden, discord.HTTPException):
+                continue
+
+        return fixed
 
 
 # =============================================================================
