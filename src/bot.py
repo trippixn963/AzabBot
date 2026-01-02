@@ -411,52 +411,138 @@ class AzabBot(commands.Bot):
         return any(role.id == self.config.muted_role_id for role in member.roles)
 
     async def _cleanup_polls_channel(self) -> None:
-        """Clean up non-poll messages from polls-only channel."""
-        if not self.config.permanent_polls_channel_id:
-            logger.debug("Polls cleanup skipped: no channel configured")
+        """Clean up poll result messages from polls channels on startup."""
+        await self._scan_and_clean_poll_results()
+
+        # Start midnight cleanup scheduler
+        create_safe_task(self._polls_cleanup_scheduler(), "Polls Cleanup Scheduler")
+
+    async def _scan_and_clean_poll_results(self) -> None:
+        """Scan polls channels and delete poll result messages ('X's poll has closed')."""
+        # Get both polls channels
+        channel_ids = []
+        if self.config.polls_only_channel_id:
+            channel_ids.append(self.config.polls_only_channel_id)
+        if self.config.permanent_polls_channel_id:
+            channel_ids.append(self.config.permanent_polls_channel_id)
+
+        if not channel_ids:
+            logger.tree("Polls Cleanup Skipped", [
+                ("Reason", "No channels configured"),
+            ], emoji="⏭️")
             return
 
-        channel = self.get_channel(self.config.permanent_polls_channel_id)
-        if not channel:
-            logger.warning(f"Polls cleanup: channel {self.config.permanent_polls_channel_id} not found")
-            return
+        logger.tree("Scanning Polls Channels", [
+            ("Channels", str(len(channel_ids))),
+            ("Limit", "100 messages each"),
+        ], emoji="🔍")
 
-        logger.info(f"Starting polls cleanup in #{channel.name}")
+        total_deleted = 0
+        total_checked = 0
 
-        try:
-            deleted = 0
-            checked = 0
-            non_poll_count = 0
-            system_msg_count = 0
-            async for message in channel.history(limit=500):
-                checked += 1
-                # Skip system messages (poll closed notifications, etc.)
-                if message.type != discord.MessageType.default:
-                    system_msg_count += 1
-                    continue
-                has_poll = getattr(message, 'poll', None) is not None
-                if not has_poll:
-                    non_poll_count += 1
-                    try:
-                        await message.delete()
-                        deleted += 1
-                        await rate_limit("bulk_operation")
-                    except discord.NotFound:
-                        pass
-                    except discord.Forbidden as e:
-                        logger.warning(f"Polls cleanup: no permission to delete message {message.id}")
-                    except Exception as e:
-                        logger.debug(f"Polls cleanup delete failed: {e}")
+        for channel_id in channel_ids:
+            channel = self.get_channel(channel_id)
+            if not channel:
+                logger.warning("Polls Cleanup Channel Not Found", [
+                    ("Channel ID", str(channel_id)),
+                ])
+                continue
 
-            logger.tree("Polls Channel Cleaned", [
-                ("Channel", channel.name),
-                ("Checked", str(checked)),
-                ("System Msgs", str(system_msg_count)),
-                ("Non-Polls Found", str(non_poll_count)),
-                ("Deleted", str(deleted)),
-            ], emoji="🗑️")
-        except Exception as e:
-            logger.tree("Polls Cleanup Failed", [("Error", str(e))], emoji="⚠️")
+            try:
+                deleted = 0
+                checked = 0
+                async for message in channel.history(limit=100):
+                    checked += 1
+                    # Delete poll result messages ("X's poll has closed")
+                    if message.type == discord.MessageType.poll_result:
+                        try:
+                            await message.delete()
+                            deleted += 1
+                            await rate_limit("bulk_operation")
+                        except discord.NotFound:
+                            pass
+                        except discord.Forbidden:
+                            logger.warning("Polls Cleanup Permission Denied", [
+                                ("Channel", f"#{channel.name}"),
+                                ("Action", "Cannot delete poll results"),
+                            ])
+                            break
+                        except discord.HTTPException as e:
+                            logger.warning("Polls Cleanup Delete Failed", [
+                                ("Channel", f"#{channel.name}"),
+                                ("Error", str(e)[:50]),
+                            ])
+
+                if deleted > 0:
+                    logger.tree("Poll Results Cleaned", [
+                        ("Channel", f"#{channel.name}"),
+                        ("Checked", str(checked)),
+                        ("Deleted", str(deleted)),
+                    ], emoji="🗑️")
+
+                total_deleted += deleted
+                total_checked += checked
+
+            except Exception as e:
+                logger.error("Polls Cleanup Failed", [
+                    ("Channel", f"#{channel.name}" if channel else str(channel_id)),
+                    ("Error", str(e)),
+                ])
+
+        if total_deleted > 0:
+            logger.tree("Polls Cleanup Complete", [
+                ("Channels", str(len(channel_ids))),
+                ("Messages Checked", str(total_checked)),
+                ("Poll Results Deleted", str(total_deleted)),
+            ], emoji="✅")
+        else:
+            logger.tree("Polls Cleanup Complete", [
+                ("Channels", str(len(channel_ids))),
+                ("Messages Checked", str(total_checked)),
+                ("Result", "No poll results to delete"),
+            ], emoji="✅")
+
+    async def _polls_cleanup_scheduler(self) -> None:
+        """Run polls cleanup at midnight daily."""
+        logger.tree("Polls Cleanup Scheduler Started", [
+            ("Schedule", "Daily at midnight"),
+            ("Channels", "polls_only + permanent_polls"),
+        ], emoji="📅")
+
+        while True:
+            try:
+                # Calculate time until next midnight
+                now = datetime.now(NY_TZ)
+                next_midnight = (now + timedelta(days=1)).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+                sleep_seconds = (next_midnight - now).total_seconds()
+
+                logger.tree("Polls Cleanup Scheduled", [
+                    ("Next Run", next_midnight.strftime("%Y-%m-%d %I:%M %p")),
+                    ("Sleep", f"{sleep_seconds/3600:.1f} hours"),
+                ], emoji="⏰")
+
+                await asyncio.sleep(sleep_seconds)
+
+                # Run cleanup
+                logger.tree("Midnight Polls Cleanup Starting", [
+                    ("Time", datetime.now(NY_TZ).strftime("%I:%M %p %Z")),
+                ], emoji="🌙")
+
+                await self._scan_and_clean_poll_results()
+
+            except asyncio.CancelledError:
+                logger.tree("Polls Cleanup Scheduler Stopped", [
+                    ("Reason", "Task cancelled"),
+                ], emoji="🛑")
+                break
+            except Exception as e:
+                logger.error("Polls Cleanup Scheduler Error", [
+                    ("Error", str(e)),
+                    ("Retry", "1 hour"),
+                ])
+                await asyncio.sleep(3600)  # Retry in 1 hour on error
 
     async def _cache_invites(self) -> None:
         """Cache all server invites for tracking."""

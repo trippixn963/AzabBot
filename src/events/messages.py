@@ -222,13 +222,28 @@ class MessageEvents(commands.Cog):
             return
 
         # -----------------------------------------------------------------
-        # Route 2: Polls-only channel - delete non-polls
+        # Route 2: Polls-only channel - delete non-polls and poll results
         # -----------------------------------------------------------------
         is_polls_channel = (
             message.channel.id == self.config.polls_only_channel_id or
             message.channel.id == self.config.permanent_polls_channel_id
         )
         if is_polls_channel:
+            # Delete poll result messages ("X's poll has closed")
+            if message.type == discord.MessageType.poll_result:
+                try:
+                    await message.delete()
+                    logger.tree("POLL RESULT DELETED", [
+                        ("Channel", message.channel.name),
+                        ("Content", (message.content[:50] + "...") if len(message.content) > 50 else (message.content or "(poll closed)")),
+                    ], emoji="🗑️")
+                except discord.Forbidden:
+                    logger.warning("No permission to delete poll result message")
+                except discord.HTTPException as e:
+                    logger.warning(f"Failed to delete poll result: {e}")
+                return
+
+            # Delete non-poll messages
             if getattr(message, 'poll', None) is None:
                 try:
                     await message.delete()

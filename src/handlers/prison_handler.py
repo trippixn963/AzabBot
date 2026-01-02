@@ -139,11 +139,6 @@ class PrisonHandler:
                 ])
                 return
 
-            # Send mute notification to user's last active channel
-            mute_channel = self._get_mute_notification_channel(member)
-            if mute_channel:
-                await self._send_mute_notification(member, mute_channel)
-
             # Wait for mute embed to appear in logs
             await asyncio.sleep(self.config.presence_retry_delay)
 
@@ -367,43 +362,6 @@ class PrisonHandler:
     # =========================================================================
     # Helper Methods
     # =========================================================================
-
-    def _get_mute_notification_channel(self, member: discord.Member) -> Optional[discord.TextChannel]:
-        """Get channel for mute notification based on user's last message."""
-        msg_data = self.bot.last_messages.get(member.id)
-        if msg_data:
-            channel_id = msg_data.get("channel_id")
-            if channel_id:
-                return self.bot.get_channel(channel_id)
-        return self.bot.get_channel(self.config.general_channel_id)
-
-    async def _send_mute_notification(
-        self,
-        member: discord.Member,
-        channel: discord.TextChannel,
-    ) -> None:
-        """Send mute notification to channel where user was active."""
-        try:
-            embed = discord.Embed(
-                title="🔒 Sent to Prison",
-                description=f"**{member.display_name}** has been sent to prison.",
-                color=EmbedColors.PRISON,
-            )
-            embed.add_field(name="Prisoner", value=f"`{member.name}`\n{member.mention}", inline=True)
-            embed.set_thumbnail(
-                url=member.avatar.url if member.avatar else member.default_avatar.url
-            )
-            set_footer(embed)
-
-            await channel.send(member.mention, embed=embed)
-
-        except Exception as e:
-            logger.warning("Mute Notification Failed", [
-                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
-                ("ID", str(member.id)),
-                ("Channel", f"#{channel.name}"),
-                ("Error", str(e)[:50]),
-            ])
 
     async def _scan_logs_for_reason(
         self,
