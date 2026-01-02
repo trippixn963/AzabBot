@@ -136,7 +136,7 @@ class ForbidCog(commands.Cog):
             ("Commands", "/forbid, /unforbid"),
             ("Restrictions", str(len(RESTRICTIONS))),
             ("Startup Scan", "30s after ready"),
-            ("Nightly Scan", "3 AM NY Time"),
+            ("Nightly Scan", "12:00 AM EST"),
         ], emoji="🚫")
 
     # =========================================================================
@@ -886,17 +886,17 @@ class ForbidCog(commands.Cog):
 
         while not self.bot.is_closed():
             try:
-                # Calculate time until 3 AM NY time
+                # Calculate time until midnight (00:00) EST
                 now = datetime.now(NY_TZ)
-                target = now.replace(hour=3, minute=0, second=0, microsecond=0)
+                target = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-                # If it's past 3 AM today, schedule for tomorrow
+                # If it's past midnight today, schedule for tomorrow
                 if now >= target:
                     target = target + timedelta(days=1)
 
                 seconds_until = (target - now).total_seconds()
 
-                # Wait until 3 AM
+                # Wait until midnight
                 await asyncio.sleep(seconds_until)
 
                 # Run the scan
