@@ -648,6 +648,12 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_cases_created ON cases(created_at DESC)"
         )
 
+        # Migration: Add control_panel_message_id to cases table
+        try:
+            cursor.execute("ALTER TABLE cases ADD COLUMN control_panel_message_id INTEGER")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         # -----------------------------------------------------------------
         # Mod Tracker Table
         # DESIGN: Tracks moderators and their activity log threads
@@ -2347,6 +2353,23 @@ class DatabaseManager:
                SET status = 'resolved', resolved_at = ?, resolved_by = ?, resolved_reason = ?
                WHERE case_id = ? AND status = 'open'""",
             (now, resolved_by, reason, case_id)
+        )
+        return cursor.rowcount > 0
+
+    def set_case_control_panel_message(self, case_id: str, message_id: int) -> bool:
+        """
+        Set the control panel message ID for a case.
+
+        Args:
+            case_id: The case ID.
+            message_id: The Discord message ID of the control panel.
+
+        Returns:
+            True if successful.
+        """
+        cursor = self.execute(
+            "UPDATE cases SET control_panel_message_id = ? WHERE case_id = ?",
+            (message_id, case_id)
         )
         return cursor.rowcount > 0
 

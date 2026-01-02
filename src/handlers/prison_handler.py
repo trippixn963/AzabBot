@@ -264,9 +264,6 @@ class PrisonHandler:
                 self.mute_reasons.pop(member.name.lower(), None)
                 self.vc_kick_counts.pop(member.id, None)
 
-            # Schedule delayed message cleanup (1 hour)
-            create_safe_task(self._delayed_message_cleanup(member), name=f"msg_cleanup_{member.id}")
-
             logger.tree("Prisoner Release Complete", [
                 ("Ex-Prisoner", str(member)),
                 ("Time Served", format_duration(current_duration)),
@@ -387,65 +384,6 @@ class PrisonHandler:
     # =========================================================================
     # Cleanup Tasks
     # =========================================================================
-
-    async def _delayed_message_cleanup(self, member: discord.Member) -> None:
-        """Wait 1 hour before deleting prisoner's messages from prison channel."""
-        try:
-            await asyncio.sleep(self.config.hourly_task_interval)
-            deleted_count = await self._delete_prisoner_messages(member)
-            logger.tree("Delayed Message Cleanup", [
-                ("Ex-Prisoner", str(member)),
-                ("Messages Deleted", str(deleted_count)),
-            ], emoji="🧹")
-        except Exception as e:
-            logger.error("Delayed Cleanup Error", [
-                ("Member", str(member)),
-                ("Error", str(e)),
-            ])
-
-    async def _delete_prisoner_messages(self, member: discord.Member) -> int:
-        """Delete prisoner's messages from prison channel."""
-        try:
-            prison_channel = None
-            if self.config.prison_channel_ids:
-                prison_channel = self.bot.get_channel(
-                    next(iter(self.config.prison_channel_ids))
-                )
-
-            if not prison_channel:
-                return 0
-
-            messages_to_delete = []
-            two_weeks_ago = datetime.now(timezone.utc) - timedelta(days=14)
-
-            async for message in prison_channel.history(limit=self.config.prison_message_scan_limit):
-                if message.author.id == member.id and message.created_at > two_weeks_ago:
-                    messages_to_delete.append(message)
-
-            if messages_to_delete:
-                try:
-                    await prison_channel.delete_messages(messages_to_delete)
-                    return len(messages_to_delete)
-                except discord.HTTPException:
-                    # Fallback to individual deletion
-                    count = 0
-                    for message in messages_to_delete:
-                        try:
-                            await message.delete()
-                            count += 1
-                            await rate_limit("bulk_operation")
-                        except Exception:
-                            pass
-                    return count
-
-            return 0
-
-        except Exception as e:
-            logger.error("Message Deletion Error", [
-                ("Member", str(member)),
-                ("Error", str(e)),
-            ])
-            return 0
 
     async def _daily_cleanup_loop(self) -> None:
         """Background task for daily prison channel cleanup at midnight."""

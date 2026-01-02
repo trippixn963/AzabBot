@@ -985,6 +985,7 @@ class UnmuteModal(discord.ui.Modal, title="Unmute User"):
         logger.tree("Unmute Modal Submitted", [
             ("Submitted By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),
+            ("Target Guild ID", str(self.guild_id)),
             ("Reason", self.reason.value[:50] if self.reason.value else "None"),
         ], emoji="🔊")
 
@@ -999,10 +1000,14 @@ class UnmuteModal(discord.ui.Modal, title="Unmute User"):
             )
             return
 
-        # Get member and remove mute role
-        guild = interaction.guild
+        # Get the TARGET guild (main server) - not interaction.guild (mods server)
+        # The guild_id stored in the button is the main server where the user is muted
+        guild = interaction.client.get_guild(self.guild_id)
         if not guild:
-            await interaction.response.send_message("Could not find guild.", ephemeral=True)
+            await interaction.response.send_message(
+                "Could not find the target server.",
+                ephemeral=True,
+            )
             return
 
         member = guild.get_member(self.user_id)
@@ -1144,240 +1149,6 @@ class UnmuteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_unm
             return
 
         await interaction.response.send_modal(UnmuteModal(self.user_id, self.guild_id))
-
-
-# =============================================================================
-# Notes Button + Modal
-# =============================================================================
-
-class NoteModal(discord.ui.Modal, title="Add Moderator Note"):
-    """Modal for adding a moderator note."""
-
-    note = discord.ui.TextInput(
-        label="Note",
-        placeholder="Enter your note about this user...",
-        required=True,
-        max_length=500,
-        style=discord.TextStyle.paragraph,
-    )
-
-    def __init__(self, user_id: int, guild_id: int, case_id: Optional[str] = None) -> None:
-        """Initialize the note modal with target user context."""
-        super().__init__()
-        self.user_id = user_id
-        self.guild_id = guild_id
-        self.case_id = case_id
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        """Save the moderator note when modal is submitted."""
-        logger.tree("Note Modal Submitted", [
-            ("Submitted By", f"{interaction.user} ({interaction.user.id})"),
-            ("Target User ID", str(self.user_id)),
-            ("Case ID", self.case_id or "N/A"),
-            ("Note Preview", self.note.value[:50] + "..." if len(self.note.value) > 50 else self.note.value),
-        ], emoji="📝")
-
-        db = get_db()
-
-        # Save the note linked to the case
-        db.save_mod_note(
-            user_id=self.user_id,
-            guild_id=self.guild_id,
-            moderator_id=interaction.user.id,
-            note=self.note.value,
-            case_id=self.case_id,
-        )
-
-        case_label = f" for case `{self.case_id}`" if self.case_id else ""
-        await interaction.response.send_message(
-            f"Note saved successfully{case_label}.",
-            ephemeral=True,
-        )
-
-        # Log to case thread
-        try:
-            thread_id = None
-
-            # If we have a case_id, use the per-action case thread
-            if self.case_id:
-                case = db.get_case(self.case_id)
-                if case:
-                    thread_id = case.get("thread_id")
-
-            # Fallback to legacy per-user case log
-            if not thread_id:
-                case_log = db.get_case_log(self.user_id)
-                if case_log:
-                    thread_id = case_log.get("thread_id")
-
-            if thread_id and interaction.guild:
-                thread = interaction.guild.get_thread(thread_id)
-                if thread:
-                    embed = discord.Embed(
-                        title="📝 Note Added",
-                        color=EmbedColors.INFO,
-                    )
-                    embed.add_field(
-                        name="Added By",
-                        value=f"{interaction.user.mention}\n`{interaction.user.name}`",
-                        inline=True,
-                    )
-                    if self.case_id:
-                        embed.add_field(name="Case", value=f"`{self.case_id}`", inline=True)
-                    embed.add_field(name="Note", value=self.note.value, inline=False)
-                    set_footer(embed)
-                    await thread.send(embed=embed)
-        except Exception as e:
-            logger.debug(f"Failed to log note to thread: {e}")
-
-
-class NotesButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_notes:(?P<user_id>\d+):(?P<guild_id>\d+)(?::(?P<case_id>\w+))?"):
-    """
-    Persistent notes button that shows existing notes and allows adding new ones.
-    Optionally linked to a specific case.
-    """
-
-    def __init__(self, user_id: int, guild_id: int, case_id: Optional[str] = None):
-        custom_id = f"mod_notes:{user_id}:{guild_id}"
-        if case_id:
-            custom_id += f":{case_id}"
-        super().__init__(
-            discord.ui.Button(
-                label="Notes",
-                style=discord.ButtonStyle.secondary,
-                emoji=NOTE_EMOJI,
-                custom_id=custom_id,
-            )
-        )
-        self.user_id = user_id
-        self.guild_id = guild_id
-        self.case_id = case_id
-
-    @classmethod
-    async def from_custom_id(
-        cls,
-        interaction: discord.Interaction,
-        item: discord.ui.Button,
-        match: re.Match[str],
-    ) -> "NotesButton":
-        user_id = int(match.group("user_id"))
-        guild_id = int(match.group("guild_id"))
-        case_id = match.group("case_id")  # May be None
-        return cls(user_id, guild_id, case_id)
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        logger.tree("Notes Button Clicked", [
-            ("Clicked By", f"{interaction.user} ({interaction.user.id})"),
-            ("Target User ID", str(self.user_id)),
-            ("Guild ID", str(self.guild_id)),
-            ("Case ID", self.case_id or "All"),
-        ], emoji="📝")
-
-        db = get_db()
-
-        # Get existing notes (filtered by case_id if provided)
-        notes = db.get_mod_notes(self.user_id, self.guild_id, limit=10, case_id=self.case_id)
-        note_count = db.get_note_count(self.user_id, self.guild_id)
-
-        # Build notes embed
-        title = "📝 Moderator Notes"
-        if self.case_id:
-            title += f" (Case {self.case_id})"
-        embed = discord.Embed(
-            title=title,
-            color=EmbedColors.INFO,
-        )
-
-        try:
-            user = await interaction.client.fetch_user(self.user_id)
-            embed.set_author(name=user.name, icon_url=user.display_avatar.url)
-        except Exception:
-            pass
-
-        if notes:
-            for note in notes:
-                mod_id = note.get("moderator_id")
-                created_at = note.get("created_at") or 0
-                note_text = note.get("note", "")
-                note_case_id = note.get("case_id")
-
-                # Get moderator name (mentions don't render in field names)
-                mod_name = "Unknown"
-                if mod_id:
-                    mod_name = f"Unknown ({mod_id})"
-                    if interaction.guild:
-                        mod_member = interaction.guild.get_member(mod_id)
-                        if mod_member:
-                            mod_name = mod_member.display_name
-
-                # Include case ID in display if not filtering by case
-                timestamp_str = f"<t:{int(created_at)}:R>" if created_at else "Unknown time"
-                field_name = f"{timestamp_str} by {mod_name}"
-                if note_case_id and not self.case_id:
-                    field_name += f" [Case {note_case_id}]"
-
-                embed.add_field(
-                    name=field_name,
-                    value=note_text[:200] + ("..." if len(note_text) > 200 else ""),
-                    inline=False,
-                )
-
-            if note_count > 10:
-                embed.set_footer(text=f"Showing 10 of {note_count} notes")
-        else:
-            if self.case_id:
-                embed.description = f"No notes have been added for case `{self.case_id}` yet."
-            else:
-                embed.description = "No notes have been added for this user yet."
-
-        # Create view with Add Note button (passing case_id)
-        view = NotesDisplayView(self.user_id, self.guild_id, self.case_id)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-
-class AddNoteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"add_note:(?P<user_id>\d+):(?P<guild_id>\d+)(?::(?P<case_id>\w+))?"):
-    """Persistent Add Note button."""
-
-    def __init__(self, user_id: int, guild_id: int, case_id: Optional[str] = None):
-        # Build custom_id with optional case_id
-        custom_id = f"add_note:{user_id}:{guild_id}"
-        if case_id:
-            custom_id += f":{case_id}"
-
-        super().__init__(
-            discord.ui.Button(
-                label="Add Note",
-                style=discord.ButtonStyle.secondary,
-                emoji=NOTE_EMOJI,
-                custom_id=custom_id,
-            )
-        )
-        self.user_id = user_id
-        self.guild_id = guild_id
-        self.case_id = case_id
-
-    @classmethod
-    async def from_custom_id(
-        cls,
-        interaction: discord.Interaction,
-        item: discord.ui.Button,
-        match: re.Match[str],
-    ) -> "AddNoteButton":
-        user_id = int(match.group("user_id"))
-        guild_id = int(match.group("guild_id"))
-        case_id = match.group("case_id")  # May be None
-        return cls(user_id, guild_id, case_id)
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        await interaction.response.send_modal(NoteModal(self.user_id, self.guild_id, self.case_id))
-
-
-class NotesDisplayView(discord.ui.View):
-    """View for displaying notes with an Add Note button."""
-
-    def __init__(self, user_id: int, guild_id: int, case_id: Optional[str] = None):
-        super().__init__(timeout=None)
-        self.add_item(AddNoteButton(user_id, guild_id, case_id))
 
 
 # =============================================================================
@@ -1680,8 +1451,6 @@ def setup_moderation_views(bot: "AzabBot") -> None:
         PaginationNextButton,
         ExtendButton,
         UnmuteButton,
-        NotesButton,
-        AddNoteButton,
         ApproveButton,
         EditCaseButton,
     )
@@ -1699,7 +1468,6 @@ __all__ = [
     "HISTORY_EMOJI",
     "EXTEND_EMOJI",
     "UNMUTE_EMOJI",
-    "NOTE_EMOJI",
     "APPROVE_EMOJI",
     "APPEAL_EMOJI",
     "DENY_EMOJI",
@@ -1708,7 +1476,6 @@ __all__ = [
     "HistoryButton",
     "ExtendButton",
     "UnmuteButton",
-    "NotesButton",
     "ApproveButton",
     "EditCaseButton",
     "CaseButtonView",
