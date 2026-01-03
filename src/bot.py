@@ -189,6 +189,37 @@ class AzabBot(commands.Bot):
         from src.services.case_log.views import setup_case_log_views
         setup_case_log_views(self)
 
+        # Block slash commands in DMs (buttons/modals still work for appeals)
+        @self.tree.interaction_check
+        async def global_interaction_check(interaction: discord.Interaction) -> bool:
+            """
+            Global check that runs before any slash command.
+
+            Blocks all slash commands in DMs while allowing buttons/modals
+            to continue working (for appeal system, etc.).
+
+            Note: This only affects ApplicationCommand interactions.
+            Component (button) and ModalSubmit interactions bypass this check.
+            """
+            if interaction.guild is None:
+                # DM command attempt
+                logger.tree("DM Command Blocked", [
+                    ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                    ("Command", interaction.command.name if interaction.command else "Unknown"),
+                ], emoji="🚫")
+
+                try:
+                    await interaction.response.send_message(
+                        "❌ Commands are not available in DMs. Please use commands in the server.",
+                        ephemeral=True,
+                    )
+                except discord.HTTPException:
+                    pass
+
+                return False  # Block the command
+
+            return True  # Allow in guilds
+
         # Sync commands globally
         try:
             # Clear any guild-specific commands first (to remove duplicates)
