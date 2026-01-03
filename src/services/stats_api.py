@@ -4,14 +4,8 @@ Azab Discord Bot - Stats API
 
 HTTP API server exposing moderation statistics for the dashboard.
 
-Endpoints:
-    GET /api/azab/stats              - Main dashboard stats
-    GET /api/azab/user/{id}          - Individual user (offender) profile
-    GET /api/azab/moderator/{id}     - Moderator profile
-    GET /api/azab/transcripts/{id}   - Ticket transcript HTML
-    GET /health                      - Health check
-
-Author: discord.gg/syria
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
 """
 
 import asyncio
@@ -205,7 +199,8 @@ async def security_headers_middleware(request: web.Request, handler):
 # Avatar Cache
 # =============================================================================
 
-_avatar_cache: Dict[int, tuple[Optional[str], str]] = {}
+# Avatar cache: {user_id: (name, avatar, is_booster)}
+_avatar_cache: Dict[int, tuple[str, Optional[str], bool]] = {}
 _avatar_cache_date: Optional[str] = None
 
 
@@ -278,6 +273,7 @@ class AzabAPI:
     def _setup_routes(self) -> None:
         """Configure API routes."""
         self.app.router.add_get("/api/azab/stats", self.handle_stats)
+        self.app.router.add_get("/api/azab/leaderboard", self.handle_leaderboard)
         self.app.router.add_get("/api/azab/user/{user_id}", self.handle_user)
         self.app.router.add_get("/api/azab/moderator/{user_id}", self.handle_moderator)
         self.app.router.add_get("/api/azab/transcripts/{ticket_id}", self.handle_transcript)
@@ -428,6 +424,77 @@ class AzabAPI:
                 status=500
             )
 
+    async def handle_leaderboard(self, request: web.Request) -> web.Response:
+        """GET /api/azab/leaderboard - Return moderator leaderboard."""
+        start_time = time.time()
+        client_ip = request.headers.get("X-Forwarded-For", "unknown").split(",")[0].strip()
+
+        logger.info("Leaderboard API Request", [
+            ("Client IP", client_ip),
+            ("Path", "/api/azab/leaderboard"),
+        ])
+
+        # Check cache
+        cached = await self._cache.get("leaderboard")
+        if cached:
+            cached["response_time_ms"] = round((time.time() - start_time) * 1000, 1)
+            cached["cached"] = True
+            return web.json_response(cached, headers={"Access-Control-Allow-Origin": "*"})
+
+        try:
+            # Get moderator leaderboard from database
+            mods_raw = self._db.get_moderator_leaderboard(limit=50)
+
+            # Build enriched leaderboard
+            leaderboard = []
+            for i, mod in enumerate(mods_raw, 1):
+                mod_id = mod["moderator_id"]
+                name, avatar, is_booster = await self._fetch_user_data(mod_id, f"Mod {mod_id}")
+                leaderboard.append({
+                    "rank": i,
+                    "user_id": str(mod_id),
+                    "name": name,
+                    "avatar": avatar,
+                    "actions": mod.get("total_actions", 0),
+                    "mutes": mod.get("mutes", 0),
+                    "bans": mod.get("bans", 0),
+                    "warns": mod.get("warns", 0),
+                    "is_booster": is_booster,
+                })
+
+            # Get totals
+            all_time_stats = self._db.get_moderation_stats()
+
+            response = {
+                "leaderboard": leaderboard,
+                "total_moderators": len(leaderboard),
+                "total_actions": all_time_stats.get("total_mutes", 0) + all_time_stats.get("total_bans", 0) + all_time_stats.get("total_warns", 0),
+                "generated_at": datetime.now(NY_TZ).isoformat(),
+                "response_time_ms": round((time.time() - start_time) * 1000, 1),
+                "cached": False,
+            }
+
+            # Cache for 30 seconds
+            await self._cache.set("leaderboard", response)
+
+            logger.info("Leaderboard API Response", [
+                ("Moderators", str(len(leaderboard))),
+                ("Response Time", f"{response['response_time_ms']}ms"),
+            ])
+
+            return web.json_response(
+                response,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        except Exception as e:
+            logger.error("Leaderboard API Error", [("Error", str(e)[:100])])
+            return web.json_response(
+                {"error": "Internal server error"},
+                status=500,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
     async def handle_user(self, request: web.Request) -> web.Response:
         """User profile endpoint."""
         start_time = time.time()
@@ -460,7 +527,7 @@ class AzabAPI:
             is_muted = self._bot.db.is_user_muted(user_id, guild_id) if guild_id else False
 
             # Get user info from Discord
-            name, avatar = await self._fetch_user_data(user_id, f"User {user_id}")
+            name, avatar, _ = await self._fetch_user_data(user_id, f"User {user_id}")
 
             # Get rank among offenders
             top_offenders = self._bot.db.get_top_offenders(limit=100, guild_id=guild_id)
@@ -534,7 +601,7 @@ class AzabAPI:
                 )
 
             # Get user info from Discord
-            name, avatar = await self._fetch_user_data(user_id, f"Mod {user_id}")
+            name, avatar, _ = await self._fetch_user_data(user_id, f"Mod {user_id}")
 
             # Get rank among moderators
             mod_leaderboard = self._bot.db.get_moderator_leaderboard(limit=100)
@@ -617,7 +684,7 @@ class AzabAPI:
         enriched = []
         for offender in offenders:
             user_id = offender["user_id"]
-            name, avatar = await self._fetch_user_data(user_id, f"User {user_id}")
+            name, avatar, _ = await self._fetch_user_data(user_id, f"User {user_id}")
             enriched.append({
                 "user_id": str(user_id),
                 "name": name,
@@ -637,7 +704,7 @@ class AzabAPI:
         enriched = []
         for mod in mods:
             mod_id = mod["moderator_id"]
-            name, avatar = await self._fetch_user_data(mod_id, f"Mod {mod_id}")
+            name, avatar, _ = await self._fetch_user_data(mod_id, f"Mod {mod_id}")
             enriched.append({
                 "user_id": str(mod_id),
                 "name": name,
@@ -653,8 +720,8 @@ class AzabAPI:
 
         enriched = []
         for action in actions:
-            user_name, _ = await self._fetch_user_data(action["user_id"], f"User {action['user_id']}")
-            mod_name, _ = await self._fetch_user_data(action["moderator_id"], f"Mod {action['moderator_id']}")
+            user_name, _, _ = await self._fetch_user_data(action["user_id"], f"User {action['user_id']}")
+            mod_name, _, _ = await self._fetch_user_data(action["moderator_id"], f"Mod {action['moderator_id']}")
 
             # Format timestamp
             ts = action["timestamp"]
@@ -691,7 +758,7 @@ class AzabAPI:
         enriched = []
         for offender in offenders:
             user_id = offender["user_id"]
-            name, avatar = await self._fetch_user_data(user_id, f"User {user_id}")
+            name, avatar, _ = await self._fetch_user_data(user_id, f"User {user_id}")
             enriched.append({
                 "user_id": str(user_id),
                 "name": name,
@@ -712,7 +779,7 @@ class AzabAPI:
         for release in releases:
             try:
                 user_id = release["user_id"]
-                name, avatar = await self._fetch_user_data(user_id, f"User {user_id}")
+                name, avatar, _ = await self._fetch_user_data(user_id, f"User {user_id}")
 
                 # Format duration - cap at reasonable values
                 duration_mins = release.get("duration_minutes", 0) or 0
@@ -766,7 +833,7 @@ class AzabAPI:
             return None
 
         mod_id = top_mod["moderator_id"]
-        name, avatar = await self._fetch_user_data(mod_id, f"Mod {mod_id}")
+        name, avatar, _ = await self._fetch_user_data(mod_id, f"Mod {mod_id}")
 
         return {
             "user_id": str(mod_id),
@@ -789,7 +856,7 @@ class AzabAPI:
 
         enriched = []
         for action in actions:
-            target_name, _ = await self._fetch_user_data(action["user_id"], f"User {action['user_id']}")
+            target_name, _, _ = await self._fetch_user_data(action["user_id"], f"User {action['user_id']}")
 
             # Format timestamp
             ts = action["timestamp"]
@@ -828,7 +895,7 @@ class AzabAPI:
 
         enriched = []
         for p in punishments:
-            mod_name, _ = await self._fetch_user_data(p["moderator_id"], f"Mod {p['moderator_id']}") if p.get("moderator_id") else ("Unknown", None)
+            mod_name, _, _ = await self._fetch_user_data(p["moderator_id"], f"Mod {p['moderator_id']}") if p.get("moderator_id") else ("Unknown", None, False)
 
             # Format timestamp
             ts = p["timestamp"]
@@ -950,8 +1017,8 @@ class AzabAPI:
             _avatar_cache.clear()
             _avatar_cache_date = today
 
-    async def _fetch_user_data(self, user_id: int, fallback_name: str) -> tuple[str, Optional[str]]:
-        """Fetch user name and avatar with caching."""
+    async def _fetch_user_data(self, user_id: int, fallback_name: str) -> tuple[str, Optional[str], bool]:
+        """Fetch user name, avatar, and booster status with caching."""
         self._check_cache_refresh()
 
         # Check cache
@@ -970,12 +1037,22 @@ class AzabAPI:
             name = user.display_name
             avatar = user.display_avatar.url if user.display_avatar else None
 
-            _avatar_cache[user_id] = (name, avatar)
-            return name, avatar
+            # Check booster status via guild member
+            is_booster = False
+            config = get_config()
+            if config.logging_guild_id:
+                guild = self._bot.get_guild(config.logging_guild_id)
+                if guild:
+                    member = guild.get_member(user_id)
+                    if member and member.premium_since:
+                        is_booster = True
+
+            _avatar_cache[user_id] = (name, avatar, is_booster)
+            return name, avatar, is_booster
 
         except Exception:
-            _avatar_cache[user_id] = (fallback_name, None)
-            return fallback_name, None
+            _avatar_cache[user_id] = (fallback_name, None, False)
+            return fallback_name, None, False
 
 
 # =============================================================================
