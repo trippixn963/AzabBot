@@ -221,9 +221,14 @@ class MessageEvents(commands.Cog):
             await self.bot.ticket_service.track_ticket_activity(message.channel.id)
 
         # -----------------------------------------------------------------
-        # Route 2: Logs channel - parse mute embeds
+        # Route 2: Mod logs forum - parse mute embeds from threads
         # -----------------------------------------------------------------
-        if message.channel.id == self.config.logs_channel_id and message.embeds:
+        # Check if message is in a thread within the mod logs forum
+        if (
+            isinstance(message.channel, discord.Thread)
+            and message.channel.parent_id == self.config.mod_logs_forum_id
+            and message.embeds
+        ):
             if self.bot.mute_handler:
                 await self.bot.mute_handler.process_mute_embed(message)
             return

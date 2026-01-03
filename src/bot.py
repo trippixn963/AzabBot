@@ -318,7 +318,7 @@ class AzabBot(commands.Bot):
             if self.mod_tracker.enabled:
                 logger.tree("Mod Tracker Service Initialized", [
                     ("Server ID", str(self.config.mod_server_id)),
-                    ("Forum ID", str(self.config.mod_tracker_forum_id)),
+                    ("Forum ID", str(self.config.mod_logs_forum_id)),
                     ("Role ID", str(self.config.moderation_role_id)),
                 ], emoji="👁️")
                 await self.mod_tracker.auto_scan_mods()
@@ -586,10 +586,10 @@ class AzabBot(commands.Bot):
                     ("Reason", reason or "None"),
                 ], emoji="🔒")
 
-                # Alert in logs channel
-                if self.config.logs_channel_id:
-                    logs_channel = guild.get_channel(self.config.logs_channel_id)
-                    if logs_channel:
+                # Alert in alert channel (not forum)
+                if self.config.alert_channel_id:
+                    alert_channel = guild.get_channel(self.config.alert_channel_id)
+                    if alert_channel and not isinstance(alert_channel, discord.ForumChannel):
                         try:
                             alert_msg = (
                                 f"⚠️ **Bot Restarted During Lockdown**\n"
@@ -598,7 +598,7 @@ class AzabBot(commands.Bot):
                             )
                             if self.config.developer_id:
                                 alert_msg = f"<@{self.config.developer_id}> {alert_msg}"
-                            await logs_channel.send(alert_msg)
+                            await alert_channel.send(alert_msg)
                         except discord.HTTPException:
                             pass
 

@@ -160,7 +160,7 @@ class ModTrackerService(ModTrackerLogsMixin):
         """Check if mod tracking is enabled."""
         return (
             self.config.mod_server_id is not None and
-            self.config.mod_tracker_forum_id is not None and
+            self.config.mod_logs_forum_id is not None and
             self.config.moderation_role_id is not None
         )
 
@@ -1156,7 +1156,7 @@ class ModTrackerService(ModTrackerLogsMixin):
         Returns:
             Forum channel or None.
         """
-        if not self.config.mod_tracker_forum_id:
+        if not self.config.mod_logs_forum_id:
             return None
 
         # Check if cache is stale
@@ -1170,26 +1170,26 @@ class ModTrackerService(ModTrackerLogsMixin):
 
         if self._forum is None:
             try:
-                channel = self.bot.get_channel(self.config.mod_tracker_forum_id)
+                channel = self.bot.get_channel(self.config.mod_logs_forum_id)
                 if channel is None:
-                    channel = await self.bot.fetch_channel(self.config.mod_tracker_forum_id)
+                    channel = await self.bot.fetch_channel(self.config.mod_logs_forum_id)
                 if isinstance(channel, discord.ForumChannel):
                     self._forum = channel
                     self._forum_cached_at = datetime.now(NY_TZ)
-                    logger.debug(f"Mod Tracker: Forum Channel Cached (ID: {self.config.mod_tracker_forum_id})")
+                    logger.debug(f"Mod Tracker: Forum Channel Cached (ID: {self.config.mod_logs_forum_id})")
             except discord.NotFound:
                 logger.error("Mod Tracker: Forum Not Found", [
-                    ("Forum ID", str(self.config.mod_tracker_forum_id)),
+                    ("Forum ID", str(self.config.mod_logs_forum_id)),
                 ])
                 return None
             except discord.Forbidden:
                 logger.error("Mod Tracker: No Permission To Access Forum", [
-                    ("Forum ID", str(self.config.mod_tracker_forum_id)),
+                    ("Forum ID", str(self.config.mod_logs_forum_id)),
                 ])
                 return None
             except Exception as e:
                 logger.error("Mod Tracker: Failed To Get Forum", [
-                    ("Forum ID", str(self.config.mod_tracker_forum_id)),
+                    ("Forum ID", str(self.config.mod_logs_forum_id)),
                     ("Error", str(e)[:50]),
                 ])
                 return None

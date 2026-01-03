@@ -1011,47 +1011,38 @@ class MuteCog(commands.Cog):
         color: int = EmbedColors.INFO,
     ) -> None:
         """
-        Post an action to the mod log channel.
+        Post an action to the server logs forum via logging service.
 
         Args:
             action: Action name (Mute/Unmute).
             user: Target user.
             moderator: Moderator who performed action.
             reason: Optional reason.
-            duration: Optional duration string.
-            color: Embed color.
+            duration: Optional duration string (unused, kept for compatibility).
+            color: Embed color (unused, kept for compatibility).
         """
-        log_channel = self.bot.get_channel(self.config.logs_channel_id)
-        if not log_channel:
+        if not self.bot.logging_service:
             return
 
-        embed = discord.Embed(
-            title=f"Moderation: {action}",
-            color=color,
-            timestamp=datetime.now(NY_TZ),
-        )
-
-        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}`", inline=True)
-        embed.add_field(name="Moderator", value=f"{moderator.mention}\n`{moderator.display_name}`", inline=True)
-
-        if duration:
-            embed.add_field(name="Duration", value=duration, inline=True)
-
-        embed.add_field(
-            name="Reason",
-            value=reason or "No reason provided",
-            inline=False,
-        )
-
-        embed.set_thumbnail(url=user.display_avatar.url)
-        set_footer(embed)
-        embed.set_footer(text=f"User ID: {user.id} • {embed.footer.text}" if embed.footer and embed.footer.text else f"User ID: {user.id}")
-
         try:
-            await log_channel.send(embed=embed)
-        except (discord.Forbidden, discord.HTTPException) as e:
+            if action.lower() == "mute":
+                await self.bot.logging_service.log_mute(
+                    guild=user.guild,
+                    target=user,
+                    moderator=moderator,
+                    reason=reason,
+                    duration=duration,
+                )
+            elif action.lower() == "unmute":
+                await self.bot.logging_service.log_unmute(
+                    guild=user.guild,
+                    target=user,
+                    moderator=moderator,
+                    reason=reason,
+                )
+        except Exception as e:
             logger.error("Failed to Post Mod Log", [
-                ("Channel", str(self.config.logs_channel_id)),
+                ("Action", action),
                 ("Error", str(e)[:50]),
             ])
 

@@ -56,7 +56,7 @@ class Config:
     Attributes:
         discord_token: Discord bot authentication token.
         developer_id: User ID of the bot developer.
-        logs_channel_id: Channel ID for mod action logs.
+        mod_logs_forum_id: Forum ID for mod action logs (mute, ban, warn).
         prison_channel_ids: Set of channel IDs for prisoner messages.
         general_channel_id: Main server channel ID.
         muted_role_id: Role ID assigned to muted/timed-out users.
@@ -73,7 +73,7 @@ class Config:
     # Required: Channels
     # -------------------------------------------------------------------------
 
-    logs_channel_id: int
+    mod_logs_forum_id: int
     prison_channel_ids: Set[int]
     general_channel_id: int
 
@@ -105,7 +105,6 @@ class Config:
     # -------------------------------------------------------------------------
 
     mod_server_id: Optional[int] = None
-    mod_tracker_forum_id: Optional[int] = None
     alert_channel_id: Optional[int] = None  # Channel for critical alerts (raids, nuke attempts)
 
     # -------------------------------------------------------------------------
@@ -430,9 +429,9 @@ def load_config() -> Config:
     if not developer_id_str:
         missing.append("DEVELOPER_ID")
 
-    logs_channel_id_str = os.getenv("LOGS_CHANNEL_ID")
-    if not logs_channel_id_str:
-        missing.append("LOGS_CHANNEL_ID")
+    mod_logs_forum_id_str = os.getenv("MOD_LOGS_FORUM_ID")
+    if not mod_logs_forum_id_str:
+        missing.append("MOD_LOGS_FORUM_ID")
 
     prison_channel_ids_str = os.getenv("PRISON_CHANNEL_IDS")
     if not prison_channel_ids_str:
@@ -460,7 +459,7 @@ def load_config() -> Config:
     # -------------------------------------------------------------------------
 
     developer_id = _parse_int(developer_id_str, "DEVELOPER_ID")
-    logs_channel_id = _parse_int(logs_channel_id_str, "LOGS_CHANNEL_ID")
+    mod_logs_forum_id = _parse_int(mod_logs_forum_id_str, "MOD_LOGS_FORUM_ID")
     prison_channel_ids = _parse_int_set(prison_channel_ids_str)
     general_channel_id = _parse_int(general_channel_id_str, "GENERAL_CHANNEL_ID")
     muted_role_id = _parse_int(muted_role_id_str, "MUTED_ROLE_ID")
@@ -477,7 +476,6 @@ def load_config() -> Config:
     verification_role_id = _parse_int_optional(os.getenv("VERIFICATION_ROLE_ID"))
     moderation_role_id = _parse_int_optional(os.getenv("MODERATION_ROLE_ID"))
     mod_server_id = _parse_int_optional(os.getenv("MOD_SERVER_ID"))
-    mod_tracker_forum_id = _parse_int_optional(os.getenv("MOD_TRACKER_FORUM_ID"))
     alert_channel_id = _parse_int_optional(os.getenv("ALERT_CHANNEL_ID"))
     appeal_forum_id = _parse_int_optional(os.getenv("APPEAL_FORUM_ID"))
     ticket_channel_id = _parse_int_optional(os.getenv("TICKET_CHANNEL_ID"))
@@ -506,7 +504,7 @@ def load_config() -> Config:
     return Config(
         discord_token=discord_token,
         developer_id=developer_id,
-        logs_channel_id=logs_channel_id,
+        mod_logs_forum_id=mod_logs_forum_id,
         prison_channel_ids=prison_channel_ids,
         general_channel_id=general_channel_id,
         muted_role_id=muted_role_id,
@@ -518,7 +516,6 @@ def load_config() -> Config:
         verification_role_id=verification_role_id,
         moderation_role_id=moderation_role_id,
         mod_server_id=mod_server_id,
-        mod_tracker_forum_id=mod_tracker_forum_id,
         alert_channel_id=alert_channel_id,
         appeal_forum_id=appeal_forum_id,
         ticket_channel_id=ticket_channel_id,
@@ -616,8 +613,8 @@ def validate_and_log_config() -> None:
     optional_features = []
     if config.case_log_forum_id:
         optional_features.append("Case Logging")
-    if config.mod_tracker_forum_id:
-        optional_features.append("Mod Tracker")
+    if config.mod_logs_forum_id:
+        optional_features.append("Mod Logs")
     if config.server_logs_forum_id:
         optional_features.append("Server Logs")
     if config.alert_webhook_url:
@@ -626,8 +623,6 @@ def validate_and_log_config() -> None:
     missing_optional = []
     if not config.case_log_forum_id:
         missing_optional.append("CASE_LOG_FORUM_ID")
-    if not config.mod_tracker_forum_id:
-        missing_optional.append("MOD_TRACKER_FORUM_ID")
     if not config.server_logs_forum_id:
         missing_optional.append("SERVER_LOGS_FORUM_ID")
 

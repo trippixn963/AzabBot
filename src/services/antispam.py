@@ -542,8 +542,8 @@ class AntiSpamService:
             self._exempt_channels.update(self.config.prison_channel_ids)
 
         # Exempt log channels
-        if self.config.logs_channel_id:
-            self._exempt_channels.add(self.config.logs_channel_id)
+        if self.config.mod_logs_forum_id:
+            self._exempt_channels.add(self.config.mod_logs_forum_id)
         if self.config.server_logs_forum_id:
             self._exempt_channels.add(self.config.server_logs_forum_id)
 

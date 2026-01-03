@@ -384,46 +384,24 @@ class MuteScheduler:
         guild: discord.Guild,
     ) -> None:
         """
-        Post auto-unmute to mod log channel.
+        Post auto-unmute to server logs via logging service.
 
         Args:
             user: User who was unmuted.
             guild: Guild where unmute occurred.
         """
-        log_channel = self.bot.get_channel(self.config.logs_channel_id)
-        if not log_channel:
+        if not self.bot.logging_service:
             return
 
-        embed = discord.Embed(
-            title="🔊 Auto-Unmute",
-            color=EmbedColors.SUCCESS,
-            timestamp=datetime.now(NY_TZ),
-        )
-
-        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}`", inline=True)
-        embed.add_field(name="Moderator", value=f"{self.bot.user.mention}\n`Auto`", inline=True)
-        embed.add_field(name="Reason", value="```Mute duration expired```", inline=False)
-
-        embed.set_thumbnail(url=user.display_avatar.url)
-        embed.set_footer(text=f"Unmute • ID: {user.id}")
-
         try:
-            # Add Case button if user has an open case
-            view = None
-            case = self.db.get_case_log(user.id)
-            if case:
-                view = discord.ui.View(timeout=None)
-                case_url = f"https://discord.com/channels/{guild.id}/{case['thread_id']}"
-                view.add_item(discord.ui.Button(
-                    label="Case",
-                    url=case_url,
-                    style=discord.ButtonStyle.link,
-                    emoji=CASE_EMOJI,
-                ))
-
-            await log_channel.send(embed=embed, view=view)
-        except (discord.Forbidden, discord.HTTPException):
-            pass
+            await self.bot.logging_service.log_unmute(
+                guild=guild,
+                target=user,
+                moderator=self.bot.user,
+                reason="Mute duration expired",
+            )
+        except Exception as e:
+            logger.debug(f"Auto-unmute log failed: {e}")
 
     # =========================================================================
     # State Synchronization

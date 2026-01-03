@@ -123,7 +123,7 @@ class PrisonHandler:
             await self._handle_vc_kick(member)
 
             # Get channels (use safe_fetch to handle cache misses)
-            logs_channel = await safe_fetch_channel(self.bot, self.config.logs_channel_id)
+            logs_channel = await safe_fetch_channel(self.bot, self.config.mod_logs_forum_id)
 
             # Get first prison channel
             prison_channel = None
@@ -134,7 +134,7 @@ class PrisonHandler:
 
             if not logs_channel or not prison_channel:
                 logger.error("Required Channels Not Found", [
-                    ("Logs", str(self.config.logs_channel_id)),
+                    ("Logs", str(self.config.mod_logs_forum_id)),
                     ("Prison", str(next(iter(self.config.prison_channel_ids)) if self.config.prison_channel_ids else "None")),
                 ])
                 return
@@ -369,11 +369,17 @@ class PrisonHandler:
     async def _scan_logs_for_reason(
         self,
         member: discord.Member,
-        logs_channel: discord.TextChannel,
+        logs_channel: discord.abc.GuildChannel,
     ) -> None:
         """Scan logs channel for mute reason in recent embeds."""
         if not self.bot.mute_handler:
             return
+
+        # Skip if logs_channel is a forum (forums don't have history)
+        if isinstance(logs_channel, discord.ForumChannel):
+            logger.debug(f"Log scan skipped - logs channel is a forum")
+            return
+
         try:
             async for message in logs_channel.history(limit=50):
                 if message.embeds:

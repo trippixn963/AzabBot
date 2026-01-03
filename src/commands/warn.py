@@ -537,36 +537,28 @@ class WarnCog(commands.Cog):
         total_warns: int = 1,
         color: int = EmbedColors.INFO,
     ) -> None:
-        """Post an action to the mod log channel."""
-        log_channel = self.bot.get_channel(self.config.logs_channel_id)
-        if not log_channel:
+        """Post a warning action to the server logs forum via logging service."""
+        if not self.bot.logging_service:
             return
 
-        embed = discord.Embed(
-            title=f"Moderation: {action}",
-            color=color,
-            timestamp=datetime.now(NY_TZ),
-        )
-
-        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}`", inline=True)
-        embed.add_field(name="Moderator", value=f"{moderator.mention}\n`{moderator.display_name}`", inline=True)
-
-        if active_warns != total_warns:
-            embed.add_field(name="Warnings", value=f"{active_warns} active ({total_warns} total)", inline=True)
-        else:
-            embed.add_field(name="Warning #", value=str(active_warns), inline=True)
-
-        embed.add_field(
-            name="Reason",
-            value=reason or "No reason provided",
-            inline=False,
-        )
-
-        embed.set_thumbnail(url=user.display_avatar.url)
-        set_footer(embed)
-
         try:
-            await log_channel.send(embed=embed)
+            guild = moderator.guild
+
+            if action.lower() == "warn":
+                await self.bot.logging_service.log_warning_issued(
+                    guild=guild,
+                    target=user,
+                    moderator=moderator,
+                    reason=reason,
+                    warning_count=active_warns,
+                )
+            elif action.lower() == "unwarn":
+                await self.bot.logging_service.log_warning_removed(
+                    guild=guild,
+                    target=user,
+                    moderator=moderator,
+                    reason=reason,
+                )
         except Exception as e:
             logger.error(f"Failed to post to mod log: {e}")
 
