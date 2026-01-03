@@ -49,6 +49,13 @@ class CaseLogExtendedActionsMixin:
         if not self.enabled:
             return None
 
+        logger.tree("Case Log: log_timeout Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator ID", str(moderator_id)),
+            ("Until", str(until)),
+            ("Has Reason", str(bool(reason))),
+        ], emoji="📝")
+
         try:
             case = await self._get_or_create_case(user)
             case_thread = await self._get_case_thread(case["thread_id"])
@@ -82,7 +89,10 @@ class CaseLogExtendedActionsMixin:
                     if evidence_msg:
                         evidence_message_url = evidence_msg.jump_url
                 except Exception as e:
-                    logger.error(f"Evidence storage failed: {e}")
+                    logger.error("Case Log: Evidence Storage Failed", [
+                        ("User ID", str(user.id)),
+                        ("Error", str(e)[:100]),
+                    ])
 
             embed = build_timeout_embed(
                 user, mod_name, duration, until, reason,
@@ -143,6 +153,13 @@ class CaseLogExtendedActionsMixin:
         if not self.enabled:
             return None
 
+        logger.tree("Case Log: log_ban Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})"),
+            ("Has Reason", str(bool(reason))),
+            ("Has Evidence", str(bool(evidence))),
+        ], emoji="📝")
+
         try:
             case = await self._create_action_case(
                 user=user,
@@ -166,7 +183,10 @@ class CaseLogExtendedActionsMixin:
                     if evidence_msg:
                         evidence_message_url = evidence_msg.jump_url
                 except Exception as e:
-                    logger.error(f"Evidence storage failed: {e}")
+                    logger.error("Case Log: Evidence Storage Failed", [
+                        ("User ID", str(user.id)),
+                        ("Error", str(e)[:100]),
+                    ])
 
             ban_count = self.db.get_user_ban_count(user.id, user.guild.id)
 
@@ -230,6 +250,15 @@ class CaseLogExtendedActionsMixin:
                         action_type="ban",
                     )
 
+            # Request evidence if none was provided
+            if not evidence:
+                await self._send_evidence_request(
+                    case_id=case["case_id"],
+                    thread=case_thread,
+                    moderator=moderator,
+                    action_type="ban",
+                )
+
             logger.tree("Case Log: Ban Case Created", [
                 ("User", user.name),
                 ("ID", str(user.id)),
@@ -265,6 +294,12 @@ class CaseLogExtendedActionsMixin:
         if not self.enabled:
             return None
 
+        logger.tree("Case Log: log_unban Called", [
+            ("User", f"{username} ({user_id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})"),
+            ("Has Reason", str(bool(reason))),
+        ], emoji="📝")
+
         try:
             guild_id = moderator.guild.id
             active_ban_case = self.db.get_active_ban_case(user_id, guild_id)
@@ -274,6 +309,14 @@ class CaseLogExtendedActionsMixin:
 
                 if not case_thread:
                     return {"case_id": active_ban_case["case_id"], "thread_id": active_ban_case["thread_id"]}
+
+                # Check if thread is locked (approved case) - unlock it temporarily
+                was_locked = case_thread.locked
+                if was_locked:
+                    try:
+                        await case_thread.edit(locked=False)
+                    except discord.HTTPException as e:
+                        logger.debug(f"Thread unlock failed for unban: {case_thread.id} - {e.code}: {e.text[:50] if e.text else 'No text'}")
 
                 now = datetime.now(NY_TZ)
 
@@ -315,7 +358,24 @@ class CaseLogExtendedActionsMixin:
                 embed.set_footer(text=f"Case Resolved • ID: {user_id}")
 
                 # Action embeds no longer have buttons - control panel handles all controls
-                await safe_send(case_thread, embed=embed)
+                embed_message = await safe_send(case_thread, embed=embed)
+
+                # Request reason if not provided (unbans should always have a reason)
+                if not reason and embed_message:
+                    warning_message = await safe_send(
+                        case_thread,
+                        f"⚠️ {moderator.mention} No reason was provided for this unban.\n\n"
+                        f"**Reply to this message** with the reason for unbanning."
+                    )
+                    if warning_message:
+                        self.db.create_pending_reason(
+                            thread_id=case_thread.id,
+                            warning_message_id=warning_message.id,
+                            embed_message_id=embed_message.id,
+                            moderator_id=moderator.id,
+                            target_user_id=user_id,
+                            action_type="unban",
+                        )
 
                 # Update control panel to show resolved status
                 await self._update_control_panel(
@@ -324,6 +384,13 @@ class CaseLogExtendedActionsMixin:
                     new_status="resolved",
                     moderator=moderator,
                 )
+
+                # Re-lock the thread if it was locked
+                if was_locked:
+                    try:
+                        await case_thread.edit(locked=True)
+                    except discord.HTTPException as e:
+                        logger.debug(f"Thread re-lock failed for unban: {case_thread.id} - {e.code}: {e.text[:50] if e.text else 'No text'}")
 
                 self.db.resolve_case(
                     case_id=active_ban_case["case_id"],
@@ -437,6 +504,13 @@ class CaseLogExtendedActionsMixin:
         if not restrictions:
             return None
 
+        logger.tree("Case Log: log_forbid Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})"),
+            ("Restrictions", ", ".join(restrictions)),
+            ("Duration", duration or "Permanent"),
+        ], emoji="📝")
+
         try:
             case = await self._create_action_case(
                 user=user,
@@ -453,6 +527,14 @@ class CaseLogExtendedActionsMixin:
             embed = build_forbid_embed(user, moderator, restrictions, reason, duration)
             # Action embeds no longer have buttons - control panel handles all controls
             await safe_send(case_thread, embed=embed)
+
+            # Request evidence (forbid doesn't have evidence parameter, always request)
+            await self._send_evidence_request(
+                case_id=case["case_id"],
+                thread=case_thread,
+                moderator=moderator,
+                action_type="forbid",
+            )
 
             logger.tree("Case Log: Forbid", [
                 ("User", user.name),
@@ -479,47 +561,102 @@ class CaseLogExtendedActionsMixin:
         user: discord.Member,
         moderator: discord.Member,
         restrictions: List[str],
+        reason: Optional[str] = None,
     ) -> Optional[dict]:
-        """Log an unforbid action - creates a case for the removal."""
+        """Log an unforbid action to the original forbid case thread."""
         if not self.enabled:
             return None
 
         if not restrictions:
             return None
 
-        try:
-            case = await self._create_action_case(
-                user=user,
-                moderator=moderator,
-                action_type="unforbid",
-                reason=f"Removed: {', '.join(restrictions)}",
-            )
+        logger.tree("Case Log: log_unforbid Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})"),
+            ("Removing", ", ".join(restrictions)),
+        ], emoji="📝")
 
-            case_thread = await self._get_case_thread(case["thread_id"])
+        try:
+            guild_id = moderator.guild.id
+
+            # Find the original forbid case (open or most recent)
+            active_case = self.db.get_active_forbid_case(user.id, guild_id)
+            if not active_case:
+                # Try to find most recent forbid case (may be approved/locked)
+                active_case = self.db.get_most_recent_forbid_case(user.id, guild_id)
+
+            if not active_case:
+                # No forbid case found - log warning and return
+                logger.warning("Unforbid - No Forbid Case Found", [
+                    ("User ID", str(user.id)),
+                    ("Restrictions", ", ".join(restrictions)),
+                ])
+                return None
+
+            case_thread = await self._get_case_thread(active_case["thread_id"])
 
             if not case_thread:
-                return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+                return {"case_id": active_case["case_id"], "thread_id": active_case["thread_id"]}
+
+            # Check if thread is locked (approved case) - unlock it temporarily
+            was_locked = case_thread.locked
+            if was_locked:
+                try:
+                    await case_thread.edit(locked=False)
+                except discord.HTTPException as e:
+                    logger.debug(f"Thread unlock failed for unforbid: {case_thread.id} - {e.code}: {e.text[:50] if e.text else 'No text'}")
 
             embed = build_unforbid_embed(user, moderator, restrictions)
             # Action embeds no longer have buttons - control panel handles all controls
-            await safe_send(case_thread, embed=embed)
+            embed_message = await safe_send(case_thread, embed=embed)
+
+            # Request reason if not explicitly provided
+            if not reason and embed_message:
+                warning_message = await safe_send(
+                    case_thread,
+                    f"⚠️ {moderator.mention} No reason was provided for removing restrictions.\n\n"
+                    f"**Reply to this message** with the reason for unforbidding."
+                )
+                if warning_message:
+                    self.db.create_pending_reason(
+                        thread_id=case_thread.id,
+                        warning_message_id=warning_message.id,
+                        embed_message_id=embed_message.id,
+                        moderator_id=moderator.id,
+                        target_user_id=user.id,
+                        action_type="unforbid",
+                    )
 
             # Update control panel to show resolved status
             await self._update_control_panel(
-                case_id=case["case_id"],
+                case_id=active_case["case_id"],
                 case_thread=case_thread,
                 new_status="resolved",
                 moderator=moderator,
             )
 
-            logger.tree("Case Log: Unforbid", [
+            # Re-lock the thread if it was locked
+            if was_locked:
+                try:
+                    await case_thread.edit(locked=True)
+                except discord.HTTPException as e:
+                    logger.debug(f"Thread re-lock failed for unforbid: {case_thread.id} - {e.code}: {e.text[:50] if e.text else 'No text'}")
+
+            # Mark case as resolved
+            self.db.resolve_case(
+                case_id=active_case["case_id"],
+                resolved_by=moderator.id,
+                reason=reason,
+            )
+
+            logger.tree("Case Log: Forbid Case Resolved (Unforbid)", [
                 ("User", user.name),
                 ("ID", str(user.id)),
-                ("Case ID", case['case_id']),
+                ("Case ID", active_case['case_id']),
                 ("Removed", ", ".join(restrictions)),
             ], emoji="✅")
 
-            return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
+            return {"case_id": active_case["case_id"], "thread_id": active_case["thread_id"]}
 
         except Exception as e:
             logger.error("Case Log: Failed To Log Unforbid", [

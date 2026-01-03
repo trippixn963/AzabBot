@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 import discord
 
 from src.core.config import get_config
+from src.core.logger import logger
+from src.utils.views import UserInfoSelect
 
 from .buttons import (
     ClaimButton,
@@ -58,6 +60,10 @@ class TicketPanelView(discord.ui.View):
     def _make_callback(self, category: str):
         """Create a callback for a category button."""
         async def callback(interaction: discord.Interaction) -> None:
+            logger.tree("Ticket Category Button Clicked", [
+                ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Category", category),
+            ], emoji="🎫")
             await interaction.response.send_modal(TicketCreateModal(category))
         return callback
 
@@ -87,6 +93,10 @@ class TicketPanelButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tk
         return cls(match.group("category"))
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        logger.tree("Ticket Panel Button Clicked", [
+            ("User", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Category", self.category),
+        ], emoji="🎫")
         await interaction.response.send_modal(TicketCreateModal(self.category))
 
 
@@ -100,6 +110,10 @@ class TicketControlPanelView(discord.ui.View):
 
     This view is sent once when the ticket is created and
     updated in place as the ticket state changes.
+
+    Layout:
+        Row 0: User Info dropdown (Info, Avatar, History for ticket owner)
+        Row 1: Action buttons based on status
 
     Button visibility is based on ticket status:
     - open: Claim, Close, AddUser, Info
@@ -121,27 +135,62 @@ class TicketControlPanelView(discord.ui.View):
         self.user_id = user_id
         self.guild_id = guild_id
 
-        self._add_buttons()
+        self._add_components()
 
-    def _add_buttons(self) -> None:
-        """Add buttons based on current ticket status."""
+    def _add_components(self) -> None:
+        """Add components based on current ticket status."""
+        # =================================================================
+        # Row 0: User Info dropdown (ticket owner's moderation info)
+        # =================================================================
+
+        self.add_item(UserInfoSelect(self.user_id, self.guild_id))
+
+        # =================================================================
+        # Row 1: Action buttons based on status
+        # =================================================================
+
         if self.status == "open":
             # Open tickets: Claim, Close, AddUser, Info
-            self.add_item(ClaimButton(self.ticket_id))
-            self.add_item(CloseButton(self.ticket_id))
-            self.add_item(AddUserButton(self.ticket_id))
-            self.add_item(InfoButton(self.ticket_id))
+            claim_btn = ClaimButton(self.ticket_id)
+            claim_btn.row = 1
+            self.add_item(claim_btn)
+
+            close_btn = CloseButton(self.ticket_id)
+            close_btn.row = 1
+            self.add_item(close_btn)
+
+            add_user_btn = AddUserButton(self.ticket_id)
+            add_user_btn.row = 1
+            self.add_item(add_user_btn)
+
+            info_btn = InfoButton(self.ticket_id)
+            info_btn.row = 1
+            self.add_item(info_btn)
 
         elif self.status == "claimed":
             # Claimed tickets: Close, Transfer, AddUser, Info
-            self.add_item(CloseButton(self.ticket_id))
-            self.add_item(TransferButton(self.ticket_id))
-            self.add_item(AddUserButton(self.ticket_id))
-            self.add_item(InfoButton(self.ticket_id))
+            close_btn = CloseButton(self.ticket_id)
+            close_btn.row = 1
+            self.add_item(close_btn)
+
+            transfer_btn = TransferButton(self.ticket_id)
+            transfer_btn.row = 1
+            self.add_item(transfer_btn)
+
+            add_user_btn = AddUserButton(self.ticket_id)
+            add_user_btn.row = 1
+            self.add_item(add_user_btn)
+
+            info_btn = InfoButton(self.ticket_id)
+            info_btn.row = 1
+            self.add_item(info_btn)
 
         elif self.status == "closed":
             # Closed tickets: Reopen, Transcript (direct link), Info
-            self.add_item(ReopenButton(self.ticket_id))
+            reopen_btn = ReopenButton(self.ticket_id)
+            reopen_btn.row = 1
+            self.add_item(reopen_btn)
+
             # Direct link button for transcript (no extra message)
             config = get_config()
             if config.transcript_base_url:
@@ -150,8 +199,12 @@ class TicketControlPanelView(discord.ui.View):
                     style=discord.ButtonStyle.link,
                     url=f"{config.transcript_base_url}/{self.ticket_id}",
                     emoji=TRANSCRIPT_EMOJI,
+                    row=1,
                 ))
-            self.add_item(InfoButton(self.ticket_id))
+
+            info_btn = InfoButton(self.ticket_id)
+            info_btn.row = 1
+            self.add_item(info_btn)
 
     @classmethod
     def from_ticket(cls, ticket: dict) -> "TicketControlPanelView":

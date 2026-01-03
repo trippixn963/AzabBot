@@ -97,6 +97,11 @@ class WarnModal(discord.ui.Modal, title="Warn User"):
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         """Handle modal submission."""
+        logger.tree("Warn Modal Submitted", [
+            ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Target", f"{self.target_user.name} ({self.target_user.id})"),
+        ], emoji="⚠️")
+
         reason = self.reason_input.value or None
 
         await interaction.response.defer(ephemeral=False)
@@ -339,7 +344,11 @@ class WarnCog(commands.Cog):
             else:
                 sent_message = await interaction.followup.send(embed=embed)
         except Exception as e:
-            logger.error(f"Warn followup failed: {e}")
+            logger.error("Warn Followup Failed", [
+                ("User", f"{user.name} ({user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Error", str(e)[:100]),
+            ])
 
         # ---------------------------------------------------------------------
         # Concurrent Post-Response Operations

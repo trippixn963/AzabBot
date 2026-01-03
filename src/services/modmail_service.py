@@ -26,6 +26,7 @@ from src.core.database import get_db
 from src.core.constants import EMOJI_MODMAIL, EMOJI_CLOSE
 from src.utils.footer import set_footer
 from src.utils.retry import safe_fetch_channel, safe_send
+from src.utils.views import UserInfoSelect
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -207,11 +208,11 @@ class ModmailService:
         set_footer(embed)
 
         try:
-            # Create the thread
+            # Create the thread with control panel
             thread_with_message = await forum.create_thread(
                 name=thread_name,
                 embed=embed,
-                view=ModmailCloseView(user.id)
+                view=ModmailCloseView(user.id, self.config.logging_guild_id)
             )
             thread = thread_with_message.thread
 
@@ -536,11 +537,24 @@ class ModmailService:
 # =============================================================================
 
 class ModmailCloseView(discord.ui.View):
-    """View with close button for modmail threads."""
+    """
+    Control panel view for modmail threads.
 
-    def __init__(self, user_id: int):
+    Layout:
+        Row 0: User Info dropdown (Info, Avatar, History)
+        Row 1: Close button
+    """
+
+    def __init__(self, user_id: int, guild_id: int):
         super().__init__(timeout=None)
-        self.add_item(ModmailCloseButton(user_id))
+
+        # Row 0: User Info dropdown
+        self.add_item(UserInfoSelect(user_id, guild_id))
+
+        # Row 1: Close button
+        close_btn = ModmailCloseButton(user_id)
+        close_btn.row = 1
+        self.add_item(close_btn)
 
 
 class ModmailCloseButton(
@@ -571,6 +585,13 @@ class ModmailCloseButton(
         return cls(user_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle close button click."""
+        logger.tree("Modmail Close Button Clicked", [
+            ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+            ("User ID", str(self.user_id)),
+            ("Thread", interaction.channel.name if hasattr(interaction.channel, 'name') else str(interaction.channel)),
+        ], emoji="📪")
+
         bot = interaction.client
 
         if not hasattr(bot, "modmail_service"):

@@ -12,6 +12,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
@@ -59,6 +60,190 @@ UNMUTE_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon3", id=EMOJI_ID_UNMUT
 NOTE_EMOJI = discord.PartialEmoji(name="note", id=EMOJI_ID_NOTE)
 APPEAL_EMOJI = discord.PartialEmoji(name="appeal", id=EMOJI_ID_APPEAL)
 DENY_EMOJI = discord.PartialEmoji(name="deny", id=EMOJI_ID_DENY)
+
+
+# =============================================================================
+# Shared History Embed Builder
+# =============================================================================
+
+def build_history_view(
+    cases: list,
+    guild_id: int,
+) -> Optional[discord.ui.View]:
+    """
+    Build a view for history display.
+
+    NOTE: Case link buttons have been removed. Case IDs in the embed
+    are now clickable links to website transcripts directly.
+
+    Args:
+        cases: List of case dicts from database
+        guild_id: Guild ID (kept for compatibility)
+
+    Returns:
+        None - buttons are added separately by the caller (Info, Avatar)
+    """
+    # Case buttons removed - case IDs are now inline clickable links
+    # in the embed description that go directly to website transcripts
+    return None
+
+
+async def build_history_embed(
+    client,
+    user_id: int,
+    guild_id: int,
+    cases: list,
+) -> discord.Embed:
+    """
+    Build a unified history embed showing cases in compact table format.
+
+    This is the canonical format used across:
+    - HistoryButton (case dropdown)
+    - /history command
+    - Criminal History dropdown (tickets)
+
+    Case IDs are clickable links to website transcripts.
+
+    Args:
+        client: Discord client for fetching user info
+        user_id: Target user's ID
+        guild_id: Guild ID for case thread links
+        cases: List of case dicts from database
+
+    Returns:
+        discord.Embed with formatted history
+    """
+    from datetime import datetime
+
+    config = get_config()
+    embed = discord.Embed(color=EmbedColors.INFO)
+
+    # Try to get user info
+    username = "Unknown"
+    try:
+        user = await client.fetch_user(user_id)
+        username = user.name
+        embed.set_thumbnail(url=user.display_avatar.url)
+    except Exception:
+        pass
+
+    embed.title = f"📋 Case History - {username}"
+
+    if not cases:
+        embed.description = "✅ No moderation history found. Clean record!"
+        embed.set_footer(text="0 cases")
+        return embed
+
+    # Pre-fetch all unique moderator names in one batch
+    mod_ids = set(c.get("moderator_id") for c in cases if c.get("moderator_id"))
+    mod_names = {}
+    for mod_id in mod_ids:
+        try:
+            mod = await client.fetch_user(mod_id)
+            mod_names[mod_id] = mod.name[:10]
+        except Exception:
+            mod_names[mod_id] = str(mod_id)[:8]
+
+    # Build compact table
+    lines = []
+
+    # Table header
+    lines.append("```")
+    lines.append("ID   │ Action  │ When  │ Moderator")
+    lines.append("─────┼─────────┼───────┼────────────")
+
+    for case in cases:
+        case_id = case.get("case_id", "????")[:4]
+        action_type = case.get("action_type", "?")
+        created_at = case.get("created_at", 0)
+        moderator_id = case.get("moderator_id")
+
+        # Action display
+        action_map = {
+            "mute": "Mute",
+            "ban": "Ban",
+            "warn": "Warn",
+            "forbid": "Forbid",
+            "timeout": "Timeout",
+            "unmute": "Unmute",
+            "unban": "Unban",
+            "unforbid": "Unforbid",
+        }
+        action_display = action_map.get(action_type, action_type.title())[:7]
+
+        # Format time compactly
+        if created_at:
+            now = datetime.now().timestamp()
+            diff = now - created_at
+            if diff < 60:
+                time_str = "now"
+            elif diff < 3600:
+                time_str = f"{int(diff/60)}m"
+            elif diff < 86400:
+                time_str = f"{int(diff/3600)}h"
+            else:
+                time_str = f"{int(diff/86400)}d"
+        else:
+            time_str = "?"
+
+        # Get mod name from pre-fetched cache
+        mod_name = mod_names.get(moderator_id, "?") if moderator_id else "?"
+
+        # Build row
+        lines.append(f"{case_id:4} │ {action_display:7} │ {time_str:5} │ {mod_name}")
+
+    lines.append("```")
+
+    # Add reason section below table with clickable case IDs
+    # Links go to website transcript viewer
+    reason_lines = []
+    for case in cases:
+        case_id = case.get("case_id", "????")
+        case_id_short = case_id[:4]
+        reason = case.get("reason")
+        action_type = case.get("action_type", "?")
+        status = case.get("status", "open")
+
+        # Action emoji
+        action_emoji = {
+            "mute": "🔇", "ban": "🔨", "warn": "⚠️", "forbid": "🚫",
+            "timeout": "⏰", "unmute": "🔊", "unban": "✅", "unforbid": "✅",
+        }.get(action_type, "📋")
+
+        # Status emoji
+        status_emoji = "🔓" if status == "resolved" else "🔒"
+
+        # Build transcript URL - links to website transcript viewer
+        transcript_url = None
+        if config.case_transcript_base_url:
+            transcript_url = f"{config.case_transcript_base_url}/{case_id}"
+
+        # Build line with clickable case ID
+        reason_short = reason[:20] + "..." if reason and len(reason) > 20 else (reason or "-")
+        if transcript_url:
+            reason_lines.append(f"{status_emoji}{action_emoji} [`{case_id_short}`]({transcript_url}) {reason_short}")
+        else:
+            reason_lines.append(f"{status_emoji}{action_emoji} `{case_id_short}` {reason_short}")
+
+    embed.description = "\n".join(lines) + "\n" + "\n".join(reason_lines)
+
+    # Get case counts for footer
+    db = get_db()
+    counts = db.get_user_case_counts(user_id, guild_id)
+    count_parts = []
+    if counts.get("mute_count", 0) > 0:
+        count_parts.append(f"🔇{counts['mute_count']}")
+    if counts.get("ban_count", 0) > 0:
+        count_parts.append(f"🔨{counts['ban_count']}")
+    if counts.get("warn_count", 0) > 0:
+        count_parts.append(f"⚠️{counts['warn_count']}")
+
+    footer_text = f"{len(cases)} cases"
+    if count_parts:
+        footer_text += f" • {' '.join(count_parts)}"
+
+    embed.set_footer(text=footer_text)
+    return embed
 
 
 # =============================================================================
@@ -351,6 +536,11 @@ class OldAvatarButton(discord.ui.DynamicItem[discord.ui.Button], template=r"avat
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Fetch old avatar from message attachment and send ephemeral."""
+        logger.tree("Old Avatar Button Clicked", [
+            ("Clicked By", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Message ID", str(self.message_id)),
+        ], emoji="🖼️")
+
         try:
             channel = interaction.client.get_channel(self.channel_id)
             if not channel:
@@ -392,6 +582,11 @@ class NewAvatarButton(discord.ui.DynamicItem[discord.ui.Button], template=r"avat
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Fetch new avatar from message embed image and send ephemeral."""
+        logger.tree("New Avatar Button Clicked", [
+            ("Clicked By", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Message ID", str(self.message_id)),
+        ], emoji="🖼️")
+
         try:
             channel = interaction.client.get_channel(self.channel_id)
             if not channel:
@@ -451,9 +646,10 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
         cases = db.get_user_cases(self.user_id, self.guild_id, limit=10, include_resolved=True)
 
         if cases:
-            # Show per-action cases with links to threads
-            embed = await self._build_cases_embed(interaction.client, cases)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            # Show per-action cases with links to threads (using shared function)
+            embed = await build_history_embed(interaction.client, self.user_id, self.guild_id, cases)
+            view = build_history_view(cases, self.guild_id)
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
 
         # Fall back to legacy history if no per-action cases
@@ -476,79 +672,6 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         else:
             await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    async def _build_cases_embed(
-        self,
-        client,
-        cases: list,
-    ) -> discord.Embed:
-        """Build embed showing per-action cases with links."""
-        embed = discord.Embed(
-            title="Case History",
-            color=EmbedColors.INFO,
-        )
-
-        # Try to get user info
-        try:
-            user = await client.fetch_user(self.user_id)
-            embed.set_author(name=user.name, icon_url=user.display_avatar.url)
-        except Exception:
-            pass
-
-        # Get case counts
-        db = get_db()
-        counts = db.get_user_case_counts(self.user_id, self.guild_id)
-        count_str = []
-        if counts.get("mute_count", 0) > 0:
-            count_str.append(f"🔇 {counts['mute_count']} mutes")
-        if counts.get("ban_count", 0) > 0:
-            count_str.append(f"🔨 {counts['ban_count']} bans")
-        if counts.get("warn_count", 0) > 0:
-            count_str.append(f"⚠️ {counts['warn_count']} warns")
-
-        if count_str:
-            embed.description = " • ".join(count_str)
-
-        for case in cases:
-            case_id = case.get("case_id", "???")
-            action_type = case.get("action_type", "unknown")
-            status = case.get("status", "open")
-            thread_id = case.get("thread_id")
-            created_at = case.get("created_at", 0)
-            reason = case.get("reason") or "No reason"
-            moderator_id = case.get("moderator_id")
-
-            # Status and action emoji
-            status_emoji = "🔓" if status == "resolved" else "🔒"
-            action_emoji = {
-                "mute": "🔇",
-                "ban": "🔨",
-                "warn": "⚠️",
-            }.get(action_type, "📋")
-
-            # Build case title with link
-            thread_url = f"https://discord.com/channels/{self.guild_id}/{thread_id}"
-            title = f"{status_emoji} {action_emoji} [{case_id}] {action_type.title()}"
-
-            # Time
-            time_str = f"<t:{int(created_at)}:R>" if created_at else "Unknown"
-
-            # Value
-            value_parts = [f"[View Case]({thread_url})"]
-            value_parts.append(f"**When:** {time_str}")
-            if moderator_id:
-                value_parts.append(f"**By:** <@{moderator_id}>")
-            if reason and reason != "No reason":
-                value_parts.append(f"**Reason:** {reason[:50]}...")
-
-            embed.add_field(
-                name=title,
-                value="\n".join(value_parts),
-                inline=False,
-            )
-
-        embed.set_footer(text=f"{len(cases)} cases shown")
-        return embed
 
     async def _build_history_embed(
         self,
@@ -663,6 +786,12 @@ class PaginationPrevButton(discord.ui.DynamicItem[discord.ui.Button], template=r
         return cls(int(match.group("user_id")), int(match.group("guild_id")), int(match.group("page")), int(match.group("total")))
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        logger.tree("History Prev Button Clicked", [
+            ("Clicked By", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Target User ID", str(self.user_id)),
+            ("Page", f"{self.page} → {max(0, self.page - 1)}"),
+        ], emoji="◀️")
+
         new_page = max(0, self.page - 1)
         view = HistoryPaginationView(self.user_id, self.guild_id, new_page, self.total)
         embed = await view._build_embed(interaction.client)
@@ -693,6 +822,12 @@ class PaginationNextButton(discord.ui.DynamicItem[discord.ui.Button], template=r
         return cls(int(match.group("user_id")), int(match.group("guild_id")), int(match.group("page")), int(match.group("total")))
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        logger.tree("History Next Button Clicked", [
+            ("Clicked By", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Target User ID", str(self.user_id)),
+            ("Page", f"{self.page} → {min(self.total_pages - 1, self.page + 1)}"),
+        ], emoji="▶️")
+
         new_page = min(self.total_pages - 1, self.page + 1)
         view = HistoryPaginationView(self.user_id, self.guild_id, new_page, self.total)
         embed = await view._build_embed(interaction.client)
@@ -1192,7 +1327,13 @@ class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approv
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle approve button click - only owner can use."""
-        from src.core.config import is_developer
+        from src.core.config import is_developer, get_config
+        from src.services.case_log.transcript import TranscriptBuilder
+        from src.services.case_log.views import CaseControlPanelView
+        from src.services.case_log.embeds import build_control_panel_embed
+        from src.utils.retry import safe_fetch_message, safe_edit
+
+        config = get_config()
 
         # Only owner can approve
         if not is_developer(interaction.user.id):
@@ -1212,15 +1353,172 @@ class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approv
                 )
                 return
 
-            # Send approval message
-            await interaction.response.send_message(
-                f"✅ **Case Approved** by {interaction.user.mention}\n"
-                f"This case has been reviewed and closed.",
-            )
-
             # Update database FIRST (before Discord action)
             db = get_db()
-            db.archive_case(self.case_id)
+            db.approve_case(self.case_id, interaction.user.id)
+
+            # Get case info for action-type-based deletion timing
+            case_info = db.get_case(self.case_id)
+            action_type = case_info.get("action_type", "mute") if case_info else "mute"
+
+            # Calculate deletion time based on action type
+            # Ban: 30 days, Mute: 14 days, Other: 7 days
+            import time
+            now = int(time.time())
+            if action_type == "ban":
+                retention_days = 30
+            elif action_type in ("mute", "timeout"):
+                retention_days = 14
+            else:
+                retention_days = 7
+            deletion_timestamp = now + (retention_days * 24 * 60 * 60)
+
+            # Build and save transcript immediately
+            transcript_saved = False
+            existing_transcript = db.get_case_transcript(self.case_id)
+            if not existing_transcript:
+                try:
+                    # Fetch case info for target user and moderator names
+                    case_info = db.get_case(self.case_id)
+                    target_user_id = case_info.get("user_id") if case_info else None
+                    moderator_id = case_info.get("moderator_id") if case_info else None
+
+                    # Try to fetch user names from Discord
+                    target_user_name = None
+                    moderator_name = None
+
+                    if target_user_id:
+                        try:
+                            target_user = await interaction.client.fetch_user(target_user_id)
+                            target_user_name = target_user.display_name
+                        except Exception:
+                            pass
+
+                    if moderator_id:
+                        try:
+                            moderator_user = await interaction.client.fetch_user(moderator_id)
+                            moderator_name = moderator_user.display_name
+                        except Exception:
+                            pass
+
+                    transcript_builder = TranscriptBuilder(
+                        interaction.client,
+                        config.transcript_assets_thread_id
+                    )
+                    transcript = await transcript_builder.build_from_thread(
+                        thread=thread,
+                        case_id=self.case_id,
+                        target_user_id=target_user_id,
+                        target_user_name=target_user_name,
+                        moderator_id=moderator_id,
+                        moderator_name=moderator_name,
+                    )
+                    if transcript:
+                        transcript_saved = db.save_case_transcript(self.case_id, transcript.to_json())
+                        if transcript_saved:
+                            logger.tree("Transcript Created On Approval", [
+                                ("Case ID", self.case_id),
+                                ("Messages", str(transcript.message_count)),
+                                ("Target", f"{target_user_name} ({target_user_id})"),
+                                ("Moderator", f"{moderator_name} ({moderator_id})"),
+                            ], emoji="📝")
+                except Exception as e:
+                    logger.warning("Transcript Creation Failed", [
+                        ("Case ID", self.case_id),
+                        ("Error", str(e)[:50]),
+                    ])
+            else:
+                transcript_saved = True  # Already exists
+
+            # Build approval embed with deletion time (NO transcript button here)
+            embed = discord.Embed(
+                title="✅ Case Approved",
+                color=EmbedColors.SUCCESS,
+                timestamp=datetime.now(NY_TZ),
+            )
+            embed.add_field(
+                name="Approved By",
+                value=interaction.user.mention,
+                inline=True,
+            )
+            embed.add_field(
+                name="Case ID",
+                value=f"`{self.case_id}`",
+                inline=True,
+            )
+            embed.add_field(
+                name="🗑️ Auto-Delete",
+                value=f"<t:{deletion_timestamp}:F>\n(<t:{deletion_timestamp}:R>)",
+                inline=False,
+            )
+            set_footer(embed)
+
+            # Send approval embed WITHOUT transcript button
+            await interaction.response.send_message(embed=embed)
+
+            # Update the control panel with transcript button
+            transcript_url = None
+            if config.case_transcript_base_url and transcript_saved:
+                transcript_url = f"{config.case_transcript_base_url}/{self.case_id}"
+
+            # Find and update the control panel
+            case = db.get_case(self.case_id)
+            if case:
+                control_panel_msg_id = case.get("control_panel_message_id")
+
+                # If not found, search pinned messages
+                if not control_panel_msg_id:
+                    try:
+                        pinned = await thread.pins()
+                        for msg in pinned:
+                            if msg.embeds and msg.embeds[0].title and "Control Panel" in msg.embeds[0].title:
+                                control_panel_msg_id = msg.id
+                                db.set_case_control_panel_message(self.case_id, msg.id)
+                                break
+                    except Exception:
+                        pass
+
+                if control_panel_msg_id:
+                    control_msg = await safe_fetch_message(thread, control_panel_msg_id)
+                    if control_msg:
+                        # Build updated control panel embed
+                        control_embed = build_control_panel_embed(
+                            case=case,
+                            user=None,
+                            moderator=interaction.user,
+                            status="approved",
+                        )
+
+                        # Check if evidence exists
+                        evidence_urls = db.get_case_evidence(self.case_id)
+                        has_evidence = len(evidence_urls) > 0
+
+                        # Build control panel view with transcript button
+                        control_view = CaseControlPanelView(
+                            user_id=case.get("user_id"),
+                            guild_id=case.get("guild_id"),
+                            case_id=self.case_id,
+                            case_thread_id=thread.id,
+                            status="approved",
+                            is_mute=case.get("action_type") in ("mute", "timeout"),
+                            has_evidence=has_evidence,
+                            transcript_url=transcript_url,
+                        )
+
+                        await safe_edit(control_msg, embed=control_embed, view=control_view)
+                        logger.tree("Control Panel Updated With Transcript", [
+                            ("Case ID", self.case_id),
+                            ("Has Transcript", "Yes" if transcript_url else "No"),
+                        ], emoji="🎛️")
+
+            # Add green check mark to thread name
+            current_name = thread.name
+            if not current_name.startswith("✅"):
+                new_name = f"✅ | {current_name}"
+                # Discord thread names max 100 chars
+                if len(new_name) > 100:
+                    new_name = new_name[:100]
+                await thread.edit(name=new_name)
 
             # Archive and lock the thread
             await thread.edit(
@@ -1233,7 +1531,116 @@ class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approv
                 ("Case ID", self.case_id),
                 ("Thread ID", str(self.thread_id)),
                 ("Approved By", f"{interaction.user.display_name} ({interaction.user.id})"),
+                ("Transcript", "Yes" if transcript_url else "No"),
+                ("Deletes At", f"<t:{deletion_timestamp}:F>"),
             ], emoji="✅")
+
+            # Send transcript log to case transcripts thread
+            if config.case_transcripts_thread_id and transcript_url and case:
+                try:
+                    transcripts_thread = interaction.client.get_channel(config.case_transcripts_thread_id)
+                    if not transcripts_thread:
+                        transcripts_thread = await interaction.client.fetch_channel(config.case_transcripts_thread_id)
+
+                    if transcripts_thread:
+                        # Build transcript log embed
+                        user_id = case.get("user_id")
+                        action_type = case.get("action_type", "unknown")
+                        reason = case.get("reason") or "No reason provided"
+                        moderator_id = case.get("moderator_id")
+                        created_at = case.get("created_at")
+
+                        # Action emoji mapping
+                        action_emoji = {
+                            "mute": "🔇", "ban": "🔨", "warn": "⚠️", "forbid": "🚫",
+                            "timeout": "⏰", "unmute": "🔊", "unban": "✅", "unforbid": "✅",
+                        }.get(action_type, "📋")
+
+                        log_embed = discord.Embed(
+                            title=f"{action_emoji} Case Transcript - {self.case_id}",
+                            color=EmbedColors.SUCCESS,
+                            timestamp=datetime.now(NY_TZ),
+                        )
+
+                        # Try to get user info
+                        try:
+                            user = await interaction.client.fetch_user(user_id)
+                            log_embed.set_thumbnail(url=user.display_avatar.url)
+                            log_embed.add_field(
+                                name="User",
+                                value=f"{user.mention}\n`{user.name}`",
+                                inline=True,
+                            )
+                        except Exception:
+                            log_embed.add_field(
+                                name="User",
+                                value=f"<@{user_id}>\n`{user_id}`",
+                                inline=True,
+                            )
+
+                        log_embed.add_field(
+                            name="Action",
+                            value=f"`{action_type.title()}`",
+                            inline=True,
+                        )
+
+                        if moderator_id:
+                            log_embed.add_field(
+                                name="Moderator",
+                                value=f"<@{moderator_id}>",
+                                inline=True,
+                            )
+
+                        log_embed.add_field(
+                            name="Reason",
+                            value=reason[:200] if len(reason) > 200 else reason,
+                            inline=False,
+                        )
+
+                        if created_at:
+                            log_embed.add_field(
+                                name="Created",
+                                value=f"<t:{int(created_at)}:F>",
+                                inline=True,
+                            )
+
+                        log_embed.add_field(
+                            name="Approved By",
+                            value=interaction.user.mention,
+                            inline=True,
+                        )
+
+                        set_footer(log_embed)
+
+                        # Create view with transcript button
+                        log_view = discord.ui.View(timeout=None)
+                        log_view.add_item(discord.ui.Button(
+                            label="View Transcript",
+                            url=transcript_url,
+                            style=discord.ButtonStyle.link,
+                            emoji="📜",
+                        ))
+
+                        # Add link to original case thread
+                        case_thread_url = f"https://discord.com/channels/{case.get('guild_id')}/{thread.id}"
+                        log_view.add_item(discord.ui.Button(
+                            label="Case Thread",
+                            url=case_thread_url,
+                            style=discord.ButtonStyle.link,
+                            emoji=CASE_EMOJI,
+                        ))
+
+                        await transcripts_thread.send(embed=log_embed, view=log_view)
+
+                        logger.tree("Transcript Logged to Thread", [
+                            ("Case ID", self.case_id),
+                            ("Thread", str(config.case_transcripts_thread_id)),
+                        ], emoji="📜")
+                except Exception as e:
+                    logger.warning("Failed to Log Transcript to Thread", [
+                        ("Case ID", self.case_id),
+                        ("Error", str(e)[:50]),
+                    ])
 
         except discord.Forbidden:
             await interaction.followup.send(
@@ -1243,6 +1650,7 @@ class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approv
         except Exception as e:
             logger.error("Approve Button Error", [
                 ("Case ID", self.case_id),
+                ("Error Type", type(e).__name__),
                 ("Error", str(e)[:100]),
             ])
             try:
@@ -1251,8 +1659,8 @@ class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approv
                         "An error occurred while approving the case.",
                         ephemeral=True,
                     )
-            except discord.HTTPException:
-                pass  # Interaction expired or already responded
+            except discord.HTTPException as e:
+                logger.debug(f"Approve error response failed: {e.code} - {e.text[:50] if e.text else 'No text'}")
 
 
 # =============================================================================
@@ -1260,12 +1668,12 @@ class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approv
 # =============================================================================
 
 class CaseButtonView(discord.ui.View):
-    """View with Case link, Info, and History buttons for public response."""
+    """View with Case link button for public response."""
 
     def __init__(self, guild_id: int, thread_id: int, user_id: int):
         super().__init__(timeout=None)
 
-        # Case link button
+        # Case link button (links to case thread with control panel)
         url = f"https://discord.com/channels/{guild_id}/{thread_id}"
         self.add_item(discord.ui.Button(
             label="Case",
@@ -1273,12 +1681,6 @@ class CaseButtonView(discord.ui.View):
             style=discord.ButtonStyle.link,
             emoji=CASE_EMOJI,
         ))
-
-        # Info button (persistent)
-        self.add_item(InfoButton(user_id, guild_id))
-
-        # History button (persistent)
-        self.add_item(HistoryButton(user_id, guild_id))
 
 
 # =============================================================================
@@ -1390,6 +1792,11 @@ class EditCaseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"edit_
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle edit button click - only moderators can use."""
+        logger.tree("Edit Case Button Clicked", [
+            ("Clicked By", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Case ID", self.case_id),
+        ], emoji="✏️")
+
         from src.core.config import get_config, is_developer
 
         config = get_config()
@@ -1434,6 +1841,85 @@ class EditCaseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"edit_
 
 
 # =============================================================================
+# User Info Select (Dropdown for Info, Avatar, History)
+# =============================================================================
+
+class UserInfoSelect(discord.ui.DynamicItem[discord.ui.Select], template=r"user_info_select:(?P<user_id>\d+):(?P<guild_id>\d+)"):
+    """
+    Persistent dropdown for user info actions.
+
+    Options: Info, Avatar, History
+    Used across case logs, appeals, modmail, and tickets.
+    """
+
+    def __init__(self, user_id: int, guild_id: int):
+        select = discord.ui.Select(
+            placeholder="👤 User Info",
+            options=[
+                discord.SelectOption(
+                    label="Info",
+                    value="info",
+                    emoji=INFO_EMOJI,
+                    description="View user details",
+                ),
+                discord.SelectOption(
+                    label="Avatar",
+                    value="avatar",
+                    emoji=DOWNLOAD_EMOJI,
+                    description="Download user avatar",
+                ),
+                discord.SelectOption(
+                    label="History",
+                    value="history",
+                    emoji=HISTORY_EMOJI,
+                    description="View moderation history",
+                ),
+            ],
+            custom_id=f"user_info_select:{user_id}:{guild_id}",
+            row=0,
+        )
+        super().__init__(select)
+        self.user_id = user_id
+        self.guild_id = guild_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Select,
+        match: re.Match[str],
+    ) -> "UserInfoSelect":
+        user_id = int(match.group("user_id"))
+        guild_id = int(match.group("guild_id"))
+        return cls(user_id, guild_id)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle dropdown selection."""
+        # Get selected value from the underlying Select item
+        selected = self.item.values[0] if self.item.values else None
+
+        logger.tree("User Info Dropdown Selected", [
+            ("Clicked By", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Selection", selected or "None"),
+            ("Target User ID", str(self.user_id)),
+            ("Channel", "DM" if isinstance(interaction.channel, discord.DMChannel) else (interaction.channel.name if hasattr(interaction.channel, 'name') else str(interaction.channel))),
+        ], emoji="👤")
+
+        if selected == "info":
+            # Delegate to InfoButton's callback logic
+            info_btn = InfoButton(self.user_id, self.guild_id)
+            await info_btn.callback(interaction)
+        elif selected == "avatar":
+            # Delegate to DownloadButton's callback logic
+            avatar_btn = DownloadButton(self.user_id)
+            await avatar_btn.callback(interaction)
+        elif selected == "history":
+            # Delegate to HistoryButton's callback logic
+            history_btn = HistoryButton(self.user_id, self.guild_id)
+            await history_btn.callback(interaction)
+
+
+# =============================================================================
 # View Registration
 # =============================================================================
 
@@ -1453,6 +1939,7 @@ def setup_moderation_views(bot: "AzabBot") -> None:
         UnmuteButton,
         ApproveButton,
         EditCaseButton,
+        UserInfoSelect,
     )
 
 
@@ -1471,6 +1958,8 @@ __all__ = [
     "APPROVE_EMOJI",
     "APPEAL_EMOJI",
     "DENY_EMOJI",
+    "build_history_embed",
+    "build_history_view",
     "InfoButton",
     "DownloadButton",
     "HistoryButton",
@@ -1478,6 +1967,7 @@ __all__ = [
     "UnmuteButton",
     "ApproveButton",
     "EditCaseButton",
+    "UserInfoSelect",
     "CaseButtonView",
     "MessageButtonView",
     "setup_moderation_views",

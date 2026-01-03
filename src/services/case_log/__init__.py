@@ -43,6 +43,14 @@ from .utils import (
     format_duration_precise,
     format_age,
 )
+from .transcript import (
+    Transcript,
+    TranscriptMessage,
+    TranscriptAttachment,
+    TranscriptEmbed,
+    TranscriptEmbedField,
+    TranscriptBuilder,
+)
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -91,4 +99,11 @@ __all__ = [
     "parse_duration_to_seconds",
     "format_duration_precise",
     "format_age",
+    # Transcript
+    "Transcript",
+    "TranscriptMessage",
+    "TranscriptAttachment",
+    "TranscriptEmbed",
+    "TranscriptEmbedField",
+    "TranscriptBuilder",
 ]

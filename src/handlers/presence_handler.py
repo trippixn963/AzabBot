@@ -149,32 +149,32 @@ class PresenceHandler:
         """
         Get the current rotating status text.
 
-        Cycles through:
-        0: Current prisoners count
-        1: Today's mutes count
-        2: Open tickets count
-        3: Active cases count
+        Cycles through various stats - always shows real numbers.
         """
-        self._presence_index = (self._presence_index + 1) % 4
+        # List of stat getters
+        stat_getters = [
+            self._get_prisoners_status,
+            self._get_mutes_today_status,
+            self._get_tickets_status,
+            self._get_cases_status,
+            self._get_total_mutes_status,
+            self._get_total_bans_status,
+            self._get_total_warns_status,
+            self._get_week_mutes_status,
+        ]
 
-        if self._presence_index == 0:
-            return self._get_prisoners_status()
-        elif self._presence_index == 1:
-            return await self._get_mutes_today_status()
-        elif self._presence_index == 2:
-            return await self._get_tickets_status()
-        else:
-            return await self._get_cases_status()
+        self._presence_index = (self._presence_index + 1) % len(stat_getters)
+        getter = stat_getters[self._presence_index]
+
+        # Handle both sync and async getters
+        if asyncio.iscoroutinefunction(getter):
+            return await getter()
+        return getter()
 
     def _get_prisoners_status(self) -> str:
         """Get current prisoners count status."""
         count = self._count_prisoners()
-        if count == 0:
-            return "🔓 Prison empty"
-        elif count == 1:
-            return "🔒 1 prisoner"
-        else:
-            return f"🔒 {count} prisoners"
+        return f"🔒 {count} prisoner{'s' if count != 1 else ''}" if count > 0 else "🔓 0 prisoners"
 
     async def _get_mutes_today_status(self) -> str:
         """Get today's mutes count status."""
@@ -188,35 +188,22 @@ class PresenceHandler:
                    WHERE muted_at >= ?""",
                 (today_start,)
             )
-
             count = row["count"] if row else 0
-            if count == 0:
-                return "✨ No mutes today"
-            elif count == 1:
-                return "⚡ 1 mute today"
-            else:
-                return f"⚡ {count} mutes today"
+            return f"⚡ {count} mute{'s' if count != 1 else ''} today"
         except Exception:
-            return "⚡ Moderation active"
+            return "⚡ 0 mutes today"
 
     async def _get_tickets_status(self) -> str:
         """Get open tickets count status."""
         try:
-            if hasattr(self.bot, 'ticket_service') and self.bot.ticket_service:
-                row = self.bot.db.fetchone(
-                    """SELECT COUNT(*) as count FROM tickets
-                       WHERE status IN ('open', 'claimed')"""
-                )
-                count = row["count"] if row else 0
-                if count == 0:
-                    return "🎫 No open tickets"
-                elif count == 1:
-                    return "🎫 1 open ticket"
-                else:
-                    return f"🎫 {count} open tickets"
+            row = self.bot.db.fetchone(
+                """SELECT COUNT(*) as count FROM tickets
+                   WHERE status IN ('open', 'claimed')"""
+            )
+            count = row["count"] if row else 0
+            return f"🎫 {count} open ticket{'s' if count != 1 else ''}"
         except Exception:
-            pass
-        return "🎫 Ticket support"
+            return "🎫 0 open tickets"
 
     async def _get_cases_status(self) -> str:
         """Get total cases count status."""
@@ -225,12 +212,62 @@ class PresenceHandler:
                 """SELECT COUNT(*) as count FROM cases"""
             )
             count = row["count"] if row else 0
-            if count == 0:
-                return "📋 No cases"
-            else:
-                return f"📋 {count} cases logged"
+            return f"📋 {count:,} cases logged"
         except Exception:
-            return "📋 Case logging"
+            return "📋 0 cases logged"
+
+    async def _get_total_mutes_status(self) -> str:
+        """Get total mutes ever count."""
+        try:
+            row = self.bot.db.fetchone(
+                """SELECT COUNT(*) as count FROM mute_history"""
+            )
+            count = row["count"] if row else 0
+            return f"🔇 {count:,} total mutes"
+        except Exception:
+            return "🔇 0 total mutes"
+
+    async def _get_total_bans_status(self) -> str:
+        """Get total bans count."""
+        try:
+            row = self.bot.db.fetchone(
+                """SELECT COUNT(*) as count FROM cases WHERE action_type = 'ban'"""
+            )
+            count = row["count"] if row else 0
+            return f"🔨 {count:,} bans issued"
+        except Exception:
+            return "🔨 0 bans issued"
+
+    async def _get_total_warns_status(self) -> str:
+        """Get total warns count."""
+        try:
+            row = self.bot.db.fetchone(
+                """SELECT COUNT(*) as count FROM cases WHERE action_type = 'warn'"""
+            )
+            count = row["count"] if row else 0
+            return f"⚠️ {count:,} warnings given"
+        except Exception:
+            return "⚠️ 0 warnings given"
+
+    async def _get_week_mutes_status(self) -> str:
+        """Get this week's mutes count."""
+        try:
+            week_start = datetime.now(NY_TZ).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            # Go back to start of week (Monday)
+            days_since_monday = week_start.weekday()
+            week_start = week_start.timestamp() - (days_since_monday * 86400)
+
+            row = self.bot.db.fetchone(
+                """SELECT COUNT(*) as count FROM mute_history
+                   WHERE muted_at >= ?""",
+                (week_start,)
+            )
+            count = row["count"] if row else 0
+            return f"📊 {count} mutes this week"
+        except Exception:
+            return "📊 0 mutes this week"
 
     def _count_prisoners(self) -> int:
         """Count current prisoners across all servers."""

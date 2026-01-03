@@ -40,6 +40,7 @@ from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
 from src.utils.duration import format_duration
 from src.utils.async_utils import create_safe_task
+from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -126,6 +127,11 @@ class BanModal(discord.ui.Modal, title="Ban User"):
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         """Process the ban when modal is submitted."""
+        logger.tree("Ban Modal Submitted", [
+            ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Target", f"{self.target.name} ({self.target.id})"),
+        ], emoji="🔨")
+
         reason = self.reason_input.value or None
 
         await self.cog.execute_ban(
@@ -241,27 +247,15 @@ class BanCog(commands.Cog):
 
         dm_sent = False
         if not is_softban:
-            try:
-                dm_embed = discord.Embed(
-                    title="You have been banned",
-                    color=EmbedColors.ERROR,
-                )
-                dm_embed.add_field(name="Server", value=f"`{target_guild.name}`", inline=False)
-                dm_embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`", inline=True)
-                dm_embed.add_field(name="Reason", value=f"`{reason or 'No reason provided'}`", inline=False)
-                dm_embed.set_thumbnail(url=user.display_avatar.url)
-                set_footer(dm_embed)
-
-                await user.send(embed=dm_embed)
-                dm_sent = True
-            except discord.Forbidden:
-                logger.debug(f"Ban DM blocked: {user} ({user.id}) has DMs disabled")
-            except discord.HTTPException as e:
-                logger.warning("Ban DM Failed", [
-                    ("User", user.name),
-                    ("ID", str(user.id)),
-                    ("Error", str(e)[:50]),
-                ])
+            dm_embed = build_moderation_dm(
+                title="You have been banned",
+                color=EmbedColors.ERROR,
+                guild=target_guild,
+                moderator=interaction.user,
+                reason=reason,
+                thumbnail_url=user.display_avatar.url,
+            )
+            dm_sent = await safe_send_dm(user, embed=dm_embed, context="Ban DM")
 
         # -----------------------------------------------------------------
         # Execute Ban (on target guild)
@@ -414,49 +408,38 @@ class BanCog(commands.Cog):
             else:
                 sent_message = await interaction.followup.send(embed=embed)
         except Exception as e:
-            logger.error(f"Ban followup failed: {e}")
+            logger.error("Ban Followup Failed", [
+                ("User", f"{user.name} ({user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Error", str(e)[:100]),
+            ])
 
         # -----------------------------------------------------------------
         # Send Appeal Button to User via DM
         # -----------------------------------------------------------------
 
         if case_info and not is_softban:
-            try:
-                from src.services.appeal_service import SubmitAppealButton
-                appeal_view = discord.ui.View(timeout=None)
-                appeal_btn = SubmitAppealButton(case_info["case_id"], user.id)
-                appeal_view.add_item(appeal_btn)
+            from src.services.appeal_service import SubmitAppealButton
+            appeal_view = discord.ui.View(timeout=None)
+            appeal_btn = SubmitAppealButton(case_info["case_id"], user.id)
+            appeal_view.add_item(appeal_btn)
 
-                appeal_embed = discord.Embed(
-                    title="📝 Appeal Your Ban",
-                    description="If you believe this ban was issued in error, you may submit an appeal.",
-                    color=EmbedColors.INFO,
-                )
-                appeal_embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
-                appeal_embed.add_field(name="Server", value=f"`{target_guild.name}`", inline=True)
-                set_footer(appeal_embed)
+            appeal_embed = discord.Embed(
+                title="📝 Appeal Your Ban",
+                description="If you believe this ban was issued in error, you may submit an appeal.",
+                color=EmbedColors.INFO,
+            )
+            appeal_embed.add_field(name="Case ID", value=f"`{case_info['case_id']}`", inline=True)
+            appeal_embed.add_field(name="Server", value=f"`{target_guild.name}`", inline=True)
+            set_footer(appeal_embed)
 
-                await user.send(embed=appeal_embed, view=appeal_view)
+            appeal_sent = await safe_send_dm(user, embed=appeal_embed, view=appeal_view, context="Ban Appeal DM")
+            if appeal_sent:
                 logger.tree("Appeal DM Sent", [
                     ("User", user.name),
                     ("ID", str(user.id)),
                     ("Case", case_info["case_id"]),
                 ], emoji="📝")
-            except discord.Forbidden:
-                logger.debug(f"Appeal DM blocked: {user} ({user.id}) has DMs disabled")
-            except discord.HTTPException as e:
-                logger.warning("Appeal DM Failed", [
-                    ("User", user.name),
-                    ("ID", str(user.id)),
-                    ("Case", case_info["case_id"]),
-                    ("Error", str(e)[:50]),
-                ])
-            except Exception as e:
-                logger.error("Appeal DM Failed", [
-                    ("User", user.name),
-                    ("ID", str(user.id)),
-                    ("Error", str(e)[:50]),
-                ])
 
         # -----------------------------------------------------------------
         # Alt Detection (background task, regular bans only)
@@ -658,29 +641,23 @@ class BanCog(commands.Cog):
         # DM User About Unban
         # -----------------------------------------------------------------
 
-        try:
-            dm_embed = discord.Embed(
-                title="You've Been Unbanned",
-                description=f"Your ban from **{target_guild.name}** has been lifted.",
-                color=EmbedColors.SUCCESS,
-                timestamp=datetime.now(NY_TZ),
-            )
-            dm_embed.add_field(name="Server", value=target_guild.name, inline=True)
-            if reason:
-                dm_embed.add_field(name="Reason", value=reason, inline=False)
-            dm_embed.add_field(
-                name="What's Next?",
-                value="You can now rejoin the server if you have an invite link.",
-                inline=False,
-            )
-            dm_embed.set_footer(text=f"Server ID: {target_guild.id}")
+        dm_embed = discord.Embed(
+            title="You've Been Unbanned",
+            description=f"Your ban from **{target_guild.name}** has been lifted.",
+            color=EmbedColors.SUCCESS,
+            timestamp=datetime.now(NY_TZ),
+        )
+        dm_embed.add_field(name="Server", value=target_guild.name, inline=True)
+        if reason:
+            dm_embed.add_field(name="Reason", value=reason, inline=False)
+        dm_embed.add_field(
+            name="What's Next?",
+            value="You can now rejoin the server if you have an invite link.",
+            inline=False,
+        )
+        dm_embed.set_footer(text=f"Server ID: {target_guild.id}")
 
-            await target_user.send(embed=dm_embed)
-            logger.debug(f"Unban DM sent to {target_user}")
-        except discord.Forbidden:
-            logger.debug(f"Cannot DM {target_user} - DMs disabled")
-        except discord.HTTPException as e:
-            logger.debug(f"Failed to DM {target_user}: {e}")
+        await safe_send_dm(target_user, embed=dm_embed, context="Unban DM")
 
         # -----------------------------------------------------------------
         # Logging
@@ -791,7 +768,11 @@ class BanCog(commands.Cog):
             else:
                 sent_message = await interaction.followup.send(embed=embed)
         except Exception as e:
-            logger.error(f"Unban followup failed: {e}")
+            logger.error("Unban Followup Failed", [
+                ("User", f"{target_user.name} ({target_user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Error", str(e)[:100]),
+            ])
 
 
 # =============================================================================

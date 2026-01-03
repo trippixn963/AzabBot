@@ -185,6 +185,9 @@ class AzabBot(commands.Bot):
         from src.services.modmail_service import setup_modmail_views
         setup_modmail_views(self)
 
+        from src.services.case_log.views import setup_case_log_views
+        setup_case_log_views(self)
+
         # Sync commands globally
         try:
             # Clear any guild-specific commands first (to remove duplicates)
@@ -214,6 +217,11 @@ class AzabBot(commands.Bot):
 
         if not self.user:
             return
+
+        # Auto-ignore bot's own ID in logs to prevent clutter
+        if self.config.ignored_bot_ids is None:
+            self.config.ignored_bot_ids = set()
+        self.config.ignored_bot_ids.add(self.user.id)
 
         logger.tree("BOT ONLINE", [
             ("Name", self.user.name),

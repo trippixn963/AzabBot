@@ -26,7 +26,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.retry import safe_fetch_channel, safe_send, safe_edit
-from src.utils.views import CASE_EMOJI, APPROVE_EMOJI, APPEAL_EMOJI, DENY_EMOJI, InfoButton, HistoryButton
+from src.utils.views import CASE_EMOJI, APPROVE_EMOJI, APPEAL_EMOJI, DENY_EMOJI, InfoButton, HistoryButton, UserInfoSelect
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -279,11 +279,18 @@ class AppealService:
             if case.get("thread_id") and case.get("guild_id"):
                 case_url = f"https://discord.com/channels/{case['guild_id']}/{case['thread_id']}"
 
-            # Create forum thread
+            # Create forum thread with control panel
             thread = await forum.create_thread(
                 name=thread_name,
                 embed=embed,
-                view=AppealActionView(appeal_id, case_id, user.id, case_url, action_type),
+                view=AppealActionView(
+                    appeal_id=appeal_id,
+                    case_id=case_id,
+                    user_id=user.id,
+                    guild_id=case["guild_id"],
+                    case_url=case_url,
+                    action_type=action_type,
+                ),
             )
 
             # Store in database
@@ -814,35 +821,57 @@ class AppealService:
 
 class AppealActionView(discord.ui.View):
     """
-    Persistent view with Approve/Deny buttons for appeals.
+    Persistent view with control panel for appeals.
 
     DESIGN:
         Uses custom_id pattern for persistence across bot restarts.
-        Only moderators can use these buttons.
+        Only moderators can use action buttons.
+
+    Layout:
+        Row 0: User Info dropdown + View Case link
+        Row 1: Approve, Deny, Open Ticket/Contact User
     """
 
-    def __init__(self, appeal_id: str, case_id: str, user_id: int, case_url: Optional[str] = None, action_type: str = "mute"):
+    def __init__(self, appeal_id: str, case_id: str, user_id: int, guild_id: int, case_url: Optional[str] = None, action_type: str = "mute"):
         super().__init__(timeout=None)
 
-        # Add buttons
-        self.add_item(ApproveAppealButton(appeal_id, case_id))
-        self.add_item(DenyAppealButton(appeal_id, case_id))
+        # =================================================================
+        # Row 0: User Info dropdown + View Case link
+        # =================================================================
 
-        # Add Open Ticket button only for mute appeals (banned users can't be in main server)
-        if action_type == "mute":
-            self.add_item(OpenAppealTicketButton(appeal_id, user_id))
-        # Add Contact User button for ban appeals (initiates modmail with banned user)
-        elif action_type == "ban":
-            self.add_item(ContactBannedUserButton(appeal_id, user_id))
+        self.add_item(UserInfoSelect(user_id, guild_id))
 
-        # Add View Case link button if URL is available
         if case_url:
             self.add_item(discord.ui.Button(
                 label="View Case",
                 style=discord.ButtonStyle.link,
                 emoji=CASE_EMOJI,
                 url=case_url,
+                row=0,
             ))
+
+        # =================================================================
+        # Row 1: Action buttons
+        # =================================================================
+
+        approve_btn = ApproveAppealButton(appeal_id, case_id)
+        approve_btn.row = 1
+        self.add_item(approve_btn)
+
+        deny_btn = DenyAppealButton(appeal_id, case_id)
+        deny_btn.row = 1
+        self.add_item(deny_btn)
+
+        # Add Open Ticket button only for mute appeals (banned users can't be in main server)
+        if action_type == "mute":
+            ticket_btn = OpenAppealTicketButton(appeal_id, user_id)
+            ticket_btn.row = 1
+            self.add_item(ticket_btn)
+        # Add Contact User button for ban appeals (initiates modmail with banned user)
+        elif action_type == "ban":
+            contact_btn = ContactBannedUserButton(appeal_id, user_id)
+            contact_btn.row = 1
+            self.add_item(contact_btn)
 
 
 class ApproveAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"appeal_approve:(?P<appeal_id>[A-Z0-9]+):(?P<case_id>[A-Z0-9]+)"):
@@ -872,6 +901,13 @@ class ApproveAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"
         return cls(appeal_id, case_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle approve button click."""
+        logger.tree("Approve Appeal Button Clicked", [
+            ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Appeal ID", self.appeal_id),
+            ("Case ID", self.case_id),
+        ], emoji="✅")
+
         # Check permissions - must have moderate_members OR be in allowed user list
         config = get_config()
         allowed_ids = {config.developer_id}
@@ -922,6 +958,13 @@ class DenyAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"app
         return cls(appeal_id, case_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle deny button click."""
+        logger.tree("Deny Appeal Button Clicked", [
+            ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Appeal ID", self.appeal_id),
+            ("Case ID", self.case_id),
+        ], emoji="❌")
+
         # Check permissions - must have moderate_members OR be in allowed user list
         config = get_config()
         allowed_ids = {config.developer_id}
@@ -1249,6 +1292,13 @@ class AppealReasonModal(discord.ui.Modal):
         self.add_item(self.reason)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
+        logger.tree("Appeal Reason Modal Submitted", [
+            ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Appeal ID", self.appeal_id),
+            ("Case ID", self.case_id),
+            ("Action", self.action.upper()),
+        ], emoji="📋")
+
         await interaction.response.defer(ephemeral=True)
 
         # Get appeal service from bot
@@ -1313,6 +1363,13 @@ class SubmitAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"s
         return cls(case_id, user_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle appeal button click from DM."""
+        logger.tree("Appeal Button Clicked", [
+            ("User", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Case ID", self.case_id),
+            ("Channel", "DM" if isinstance(interaction.channel, discord.DMChannel) else str(interaction.channel)),
+        ], emoji="📝")
+
         # This button should only appear in the original case thread
         # and only the affected user can submit
         if interaction.user.id != self.user_id:
@@ -1363,6 +1420,12 @@ class SubmitAppealModal(discord.ui.Modal, title="Submit Appeal"):
         self.add_item(self.reason)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
+        logger.tree("Submit Appeal Modal Submitted", [
+            ("User", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Case ID", self.case_id),
+            ("Channel", "DM" if isinstance(interaction.channel, discord.DMChannel) else str(interaction.channel)),
+        ], emoji="📝")
+
         await interaction.response.defer(ephemeral=True)
 
         bot = interaction.client

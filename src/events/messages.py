@@ -190,7 +190,7 @@ class MessageEvents(commands.Cog):
         5. Muted users -> Track messages
         """
         # -----------------------------------------------------------------
-        # Route 1: Case forum thread - check for reason replies
+        # Route 1: Case forum thread - check for reason/evidence replies
         # -----------------------------------------------------------------
         if (
             self.config.case_log_forum_id
@@ -200,6 +200,13 @@ class MessageEvents(commands.Cog):
             and not message.author.bot
             and self.bot.case_log_service
         ):
+            # Check for evidence reply first (if message has attachments)
+            if message.attachments:
+                evidence_handled = await self.bot.case_log_service.handle_evidence_reply(message)
+                if evidence_handled:
+                    return  # Evidence was captured, don't process as reason
+
+            # Otherwise check for reason reply
             await self.bot.case_log_service.handle_reason_reply(message)
 
         # -----------------------------------------------------------------

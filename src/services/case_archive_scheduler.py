@@ -5,8 +5,9 @@ Azab Discord Bot - Case Archive Scheduler
 Background service for automatic deletion of old case threads.
 
 DESIGN:
-    Runs as a background task checking for threads older than 7 days.
-    Deletes old threads to keep the case logs forum clean.
+    Runs as a background task checking for approved cases older than 7 days.
+    Builds and saves transcripts before deleting threads.
+    Only approved cases are eligible for deletion.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -21,6 +22,7 @@ from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
 from src.utils.async_utils import create_safe_task
+from src.services.case_log.transcript import TranscriptBuilder
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -30,7 +32,11 @@ if TYPE_CHECKING:
 # Constants
 # =============================================================================
 
-CASE_RETENTION_DAYS = 7
+# Action-type-based retention (days after approval)
+RETENTION_DAYS_BAN = 30
+RETENTION_DAYS_MUTE = 14
+RETENTION_DAYS_DEFAULT = 7
+
 CHECK_INTERVAL_HOURS = 1
 
 
@@ -43,14 +49,15 @@ class CaseArchiveScheduler:
     Background service for automatic case thread deletion.
 
     DESIGN:
-        Runs a loop every hour checking for old case threads.
-        Deletes threads older than 7 days from the case logs forum.
-        Gracefully handles errors without crashing the loop.
+        Runs a loop every hour checking for approved case threads.
+        Builds transcripts before deletion for permanent record.
+        Only deletes threads for approved cases (7 days after approval).
 
     Attributes:
         bot: Reference to the main bot instance.
         config: Bot configuration.
         db: Database manager.
+        transcript_builder: Service for building transcripts.
         task: Background task reference.
         running: Whether the scheduler is active.
     """
@@ -69,6 +76,7 @@ class CaseArchiveScheduler:
         self.bot = bot
         self.config = get_config()
         self.db = get_db()
+        self.assets_thread_id: Optional[int] = None
         self.task: Optional[asyncio.Task] = None
         self.running: bool = False
 
@@ -82,17 +90,91 @@ class CaseArchiveScheduler:
 
         DESIGN:
             Cancels any existing task before starting new one.
+            Auto-creates transcript assets thread if needed.
         """
         if self.task and not self.task.done():
             self.task.cancel()
+
+        # Auto-create assets thread if not configured
+        await self._ensure_assets_thread()
 
         self.running = True
         self.task = create_safe_task(self._scheduler_loop(), "Case Archive Scheduler")
 
         logger.tree("Case Archive Scheduler Started", [
-            ("Retention", f"{CASE_RETENTION_DAYS} days"),
+            ("Retention (Ban)", f"{RETENTION_DAYS_BAN} days"),
+            ("Retention (Mute)", f"{RETENTION_DAYS_MUTE} days"),
+            ("Retention (Other)", f"{RETENTION_DAYS_DEFAULT} days"),
             ("Check Interval", f"{CHECK_INTERVAL_HOURS} hour(s)"),
+            ("Assets Thread", str(self.assets_thread_id) if self.assets_thread_id else "None"),
         ], emoji="🗑️")
+
+    async def _ensure_assets_thread(self) -> None:
+        """
+        Ensure the transcript assets thread exists.
+        Creates it in the logs forum if not configured.
+        """
+        self.assets_thread_id = self.config.transcript_assets_thread_id
+
+        # If already configured, verify it exists
+        if self.assets_thread_id:
+            try:
+                thread = await self.bot.fetch_channel(self.assets_thread_id)
+                if thread:
+                    return
+            except discord.NotFound:
+                logger.warning("Configured Assets Thread Not Found", [
+                    ("Thread ID", str(self.assets_thread_id)),
+                ])
+                self.assets_thread_id = None
+            except discord.HTTPException:
+                return
+
+        # Try to create in logs forum
+        if not self.config.server_logs_forum_id:
+            return
+
+        try:
+            forum = self.bot.get_channel(self.config.server_logs_forum_id)
+            if not forum:
+                forum = await self.bot.fetch_channel(self.config.server_logs_forum_id)
+
+            if not forum or not isinstance(forum, discord.ForumChannel):
+                return
+
+            # Check if "Transcript Assets" thread already exists
+            async for thread in forum.archived_threads(limit=100):
+                if thread.name == "Transcript Assets":
+                    self.assets_thread_id = thread.id
+                    logger.info("Found Existing Assets Thread", [
+                        ("Thread ID", str(thread.id)),
+                    ])
+                    return
+
+            for thread in forum.threads:
+                if thread.name == "Transcript Assets":
+                    self.assets_thread_id = thread.id
+                    logger.info("Found Existing Assets Thread", [
+                        ("Thread ID", str(thread.id)),
+                    ])
+                    return
+
+            # Create new thread
+            thread_with_msg = await forum.create_thread(
+                name="Transcript Assets",
+                content="This thread stores permanent copies of case attachments for transcripts.\n\n*Do not delete this thread.*",
+            )
+            self.assets_thread_id = thread_with_msg.thread.id
+
+            logger.tree("Created Assets Thread", [
+                ("Thread ID", str(self.assets_thread_id)),
+                ("Forum", forum.name),
+            ], emoji="📁")
+
+        except Exception as e:
+            logger.warning("Failed To Create Assets Thread", [
+                ("Error", str(e)[:50]),
+            ])
 
     async def stop(self) -> None:
         """
@@ -118,7 +200,7 @@ class CaseArchiveScheduler:
         Main scheduler loop.
 
         DESIGN:
-            Runs every hour checking for old case threads.
+            Runs every hour checking for old approved case threads.
             Continues running even if individual deletions fail.
         """
         await self.bot.wait_until_ready()
@@ -150,20 +232,34 @@ class CaseArchiveScheduler:
 
     async def _process_old_cases(self) -> None:
         """
-        Process all old cases and delete their threads.
+        Process all old approved cases and delete their threads.
 
         DESIGN:
-            Gets cases older than 7 days from database.
-            Deletes the forum thread for each case.
+            Gets approved cases based on action-type retention:
+            - Ban: 30 days after approval
+            - Mute/Timeout: 14 days after approval
+            - Other: 7 days after approval
+            Builds and saves transcript before deletion.
             Marks the case as archived in the database.
         """
-        cutoff_time = datetime.now(NY_TZ) - timedelta(days=CASE_RETENTION_DAYS)
-        old_cases = self.db.get_old_cases(cutoff_time.timestamp())
+        now = datetime.now(NY_TZ)
+
+        # Get old cases for each retention category
+        ban_cutoff = (now - timedelta(days=RETENTION_DAYS_BAN)).timestamp()
+        mute_cutoff = (now - timedelta(days=RETENTION_DAYS_MUTE)).timestamp()
+        default_cutoff = (now - timedelta(days=RETENTION_DAYS_DEFAULT)).timestamp()
+
+        old_cases = self.db.get_old_cases_by_action_type(
+            ban_cutoff=ban_cutoff,
+            mute_cutoff=mute_cutoff,
+            default_cutoff=default_cutoff,
+        )
 
         if not old_cases:
             return
 
         deleted_count = 0
+        transcript_count = 0
         failed_count = 0
 
         for case in old_cases:
@@ -173,8 +269,12 @@ class CaseArchiveScheduler:
                 continue
 
             try:
-                # Mark case as archived FIRST (before Discord action)
-                # This prevents race condition if bot crashes during thread deletion
+                # Build and save transcript FIRST (before any deletion)
+                transcript_saved = await self._save_transcript(case)
+                if transcript_saved:
+                    transcript_count += 1
+
+                # Mark case as archived (before Discord action)
                 self.db.archive_case(case_id)
 
                 # Then delete the thread
@@ -185,8 +285,9 @@ class CaseArchiveScheduler:
                     # Thread deletion failed, but case is already archived
                     # This is acceptable - thread may already be deleted
                     deleted_count += 1
+
             except Exception as e:
-                logger.error("Failed To Delete Case Thread", [
+                logger.error("Failed To Archive Case", [
                     ("Case ID", case_id),
                     ("Error", str(e)[:100]),
                 ])
@@ -194,10 +295,102 @@ class CaseArchiveScheduler:
 
         if deleted_count > 0 or failed_count > 0:
             logger.tree("Case Archive Cleanup", [
-                ("Deleted", str(deleted_count)),
+                ("Archived", str(deleted_count)),
+                ("Transcripts Saved", str(transcript_count)),
                 ("Failed", str(failed_count)),
                 ("Total Checked", str(len(old_cases))),
             ], emoji="🗑️")
+
+    async def _save_transcript(self, case: dict) -> bool:
+        """
+        Build and save transcript for a case before deletion.
+
+        Args:
+            case: Case record from database.
+
+        Returns:
+            True if transcript was saved, False otherwise.
+        """
+        case_id = case.get("case_id")
+        thread_id = case.get("thread_id")
+
+        if not case_id or not thread_id:
+            return False
+
+        # Skip if transcript already exists
+        existing = self.db.get_case_transcript(case_id)
+        if existing:
+            return True
+
+        try:
+            # Get the thread
+            thread = self.bot.get_channel(thread_id)
+            if not thread:
+                try:
+                    thread = await self.bot.fetch_channel(thread_id)
+                except discord.NotFound:
+                    # Thread already deleted, can't build transcript
+                    return False
+                except discord.HTTPException:
+                    return False
+
+            if not isinstance(thread, discord.Thread):
+                return False
+
+            # Get target user and moderator info from case
+            target_user_id = case.get("user_id")
+            moderator_id = case.get("moderator_id")
+            target_user_name = None
+            moderator_name = None
+
+            # Try to fetch user names from Discord
+            if target_user_id:
+                try:
+                    target_user = await self.bot.fetch_user(target_user_id)
+                    target_user_name = target_user.display_name
+                except Exception:
+                    pass
+
+            if moderator_id:
+                try:
+                    moderator_user = await self.bot.fetch_user(moderator_id)
+                    moderator_name = moderator_user.display_name
+                except Exception:
+                    pass
+
+            # Build transcript
+            transcript_builder = TranscriptBuilder(self.bot, self.assets_thread_id)
+            transcript = await transcript_builder.build_from_thread(
+                thread=thread,
+                case_id=case_id,
+                target_user_id=target_user_id,
+                target_user_name=target_user_name,
+                moderator_id=moderator_id,
+                moderator_name=moderator_name,
+            )
+
+            if not transcript:
+                return False
+
+            # Save to database
+            success = self.db.save_case_transcript(case_id, transcript.to_json())
+
+            if success:
+                logger.tree("Transcript Saved", [
+                    ("Case ID", case_id),
+                    ("Messages", str(transcript.message_count)),
+                    ("Target", f"{target_user_name} ({target_user_id})"),
+                    ("Moderator", f"{moderator_name} ({moderator_id})"),
+                ], emoji="📝")
+
+            return success
+
+        except Exception as e:
+            logger.warning("Transcript Save Failed", [
+                ("Case ID", case_id),
+                ("Error", str(e)[:50]),
+            ])
+            return False
 
     async def _delete_case_thread(self, case: dict) -> bool:
         """
@@ -226,7 +419,14 @@ class CaseArchiveScheduler:
                     return False
 
             if thread:
-                await thread.delete(reason=f"Case archive: Thread older than {CASE_RETENTION_DAYS} days")
+                action_type = case.get("action_type", "unknown")
+                if action_type == "ban":
+                    retention = RETENTION_DAYS_BAN
+                elif action_type in ("mute", "timeout"):
+                    retention = RETENTION_DAYS_MUTE
+                else:
+                    retention = RETENTION_DAYS_DEFAULT
+                await thread.delete(reason=f"Case archive: {retention} days after approval ({action_type})")
                 return True
 
         except discord.NotFound:

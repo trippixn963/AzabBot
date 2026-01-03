@@ -60,6 +60,7 @@ from .transcript import (
     collect_transcript_messages,
     generate_html_transcript,
     create_transcript_file,
+    build_json_transcript,
 )
 
 if TYPE_CHECKING:
@@ -559,6 +560,16 @@ class TicketService:
         except Exception:
             ticket_user = None
 
+        # Fetch claimed_by member if available
+        claimed_by_member = None
+        if ticket.get("claimed_by") and closed_by.guild:
+            try:
+                claimed_by_member = closed_by.guild.get_member(ticket["claimed_by"])
+                if not claimed_by_member:
+                    claimed_by_member = await closed_by.guild.fetch_member(ticket["claimed_by"])
+            except Exception:
+                pass
+
         # Get thread
         thread = await self._get_ticket_thread(ticket["thread_id"])
         transcript_messages = []
@@ -568,9 +579,10 @@ class TicketService:
             # Collect transcript with mention map
             transcript_messages, mention_map = await collect_transcript_messages(thread, self.bot)
 
-            # Save transcript to database
+            # Save transcript to database (both HTML and JSON)
             if transcript_messages and ticket_user:
                 try:
+                    # Save HTML transcript
                     html_content = generate_html_transcript(
                         ticket=ticket,
                         messages=transcript_messages,
@@ -579,9 +591,23 @@ class TicketService:
                         mention_map=mention_map,
                     )
                     self.db.save_ticket_transcript(ticket_id, html_content)
+
+                    # Build and save JSON transcript for web viewer
+                    json_transcript = await build_json_transcript(
+                        thread=thread,
+                        ticket=ticket,
+                        bot=self.bot,
+                        user=ticket_user,
+                        claimed_by=claimed_by_member,
+                        closed_by=closed_by,
+                    )
+                    if json_transcript:
+                        self.db.save_ticket_transcript_json(ticket_id, json_transcript.to_json())
+
                     logger.tree("Transcript Saved", [
                         ("Ticket ID", ticket_id),
                         ("Messages", str(len(transcript_messages))),
+                        ("JSON", "Yes" if json_transcript else "No"),
                     ], emoji="📜")
                 except Exception as e:
                     logger.error("Failed to save transcript", [("Error", str(e))])

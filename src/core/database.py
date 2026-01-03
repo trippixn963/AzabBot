@@ -654,6 +654,35 @@ class DatabaseManager:
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+        # Migration: Add evidence_request_message_id to cases table
+        try:
+            cursor.execute("ALTER TABLE cases ADD COLUMN evidence_request_message_id INTEGER")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        # Migration: Add evidence_urls to cases table (JSON array of permanent URLs)
+        try:
+            cursor.execute("ALTER TABLE cases ADD COLUMN evidence_urls TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        # Migration: Add approved_at and approved_by to cases table
+        try:
+            cursor.execute("ALTER TABLE cases ADD COLUMN approved_at REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        try:
+            cursor.execute("ALTER TABLE cases ADD COLUMN approved_by INTEGER")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        # Migration: Add transcript column to cases table (JSON string)
+        try:
+            cursor.execute("ALTER TABLE cases ADD COLUMN transcript TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         # -----------------------------------------------------------------
         # Mod Tracker Table
         # DESIGN: Tracks moderators and their activity log threads
@@ -1171,6 +1200,10 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE tickets ADD COLUMN control_panel_message_id INTEGER")
         except sqlite3.OperationalError:
             pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE tickets ADD COLUMN transcript TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists (JSON transcript data)
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_tickets_user ON tickets(user_id, guild_id)"
         )
@@ -2247,10 +2280,10 @@ class DatabaseManager:
             edited_by: User ID of who edited the case.
 
         Returns:
-            True if updated successfully, False otherwise.
+            True if updated successfully, False if case doesn't exist.
         """
         try:
-            self.execute(
+            cursor = self.execute(
                 """
                 UPDATE cases
                 SET reason = ?, updated_at = ?
@@ -2258,7 +2291,8 @@ class DatabaseManager:
                 """,
                 (new_reason, time.time(), case_id)
             )
-            return True
+            # Check if any row was actually updated
+            return cursor.rowcount > 0
         except Exception:
             return False
 
@@ -2330,6 +2364,59 @@ class DatabaseManager:
         )
         return dict(row) if row else None
 
+    def get_active_forbid_case(
+        self,
+        user_id: int,
+        guild_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get the most recent open forbid case for a user.
+
+        Used when unforbidding to find the case thread to log to.
+
+        Args:
+            user_id: Target user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Active forbid case dict or None.
+        """
+        row = self.fetchone(
+            """SELECT * FROM cases
+               WHERE user_id = ? AND guild_id = ?
+               AND action_type = 'forbid' AND status = 'open'
+               ORDER BY created_at DESC LIMIT 1""",
+            (user_id, guild_id)
+        )
+        return dict(row) if row else None
+
+    def get_most_recent_forbid_case(
+        self,
+        user_id: int,
+        guild_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get the most recent forbid case (open or resolved) for a user.
+
+        Used when unforbidding and no open case exists.
+        Includes approved cases that might need to be unlocked.
+
+        Args:
+            user_id: Target user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Most recent forbid case dict or None.
+        """
+        row = self.fetchone(
+            """SELECT * FROM cases
+               WHERE user_id = ? AND guild_id = ?
+               AND action_type = 'forbid'
+               ORDER BY created_at DESC LIMIT 1""",
+            (user_id, guild_id)
+        )
+        return dict(row) if row else None
+
     def resolve_case(
         self,
         case_id: str,
@@ -2372,6 +2459,79 @@ class DatabaseManager:
             (message_id, case_id)
         )
         return cursor.rowcount > 0
+
+    def set_case_evidence_request_message(self, case_id: str, message_id: int) -> bool:
+        """
+        Set the evidence request message ID for a case.
+
+        Args:
+            case_id: The case ID.
+            message_id: The Discord message ID of the evidence request.
+
+        Returns:
+            True if successful.
+        """
+        cursor = self.execute(
+            "UPDATE cases SET evidence_request_message_id = ? WHERE case_id = ?",
+            (message_id, case_id)
+        )
+        return cursor.rowcount > 0
+
+    def get_case_by_evidence_request_message(self, message_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get case by evidence request message ID.
+
+        Args:
+            message_id: The Discord message ID of the evidence request.
+
+        Returns:
+            Case dict or None.
+        """
+        row = self.fetchone(
+            "SELECT * FROM cases WHERE evidence_request_message_id = ?",
+            (message_id,)
+        )
+        return dict(row) if row else None
+
+    def update_case_evidence(self, case_id: str, evidence_urls: List[str]) -> bool:
+        """
+        Update evidence URLs for a case.
+
+        Args:
+            case_id: The case ID.
+            evidence_urls: List of permanent evidence URLs.
+
+        Returns:
+            True if successful.
+        """
+        import json
+        cursor = self.execute(
+            "UPDATE cases SET evidence_urls = ?, evidence_request_message_id = NULL WHERE case_id = ?",
+            (json.dumps(evidence_urls), case_id)
+        )
+        return cursor.rowcount > 0
+
+    def get_case_evidence(self, case_id: str) -> List[str]:
+        """
+        Get evidence URLs for a case.
+
+        Args:
+            case_id: The case ID.
+
+        Returns:
+            List of evidence URLs.
+        """
+        import json
+        row = self.fetchone(
+            "SELECT evidence_urls FROM cases WHERE case_id = ?",
+            (case_id,)
+        )
+        if row and row["evidence_urls"]:
+            try:
+                return json.loads(row["evidence_urls"])
+            except json.JSONDecodeError:
+                return []
+        return []
 
     def get_user_cases(
         self,
@@ -2431,19 +2591,59 @@ class DatabaseManager:
 
     def get_old_cases(self, cutoff_timestamp: float) -> List[Dict[str, Any]]:
         """
-        Get cases older than the cutoff timestamp that aren't archived.
+        Get approved cases where approved_at is older than the cutoff timestamp.
+
+        Only approved cases are eligible for deletion. The 7-day timer
+        starts at approval time, not creation time.
 
         Args:
-            cutoff_timestamp: Unix timestamp cutoff (cases created before this).
+            cutoff_timestamp: Unix timestamp cutoff (cases approved before this).
 
         Returns:
             List of case dicts.
         """
         rows = self.fetchall(
             """SELECT * FROM cases
-               WHERE created_at < ? AND status != 'archived'
-               ORDER BY created_at ASC""",
+               WHERE approved_at IS NOT NULL
+               AND approved_at < ?
+               AND status != 'archived'
+               ORDER BY approved_at ASC""",
             (cutoff_timestamp,)
+        )
+        return [dict(row) for row in rows]
+
+    def get_old_cases_by_action_type(
+        self,
+        ban_cutoff: float,
+        mute_cutoff: float,
+        default_cutoff: float,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get approved cases using action-type-based retention.
+
+        Ban cases: 30 days after approval
+        Mute/Timeout cases: 14 days after approval
+        Other cases: 7 days after approval
+
+        Args:
+            ban_cutoff: Cutoff timestamp for ban cases.
+            mute_cutoff: Cutoff timestamp for mute/timeout cases.
+            default_cutoff: Cutoff timestamp for other cases.
+
+        Returns:
+            List of case dicts eligible for archival.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM cases
+               WHERE approved_at IS NOT NULL
+               AND status != 'archived'
+               AND (
+                   (action_type = 'ban' AND approved_at < ?)
+                   OR (action_type IN ('mute', 'timeout') AND approved_at < ?)
+                   OR (action_type NOT IN ('ban', 'mute', 'timeout') AND approved_at < ?)
+               )
+               ORDER BY approved_at ASC""",
+            (ban_cutoff, mute_cutoff, default_cutoff)
         )
         return [dict(row) for row in rows]
 
@@ -2462,6 +2662,60 @@ class DatabaseManager:
             (case_id,)
         )
         return cursor.rowcount > 0
+
+    def approve_case(self, case_id: str, approved_by: int) -> bool:
+        """
+        Mark a case as approved. Starts the 7-day deletion timer.
+
+        Args:
+            case_id: The case ID to approve.
+            approved_by: User ID of who approved the case.
+
+        Returns:
+            True if case was approved, False if not found.
+        """
+        cursor = self.execute(
+            """UPDATE cases
+               SET approved_at = ?, approved_by = ?, status = 'approved'
+               WHERE case_id = ?""",
+            (time.time(), approved_by, case_id)
+        )
+        return cursor.rowcount > 0
+
+    def save_case_transcript(self, case_id: str, transcript_json: str) -> bool:
+        """
+        Save a transcript JSON string for a case.
+
+        Args:
+            case_id: The case ID.
+            transcript_json: JSON string of the transcript.
+
+        Returns:
+            True if saved successfully, False if case not found.
+        """
+        cursor = self.execute(
+            "UPDATE cases SET transcript = ? WHERE case_id = ?",
+            (transcript_json, case_id)
+        )
+        return cursor.rowcount > 0
+
+    def get_case_transcript(self, case_id: str) -> Optional[str]:
+        """
+        Get the transcript JSON string for a case.
+
+        Args:
+            case_id: The case ID.
+
+        Returns:
+            Transcript JSON string or None if not found/no transcript.
+        """
+        row = self.fetchone(
+            "SELECT transcript FROM cases WHERE case_id = ?",
+            (case_id,)
+        )
+        if row and row["transcript"]:
+            return row["transcript"]
+        return None
 
     def get_most_recent_resolved_case(
         self,
@@ -5581,6 +5835,39 @@ class DatabaseManager:
             (ticket_id,)
         )
         return row["transcript_html"] if row and row["transcript_html"] else None
+
+    def save_ticket_transcript_json(self, ticket_id: str, transcript_json: str) -> bool:
+        """
+        Save JSON transcript for a ticket (for web viewer).
+
+        Args:
+            ticket_id: Ticket ID.
+            transcript_json: JSON transcript content.
+
+        Returns:
+            True if saved successfully.
+        """
+        cursor = self.execute(
+            "UPDATE tickets SET transcript = ? WHERE ticket_id = ?",
+            (transcript_json, ticket_id)
+        )
+        return cursor.rowcount > 0
+
+    def get_ticket_transcript_json(self, ticket_id: str) -> Optional[str]:
+        """
+        Get JSON transcript for a ticket.
+
+        Args:
+            ticket_id: Ticket ID.
+
+        Returns:
+            JSON content or None if not found.
+        """
+        row = self.fetchone(
+            "SELECT transcript FROM tickets WHERE ticket_id = ?",
+            (ticket_id,)
+        )
+        return row["transcript"] if row and row["transcript"] else None
 
     def set_control_panel_message(self, ticket_id: str, message_id: int) -> bool:
         """

@@ -295,6 +295,12 @@ class PrisonHandler:
 
         vc_name = member.voice.channel.name
 
+        logger.tree("Prison Handler: _handle_vc_kick Called", [
+            ("Member", f"{member.name} ({member.id})"),
+            ("VC Channel", vc_name),
+            ("Current Kick Count", str(self.vc_kick_counts.get(member.id, 0))),
+        ], emoji="📝")
+
         try:
             await member.move_to(None)
 

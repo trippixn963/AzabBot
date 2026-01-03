@@ -88,6 +88,11 @@ class MuteModal(discord.ui.Modal, title="Mute User"):
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         """Handle modal submission."""
+        logger.tree("Mute Modal Submitted", [
+            ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Target", f"{self.target_user.name} ({self.target_user.id})"),
+        ], emoji="🔇")
+
         duration = self.duration_input.value or None
         reason = self.reason_input.value or None
 
@@ -481,7 +486,11 @@ class MuteCog(commands.Cog):
             else:
                 sent_message = await interaction.followup.send(embed=embed)
         except Exception as e:
-            logger.error(f"Mute followup failed: {e}")
+            logger.error("Mute Followup Failed", [
+                ("User", f"{user.name} ({user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Error", str(e)[:100]),
+            ])
 
         # ---------------------------------------------------------------------
         # Concurrent Post-Response Operations
@@ -809,7 +818,11 @@ class MuteCog(commands.Cog):
             else:
                 sent_message = await interaction.followup.send(embed=embed)
         except Exception as e:
-            logger.error(f"execute_unmute: Followup.send failed: {e}")
+            logger.error("Unmute Followup Failed", [
+                ("User", f"{user.name} ({user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Error", str(e)[:100]),
+            ])
 
         # ---------------------------------------------------------------------
         # Concurrent Post-Response Operations

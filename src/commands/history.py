@@ -30,7 +30,7 @@ from src.core.constants import (
     EMOJI_KICK,
 )
 from src.utils.footer import set_footer
-from src.utils.views import CASE_EMOJI, InfoButton, DownloadButton
+from src.utils.views import CASE_EMOJI, InfoButton, DownloadButton, build_history_embed, build_history_view
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -129,7 +129,7 @@ class HistoryCog(commands.Cog):
             active_warns, total_warns = self.db.get_warn_counts(user.id, guild_id)
 
             # Get recent cases
-            cases = self.db.get_user_cases(user.id, guild_id, limit=10)
+            cases = self.db.get_user_cases(user.id, guild_id, limit=10) or []
 
             # Get recent warnings
             warnings = self.db.get_user_warnings(user.id, guild_id, limit=5)
@@ -156,225 +156,21 @@ class HistoryCog(commands.Cog):
                 ("Cases", str(len(cases))),
             ], emoji="📜")
 
-            # Build embed
-            embed = discord.Embed(
-                title=f"Moderation History",
-                color=EmbedColors.GOLD,
-                timestamp=datetime.now(NY_TZ),
+            # Build embed using shared format
+            embed = await build_history_embed(
+                client=self.bot,
+                user_id=user.id,
+                guild_id=guild_id,
+                cases=cases,
             )
 
-            # User info
-            embed.set_author(
-                name=f"{user.display_name} ({user.name})",
-                icon_url=user.display_avatar.url,
-            )
-            embed.set_thumbnail(url=user.display_avatar.url)
-
-            # Summary counts
-            summary_lines = []
-            if mute_count > 0:
-                summary_lines.append(f"{self._get_emoji('mute')} **Mutes:** `{mute_count}`")
-            if ban_count > 0:
-                summary_lines.append(f"{self._get_emoji('ban')} **Bans:** `{ban_count}`")
-            if total_warns > 0:
-                summary_lines.append(f"{self._get_emoji('warn')} **Warns:** `{active_warns}` active / `{total_warns}` total")
-            if len(forbid_history) > 0:
-                summary_lines.append(f"🚫 **Forbids:** `{len(active_forbids)}` active / `{len(forbid_history)}` total")
-            if note_count > 0:
-                summary_lines.append(f"📝 **Notes:** `{note_count}`")
-
-            if summary_lines:
-                embed.add_field(
-                    name="Summary",
-                    value="\n".join(summary_lines),
-                    inline=False,
-                )
-            else:
-                embed.description = "No moderation history found for this user."
-                embed.set_footer(text=f"User ID: {user.id}")
-
-                # Still add buttons for no-history case
+            # Build view with case link buttons
+            view = build_history_view(cases, guild_id)
+            if view is None:
                 view = discord.ui.View(timeout=None)
-                view.add_item(InfoButton(user.id, guild_id))
-                view.add_item(DownloadButton(user.id))
 
-                await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-
-                # Log to server logs (even for clean users)
-                await self._log_history_usage(
-                    interaction=interaction,
-                    target=user,
-                    mute_count=0,
-                    ban_count=0,
-                    warn_count=0,
-                    case_count=0,
-                )
-                return
-
-            # Recent cases
-            if cases:
-                case_lines = []
-                for case in cases[:5]:
-                    action = case.get("action_type", "unknown")
-                    case_id = case.get("case_id", "????")
-                    created_at = case.get("created_at", 0)
-                    status = case.get("status", "open")
-
-                    # Format timestamp
-                    if created_at:
-                        ts = f"<t:{int(created_at)}:R>"
-                    else:
-                        ts = "Unknown"
-
-                    # Status indicator
-                    status_icon = "🟢" if status == "open" else "⚪"
-
-                    case_lines.append(
-                        f"{status_icon} `{case_id}` {self._get_emoji(action)} {action.title()} • {ts}"
-                    )
-
-                embed.add_field(
-                    name="Recent Cases",
-                    value="\n".join(case_lines),
-                    inline=False,
-                )
-
-            # Recent warnings (if any that aren't in cases)
-            if warnings:
-                warn_lines = []
-                for warn in warnings[:3]:
-                    warned_at = warn.get("warned_at", 0)
-                    reason = warn.get("reason", "No reason provided")
-
-                    # Truncate reason
-                    if len(reason) > 50:
-                        reason = reason[:47] + "..."
-
-                    # Format timestamp
-                    if warned_at:
-                        ts = f"<t:{int(warned_at)}:R>"
-                    else:
-                        ts = "Unknown"
-
-                    warn_lines.append(f"• {ts}: {reason}")
-
-                if warn_lines:
-                    embed.add_field(
-                        name="Recent Warnings",
-                        value="\n".join(warn_lines),
-                        inline=False,
-                    )
-
-            # Recent Mod Notes
-            if mod_notes:
-                note_lines = []
-                for note in mod_notes[:3]:
-                    created_at = note.get("created_at", 0)
-                    content = note.get("note", "No content")
-                    mod_id = note.get("moderator_id")
-
-                    # Truncate content
-                    if len(content) > 50:
-                        content = content[:47] + "..."
-
-                    # Format timestamp
-                    if created_at:
-                        ts = f"<t:{int(created_at)}:R>"
-                    else:
-                        ts = "Unknown"
-
-                    # Include moderator if available
-                    if mod_id:
-                        note_lines.append(f"• {ts} by <@{mod_id}>:\n  └ {content}")
-                    else:
-                        note_lines.append(f"• {ts}: {content}")
-
-                if note_lines:
-                    embed.add_field(
-                        name="📝 Recent Notes",
-                        value="\n".join(note_lines),
-                        inline=False,
-                    )
-
-            # Active Forbids
-            if active_forbids:
-                forbid_lines = []
-                for forbid in active_forbids[:5]:
-                    restriction = forbid.get("restriction_type", "unknown")
-                    created_at = forbid.get("created_at", 0)
-                    reason = forbid.get("reason", "")
-
-                    emoji = FORBID_EMOJIS.get(restriction, "🚫")
-
-                    # Format timestamp
-                    if created_at:
-                        ts = f"<t:{int(created_at)}:R>"
-                    else:
-                        ts = "Unknown"
-
-                    line = f"{emoji} **{restriction}** • {ts}"
-                    if reason:
-                        reason_short = reason[:30] + "..." if len(reason) > 30 else reason
-                        line += f"\n  └ {reason_short}"
-                    forbid_lines.append(line)
-
-                embed.add_field(
-                    name="Active Restrictions",
-                    value="\n".join(forbid_lines),
-                    inline=False,
-                )
-
-            # Recent Forbid History (show removed ones too)
-            elif forbid_history:
-                # Only show history if no active forbids
-                history_lines = []
-                for forbid in forbid_history[:3]:
-                    restriction = forbid.get("restriction_type", "unknown")
-                    created_at = forbid.get("created_at", 0)
-                    removed_at = forbid.get("removed_at")
-
-                    emoji = FORBID_EMOJIS.get(restriction, "🚫")
-                    status = "✅" if removed_at else "🔴"
-
-                    # Format timestamp
-                    if created_at:
-                        ts = f"<t:{int(created_at)}:R>"
-                    else:
-                        ts = "Unknown"
-
-                    history_lines.append(f"{status} {emoji} {restriction} • {ts}")
-
-                if history_lines:
-                    embed.add_field(
-                        name="Forbid History",
-                        value="\n".join(history_lines),
-                        inline=False,
-                    )
-
-            # Footer with user ID and branding
-            set_footer(embed)
-            embed.set_footer(text=f"User ID: {user.id} • {embed.footer.text}" if embed.footer and embed.footer.text else f"User ID: {user.id}")
-
-            # Build view with buttons
-            view = discord.ui.View(timeout=None)
-
-            # Case button (if user has a case)
-            case_log = self.db.get_case_log(user.id)
-            if case_log:
-                thread_id = case_log.get("thread_id")
-                if thread_id:
-                    case_url = f"https://discord.com/channels/{guild_id}/{thread_id}"
-                    view.add_item(discord.ui.Button(
-                        label="Case",
-                        url=case_url,
-                        style=discord.ButtonStyle.link,
-                        emoji=CASE_EMOJI,
-                    ))
-
-            # Info button
+            # Add Info and Avatar buttons
             view.add_item(InfoButton(user.id, guild_id))
-
-            # Avatar button
             view.add_item(DownloadButton(user.id))
 
             await interaction.followup.send(embed=embed, view=view, ephemeral=True)

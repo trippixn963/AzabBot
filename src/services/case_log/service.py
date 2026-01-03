@@ -9,6 +9,7 @@ Server: discord.gg/syria
 """
 
 import asyncio
+import io
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, Dict, Tuple, List
 
@@ -163,38 +164,23 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
                 await asyncio.sleep(REASON_CHECK_INTERVAL)
 
     async def _process_expired_reasons(self) -> None:
-        """Process expired pending reasons and notify owner."""
+        """Process expired pending reasons (cleanup only, no owner ping)."""
         self.db.cleanup_old_pending_reasons(max_age_seconds=REASON_CLEANUP_AGE)
         expired = self.db.get_expired_pending_reasons(max_age_seconds=REASON_EXPIRY_TIME)
 
         for pending in expired:
             try:
-                thread = await self._get_case_thread(pending["thread_id"])
-                if not thread:
-                    self.db.delete_pending_reason(pending["id"])
-                    continue
-
-                owner_id = self.config.developer_id
-                moderator_id = pending["moderator_id"]
-                action_type = pending["action_type"]
-                target_user_id = pending["target_user_id"]
-
-                await safe_send(
-                    thread,
-                    f"⚠️ <@{owner_id}> **Alert:** <@{moderator_id}> did not provide a reason for "
-                    f"this {action_type} on <@{target_user_id}> within 1 hour."
-                )
-
+                # Just mark as processed and clean up - no owner ping needed
                 self.db.mark_pending_reason_notified(pending["id"])
 
-                logger.tree("Owner Notified: Missing Reason", [
-                    ("Thread ID", str(thread.id)),
-                    ("Moderator ID", str(moderator_id)),
-                    ("Action", action_type),
+                logger.tree("Missing Reason Expired", [
+                    ("Thread ID", str(pending["thread_id"])),
+                    ("Moderator ID", str(pending["moderator_id"])),
+                    ("Action", pending["action_type"]),
                 ], emoji="⚠️")
 
             except Exception as e:
-                logger.error("Failed To Notify Owner", [
+                logger.error("Failed To Process Expired Reason", [
                     ("Pending ID", str(pending["id"])),
                     ("Error", str(e)[:50]),
                 ])
@@ -340,6 +326,7 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
         new_status: Optional[str] = None,
         user: Optional[discord.Member] = None,
         moderator: Optional[discord.Member] = None,
+        transcript_url: Optional[str] = None,
     ) -> bool:
         """
         Update the control panel message in place.
@@ -347,9 +334,10 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
         Args:
             case_id: The case ID.
             case_thread: The case thread.
-            new_status: New status (open, resolved, expired).
+            new_status: New status (open, resolved, expired, approved).
             user: The target user.
             moderator: The moderator.
+            transcript_url: URL to the transcript (for approved cases).
 
         Returns:
             True if updated successfully.
@@ -358,6 +346,9 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
             # Get case data
             case = self.db.get_case(case_id)
             if not case:
+                logger.warning("Control Panel Update - Case Not Found", [
+                    ("Case ID", case_id),
+                ])
                 return False
 
             control_panel_msg_id = case.get("control_panel_message_id")
@@ -369,16 +360,31 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
                         if msg.embeds and msg.embeds[0].title and "Control Panel" in msg.embeds[0].title:
                             control_panel_msg_id = msg.id
                             self.db.set_case_control_panel_message(case_id, msg.id)
+                            logger.tree("Control Panel Found In Pins", [
+                                ("Case ID", case_id),
+                                ("Message ID", str(msg.id)),
+                            ], emoji="📌")
                             break
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Control Panel Pin Search Failed", [
+                        ("Case ID", case_id),
+                        ("Error", str(e)[:50]),
+                    ])
 
             if not control_panel_msg_id:
+                logger.warning("Control Panel Not Found", [
+                    ("Case ID", case_id),
+                    ("Thread ID", str(case_thread.id)),
+                ])
                 return False
 
             # Fetch the message
             control_msg = await safe_fetch_message(case_thread, control_panel_msg_id)
             if not control_msg:
+                logger.warning("Control Panel Message Fetch Failed", [
+                    ("Case ID", case_id),
+                    ("Message ID", str(control_panel_msg_id)),
+                ])
                 return False
 
             # Determine status
@@ -395,6 +401,17 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
             # Build updated view
             action_type = case.get("action_type", "")
             is_mute = action_type in ("mute", "timeout")
+
+            # Check if evidence exists for this case
+            evidence_urls = self.db.get_case_evidence(case_id)
+            has_evidence = len(evidence_urls) > 0
+
+            # Build transcript URL if approved and not provided
+            final_transcript_url = transcript_url
+            if status == "approved" and not final_transcript_url:
+                if self.config.case_transcript_base_url:
+                    final_transcript_url = f"{self.config.case_transcript_base_url}/{case_id}"
+
             control_view = CaseControlPanelView(
                 user_id=case.get("user_id"),
                 guild_id=case.get("guild_id"),
@@ -402,6 +419,8 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
                 case_thread_id=case_thread.id,
                 status=status,
                 is_mute=is_mute,
+                has_evidence=has_evidence,
+                transcript_url=final_transcript_url,
             )
 
             # Edit the message
@@ -410,6 +429,7 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
             logger.tree("Control Panel Updated", [
                 ("Case ID", case_id),
                 ("Status", status),
+                ("Transcript URL", "Yes" if final_transcript_url else "No"),
             ], emoji="🎛️")
 
             return True
@@ -417,6 +437,7 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
         except Exception as e:
             logger.warning("Control Panel Update Failed", [
                 ("Case ID", case_id),
+                ("Error Type", type(e).__name__),
                 ("Error", str(e)[:50]),
             ])
             return False
@@ -520,6 +541,7 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
             reason=reason,
             message_url=message_url,
             guild_id=guild_id,
+            has_evidence=bool(evidence),
         )
 
         if thread:
@@ -571,9 +593,21 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
         reason: Optional[str] = None,
         message_url: Optional[str] = None,
         guild_id: Optional[int] = None,
+        has_evidence: bool = False,
     ) -> tuple[Optional[discord.Thread], Optional[int]]:
         """
         Create a new forum thread for a per-action case.
+
+        Args:
+            user: The target user.
+            case_id: The case ID.
+            action_type: Type of action (mute, ban, warn, etc).
+            moderator: The moderator who took action.
+            duration_seconds: Duration for timed actions.
+            reason: Reason for the action.
+            message_url: URL to the original message.
+            guild_id: The guild ID.
+            has_evidence: Whether evidence was provided.
 
         Returns:
             Tuple of (thread, control_panel_message_id)
@@ -676,6 +710,7 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
                         status="open",
                         is_mute=is_mute,
                         message_url=message_url,
+                        has_evidence=has_evidence,
                     )
 
                     # Send control panel
@@ -702,6 +737,161 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
         except Exception as e:
             logger.error(f"Failed to create action thread: {type(e).__name__}: {str(e)[:100]}")
             return None, None
+
+    async def _send_evidence_request(
+        self,
+        case_id: str,
+        thread: discord.Thread,
+        moderator: discord.Member,
+        action_type: str,
+    ) -> Optional[discord.Message]:
+        """
+        Send a message requesting evidence for a case.
+
+        The moderator should reply to this message with media (image/video)
+        to provide evidence for the action.
+
+        Args:
+            case_id: The case ID.
+            thread: The case thread.
+            moderator: The moderator who took the action.
+            action_type: Type of action (mute, ban, warn, etc.)
+
+        Returns:
+            The evidence request message, or None if failed.
+        """
+        try:
+            embed = discord.Embed(
+                title="⚠️ Evidence Required",
+                description=(
+                    f"Please provide evidence for this **{action_type}**.\n\n"
+                    f"**Reply to this message** with an image or video.\n"
+                    f"The media will be permanently linked to case `#{case_id}`."
+                ),
+                color=EmbedColors.WARNING,
+            )
+            embed.set_footer(text="Reply with media to complete this request")
+
+            # Ping moderator outside embed so they see it
+            msg = await safe_send(thread, content=f"{moderator.mention}", embed=embed)
+            if msg:
+                # Store the message ID so we can watch for replies
+                self.db.set_case_evidence_request_message(case_id, msg.id)
+                logger.tree("Evidence Request Sent", [
+                    ("Case ID", case_id),
+                    ("Thread", str(thread.id)),
+                    ("Moderator", str(moderator)),
+                ], emoji="⚠️")
+                return msg
+
+        except Exception as e:
+            logger.error("Evidence Request Failed", [
+                ("Case ID", case_id),
+                ("Error", str(e)[:50]),
+            ])
+
+        return None
+
+    async def handle_evidence_reply(
+        self,
+        message: discord.Message,
+    ) -> bool:
+        """
+        Handle a reply to an evidence request message.
+
+        This method is called when a message is detected as a reply
+        to an evidence request. It captures the media and links it
+        to the case.
+
+        Args:
+            message: The reply message with attachments.
+
+        Returns:
+            True if evidence was successfully captured.
+        """
+        if not message.reference or not message.reference.message_id:
+            return False
+
+        # Check if this is a reply to an evidence request
+        case = self.db.get_case_by_evidence_request_message(message.reference.message_id)
+        if not case:
+            return False
+
+        # Check for attachments
+        valid_attachments = []
+        for attachment in message.attachments:
+            # Accept images and videos
+            if attachment.content_type and (
+                attachment.content_type.startswith("image/") or
+                attachment.content_type.startswith("video/")
+            ):
+                valid_attachments.append(attachment)
+
+        if not valid_attachments:
+            # No valid media, send a reminder
+            try:
+                await message.reply(
+                    "⚠️ Please provide an **image or video** as evidence.",
+                    delete_after=10,
+                )
+            except Exception:
+                pass
+            return False
+
+        # Re-upload attachments to ensure permanence
+        evidence_urls = []
+        thread = message.channel
+
+        try:
+            for attachment in valid_attachments:
+                # Download the attachment
+                file_data = await attachment.read()
+                file = discord.File(
+                    fp=io.BytesIO(file_data),
+                    filename=attachment.filename,
+                    description=f"Evidence for case #{case['case_id']}",
+                )
+
+                # Upload to the same thread (ensures permanence as long as thread exists)
+                evidence_msg = await thread.send(
+                    f"📎 **Evidence for Case #{case['case_id']}**",
+                    file=file,
+                )
+                if evidence_msg and evidence_msg.attachments:
+                    evidence_urls.append(evidence_msg.attachments[0].url)
+
+            if evidence_urls:
+                # Update the case with evidence URLs
+                self.db.update_case_evidence(case["case_id"], evidence_urls)
+
+                # Send confirmation
+                await message.reply(
+                    f"✅ Evidence captured for case `#{case['case_id']}` ({len(evidence_urls)} file(s)).",
+                    delete_after=30,
+                )
+
+                # Delete the evidence request message
+                try:
+                    request_msg = await thread.fetch_message(message.reference.message_id)
+                    await request_msg.delete()
+                except Exception:
+                    pass
+
+                logger.tree("Evidence Captured", [
+                    ("Case ID", case["case_id"]),
+                    ("Files", str(len(evidence_urls))),
+                    ("By", str(message.author)),
+                ], emoji="✅")
+
+                return True
+
+        except Exception as e:
+            logger.error("Evidence Capture Failed", [
+                ("Case ID", case["case_id"]),
+                ("Error", str(e)[:50]),
+            ])
+
+        return False
 
     async def _get_or_create_case(
         self,
@@ -849,8 +1039,8 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
                         f"{message.author.mention} An attachment (screenshot/video) is required, or reply with `voice chat` if this happened in VC.",
                         delete_after=10,
                     )
-                except discord.HTTPException:
-                    pass
+                except discord.HTTPException as e:
+                    logger.debug(f"Evidence requirement message failed: {message.channel.id} - {e.code}")
                 return False
         else:
             if not reason:

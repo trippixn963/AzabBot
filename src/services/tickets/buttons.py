@@ -20,6 +20,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config
+from src.utils.views import build_history_embed, build_history_view
 from .constants import (
     APPROVE_EMOJI,
     DENY_EMOJI,
@@ -81,6 +82,11 @@ class ClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clai
         return cls(match.group("ticket_id"))
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        logger.tree("Claim Button Clicked", [
+            ("Clicked By", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Ticket ID", self.ticket_id),
+        ], emoji="✋")
+
         bot: "AzabBot" = interaction.client
         if not hasattr(bot, "ticket_service") or not bot.ticket_service:
             await interaction.response.send_message(
@@ -161,6 +167,11 @@ class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clos
 
     async def callback(self, interaction: discord.Interaction) -> None:
         from .modals import TicketCloseModal
+
+        logger.tree("Close Button Clicked", [
+            ("Clicked By", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Ticket ID", self.ticket_id),
+        ], emoji="🔒")
 
         bot: "AzabBot" = interaction.client
         if not hasattr(bot, "ticket_service") or not bot.ticket_service:
@@ -246,6 +257,11 @@ class AddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_ad
 
     async def callback(self, interaction: discord.Interaction) -> None:
         from .modals import TicketAddUserModal
+
+        logger.tree("Add User Button Clicked", [
+            ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Ticket ID", self.ticket_id),
+        ], emoji="➕")
 
         bot: "AzabBot" = interaction.client
         if not hasattr(bot, "ticket_service") or not bot.ticket_service:
@@ -593,6 +609,11 @@ class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt
         return cls(match.group("ticket_id"))
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        logger.tree("Transcript Button Clicked", [
+            ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Ticket ID", self.ticket_id),
+        ], emoji="📜")
+
         bot: "AzabBot" = interaction.client
         if not hasattr(bot, "ticket_service") or not bot.ticket_service:
             await interaction.response.send_message(
@@ -670,6 +691,11 @@ class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_info:
         return cls(match.group("ticket_id"))
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        logger.tree("Ticket Info Button Clicked", [
+            ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Ticket ID", self.ticket_id),
+        ], emoji="ℹ️")
+
         bot: "AzabBot" = interaction.client
         if not hasattr(bot, "ticket_service") or not bot.ticket_service:
             await interaction.response.send_message(
@@ -742,10 +768,11 @@ class InfoSelectView(discord.ui.View):
 
             if choice == "user_info":
                 embed = await self._build_user_info_embed(bot, interaction.guild)
+                await interaction.followup.send(embed=embed, ephemeral=True)
             else:
-                embed = await self._build_criminal_history_embed(bot)
-
-            await interaction.followup.send(embed=embed, ephemeral=True)
+                embed, cases = await self._build_criminal_history_embed(bot)
+                view = build_history_view(cases, self.guild_id)
+                await interaction.followup.send(embed=embed, view=view, ephemeral=True)
         except Exception as e:
             logger.error("Info Select Failed", [
                 ("Ticket", self.ticket_id),
@@ -894,130 +921,25 @@ class InfoSelectView(discord.ui.View):
         set_footer(embed)
         return embed
 
-    async def _build_criminal_history_embed(self, bot: "AzabBot") -> discord.Embed:
-        """Build criminal history embed with warns, mutes, bans."""
-        from src.core.config import EmbedColors
-        from src.utils.footer import set_footer
+    async def _build_criminal_history_embed(self, bot: "AzabBot") -> tuple:
+        """Build criminal history embed using shared unified format.
 
-        # Fetch user for thumbnail (use cache if available)
-        if self._user_cache is None:
-            try:
-                self._user_cache = await bot.fetch_user(self.user_id)
-            except Exception:
-                pass
-
-        user = self._user_cache
-        if user:
-            user_display = f"{user.mention} (`{user.name}`)"
-            avatar_url = user.display_avatar.url
-        else:
-            user_display = f"<@{self.user_id}>"
-            avatar_url = None
-
-        embed = discord.Embed(
-            title="⚠️ Criminal History",
-            color=EmbedColors.GOLD,
-        )
-
-        if avatar_url:
-            embed.set_thumbnail(url=avatar_url)
-
-        embed.add_field(
-            name="User",
-            value=user_display,
-            inline=False,
-        )
-
-        # Get all cases (use cache if available - already has 100 limit from user info)
+        Returns:
+            Tuple of (embed, cases) for building the view with case links.
+        """
+        # Get all cases (use cache if available)
         if self._cases_cache is None:
             self._cases_cache = bot.ticket_service.db.get_user_cases(self.user_id, self.guild_id, limit=100) or []
-        cases = self._cases_cache[:25]  # Only show 25 in criminal history
+        cases = self._cases_cache[:10]  # Show 10 in criminal history
 
-        if not cases:
-            embed.description = "✅ No moderation history found. Clean record!"
-            set_footer(embed)
-            return embed
-
-        # Count by type
-        warns = [c for c in cases if c.get("action_type") == "warn"]
-        mutes = [c for c in cases if c.get("action_type") == "mute"]
-        bans = [c for c in cases if c.get("action_type") == "ban"]
-
-        # Summary
-        embed.add_field(
-            name="Summary",
-            value=f"⚠️ **{len(warns)}** warns │ 🔇 **{len(mutes)}** mutes │ 🔨 **{len(bans)}** bans",
-            inline=False,
+        # Use the shared history embed builder for unified format
+        embed = await build_history_embed(
+            client=bot,
+            user_id=self.user_id,
+            guild_id=self.guild_id,
+            cases=cases,
         )
-
-        # Recent Warns (last 5)
-        if warns:
-            warn_lines = []
-            for case in warns[:5]:
-                reason = case.get("reason", "No reason")
-                if len(reason) > 40:
-                    reason = reason[:37] + "..."
-                mod_id = case.get("moderator_id")
-                created = case.get("created_at")
-                timestamp = f"<t:{int(created)}:R>" if created else "?"
-                warn_lines.append(
-                    f"• `{case['case_id']}` {reason}\n  └ by <@{mod_id}> {timestamp}"
-                )
-            embed.add_field(
-                name=f"⚠️ Warns ({len(warns)} total)",
-                value="\n".join(warn_lines) if warn_lines else "None",
-                inline=False,
-            )
-
-        # Recent Mutes (last 5)
-        if mutes:
-            mute_lines = []
-            for case in mutes[:5]:
-                reason = case.get("reason", "No reason")
-                if len(reason) > 40:
-                    reason = reason[:37] + "..."
-                mod_id = case.get("moderator_id")
-                created = case.get("created_at")
-                timestamp = f"<t:{int(created)}:R>" if created else "?"
-                duration = case.get("duration_seconds")
-                dur_str = ""
-                if duration:
-                    if duration >= 86400:
-                        dur_str = f" ({duration // 86400}d)"
-                    elif duration >= 3600:
-                        dur_str = f" ({duration // 3600}h)"
-                    else:
-                        dur_str = f" ({duration // 60}m)"
-                mute_lines.append(
-                    f"• `{case['case_id']}`{dur_str} {reason}\n  └ by <@{mod_id}> {timestamp}"
-                )
-            embed.add_field(
-                name=f"🔇 Mutes ({len(mutes)} total)",
-                value="\n".join(mute_lines) if mute_lines else "None",
-                inline=False,
-            )
-
-        # Recent Bans (last 5)
-        if bans:
-            ban_lines = []
-            for case in bans[:5]:
-                reason = case.get("reason", "No reason")
-                if len(reason) > 40:
-                    reason = reason[:37] + "..."
-                mod_id = case.get("moderator_id")
-                created = case.get("created_at")
-                timestamp = f"<t:{int(created)}:R>" if created else "?"
-                ban_lines.append(
-                    f"• `{case['case_id']}` {reason}\n  └ by <@{mod_id}> {timestamp}"
-                )
-            embed.add_field(
-                name=f"🔨 Bans ({len(bans)} total)",
-                value="\n".join(ban_lines) if ban_lines else "None",
-                inline=False,
-            )
-
-        set_footer(embed)
-        return embed
+        return embed, cases
 
 
 # =============================================================================
@@ -1060,6 +982,11 @@ class TransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_t
         return cls(match.group("ticket_id"))
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        logger.tree("Transfer Button Clicked", [
+            ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Ticket ID", self.ticket_id),
+        ], emoji="🔄")
+
         bot: "AzabBot" = interaction.client
         if not hasattr(bot, "ticket_service") or not bot.ticket_service:
             await interaction.response.send_message(
@@ -1220,6 +1147,12 @@ class CloseApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"t
         return cls(match.group("ticket_id"), int(match.group("requester_id")))
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        logger.tree("Close Approve Button Clicked", [
+            ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Ticket ID", self.ticket_id),
+            ("Requester ID", str(self.requester_id)),
+        ], emoji="✅")
+
         bot: "AzabBot" = interaction.client
         if not hasattr(bot, "ticket_service") or not bot.ticket_service:
             await interaction.response.send_message(
@@ -1293,6 +1226,12 @@ class CloseDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_
         return cls(match.group("ticket_id"), int(match.group("requester_id")))
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        logger.tree("Close Deny Button Clicked", [
+            ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Ticket ID", self.ticket_id),
+            ("Requester ID", str(self.requester_id)),
+        ], emoji="❌")
+
         bot: "AzabBot" = interaction.client
         if not hasattr(bot, "ticket_service") or not bot.ticket_service:
             await interaction.response.send_message(

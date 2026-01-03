@@ -31,7 +31,7 @@ Server: discord.gg/syria
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import discord
 from discord import app_commands
@@ -40,13 +40,10 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ, has_mod_role
 from src.core.database import get_db
-from src.core.moderation_validation import (
-    validate_self_action,
-    validate_target_not_bot,
-    validate_role_hierarchy,
-)
+from src.core.moderation_validation import validate_moderation_target
+from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
 from src.utils.footer import set_footer
-from src.utils.views import APPEAL_EMOJI
+from src.utils.views import APPEAL_EMOJI, CaseButtonView
 from src.utils.rate_limiter import rate_limit
 from src.utils.duration import parse_duration, format_duration_short as format_duration
 from src.utils.async_utils import create_safe_task
@@ -122,10 +119,16 @@ FORBID_ROLE_PREFIX = "Forbid: "
 class ForbidCog(commands.Cog):
     """Cog for user permission restrictions with duration, DM, and appeal support."""
 
+    # Cache TTL for guild roles (5 minutes)
+    ROLES_CACHE_TTL = timedelta(minutes=5)
+
     def __init__(self, bot: "AzabBot") -> None:
         self.bot = bot
         self.config = get_config()
         self.db = get_db()
+
+        # Guild roles cache: {guild_id: (roles_dict, cached_at)}
+        self._roles_cache: Dict[int, Tuple[Dict[str, discord.Role], datetime]] = {}
 
         # Start background tasks (using create_safe_task for error logging)
         self._scan_task = create_safe_task(self._start_nightly_scan(), "Forbid Nightly Scan")
@@ -192,10 +195,18 @@ class ForbidCog(commands.Cog):
                     ], emoji="🔧")
 
                 except discord.Forbidden:
-                    logger.warning(f"Cannot create forbid role: {role_name}")
+                    logger.warning("Forbid Role Creation Forbidden", [
+                        ("Role", role_name),
+                        ("Guild", guild.name),
+                        ("Reason", "Missing permissions"),
+                    ])
                     continue
                 except discord.HTTPException as e:
-                    logger.warning(f"Failed to create forbid role {role_name}: {e}")
+                    logger.warning("Forbid Role Creation Failed", [
+                        ("Role", role_name),
+                        ("Guild", guild.name),
+                        ("Error", str(e)[:100]),
+                    ])
                     continue
 
             roles[restriction] = role
@@ -237,33 +248,63 @@ class ForbidCog(commands.Cog):
         apply_to_text = bool(perm_names & text_perms)
         apply_to_voice = bool(perm_names & voice_perms)
 
+        # OPTIMIZATION: Only apply to categories (children inherit) and uncategorized channels
+        # This reduces API calls from O(all_channels) to O(categories + orphan_channels)
+        categorized_channels = set()
+        for category in guild.categories:
+            categorized_channels.update(c.id for c in category.channels)
+
         for channel in guild.channels:
             try:
-                # Apply to categories (children inherit these permissions)
+                # Always apply to categories (children inherit these permissions)
                 if isinstance(channel, discord.CategoryChannel):
                     if apply_to_text or apply_to_voice:
                         await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
-                elif isinstance(channel, discord.TextChannel) and apply_to_text:
-                    await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
-                elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
-                    # Voice channels need both voice AND text permissions (for VC text chat)
-                    if apply_to_voice or apply_to_text:
+                # Only apply to uncategorized channels (orphans don't inherit from categories)
+                elif channel.id not in categorized_channels:
+                    if isinstance(channel, discord.TextChannel) and apply_to_text:
                         await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
-                elif isinstance(channel, discord.ForumChannel) and apply_to_text:
-                    await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
+                    elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+                        if apply_to_voice or apply_to_text:
+                            await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
+                    elif isinstance(channel, discord.ForumChannel) and apply_to_text:
+                        await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
             except discord.Forbidden:
                 continue
             except discord.HTTPException:
                 continue
 
     async def _get_or_create_role(self, guild: discord.Guild, restriction: str) -> Optional[discord.Role]:
-        """Get or create a specific forbid role."""
+        """Get or create a specific forbid role with caching."""
+        now = datetime.now()
+
+        # Check cache first
+        if guild.id in self._roles_cache:
+            cached_roles, cached_at = self._roles_cache[guild.id]
+            if now - cached_at < self.ROLES_CACHE_TTL:
+                role = cached_roles.get(restriction)
+                if role:
+                    # Verify role still exists in guild
+                    if discord.utils.get(guild.roles, id=role.id):
+                        return role
+                    # Role was deleted, invalidate cache
+                    del self._roles_cache[guild.id]
+
+        # Try to find role by name
         role_name = self._get_role_name(restriction)
         role = discord.utils.get(guild.roles, name=role_name)
 
         if not role:
+            # Create roles and cache them
             roles = await self._ensure_forbid_roles(guild)
+            self._roles_cache[guild.id] = (roles, now)
             role = roles.get(restriction)
+        else:
+            # Update cache with this role
+            if guild.id in self._roles_cache:
+                self._roles_cache[guild.id][0][restriction] = role
+            else:
+                self._roles_cache[guild.id] = ({restriction: role}, now)
 
         return role
 
@@ -335,29 +376,18 @@ class ForbidCog(commands.Cog):
                 )
                 return
 
-            # Validation using centralized module
-            result = validate_self_action(moderator, user, "forbid")
+            # Validation using centralized module (self, bot, hierarchy, management)
+            result = await validate_moderation_target(
+                interaction=interaction,
+                target=user,
+                bot=self.bot,
+                action="forbid",
+                require_member=True,
+                check_bot_hierarchy=False,  # Forbid uses roles, not direct Discord actions
+            )
             if not result.is_valid:
                 await interaction.followup.send(result.error_message, ephemeral=True)
                 return
-
-            result = validate_target_not_bot(moderator, user, "forbid")
-            if not result.is_valid:
-                await interaction.followup.send(result.error_message, ephemeral=True)
-                return
-
-            # Hierarchy check
-            if isinstance(moderator, discord.Member):
-                result = validate_role_hierarchy(
-                    moderator=moderator,
-                    target=user,
-                    target_guild=guild,
-                    action="forbid",
-                    cross_server=False,
-                )
-                if not result.is_valid:
-                    await interaction.followup.send(result.error_message, ephemeral=True)
-                    return
 
             # Parse duration
             duration_seconds = None
@@ -425,6 +455,34 @@ class ForbidCog(commands.Cog):
                 ("Reason", (reason or "None")[:50]),
             ], emoji="🚫")
 
+            # Create case log FIRST (need case_info for public embed)
+            case_info = None
+            if applied and self.bot.case_log_service:
+                try:
+                    case_info = await asyncio.wait_for(
+                        self.bot.case_log_service.log_forbid(
+                            user=user,
+                            moderator=moderator,
+                            restrictions=applied,
+                            reason=reason,
+                            duration=duration_display,
+                        ),
+                        timeout=10.0,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("Case Log Timeout", [
+                        ("Action", "Forbid"),
+                        ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                        ("ID", str(user.id)),
+                    ])
+                except Exception as e:
+                    logger.error("Case Log Failed", [
+                        ("Action", "Forbid"),
+                        ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                        ("ID", str(user.id)),
+                        ("Error", str(e)[:100]),
+                    ])
+
             # Build embed response
             embed = discord.Embed(
                 title="🚫 User Restricted",
@@ -436,6 +494,9 @@ class ForbidCog(commands.Cog):
             embed.add_field(name="Moderator", value=f"{moderator.mention}", inline=True)
             embed.add_field(name="Duration", value=duration_display, inline=True)
 
+            if case_info:
+                embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
+
             if applied:
                 applied_text = "\n".join([f"{RESTRICTIONS[r]['emoji']} {r}" for r in applied])
                 embed.add_field(name="Applied", value=applied_text, inline=False)
@@ -444,12 +505,15 @@ class ForbidCog(commands.Cog):
                 already_text = "\n".join([f"⚪ {r} (already active)" for r in already_had])
                 embed.add_field(name="Already Had", value=already_text, inline=False)
 
-            if reason:
-                embed.add_field(name="Reason", value=reason, inline=False)
-
+            # Note: Reason intentionally not shown in public embed
             set_footer(embed)
 
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            # Send public embed with buttons
+            if case_info:
+                view = CaseButtonView(guild.id, case_info["thread_id"], user.id)
+                await interaction.followup.send(embed=embed, view=view)
+            else:
+                await interaction.followup.send(embed=embed)
 
             # Send DM notification to user
             if applied:
@@ -471,43 +535,6 @@ class ForbidCog(commands.Cog):
                 reason=reason,
                 action="forbid",
             )
-
-            # Create case log
-            if applied and self.bot.case_log_service:
-                try:
-                    await asyncio.wait_for(
-                        self.bot.case_log_service.log_forbid(
-                            user=user,
-                            moderator=moderator,
-                            restrictions=applied,
-                            reason=reason,
-                            duration=duration_display,
-                        ),
-                        timeout=10.0,
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning("Case Log Timeout", [
-                        ("Action", "Forbid"),
-                        ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
-                        ("ID", str(user.id)),
-                    ])
-                    if self.bot.webhook_alert_service:
-                        await self.bot.webhook_alert_service.send_error_alert(
-                            "Case Log Timeout",
-                            f"Forbid case logging timed out for {user} ({user.id})"
-                        )
-                except Exception as e:
-                    logger.error("Case Log Failed", [
-                        ("Action", "Forbid"),
-                        ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
-                        ("ID", str(user.id)),
-                        ("Error", str(e)[:100]),
-                    ])
-                    if self.bot.webhook_alert_service:
-                        await self.bot.webhook_alert_service.send_error_alert(
-                            "Case Log Failed",
-                            f"Forbid case logging failed for {user} ({user.id}): {str(e)[:200]}"
-                        )
 
         except discord.HTTPException as e:
             logger.error("Forbid Command Failed (HTTP)", [
@@ -636,39 +663,11 @@ class ForbidCog(commands.Cog):
                 ("Removed", ", ".join(removed)),
             ], emoji="✅")
 
-            # DM user about restriction removal
-            await self._send_unforbid_dm(user, removed, guild)
-
-            # Build embed response
-            embed = discord.Embed(
-                title="✅ Restrictions Removed",
-                color=EmbedColors.SUCCESS,
-                timestamp=datetime.now(NY_TZ),
-            )
-            embed.set_thumbnail(url=user.display_avatar.url)
-            embed.add_field(name="User", value=f"{user.mention}\n`{user.id}`", inline=True)
-            embed.add_field(name="Moderator", value=f"{moderator.mention}", inline=True)
-
-            removed_text = "\n".join([f"{RESTRICTIONS[r]['emoji']} {r}" for r in removed])
-            embed.add_field(name="Removed", value=removed_text, inline=False)
-
-            set_footer(embed)
-
-            await interaction.followup.send(embed=embed, ephemeral=True)
-
-            # Log to server logs
-            await self._log_forbid(
-                interaction=interaction,
-                user=user,
-                restrictions=removed,
-                reason=None,
-                action="unforbid",
-            )
-
-            # Create case log
+            # Create case log FIRST (need case_info for public embed)
+            case_info = None
             if removed and self.bot.case_log_service:
                 try:
-                    await asyncio.wait_for(
+                    case_info = await asyncio.wait_for(
                         self.bot.case_log_service.log_unforbid(
                             user=user,
                             moderator=moderator,
@@ -682,11 +681,6 @@ class ForbidCog(commands.Cog):
                         ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
                         ("ID", str(user.id)),
                     ])
-                    if self.bot.webhook_alert_service:
-                        await self.bot.webhook_alert_service.send_error_alert(
-                            "Case Log Timeout",
-                            f"Unforbid case logging timed out for {user} ({user.id})"
-                        )
                 except Exception as e:
                     logger.error("Case Log Failed", [
                         ("Action", "Unforbid"),
@@ -694,11 +688,43 @@ class ForbidCog(commands.Cog):
                         ("ID", str(user.id)),
                         ("Error", str(e)[:100]),
                     ])
-                    if self.bot.webhook_alert_service:
-                        await self.bot.webhook_alert_service.send_error_alert(
-                            "Case Log Failed",
-                            f"Unforbid case logging failed for {user} ({user.id}): {str(e)[:200]}"
-                        )
+
+            # DM user about restriction removal
+            await self._send_unforbid_dm(user, removed, guild)
+
+            # Build embed response
+            embed = discord.Embed(
+                title="✅ Restrictions Removed",
+                color=EmbedColors.SUCCESS,
+                timestamp=datetime.now(NY_TZ),
+            )
+            embed.set_thumbnail(url=user.display_avatar.url)
+            embed.add_field(name="User", value=f"{user.mention}\n`{user.id}`", inline=True)
+            embed.add_field(name="Moderator", value=f"{moderator.mention}", inline=True)
+
+            if case_info:
+                embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
+
+            removed_text = "\n".join([f"{RESTRICTIONS[r]['emoji']} {r}" for r in removed])
+            embed.add_field(name="Removed", value=removed_text, inline=False)
+
+            set_footer(embed)
+
+            # Send public embed with buttons
+            if case_info:
+                view = CaseButtonView(guild.id, case_info["thread_id"], user.id)
+                await interaction.followup.send(embed=embed, view=view)
+            else:
+                await interaction.followup.send(embed=embed)
+
+            # Log to server logs
+            await self._log_forbid(
+                interaction=interaction,
+                user=user,
+                restrictions=removed,
+                reason=None,
+                action="unforbid",
+            )
 
         except Exception as e:
             logger.error("Unforbid Command Failed", [
@@ -1073,26 +1099,16 @@ class ForbidCog(commands.Cog):
                 ], emoji="⏰")
 
                 # DM user about expiry
-                try:
-                    expiry_embed = discord.Embed(
-                        title="Restriction Expired",
-                        description=f"Your **{RESTRICTIONS[restriction_type]['display']}** restriction has expired.",
-                        color=EmbedColors.SUCCESS,
-                        timestamp=datetime.now(NY_TZ),
-                    )
-                    expiry_embed.add_field(name="Server", value=guild.name, inline=True)
-                    expiry_embed.add_field(name="Restriction", value=RESTRICTIONS[restriction_type]['display'], inline=True)
-                    set_footer(expiry_embed)
-                    await member.send(embed=expiry_embed)
-                except discord.Forbidden:
-                    logger.debug(f"Forbid expiry DM blocked: {member} ({member.id}) has DMs disabled")
-                except discord.HTTPException as e:
-                    logger.warning("Forbid Expiry DM Failed", [
-                        ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
-                    ("ID", str(member.id)),
-                        ("Restriction", restriction_type),
-                        ("Error", str(e)[:50]),
-                    ])
+                expiry_embed = discord.Embed(
+                    title="Restriction Expired",
+                    description=f"Your **{RESTRICTIONS[restriction_type]['display']}** restriction has expired.",
+                    color=EmbedColors.SUCCESS,
+                    timestamp=datetime.now(NY_TZ),
+                )
+                expiry_embed.add_field(name="Server", value=guild.name, inline=True)
+                expiry_embed.add_field(name="Restriction", value=RESTRICTIONS[restriction_type]['display'], inline=True)
+                set_footer(expiry_embed)
+                await safe_send_dm(member, embed=expiry_embed, context="Forbid Expiry DM")
 
             except Exception as e:
                 logger.debug(f"Error processing expired forbid: {e}")
@@ -1110,58 +1126,49 @@ class ForbidCog(commands.Cog):
         guild: discord.Guild,
     ) -> bool:
         """Send DM notification to user when forbidden. Returns True if sent successfully."""
-        try:
-            # Build restrictions list
-            restrictions_text = "\n".join([
-                f"{RESTRICTIONS[r]['emoji']} **{RESTRICTIONS[r]['display']}** - {RESTRICTIONS[r]['description']}"
-                for r in restrictions if r in RESTRICTIONS
-            ])
+        # Build restrictions list
+        restrictions_text = "\n".join([
+            f"{RESTRICTIONS[r]['emoji']} **{RESTRICTIONS[r]['display']}** - {RESTRICTIONS[r]['description']}"
+            for r in restrictions if r in RESTRICTIONS
+        ])
 
-            embed = discord.Embed(
-                title="🚫 You've Been Restricted",
-                description=f"A moderator has applied restrictions to your account in **{guild.name}**.",
-                color=0xFF6B6B,
-                timestamp=datetime.now(NY_TZ),
-            )
+        embed = discord.Embed(
+            title="🚫 You've Been Restricted",
+            description=f"A moderator has applied restrictions to your account in **{guild.name}**.",
+            color=0xFF6B6B,
+            timestamp=datetime.now(NY_TZ),
+        )
 
-            embed.add_field(
-                name="Restrictions Applied",
-                value=restrictions_text,
-                inline=False,
-            )
+        embed.add_field(
+            name="Restrictions Applied",
+            value=restrictions_text,
+            inline=False,
+        )
 
-            embed.add_field(name="Duration", value=duration_display, inline=True)
+        embed.add_field(name="Duration", value=duration_display, inline=True)
 
-            if reason:
-                embed.add_field(name="Reason", value=reason, inline=False)
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
 
-            embed.add_field(
-                name="What This Means",
-                value="These restrictions limit specific features. You can still participate in the server otherwise.",
-                inline=False,
-            )
+        embed.add_field(
+            name="What This Means",
+            value="These restrictions limit specific features. You can still participate in the server otherwise.",
+            inline=False,
+        )
 
-            # Add appeal information
-            embed.add_field(
-                name="Want to Appeal?",
-                value="If you believe this was a mistake, you can appeal using the button below or by contacting a moderator.",
-                inline=False,
-            )
+        # Add appeal information
+        embed.add_field(
+            name="Want to Appeal?",
+            value="If you believe this was a mistake, you can appeal using the button below or by contacting a moderator.",
+            inline=False,
+        )
 
-            embed.set_footer(text=f"Server: {guild.name}")
+        embed.set_footer(text=f"Server: {guild.name}")
 
-            # Create appeal button view
-            view = ForbidAppealView(guild.id, user.id)
+        # Create appeal button view
+        view = ForbidAppealView(guild.id, user.id)
 
-            await user.send(embed=embed, view=view)
-            return True
-
-        except discord.Forbidden:
-            logger.debug(f"Cannot DM {user} - DMs disabled")
-            return False
-        except discord.HTTPException as e:
-            logger.debug(f"Failed to DM {user}: {e}")
-            return False
+        return await safe_send_dm(user, embed=embed, view=view, context="Forbid DM")
 
     async def _send_unforbid_dm(
         self,
@@ -1170,44 +1177,34 @@ class ForbidCog(commands.Cog):
         guild: discord.Guild,
     ) -> bool:
         """Send DM notification to user when restrictions are removed. Returns True if sent successfully."""
-        try:
-            # Build restrictions list
-            restrictions_text = "\n".join([
-                f"{RESTRICTIONS[r]['emoji']} **{RESTRICTIONS[r]['display']}**"
-                for r in restrictions if r in RESTRICTIONS
-            ])
+        # Build restrictions list
+        restrictions_text = "\n".join([
+            f"{RESTRICTIONS[r]['emoji']} **{RESTRICTIONS[r]['display']}**"
+            for r in restrictions if r in RESTRICTIONS
+        ])
 
-            embed = discord.Embed(
-                title="Restrictions Removed",
-                description=f"Your restrictions in **{guild.name}** have been lifted.",
-                color=EmbedColors.SUCCESS,
-                timestamp=datetime.now(NY_TZ),
-            )
+        embed = discord.Embed(
+            title="Restrictions Removed",
+            description=f"Your restrictions in **{guild.name}** have been lifted.",
+            color=EmbedColors.SUCCESS,
+            timestamp=datetime.now(NY_TZ),
+        )
 
-            embed.add_field(
-                name="Removed Restrictions",
-                value=restrictions_text,
-                inline=False,
-            )
+        embed.add_field(
+            name="Removed Restrictions",
+            value=restrictions_text,
+            inline=False,
+        )
 
-            embed.add_field(
-                name="What This Means",
-                value="You now have full access to these features again.",
-                inline=False,
-            )
+        embed.add_field(
+            name="What This Means",
+            value="You now have full access to these features again.",
+            inline=False,
+        )
 
-            embed.set_footer(text=f"Server: {guild.name}")
+        embed.set_footer(text=f"Server: {guild.name}")
 
-            await user.send(embed=embed)
-            logger.debug(f"Unforbid DM sent to {user}")
-            return True
-
-        except discord.Forbidden:
-            logger.debug(f"Cannot DM {user} - DMs disabled")
-            return False
-        except discord.HTTPException as e:
-            logger.debug(f"Failed to DM {user}: {e}")
-            return False
+        return await safe_send_dm(user, embed=embed, context="Unforbid DM")
 
 
 # =============================================================================
@@ -1242,6 +1239,11 @@ class ForbidAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"f
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Handle appeal button click."""
+        logger.tree("Forbid Appeal Button Clicked", [
+            ("User", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Guild ID", str(self.guild_id)),
+        ], emoji="📝")
+
         # Show appeal modal
         modal = ForbidAppealModal(self.guild_id)
         await interaction.response.send_modal(modal)
@@ -1273,6 +1275,12 @@ class ForbidAppealModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         """Handle appeal submission."""
+        logger.tree("Forbid Appeal Modal Submitted", [
+            ("User", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Guild ID", str(self.guild_id)),
+            ("Reason Length", str(len(self.reason.value))),
+        ], emoji="📝")
+
         from src.bot import AzabBot
 
         bot: AzabBot = interaction.client  # type: ignore

@@ -2,7 +2,7 @@
 Ticket Transcript Generator
 ===========================
 
-HTML transcript generation for tickets.
+HTML and JSON transcript generation for tickets.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -10,8 +10,10 @@ Server: discord.gg/syria
 
 import html as html_lib
 import io
+import json
 import re
 import time
+from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
@@ -21,6 +23,129 @@ from src.core.config import NY_TZ
 from src.core.logger import logger
 
 from .constants import TICKET_CATEGORIES, MAX_TRANSCRIPT_MESSAGES, MAX_TRANSCRIPT_USER_LOOKUPS
+
+
+# =============================================================================
+# JSON Transcript Data Classes (for web viewer)
+# =============================================================================
+
+@dataclass
+class TicketTranscriptAttachment:
+    """Represents an attachment in a ticket transcript."""
+    filename: str
+    url: str
+    content_type: Optional[str] = None
+    size: int = 0
+
+
+@dataclass
+class TicketTranscriptMessage:
+    """Represents a single message in a ticket transcript."""
+    author_id: int
+    author_name: str
+    author_display_name: str
+    author_avatar_url: Optional[str]
+    content: str
+    timestamp: float
+    attachments: List[TicketTranscriptAttachment]
+    is_bot: bool = False
+    is_staff: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "author_id": self.author_id,
+            "author_name": self.author_name,
+            "author_display_name": self.author_display_name,
+            "author_avatar_url": self.author_avatar_url,
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "attachments": [asdict(a) for a in self.attachments],
+            "is_bot": self.is_bot,
+            "is_staff": self.is_staff,
+        }
+
+
+@dataclass
+class TicketTranscript:
+    """Complete JSON transcript of a ticket thread."""
+    ticket_id: str
+    thread_id: int
+    thread_name: str
+    category: str
+    subject: str
+    status: str
+    created_at: float
+    closed_at: Optional[float]
+    message_count: int
+    messages: List[TicketTranscriptMessage]
+    user_id: Optional[int] = None
+    user_name: Optional[str] = None
+    claimed_by_id: Optional[int] = None
+    claimed_by_name: Optional[str] = None
+    closed_by_id: Optional[int] = None
+    closed_by_name: Optional[str] = None
+
+    def to_json(self) -> str:
+        """Serialize transcript to JSON string."""
+        data = {
+            "ticket_id": self.ticket_id,
+            "thread_id": self.thread_id,
+            "thread_name": self.thread_name,
+            "category": self.category,
+            "subject": self.subject,
+            "status": self.status,
+            "created_at": self.created_at,
+            "closed_at": self.closed_at,
+            "message_count": self.message_count,
+            "messages": [m.to_dict() for m in self.messages],
+            "user_id": self.user_id,
+            "user_name": self.user_name,
+            "claimed_by_id": self.claimed_by_id,
+            "claimed_by_name": self.claimed_by_name,
+            "closed_by_id": self.closed_by_id,
+            "closed_by_name": self.closed_by_name,
+        }
+        return json.dumps(data, ensure_ascii=False)
+
+    @classmethod
+    def from_json(cls, json_str: str) -> "TicketTranscript":
+        """Deserialize transcript from JSON string."""
+        data = json.loads(json_str)
+        messages = []
+        for m in data.get("messages", []):
+            attachments = [
+                TicketTranscriptAttachment(**a) for a in m.get("attachments", [])
+            ]
+            messages.append(TicketTranscriptMessage(
+                author_id=m["author_id"],
+                author_name=m["author_name"],
+                author_display_name=m["author_display_name"],
+                author_avatar_url=m.get("author_avatar_url"),
+                content=m["content"],
+                timestamp=m["timestamp"],
+                attachments=attachments,
+                is_bot=m.get("is_bot", False),
+                is_staff=m.get("is_staff", False),
+            ))
+        return cls(
+            ticket_id=data["ticket_id"],
+            thread_id=data["thread_id"],
+            thread_name=data["thread_name"],
+            category=data["category"],
+            subject=data["subject"],
+            status=data["status"],
+            created_at=data["created_at"],
+            closed_at=data.get("closed_at"),
+            message_count=data["message_count"],
+            messages=messages,
+            user_id=data.get("user_id"),
+            user_name=data.get("user_name"),
+            claimed_by_id=data.get("claimed_by_id"),
+            claimed_by_name=data.get("claimed_by_name"),
+            closed_by_id=data.get("closed_by_id"),
+            closed_by_name=data.get("closed_by_name"),
+        )
 
 
 async def collect_transcript_messages(
@@ -534,3 +659,98 @@ def create_transcript_file(
     """
     buffer = io.BytesIO(html_content.encode('utf-8'))
     return discord.File(buffer, filename=f"transcript_{ticket_id}.html")
+
+
+async def build_json_transcript(
+    thread: discord.Thread,
+    ticket: dict,
+    bot: discord.Client,
+    user: Optional[discord.User] = None,
+    claimed_by: Optional[discord.Member] = None,
+    closed_by: Optional[discord.Member] = None,
+) -> Optional[TicketTranscript]:
+    """
+    Build a JSON transcript from a ticket thread for web viewer.
+
+    Args:
+        thread: The ticket thread
+        ticket: Ticket data from database
+        bot: The bot client for API calls
+        user: The ticket creator
+        claimed_by: Staff member who claimed the ticket
+        closed_by: Staff member who closed the ticket
+
+    Returns:
+        TicketTranscript object or None if failed
+    """
+    try:
+        logger.tree("Building Ticket JSON Transcript", [
+            ("Ticket ID", ticket.get("ticket_id", "Unknown")),
+            ("Thread ID", str(thread.id)),
+            ("Thread Name", thread.name[:50] if thread.name else "Unknown"),
+        ], emoji="📝")
+
+        messages: List[TicketTranscriptMessage] = []
+
+        async for msg in thread.history(limit=MAX_TRANSCRIPT_MESSAGES, oldest_first=True):
+            # Build attachments
+            attachments = []
+            for att in msg.attachments:
+                attachments.append(TicketTranscriptAttachment(
+                    filename=att.filename,
+                    url=att.url,
+                    content_type=att.content_type,
+                    size=att.size,
+                ))
+
+            # Check if staff
+            is_staff = False
+            if hasattr(msg.author, 'guild_permissions'):
+                is_staff = msg.author.guild_permissions.manage_messages
+
+            messages.append(TicketTranscriptMessage(
+                author_id=msg.author.id,
+                author_name=msg.author.name,
+                author_display_name=msg.author.display_name,
+                author_avatar_url=str(msg.author.display_avatar.url) if msg.author.display_avatar else None,
+                content=msg.content,
+                timestamp=msg.created_at.timestamp(),
+                attachments=attachments,
+                is_bot=msg.author.bot,
+                is_staff=is_staff,
+            ))
+
+        transcript = TicketTranscript(
+            ticket_id=ticket.get("ticket_id", ""),
+            thread_id=thread.id,
+            thread_name=thread.name,
+            category=ticket.get("category", "support"),
+            subject=ticket.get("subject", ""),
+            status=ticket.get("status", "closed"),
+            created_at=ticket.get("created_at", time.time()),
+            closed_at=ticket.get("closed_at"),
+            message_count=len(messages),
+            messages=messages,
+            user_id=user.id if user else ticket.get("user_id"),
+            user_name=user.display_name if user else None,
+            claimed_by_id=claimed_by.id if claimed_by else ticket.get("claimed_by"),
+            claimed_by_name=claimed_by.display_name if claimed_by else None,
+            closed_by_id=closed_by.id if closed_by else ticket.get("closed_by"),
+            closed_by_name=closed_by.display_name if closed_by else None,
+        )
+
+        logger.tree("Ticket JSON Transcript Built", [
+            ("Ticket ID", ticket.get("ticket_id", "Unknown")),
+            ("Messages", str(len(messages))),
+            ("User", f"{transcript.user_name} ({transcript.user_id})"),
+        ], emoji="✅")
+
+        return transcript
+
+    except Exception as e:
+        logger.error("Ticket JSON Transcript Build Failed", [
+            ("Ticket ID", ticket.get("ticket_id", "Unknown")),
+            ("Thread ID", str(thread.id)),
+            ("Error", str(e)[:100]),
+        ])
+        return None

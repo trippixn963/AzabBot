@@ -57,6 +57,13 @@ class CaseLogActionsMixin:
         if not self.enabled:
             return None
 
+        logger.tree("Case Log: log_mute Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})"),
+            ("Duration", duration),
+            ("Is Extension", str(is_extension)),
+        ], emoji="📝")
+
         try:
             duration_seconds = parse_duration_to_seconds(duration)
             guild_id = moderator.guild.id
@@ -104,7 +111,10 @@ class CaseLogActionsMixin:
                     if evidence_msg:
                         evidence_message_url = evidence_msg.jump_url
                 except Exception as e:
-                    logger.error(f"Evidence storage failed: {e}")
+                    logger.error("Evidence Storage Failed", [
+                        ("Case ID", case["case_id"]),
+                        ("Error", str(e)[:100]),
+                    ])
 
             embed = build_mute_embed(
                 user, moderator, duration, reason, mute_count,
@@ -118,8 +128,7 @@ class CaseLogActionsMixin:
                 warning_message = await safe_send(
                     case_thread,
                     f"⚠️ {moderator.mention} No reason was provided for this {action_type}.\n\n"
-                    f"**Reply to this message** with the reason.\n\n"
-                    f"You have **1 hour** or the owner will be notified."
+                    f"**Reply to this message** with the reason."
                 )
                 if warning_message:
                     self.db.create_pending_reason(
@@ -130,6 +139,15 @@ class CaseLogActionsMixin:
                         target_user_id=user.id,
                         action_type=action_type,
                     )
+
+            # Request evidence if none was provided (not for extensions)
+            if not is_extension and not evidence:
+                await self._send_evidence_request(
+                    case_id=case["case_id"],
+                    thread=case_thread,
+                    moderator=moderator,
+                    action_type="mute",
+                )
 
             if not is_extension and mute_count >= REPEAT_MUTE_THRESHOLD:
                 is_permanent = duration.lower() in ("permanent", "perm", "forever")
@@ -176,6 +194,12 @@ class CaseLogActionsMixin:
         if not self.enabled:
             return None
 
+        logger.tree("Case Log: log_warn Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})"),
+            ("Active Warns", str(active_warns)),
+        ], emoji="📝")
+
         try:
             case = await self._create_action_case(
                 user=user,
@@ -199,7 +223,10 @@ class CaseLogActionsMixin:
                     if evidence_msg:
                         evidence_message_url = evidence_msg.jump_url
                 except Exception as e:
-                    logger.error(f"Evidence storage failed: {e}")
+                    logger.error("Evidence Storage Failed", [
+                        ("Case ID", case["case_id"]),
+                        ("Error", str(e)[:100]),
+                    ])
 
             # Get mute/ban counts for context
             case_log = self.db.get_case_log(user.id)
@@ -228,6 +255,15 @@ class CaseLogActionsMixin:
                         target_user_id=user.id,
                         action_type="warn",
                     )
+
+            # Request evidence if none was provided
+            if not evidence:
+                await self._send_evidence_request(
+                    case_id=case["case_id"],
+                    thread=case_thread,
+                    moderator=moderator,
+                    action_type="warn",
+                )
 
             if active_warns >= REPEAT_WARN_THRESHOLD:
                 alert_embed = discord.Embed(
@@ -273,6 +309,11 @@ class CaseLogActionsMixin:
         if not self.enabled:
             return None
 
+        logger.tree("Case Log: log_unmute Called", [
+            ("User", f"{display_name} ({user_id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})"),
+        ], emoji="📝")
+
         try:
             guild_id = moderator.guild.id
 
@@ -313,12 +354,45 @@ class CaseLogActionsMixin:
             if not case_thread:
                 return {"case_id": active_case["case_id"], "thread_id": active_case["thread_id"]}
 
+            # Check if thread is locked (approved case) - unlock it temporarily
+            was_locked = case_thread.locked
+            if was_locked:
+                try:
+                    await case_thread.edit(locked=False)
+                except discord.HTTPException as e:
+                    logger.debug(f"Thread unlock failed for unmute: {case_thread.id} - {e.code}: {e.text[:50] if e.text else 'No text'}")
+
             embed = build_unmute_embed(
                 moderator, reason, user_avatar_url, time_served,
                 original_duration, original_moderator_name
             )
             # Action embeds no longer have buttons - control panel handles all controls
-            await safe_send(case_thread, embed=embed)
+            embed_message = await safe_send(case_thread, embed=embed)
+
+            # Check if unmute was early (before duration expired) and no reason provided
+            duration_seconds = active_case.get("duration_seconds")
+            is_early_unmute = False
+            if duration_seconds and active_case.get("created_at"):
+                muted_at = active_case["created_at"]
+                now = datetime.now(NY_TZ).timestamp()
+                time_served_seconds = now - muted_at
+                is_early_unmute = time_served_seconds < duration_seconds
+
+            if is_early_unmute and not reason and embed_message:
+                warning_message = await safe_send(
+                    case_thread,
+                    f"⚠️ {moderator.mention} This mute was ended **early** without a reason.\n\n"
+                    f"**Reply to this message** with the reason for the early unmute."
+                )
+                if warning_message:
+                    self.db.create_pending_reason(
+                        thread_id=case_thread.id,
+                        warning_message_id=warning_message.id,
+                        embed_message_id=embed_message.id,
+                        moderator_id=moderator.id,
+                        target_user_id=user_id,
+                        action_type="unmute",
+                    )
 
             # Update control panel to show resolved status
             await self._update_control_panel(
@@ -327,6 +401,13 @@ class CaseLogActionsMixin:
                 new_status="resolved",
                 moderator=moderator,
             )
+
+            # Re-lock the thread if it was locked
+            if was_locked:
+                try:
+                    await case_thread.edit(locked=True)
+                except discord.HTTPException as e:
+                    logger.debug(f"Thread re-lock failed for unmute: {case_thread.id} - {e.code}: {e.text[:50] if e.text else 'No text'}")
 
             self.db.resolve_case(
                 case_id=active_case["case_id"],
@@ -413,6 +494,11 @@ class CaseLogActionsMixin:
         if not self.enabled:
             return
 
+        logger.tree("Case Log: log_mute_expired Called", [
+            ("User", f"{display_name} ({user_id})"),
+            ("Guild ID", str(guild_id) if guild_id else "None"),
+        ], emoji="📝")
+
         try:
             if guild_id:
                 active_case = self.db.get_active_mute_case(user_id, guild_id)
@@ -470,6 +556,10 @@ class CaseLogActionsMixin:
         if not self.enabled:
             return
 
+        logger.tree("Case Log: log_member_left_muted Called", [
+            ("User", f"{display_name} ({user_id})"),
+        ], emoji="📝")
+
         try:
             case = self.db.get_case_log(user_id)
             if not case:
@@ -510,6 +600,11 @@ class CaseLogActionsMixin:
         """Log when a muted user rejoins the server."""
         if not self.enabled:
             return
+
+        logger.tree("Case Log: log_mute_evasion_return Called", [
+            ("User", f"{member.name} ({member.id})"),
+            ("Mods To Ping", str(len(moderator_ids))),
+        ], emoji="📝")
 
         try:
             case = self.db.get_case_log(member.id)
@@ -552,6 +647,11 @@ class CaseLogActionsMixin:
         """Log when a muted user attempts to join voice."""
         if not self.enabled:
             return
+
+        logger.tree("Case Log: log_muted_vc_violation Called", [
+            ("User", f"{display_name} ({user_id})"),
+            ("Channel", channel_name),
+        ], emoji="📝")
 
         try:
             case = self.db.get_case_log(user_id)

@@ -569,6 +569,12 @@ class LoggingService:
         if not self.enabled:
             return
 
+        logger.tree("Server Logs: log_ban Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})" if moderator else "System"),
+            ("Case ID", case_id or "None"),
+        ], emoji="📋")
+
         embed = self._create_embed("🔨 Member Banned", EmbedColors.LOG_NEGATIVE, category="Ban", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
@@ -602,6 +608,12 @@ class LoggingService:
         if not self.enabled:
             return
 
+        logger.tree("Server Logs: log_unban Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})" if moderator else "System"),
+            ("Case ID", case_id or "None"),
+        ], emoji="📋")
+
         embed = self._create_embed("🔓 Member Unbanned", EmbedColors.SUCCESS, category="Unban", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
@@ -624,6 +636,12 @@ class LoggingService:
         """Log a kick."""
         if not self.enabled:
             return
+
+        logger.tree("Server Logs: log_kick Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})" if moderator else "System"),
+            ("Case ID", case_id or "None"),
+        ], emoji="📋")
 
         embed = self._create_embed("👢 Member Kicked", EmbedColors.LOG_NEGATIVE, category="Kick", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
@@ -661,6 +679,13 @@ class LoggingService:
         """Log a timeout."""
         if not self._should_log(user.guild.id):
             return
+
+        logger.tree("Server Logs: log_timeout Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})" if moderator else "System"),
+            ("Until", str(until) if until else "None"),
+            ("Case ID", case_id or "None"),
+        ], emoji="📋")
 
         embed = self._create_embed("⏰ Member Timed Out", EmbedColors.WARNING, category="Timeout", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
@@ -707,6 +732,12 @@ class LoggingService:
         if not self._should_log(user.guild.id):
             return
 
+        logger.tree("Server Logs: log_timeout_remove Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})" if moderator else "System"),
+            ("Case ID", case_id or "None"),
+        ], emoji="📋")
+
         embed = self._create_embed("⏰ Timeout Removed", EmbedColors.SUCCESS, category="Timeout Remove", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
@@ -728,6 +759,12 @@ class LoggingService:
         """Log a mute (role-based)."""
         if not self._should_log(user.guild.id):
             return
+
+        logger.tree("Server Logs: log_mute Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})" if moderator else "System"),
+            ("Case ID", case_id or "None"),
+        ], emoji="📋")
 
         embed = self._create_embed("🔇 Member Muted", EmbedColors.LOG_NEGATIVE, category="Mute", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
@@ -759,6 +796,12 @@ class LoggingService:
         if not self._should_log(user.guild.id):
             return
 
+        logger.tree("Server Logs: log_unmute Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})" if moderator else "System"),
+            ("Case ID", case_id or "None"),
+        ], emoji="📋")
+
         embed = self._create_embed("🔊 Member Unmuted", EmbedColors.SUCCESS, category="Unmute", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
@@ -780,6 +823,11 @@ class LoggingService:
         """Log when a muted user attempts to join voice and gets timed out."""
         if not self._should_log(member.guild.id):
             return
+
+        logger.tree("Server Logs: log_muted_vc_violation Called", [
+            ("Member", f"{member.name} ({member.id})"),
+            ("Channel", channel_name),
+        ], emoji="📋")
 
         from datetime import timedelta
 
@@ -2919,6 +2967,12 @@ class LoggingService:
         if not self.enabled:
             return
 
+        logger.tree("Server Logs: log_raid_alert Called", [
+            ("Join Count", str(join_count)),
+            ("Time Window", f"{time_window}s"),
+            ("Recent Members", str(len(recent_members))),
+        ], emoji="🚨")
+
         embed = self._create_embed("🚨 POTENTIAL RAID DETECTED", EmbedColors.LOG_NEGATIVE, category="Raid Alert")
         embed.add_field(
             name="Joins Detected",
@@ -2972,6 +3026,12 @@ class LoggingService:
         """
         if not self.enabled:
             return
+
+        logger.tree("Server Logs: log_lockdown Called", [
+            ("Moderator", f"{moderator.name} ({moderator.id})"),
+            ("Action", action),
+            ("Channels", str(channel_count)),
+        ], emoji="🔒")
 
         if action == "lock":
             embed = self._create_embed("🔒 SERVER LOCKED", EmbedColors.LOG_NEGATIVE, category="Lockdown")
@@ -3902,6 +3962,12 @@ class LoggingService:
         if not self.enabled:
             return
 
+        logger.tree("Server Logs: log_warning_issued Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})"),
+            ("Warning Count", str(warning_count)),
+        ], emoji="📋")
+
         embed = self._create_embed(
             "⚠️ Warning Issued",
             EmbedColors.GOLD,
@@ -3940,6 +4006,13 @@ class LoggingService:
         """Log a warning removal."""
         if not self.enabled:
             return
+
+        logger.tree("Server Logs: log_warning_removed Called", [
+            ("User", f"{user.name} ({user.id})"),
+            ("Moderator", f"{moderator.name} ({moderator.id})"),
+            ("Warning ID", str(warning_id)),
+            ("Remaining", str(remaining_count)),
+        ], emoji="📋")
 
         embed = self._create_embed(
             "🗑️ Warning Removed",

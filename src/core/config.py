@@ -124,6 +124,9 @@ class Config:
     ticket_suggestion_user_id: Optional[int] = None  # User to assign suggestion tickets
     ticket_support_user_ids: Set[int] = None  # Users to assign support tickets
     transcript_base_url: Optional[str] = None  # Base URL for transcript viewer (e.g., https://example.com/api/azab/transcripts)
+    case_transcript_base_url: Optional[str] = None  # Base URL for case transcript viewer
+    transcript_assets_thread_id: Optional[int] = None  # Thread/post for permanent attachment storage
+    case_transcripts_thread_id: Optional[int] = None  # Thread/post for logging case transcripts
 
     # -------------------------------------------------------------------------
     # Optional: Modmail (for banned users)
@@ -483,6 +486,9 @@ def load_config() -> Config:
     ticket_suggestion_user_id = _parse_int_optional(os.getenv("TICKET_SUGGESTION_USER_ID"))
     ticket_support_user_ids = _parse_int_set(os.getenv("TICKET_SUPPORT_USER_IDS", ""))
     transcript_base_url = os.getenv("TRANSCRIPT_BASE_URL") or None
+    case_transcript_base_url = os.getenv("CASE_TRANSCRIPT_BASE_URL") or None
+    transcript_assets_thread_id = _parse_int_optional(os.getenv("TRANSCRIPT_ASSETS_THREAD_ID"))
+    case_transcripts_thread_id = _parse_int_optional(os.getenv("CASE_TRANSCRIPTS_THREAD_ID"))
     server_logs_forum_id = _parse_int_optional(os.getenv("SERVER_LOGS_FORUM_ID"))
     logging_guild_id = _parse_int_optional(os.getenv("LOGGING_GUILD_ID"))
     moderator_ids = _parse_int_set(os.getenv("MODERATOR_IDS"))
@@ -521,6 +527,9 @@ def load_config() -> Config:
         ticket_suggestion_user_id=ticket_suggestion_user_id,
         ticket_support_user_ids=ticket_support_user_ids,
         transcript_base_url=transcript_base_url,
+        case_transcript_base_url=case_transcript_base_url,
+        transcript_assets_thread_id=transcript_assets_thread_id,
+        case_transcripts_thread_id=case_transcripts_thread_id,
         server_logs_forum_id=server_logs_forum_id,
         logging_guild_id=logging_guild_id,
         cooldown_seconds=_parse_int_with_default(
