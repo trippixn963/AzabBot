@@ -25,7 +25,7 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config, has_mod_role, EmbedColors, NY_TZ
 from src.core.database import get_db
-from src.core.constants import SNIPE_MAX_AGE
+from src.core.constants import SNIPE_MAX_AGE, EMOJI_ID_MESSAGE
 from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
@@ -446,7 +446,7 @@ class SnipeCog(commands.Cog):
                     label="Message",
                     url=jump_url,
                     style=discord.ButtonStyle.link,
-                    emoji=discord.PartialEmoji(name="message", id=1452783032460247150),
+                    emoji=discord.PartialEmoji(name="message", id=EMOJI_ID_MESSAGE),
                 ))
 
             # Send public message (not ephemeral)

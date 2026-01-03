@@ -27,6 +27,7 @@ from src.utils.views import (
     EditCaseButton,
     UserInfoSelect,
 )
+from src.core.constants import EMOJI_ID_SAVE, EMOJI_ID_TRANSCRIPT
 
 from .constants import MIN_APPEALABLE_MUTE_SECONDS
 
@@ -47,7 +48,7 @@ class EvidenceButton(discord.ui.DynamicItem[discord.ui.Button], template=r"case_
             discord.ui.Button(
                 label="Evidence",
                 style=discord.ButtonStyle.secondary,
-                emoji=discord.PartialEmoji(name="save", id=1455776703468273825),
+                emoji=discord.PartialEmoji(name="save", id=EMOJI_ID_SAVE),
                 custom_id=f"case_evidence:{case_id}",
             )
         )
@@ -198,8 +199,8 @@ class CaseControlPanelView(discord.ui.View):
            OR Transcript button (if approved)
     """
 
-    # Transcript emoji (same as tickets)
-    TRANSCRIPT_EMOJI = discord.PartialEmoji(name="transcript", id=1455205892319481916)
+    # Transcript emoji (same as tickets, uses constant for ID)
+    TRANSCRIPT_EMOJI = discord.PartialEmoji(name="transcript", id=EMOJI_ID_TRANSCRIPT)
 
     def __init__(
         self,

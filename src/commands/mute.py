@@ -46,6 +46,7 @@ from src.utils.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
 from src.utils.dm_helpers import send_moderation_dm, safe_send_dm, build_appeal_dm
 from src.utils.duration import parse_duration, format_duration
+from src.core.constants import CASE_LOG_TIMEOUT
 from src.utils.jail_gif import (
     generate_jail_gif,
     generate_unjail_gif,
@@ -434,7 +435,7 @@ class MuteCog(commands.Cog):
                         is_extension=is_extension,
                         evidence=evidence,
                     ),
-                    timeout=10.0,  # 10 second timeout for case logging
+                    timeout=CASE_LOG_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
@@ -807,7 +808,7 @@ class MuteCog(commands.Cog):
                         reason=reason,
                         user_avatar_url=target_member.display_avatar.url,
                     ),
-                    timeout=10.0,
+                    timeout=CASE_LOG_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [

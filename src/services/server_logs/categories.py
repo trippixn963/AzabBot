@@ -39,7 +39,7 @@ class LogCategory(Enum):
     ALERTS = "🚨 Security Alerts"
     ALLIANCES = "🤝 Alliances"
     TICKETS = "🎫 Tickets"
-    TICKET_TRANSCRIPTS = "📜 Ticket Transcripts"
+    TRANSCRIPTS = "📜 Transcripts"
     APPEALS = "📨 Appeals"
     MODMAIL = "📬 Modmail"
     WARNINGS = "⚠️ Warnings"
@@ -74,7 +74,7 @@ THREAD_DESCRIPTIONS = {
     LogCategory.ALERTS: "Security alerts for raids, suspicious activity, and threats",
     LogCategory.ALLIANCES: "Logs for alliance message links and auto-deletions on member leave",
     LogCategory.TICKETS: "Logs for ticket creates, claims, closes, reopens, and user additions",
-    LogCategory.TICKET_TRANSCRIPTS: "Full conversation transcripts of closed tickets",
+    LogCategory.TRANSCRIPTS: "Full conversation transcripts of closed tickets and approved cases",
     LogCategory.APPEALS: "Logs for appeal creates, approvals, denials, and reopens",
     LogCategory.MODMAIL: "Logs for modmail thread creates, closes, and message relays",
     LogCategory.WARNINGS: "Logs for user warnings issued by moderators",

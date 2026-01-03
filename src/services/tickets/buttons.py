@@ -32,6 +32,7 @@ from .constants import (
     TRANSFER_EMOJI,
     TICKET_CATEGORIES,
 )
+from src.core.constants import EMOJI_ID_UNMUTE
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -401,7 +402,7 @@ class UserAddedView(discord.ui.View):
 # Revert Transfer Button
 # =============================================================================
 
-REVERT_EMOJI = discord.PartialEmoji(name="unmute", id=1452964296572272703)
+REVERT_EMOJI = discord.PartialEmoji(name="unmute", id=EMOJI_ID_UNMUTE)
 
 
 class RevertTransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_revert:(?P<ticket_id>T\d+):(?P<original_staff_id>\d+)"):

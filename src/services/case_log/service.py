@@ -995,11 +995,21 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
                 pass
             return False
 
-        # Re-upload attachments to ensure permanence
+        # Upload attachments to assets thread for permanent storage
         evidence_urls = []
         thread = message.channel
 
         try:
+            # Get assets thread for permanent storage
+            assets_thread = None
+            if self.config.transcript_assets_thread_id:
+                try:
+                    assets_thread = self.bot.get_channel(self.config.transcript_assets_thread_id)
+                    if not assets_thread:
+                        assets_thread = await self.bot.fetch_channel(self.config.transcript_assets_thread_id)
+                except Exception:
+                    pass
+
             for attachment in valid_attachments:
                 # Download the attachment
                 file_data = await attachment.read()
@@ -1009,8 +1019,9 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
                     description=f"Evidence for case #{case['case_id']}",
                 )
 
-                # Upload to the same thread (ensures permanence as long as thread exists)
-                evidence_msg = await thread.send(
+                # Upload to assets thread if available (permanent), otherwise case thread
+                target_thread = assets_thread if assets_thread else thread
+                evidence_msg = await target_thread.send(
                     f"📎 **Evidence for Case #{case['case_id']}**",
                     file=file,
                 )
@@ -1020,6 +1031,10 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
             if evidence_urls:
                 # Update the case with evidence URLs
                 self.db.update_case_evidence(case["case_id"], evidence_urls)
+
+                # Also post a reference in the case thread
+                evidence_links = "\n".join([f"[Evidence {i+1}]({url})" for i, url in enumerate(evidence_urls)])
+                await thread.send(f"📎 **Evidence submitted** ({len(evidence_urls)} file(s)):\n{evidence_links}")
 
                 # Send confirmation
                 await message.reply(
@@ -1038,6 +1053,7 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
                     ("Case ID", case["case_id"]),
                     ("Files", str(len(evidence_urls))),
                     ("By", str(message.author)),
+                    ("Storage", "Assets Thread" if assets_thread else "Case Thread"),
                 ], emoji="✅")
 
                 return True

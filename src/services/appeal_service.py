@@ -28,6 +28,7 @@ from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.retry import safe_fetch_channel, safe_send, safe_edit
 from src.utils.views import CASE_EMOJI, APPROVE_EMOJI, APPEAL_EMOJI, DENY_EMOJI, InfoButton, HistoryButton, UserInfoSelect
+from src.core.constants import EMOJI_ID_MODMAIL, EMOJI_ID_TRANSCRIPT
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -1005,7 +1006,7 @@ class OpenAppealTicketButton(discord.ui.DynamicItem[discord.ui.Button], template
                 label="Open Ticket",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"appeal_ticket:{appeal_id}:{user_id}",
-                emoji=discord.PartialEmoji(name="ticket", id=1455197399621750876),
+                emoji=discord.PartialEmoji(name="modmail", id=EMOJI_ID_MODMAIL),
             )
         )
         self.appeal_id = appeal_id
@@ -1128,7 +1129,7 @@ class ContactBannedUserButton(discord.ui.DynamicItem[discord.ui.Button], templat
                 label="Contact User",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"appeal_contact:{appeal_id}:{user_id}",
-                emoji=discord.PartialEmoji(name="transcript", id=1455205892319481916),
+                emoji=discord.PartialEmoji(name="transcript", id=EMOJI_ID_TRANSCRIPT),
             )
         )
         self.appeal_id = appeal_id

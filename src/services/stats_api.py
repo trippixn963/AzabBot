@@ -30,6 +30,7 @@ from src.core.constants import (
     STATS_CACHE_TTL,
     RATE_LIMIT_REQUESTS,
     RATE_LIMIT_BURST,
+    GUILD_FETCH_TIMEOUT,
 )
 from src.utils.async_utils import create_safe_task
 
@@ -891,7 +892,7 @@ class AzabAPI:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=GUILD_FETCH_TIMEOUT)
 
             changelog = []
             for line in stdout.decode().strip().split("\n"):

@@ -20,6 +20,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
+from src.core.constants import CASE_LOG_TIMEOUT
 from src.utils.footer import set_footer
 from src.utils.async_utils import create_safe_task
 
@@ -767,7 +768,7 @@ class MessageEvents(commands.Cog):
                         reason="Auto-mute: Advertising external Discord server",
                         evidence=f"Posted invite link: `discord.gg/{invite_code}` in #{message.channel.name}",
                     ),
-                    timeout=10.0,
+                    timeout=CASE_LOG_TIMEOUT,
                 )
                 if case_result:
                     logger.tree("CASE LOG CREATED", [

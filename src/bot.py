@@ -30,6 +30,7 @@ from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
 from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
+from src.core.constants import GUILD_FETCH_TIMEOUT
 
 
 # =============================================================================
@@ -557,7 +558,7 @@ class AzabBot(commands.Bot):
         try:
             for guild in self.guilds:
                 try:
-                    invites = await asyncio.wait_for(guild.invites(), timeout=5.0)
+                    invites = await asyncio.wait_for(guild.invites(), timeout=GUILD_FETCH_TIMEOUT)
                     for invite in invites:
                         self._invite_cache[invite.code] = invite.uses or 0
                     logger.info(f"Cached {len(invites)} invites for {guild.name}")

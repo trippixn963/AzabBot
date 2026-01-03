@@ -20,7 +20,14 @@ import discord
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
-from src.core.constants import EMOJI_USERID, SECONDS_PER_DAY, SECONDS_PER_HOUR
+from src.core.constants import (
+    EMOJI_USERID,
+    SECONDS_PER_DAY,
+    SECONDS_PER_HOUR,
+    EMOJI_ID_TRANSCRIPT,
+    EMOJI_ID_TICKET,
+    EMOJI_ID_MESSAGE,
+)
 from src.utils.views import DownloadButton, OldAvatarButton, NewAvatarButton, CASE_EMOJI, DOWNLOAD_EMOJI
 from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
@@ -94,10 +101,10 @@ class LogView(discord.ui.View):
         self.add_item(DownloadButton(user_id))
 
 
-# Custom emojis for log buttons
-TRANSCRIPT_EMOJI = discord.PartialEmoji(name="transcript", id=1455205892319481916)
-TICKET_EMOJI = discord.PartialEmoji(name="ticket", id=1455177168098295983)
-MESSAGE_EMOJI = discord.PartialEmoji(name="message", id=1452783032460247150)
+# Custom emojis for log buttons (using constants for IDs)
+TRANSCRIPT_EMOJI = discord.PartialEmoji(name="transcript", id=EMOJI_ID_TRANSCRIPT)
+TICKET_EMOJI = discord.PartialEmoji(name="ticket", id=EMOJI_ID_TICKET)
+MESSAGE_EMOJI = discord.PartialEmoji(name="message", id=EMOJI_ID_MESSAGE)
 
 
 class ReactionLogView(discord.ui.View):
@@ -328,6 +335,9 @@ class LoggingService:
             # Validate thread sync
             sync_issues = await self._validate_threads()
 
+            # Validate utility threads exist
+            await self._validate_utility_threads()
+
             self._initialized = True
             log_items = [
                 ("Forum", self._forum.name),
@@ -406,6 +416,14 @@ class LoggingService:
         # Check for extra threads not matching any category
         category_names = {cat.value for cat in LogCategory}
 
+        # Known utility thread IDs from config (not log categories, but intentional)
+        utility_thread_ids: set[int] = set()
+        if self.config.transcript_assets_thread_id:
+            utility_thread_ids.add(self.config.transcript_assets_thread_id)
+
+        # Known utility thread names (fallback if ID not configured)
+        utility_thread_names = {"📁 Assets", "Assets", "Transcript Assets"}
+
         # Get all active threads
         forum_threads = list(self._forum.threads)
 
@@ -417,9 +435,18 @@ class LoggingService:
             pass
 
         for thread in forum_threads:
-            if thread.name not in category_names:
-                issues.append(f"Extra thread: {thread.name}")
-                logger.info(f"Logging Service: Unrecognized thread '{thread.name}' in forum")
+            # Skip if it's a log category
+            if thread.name in category_names:
+                continue
+            # Skip if it's a known utility thread by ID
+            if thread.id in utility_thread_ids:
+                continue
+            # Skip if it's a known utility thread by name (fallback)
+            if thread.name in utility_thread_names:
+                continue
+            # Unknown thread
+            issues.append(f"Extra thread: {thread.name}")
+            logger.info(f"Logging Service: Unrecognized thread '{thread.name}' in forum")
 
         # Log summary
         if issues:
@@ -435,6 +462,58 @@ class LoggingService:
             ], emoji="✅")
 
         return issues
+
+    async def _validate_utility_threads(self) -> None:
+        """
+        Validate that utility threads (Assets, etc.) still exist.
+        Called on startup and during midnight maintenance.
+        """
+        if not self._forum:
+            return
+
+        # Get all thread IDs to check
+        utility_threads_to_check: list[tuple[str, Optional[int]]] = [
+            ("📁 Assets", self.config.transcript_assets_thread_id),
+        ]
+
+        for thread_name, thread_id in utility_threads_to_check:
+            if not thread_id:
+                continue
+
+            try:
+                thread = self.bot.get_channel(thread_id)
+                if not thread:
+                    thread = await self.bot.fetch_channel(thread_id)
+
+                if thread:
+                    # Thread exists - check if it needs renaming
+                    if hasattr(thread, 'name') and thread.name != thread_name:
+                        try:
+                            await thread.edit(name=thread_name)
+                            logger.info("Utility Thread Renamed", [
+                                ("Old Name", thread.name),
+                                ("New Name", thread_name),
+                                ("Thread ID", str(thread_id)),
+                            ])
+                        except Exception:
+                            pass
+                    logger.debug(f"Utility thread verified: {thread_name} ({thread_id})")
+                else:
+                    logger.warning("Utility Thread Not Found", [
+                        ("Expected", thread_name),
+                        ("Thread ID", str(thread_id)),
+                    ])
+            except discord.NotFound:
+                logger.warning("Utility Thread Deleted", [
+                    ("Expected", thread_name),
+                    ("Thread ID", str(thread_id)),
+                    ("Action", "Will be recreated on next use"),
+                ])
+            except Exception as e:
+                logger.error("Utility Thread Check Failed", [
+                    ("Thread", thread_name),
+                    ("Error", str(e)[:50]),
+                ])
 
     # =========================================================================
     # Helpers
@@ -2392,11 +2471,32 @@ class LoggingService:
 
         self._set_user_thumbnail(embed, member)
 
-        await self._send_log(LogCategory.BOOSTS, embed, user_id=member.id)
+        # Try to find the boost announcement message in main server's system channel
+        view = None
+        main_guild = self.bot.get_guild(self.config.main_guild_id) if self.config.main_guild_id else member.guild
+        if main_guild and main_guild.system_channel:
+            try:
+                # Search recent messages for boost announcement
+                async for msg in main_guild.system_channel.history(limit=10):
+                    # Discord boost messages are system messages (type 8 = premium_guild_subscription)
+                    if msg.type == discord.MessageType.premium_guild_subscription and msg.author.id == member.id:
+                        view = discord.ui.View(timeout=None)
+                        view.add_item(discord.ui.Button(
+                            label="Message",
+                            url=msg.jump_url,
+                            style=discord.ButtonStyle.link,
+                            emoji=MESSAGE_EMOJI,
+                        ))
+                        break
+            except Exception:
+                pass  # Couldn't find message, continue without link
+
+        await self._send_log(LogCategory.BOOSTS, embed, view=view, user_id=member.id)
 
     async def log_unboost(
         self,
         member: discord.Member,
+        boosted_since: Optional[datetime] = None,
     ) -> None:
         """Log a member removing their server boost."""
         if not self.enabled:
@@ -2417,6 +2517,38 @@ class LoggingService:
                 value=f"Level **{member.guild.premium_tier}**",
                 inline=True,
             )
+
+        # Add boost duration if we know when they started
+        if boosted_since:
+            now = datetime.now(boosted_since.tzinfo) if boosted_since.tzinfo else datetime.utcnow()
+            duration = now - boosted_since
+            days = duration.days
+
+            # Format duration string
+            if days >= 365:
+                years = days // 365
+                remaining_days = days % 365
+                duration_str = f"{years}y {remaining_days}d"
+            elif days >= 30:
+                months = days // 30
+                remaining_days = days % 30
+                duration_str = f"{months}mo {remaining_days}d"
+            else:
+                duration_str = f"{days}d"
+
+            embed.add_field(
+                name="Boosted For",
+                value=f"**{duration_str}** (since <t:{int(boosted_since.timestamp())}:D>)",
+                inline=False,
+            )
+
+            # Hint if it looks like subscription expiry (exactly 30, 31, 365, 366 days)
+            if days in (30, 31, 365, 366):
+                embed.add_field(
+                    name="Note",
+                    value="⚠️ Duration suggests subscription expiry",
+                    inline=False,
+                )
 
         self._set_user_thumbnail(embed, member)
 
@@ -3407,20 +3539,23 @@ class LoggingService:
         else:
             duration_str = f"{minutes}m"
 
-        embed = self._create_embed(
-            f"📜 Ticket Transcript - {ticket_id}",
-            EmbedColors.BLUE,
-            category="Transcript",
-            user_id=user.id,
+        # Match case transcript design - cleaner embed
+        embed = discord.Embed(
+            title=f"🎫 Ticket Transcript - {ticket_id}",
+            color=EmbedColors.SUCCESS,
+            timestamp=datetime.now(NY_TZ),
         )
 
-        embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
-        embed.add_field(name="Category", value=category.title(), inline=True)
-        embed.add_field(name="Messages", value=str(len(messages)), inline=True)
-        embed.add_field(name="Opened By", value=self._format_user_field(user), inline=True)
-        embed.add_field(name="Closed By", value=self._format_user_field(closed_by), inline=True)
-        embed.add_field(name="Duration", value=duration_str, inline=True)
+        # User with thumbnail (like case transcripts)
+        self._set_user_thumbnail(embed, user)
+        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}`", inline=True)
+        embed.add_field(name="Category", value=f"`{category.title()}`", inline=True)
+        embed.add_field(name="Closed By", value=f"{closed_by.mention}", inline=True)
         embed.add_field(name="Subject", value=subject[:200] if subject else "No subject", inline=False)
+        embed.add_field(name="Created", value=f"<t:{int(created_at)}:F>", inline=True)
+        embed.add_field(name="Duration", value=f"`{duration_str}`", inline=True)
+
+        set_footer(embed)
 
         # Generate HTML transcript
         html_content = self._generate_transcript_html(
@@ -3441,8 +3576,6 @@ class LoggingService:
             filename=f"transcript_{ticket_id}.html",
         )
 
-        self._set_user_thumbnail(embed, user)
-
         # Create view with link button to website transcript (if configured)
         config = get_config()
         view = None
@@ -3450,7 +3583,65 @@ class LoggingService:
             transcript_url = f"{config.transcript_base_url}/{ticket_id}"
             view = TranscriptLinkView(transcript_url)
 
-        await self._send_log(LogCategory.TICKET_TRANSCRIPTS, embed, files=[transcript_file], view=view, user_id=user.id)
+        await self._send_log(LogCategory.TRANSCRIPTS, embed, files=[transcript_file], view=view, user_id=user.id)
+
+    async def log_case_transcript(
+        self,
+        case_id: str,
+        user: discord.User,
+        action_type: str,
+        moderator_id: int,
+        reason: str,
+        created_at: float,
+        approved_by: discord.Member,
+        transcript_url: Optional[str] = None,
+        case_thread_url: Optional[str] = None,
+    ) -> None:
+        """Log a case transcript when approved."""
+        if not self.enabled:
+            return
+
+        # Action emoji mapping
+        action_emoji = {
+            "mute": "🔇", "ban": "🔨", "warn": "⚠️", "forbid": "🚫",
+            "timeout": "⏰", "unmute": "🔊", "unban": "✅", "unforbid": "✅",
+        }.get(action_type, "📋")
+
+        embed = discord.Embed(
+            title=f"{action_emoji} Case Transcript - {case_id}",
+            color=EmbedColors.SUCCESS,
+            timestamp=datetime.now(NY_TZ),
+        )
+
+        # User with thumbnail
+        self._set_user_thumbnail(embed, user)
+        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}`", inline=True)
+        embed.add_field(name="Action", value=f"`{action_type.title()}`", inline=True)
+        embed.add_field(name="Moderator", value=f"<@{moderator_id}>", inline=True)
+        embed.add_field(name="Reason", value=reason[:200] if len(reason) > 200 else reason, inline=False)
+        embed.add_field(name="Created", value=f"<t:{int(created_at)}:F>", inline=True)
+        embed.add_field(name="Approved By", value=approved_by.mention, inline=True)
+
+        set_footer(embed)
+
+        # Create view with buttons
+        view = discord.ui.View(timeout=None)
+        if transcript_url:
+            view.add_item(discord.ui.Button(
+                label="View Transcript",
+                url=transcript_url,
+                style=discord.ButtonStyle.link,
+                emoji="📜",
+            ))
+        if case_thread_url:
+            view.add_item(discord.ui.Button(
+                label="Case Thread",
+                url=case_thread_url,
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+            ))
+
+        await self._send_log(LogCategory.TRANSCRIPTS, embed, view=view if view.children else None, user_id=user.id)
 
     def _generate_transcript_html(
         self,
@@ -4097,19 +4288,19 @@ class LoggingService:
         create_safe_task(self._retention_cleanup_loop(), "Log Retention Cleanup")
         logger.tree("Log Retention Started", [
             ("Retention", f"{self.config.log_retention_days} days"),
-            ("Schedule", "Daily at 3:00 AM EST"),
+            ("Schedule", "Daily at midnight EST"),
         ], emoji="🗑️")
 
     async def _retention_cleanup_loop(self) -> None:
-        """Loop that runs retention cleanup daily at 3 AM EST."""
+        """Loop that runs maintenance tasks daily at midnight (00:00) EST."""
         from datetime import timedelta
         from src.utils.jail_gif import clear_avatar_cache
 
         while True:
             try:
-                # Calculate time until 3 AM EST
+                # Calculate time until midnight (00:00) EST
                 now = datetime.now(NY_TZ)
-                target = now.replace(hour=3, minute=0, second=0, microsecond=0)
+                target = now.replace(hour=0, minute=0, second=0, microsecond=0)
                 if now >= target:
                     target = target + timedelta(days=1)
 
@@ -4121,6 +4312,9 @@ class LoggingService:
 
                 # Clear avatar cache (used for jail GIFs)
                 clear_avatar_cache()
+
+                # Validate utility threads still exist
+                await self._validate_utility_threads()
 
             except asyncio.CancelledError:
                 break

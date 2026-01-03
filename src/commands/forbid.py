@@ -48,6 +48,7 @@ from src.utils.rate_limiter import rate_limit
 from src.utils.duration import parse_duration, format_duration_short as format_duration
 from src.utils.async_utils import create_safe_task
 from src.utils.forbid_gif import generate_forbid_gif, generate_unforbid_gif
+from src.core.constants import CASE_LOG_TIMEOUT
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -468,7 +469,7 @@ class ForbidCog(commands.Cog):
                             reason=reason,
                             duration=duration_display,
                         ),
-                        timeout=10.0,
+                        timeout=CASE_LOG_TIMEOUT,
                     )
                 except asyncio.TimeoutError:
                     logger.warning("Case Log Timeout", [
@@ -693,7 +694,7 @@ class ForbidCog(commands.Cog):
                             moderator=moderator,
                             restrictions=removed,
                         ),
-                        timeout=10.0,
+                        timeout=CASE_LOG_TIMEOUT,
                     )
                 except asyncio.TimeoutError:
                     logger.warning("Case Log Timeout", [

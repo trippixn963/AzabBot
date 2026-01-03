@@ -56,6 +56,7 @@ from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.views import CASE_EMOJI
 from src.utils.async_utils import create_safe_task
+from src.core.constants import CASE_LOG_TIMEOUT
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -1585,7 +1586,7 @@ class AntiSpamService:
                     is_extension=False,
                     evidence=None,
                 ),
-                timeout=10.0,
+                timeout=CASE_LOG_TIMEOUT,
             )
             return case_info
         except asyncio.TimeoutError:

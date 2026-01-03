@@ -55,6 +55,10 @@ MESSAGE_CACHE_TTL = SECONDS_PER_HOUR  # 1 hour - message cache
 API_TIMEOUT = 10                      # External API request timeout
 SHUTDOWN_TIMEOUT = 10                 # Graceful shutdown timeout
 DRAIN_TIMEOUT = 10.0                  # Queue drain timeout
+CASE_LOG_TIMEOUT = 10.0               # Case logging timeout
+GUILD_FETCH_TIMEOUT = 5.0             # Guild/channel fetch timeout
+DB_CONNECTION_TIMEOUT = 30.0          # SQLite connection timeout
+AUDIT_LOG_WAIT = 0.5                  # Wait for audit log availability
 
 # =============================================================================
 # Cooldown Constants (in seconds)
@@ -253,6 +257,8 @@ EMOJI_ID_LOCK = 1455197454277546055
 EMOJI_ID_UNLOCK = 1455200891866190040
 EMOJI_ID_TRANSCRIPT = 1455205892319481916
 EMOJI_ID_TRANSFER = 1456258089950117888
+EMOJI_ID_SAVE = 1455776703468273825
+EMOJI_ID_MODMAIL = 1455197399621750876
 
 # Ticket category emojis
 EMOJI_ID_TICKET = 1455177168098295983
@@ -288,6 +294,10 @@ __all__ = [
     "API_TIMEOUT",
     "SHUTDOWN_TIMEOUT",
     "DRAIN_TIMEOUT",
+    "CASE_LOG_TIMEOUT",
+    "GUILD_FETCH_TIMEOUT",
+    "DB_CONNECTION_TIMEOUT",
+    "AUDIT_LOG_WAIT",
     # Cooldowns
     "COMMAND_COOLDOWN",
     "PRISONER_COOLDOWN",
@@ -322,9 +332,7 @@ __all__ = [
     "MEMBERS_REMOVED_ALERT",
     # Tickets
     "THREAD_DELETE_DELAY",
-    # AI/Prison
-    "RESPONSE_PROBABILITY",
-    "MAX_RESPONSE_LENGTH",
+    # Prison
     "PRISON_MESSAGE_SCAN_LIMIT",
     "MESSAGE_HISTORY_SIZE",
     "DEFAULT_TIMEOUT_MINUTES",
@@ -402,6 +410,8 @@ __all__ = [
     "EMOJI_ID_UNLOCK",
     "EMOJI_ID_TRANSCRIPT",
     "EMOJI_ID_TRANSFER",
+    "EMOJI_ID_SAVE",
+    "EMOJI_ID_MODMAIL",
     "EMOJI_ID_TICKET",
     "EMOJI_ID_SUGGESTION",
     "EMOJI_ID_STAFF",

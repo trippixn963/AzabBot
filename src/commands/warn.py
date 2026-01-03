@@ -41,6 +41,7 @@ from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
 from src.utils.dm_helpers import send_moderation_dm
+from src.core.constants import CASE_LOG_TIMEOUT
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -277,7 +278,7 @@ class WarnCog(commands.Cog):
                         active_warns=active_warns,
                         total_warns=total_warns,
                     ),
-                    timeout=10.0,
+                    timeout=CASE_LOG_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [

@@ -686,6 +686,11 @@ class TicketService:
                         created_at=ticket["created_at"],
                         closed_at=time.time(),
                     )
+                    logger.tree("Ticket Transcript Logged", [
+                        ("Ticket ID", ticket_id),
+                        ("User", ticket_user.name),
+                        ("Closed By", closed_by.name),
+                    ], emoji="📜")
             except Exception as e:
                 logger.error("Failed to log ticket close", [("Error", str(e))])
 

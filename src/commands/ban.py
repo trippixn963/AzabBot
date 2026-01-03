@@ -42,6 +42,7 @@ from src.utils.duration import format_duration
 from src.utils.async_utils import create_safe_task
 from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
 from src.utils.ban_gif import generate_ban_gif
+from src.core.constants import CASE_LOG_TIMEOUT, GUILD_FETCH_TIMEOUT
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -335,7 +336,7 @@ class BanCog(commands.Cog):
                         reason=f"[SOFTBAN] {reason}" if is_softban else reason,
                         evidence=evidence,
                     ),
-                    timeout=10.0,
+                    timeout=CASE_LOG_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
@@ -371,7 +372,7 @@ class BanCog(commands.Cog):
                         moderator=interaction.user,
                         case_id=case_info["case_id"] if case_info else None,
                     ),
-                    timeout=5.0,
+                    timeout=GUILD_FETCH_TIMEOUT,
                 )
             except Exception as e:
                 logger.debug(f"Server log failed (ban): {e}")
@@ -707,7 +708,7 @@ class BanCog(commands.Cog):
                         moderator=interaction.user,
                         reason=reason,
                     ),
-                    timeout=10.0,
+                    timeout=CASE_LOG_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
@@ -742,7 +743,7 @@ class BanCog(commands.Cog):
                         moderator=interaction.user,
                         case_id=case_info["case_id"] if case_info else None,
                     ),
-                    timeout=5.0,
+                    timeout=GUILD_FETCH_TIMEOUT,
                 )
             except Exception as e:
                 logger.debug(f"Server log failed (unban): {e}")

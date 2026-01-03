@@ -37,6 +37,7 @@ from src.core.constants import (
     WARNING_DECAY_DAYS,
     SECONDS_PER_DAY,
     SECONDS_PER_HOUR,
+    CASE_LOG_TIMEOUT,
 )
 from src.utils.footer import set_footer
 from src.utils.duration import parse_duration
@@ -1189,7 +1190,7 @@ class UnmuteModal(discord.ui.Modal, title="Unmute User"):
                             reason=self.reason.value if self.reason.value else None,
                             user_avatar_url=member.display_avatar.url,
                         ),
-                        timeout=10.0,
+                        timeout=CASE_LOG_TIMEOUT,
                     )
                 except asyncio.TimeoutError:
                     logger.warning("Case Log Timeout", [
@@ -1552,109 +1553,41 @@ class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approv
                 ("Deletes At", f"<t:{deletion_timestamp}:F>"),
             ], emoji="✅")
 
-            # Send transcript log to case transcripts thread
-            if config.case_transcripts_thread_id and transcript_url and case:
+            # Log transcript via logging service
+            if transcript_url and case and hasattr(interaction.client, 'logging_service') and interaction.client.logging_service:
                 try:
-                    transcripts_thread = interaction.client.get_channel(config.case_transcripts_thread_id)
-                    if not transcripts_thread:
-                        transcripts_thread = await interaction.client.fetch_channel(config.case_transcripts_thread_id)
+                    user_id = case.get("user_id")
+                    action_type = case.get("action_type", "unknown")
+                    reason = case.get("reason") or "No reason provided"
+                    moderator_id = case.get("moderator_id")
+                    created_at = case.get("created_at")
 
-                    if transcripts_thread:
-                        # Build transcript log embed
-                        user_id = case.get("user_id")
-                        action_type = case.get("action_type", "unknown")
-                        reason = case.get("reason") or "No reason provided"
-                        moderator_id = case.get("moderator_id")
-                        created_at = case.get("created_at")
+                    # Try to get user info
+                    try:
+                        user = await interaction.client.fetch_user(user_id)
+                    except Exception:
+                        user = None
 
-                        # Action emoji mapping
-                        action_emoji = {
-                            "mute": "🔇", "ban": "🔨", "warn": "⚠️", "forbid": "🚫",
-                            "timeout": "⏰", "unmute": "🔊", "unban": "✅", "unforbid": "✅",
-                        }.get(action_type, "📋")
-
-                        log_embed = discord.Embed(
-                            title=f"{action_emoji} Case Transcript - {self.case_id}",
-                            color=EmbedColors.SUCCESS,
-                            timestamp=datetime.now(NY_TZ),
-                        )
-
-                        # Try to get user info
-                        try:
-                            user = await interaction.client.fetch_user(user_id)
-                            log_embed.set_thumbnail(url=user.display_avatar.url)
-                            log_embed.add_field(
-                                name="User",
-                                value=f"{user.mention}\n`{user.name}`",
-                                inline=True,
-                            )
-                        except Exception:
-                            log_embed.add_field(
-                                name="User",
-                                value=f"<@{user_id}>\n`{user_id}`",
-                                inline=True,
-                            )
-
-                        log_embed.add_field(
-                            name="Action",
-                            value=f"`{action_type.title()}`",
-                            inline=True,
-                        )
-
-                        if moderator_id:
-                            log_embed.add_field(
-                                name="Moderator",
-                                value=f"<@{moderator_id}>",
-                                inline=True,
-                            )
-
-                        log_embed.add_field(
-                            name="Reason",
-                            value=reason[:200] if len(reason) > 200 else reason,
-                            inline=False,
-                        )
-
-                        if created_at:
-                            log_embed.add_field(
-                                name="Created",
-                                value=f"<t:{int(created_at)}:F>",
-                                inline=True,
-                            )
-
-                        log_embed.add_field(
-                            name="Approved By",
-                            value=interaction.user.mention,
-                            inline=True,
-                        )
-
-                        set_footer(log_embed)
-
-                        # Create view with transcript button
-                        log_view = discord.ui.View(timeout=None)
-                        log_view.add_item(discord.ui.Button(
-                            label="View Transcript",
-                            url=transcript_url,
-                            style=discord.ButtonStyle.link,
-                            emoji="📜",
-                        ))
-
-                        # Add link to original case thread
+                    if user:
                         case_thread_url = f"https://discord.com/channels/{case.get('guild_id')}/{thread.id}"
-                        log_view.add_item(discord.ui.Button(
-                            label="Case Thread",
-                            url=case_thread_url,
-                            style=discord.ButtonStyle.link,
-                            emoji=CASE_EMOJI,
-                        ))
+                        await interaction.client.logging_service.log_case_transcript(
+                            case_id=self.case_id,
+                            user=user,
+                            action_type=action_type,
+                            moderator_id=moderator_id,
+                            reason=reason,
+                            created_at=created_at or 0,
+                            approved_by=interaction.user,
+                            transcript_url=transcript_url,
+                            case_thread_url=case_thread_url,
+                        )
 
-                        await transcripts_thread.send(embed=log_embed, view=log_view)
-
-                        logger.tree("Transcript Logged to Thread", [
+                        logger.tree("Case Transcript Logged", [
                             ("Case ID", self.case_id),
-                            ("Thread", str(config.case_transcripts_thread_id)),
+                            ("User", user.name),
                         ], emoji="📜")
                 except Exception as e:
-                    logger.warning("Failed to Log Transcript to Thread", [
+                    logger.warning("Failed to Log Case Transcript", [
                         ("Case ID", self.case_id),
                         ("Error", str(e)[:50]),
                     ])

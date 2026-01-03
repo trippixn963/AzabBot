@@ -30,6 +30,7 @@ from src.utils.footer import set_footer
 from src.utils.views import CASE_EMOJI
 from src.utils.async_utils import create_safe_task
 from src.utils.rate_limiter import rate_limit
+from src.core.constants import CASE_LOG_TIMEOUT
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -346,7 +347,7 @@ class MuteScheduler:
                         user_avatar_url=member.display_avatar.url,
                         guild_id=guild.id,
                     ),
-                    timeout=10.0,
+                    timeout=CASE_LOG_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [

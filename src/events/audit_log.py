@@ -16,6 +16,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
+from src.core.constants import CASE_LOG_TIMEOUT
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -705,7 +706,7 @@ class AuditLogEvents(commands.Cog):
                                         until=entry.after.timed_out_until,
                                         reason=entry.reason,
                                     ),
-                                    timeout=10.0,
+                                    timeout=CASE_LOG_TIMEOUT,
                                 )
                             except asyncio.TimeoutError:
                                 logger.warning("Case Log Timeout", [

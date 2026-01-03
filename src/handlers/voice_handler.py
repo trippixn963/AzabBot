@@ -19,6 +19,7 @@ import discord
 from src.core.config import get_config
 from src.core.database import get_db
 from src.core.logger import logger
+from src.core.constants import CASE_LOG_TIMEOUT
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -204,7 +205,7 @@ class VoiceHandler:
                         channel_name=channel_name,
                         avatar_url=member.display_avatar.url,
                     ),
-                    timeout=10.0,
+                    timeout=CASE_LOG_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [

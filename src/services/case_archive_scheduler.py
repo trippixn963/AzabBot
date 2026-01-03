@@ -142,18 +142,41 @@ class CaseArchiveScheduler:
             if not forum or not isinstance(forum, discord.ForumChannel):
                 return
 
-            # Check if "Transcript Assets" thread already exists
+            # Known asset thread names (current and legacy)
+            asset_thread_names = {"📁 Assets", "Assets", "Transcript Assets"}
+
+            # Check if thread already exists by name
             async for thread in forum.archived_threads(limit=100):
-                if thread.name == "Transcript Assets":
+                if thread.name in asset_thread_names:
                     self.assets_thread_id = thread.id
+                    # Rename to current standard if using old name
+                    if thread.name != "📁 Assets":
+                        try:
+                            await thread.edit(name="📁 Assets")
+                            logger.info("Renamed Assets Thread", [
+                                ("Old Name", thread.name),
+                                ("New Name", "📁 Assets"),
+                            ])
+                        except Exception:
+                            pass
                     logger.info("Found Existing Assets Thread", [
                         ("Thread ID", str(thread.id)),
                     ])
                     return
 
             for thread in forum.threads:
-                if thread.name == "Transcript Assets":
+                if thread.name in asset_thread_names:
                     self.assets_thread_id = thread.id
+                    # Rename to current standard if using old name
+                    if thread.name != "📁 Assets":
+                        try:
+                            await thread.edit(name="📁 Assets")
+                            logger.info("Renamed Assets Thread", [
+                                ("Old Name", thread.name),
+                                ("New Name", "📁 Assets"),
+                            ])
+                        except Exception:
+                            pass
                     logger.info("Found Existing Assets Thread", [
                         ("Thread ID", str(thread.id)),
                     ])
@@ -161,8 +184,8 @@ class CaseArchiveScheduler:
 
             # Create new thread
             thread_with_msg = await forum.create_thread(
-                name="Transcript Assets",
-                content="This thread stores permanent copies of case attachments for transcripts.\n\n*Do not delete this thread.*",
+                name="📁 Assets",
+                content="This thread stores permanent copies of attachments for cases and transcripts.\n\n*Do not delete this thread.*",
             )
             self.assets_thread_id = thread_with_msg.thread.id
 

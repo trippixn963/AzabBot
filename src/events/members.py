@@ -9,6 +9,7 @@ Server: discord.gg/syria
 """
 
 import asyncio
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import discord
@@ -17,6 +18,7 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config
 from src.core.database import get_db
+from src.core.constants import CASE_LOG_TIMEOUT
 from src.utils.async_utils import create_safe_task
 
 # Verification role delay - another bot handles this, but we act as failsafe backup
@@ -183,8 +185,21 @@ class MemberEvents(commands.Cog):
 
             if before.premium_since is None and after.premium_since is not None:
                 await self.bot.logging_service.log_boost(after)
+                logger.tree("Server Boosted", [
+                    ("User", f"{after.name} ({after.id})"),
+                    ("Guild", after.guild.name),
+                    ("Boost Count", str(after.guild.premium_subscription_count)),
+                ], emoji="💎")
             elif before.premium_since is not None and after.premium_since is None:
-                await self.bot.logging_service.log_unboost(after)
+                await self.bot.logging_service.log_unboost(after, boosted_since=before.premium_since)
+                # Calculate duration for tree logging
+                duration_days = (datetime.now(before.premium_since.tzinfo) - before.premium_since).days if before.premium_since.tzinfo else (datetime.utcnow() - before.premium_since).days
+                logger.tree("Boost Removed", [
+                    ("User", f"{after.name} ({after.id})"),
+                    ("Guild", after.guild.name),
+                    ("Boosted For", f"{duration_days} days"),
+                    ("Boost Count", str(after.guild.premium_subscription_count)),
+                ], emoji="💔")
 
             if before.pending and not after.pending:
                 await self.bot.logging_service.log_member_verification(after)
@@ -264,7 +279,7 @@ class MemberEvents(commands.Cog):
                 try:
                     await asyncio.wait_for(
                         self.bot.case_log_service.log_mute_evasion_return(member, [mod_id]),
-                        timeout=10.0,
+                        timeout=CASE_LOG_TIMEOUT,
                     )
                 except asyncio.TimeoutError:
                     logger.warning("Case Log Timeout", [
@@ -408,7 +423,7 @@ class MemberEvents(commands.Cog):
                         muted_at=active_mute["muted_at"],
                         avatar_url=member.display_avatar.url,
                     ),
-                    timeout=10.0,
+                    timeout=CASE_LOG_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
