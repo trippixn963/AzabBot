@@ -80,7 +80,7 @@ class PresenceHandler:
         # Start promo scheduler
         self._promo_task = create_safe_task(self._promo_loop(), "Promo Scheduler Loop")
 
-        logger.tree("Presence Handler Started", [
+        logger.tree("Presence Handler Loaded", [
             ("Update Interval", f"{PRESENCE_UPDATE_INTERVAL}s"),
             ("Promo Schedule", "Every hour on the hour"),
             ("Promo Duration", f"{PROMO_DURATION_MINUTES} minutes"),

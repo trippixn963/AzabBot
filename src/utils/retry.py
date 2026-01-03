@@ -63,10 +63,17 @@ async def retry_async(
             if attempt < max_retries:
                 # Exponential backoff: 1s, 2s, 4s, etc. (capped at max_delay)
                 delay = min(base_delay * (2 ** attempt), max_delay)
-                logger.warning(f"Retry {attempt + 1}/{max_retries}: {type(e).__name__} - retrying in {delay:.1f}s")
+                logger.warning("Retry Attempt", [
+                    ("Attempt", f"{attempt + 1}/{max_retries}"),
+                    ("Error", type(e).__name__),
+                    ("Delay", f"{delay:.1f}s"),
+                ])
                 await asyncio.sleep(delay)
             else:
-                logger.error(f"All {max_retries} retries failed: {type(e).__name__}: {e}")
+                logger.error("All Retries Failed", [
+                    ("Attempts", str(max_retries)),
+                    ("Error", f"{type(e).__name__}: {str(e)[:50]}"),
+                ])
 
     raise last_exception
 
@@ -101,7 +108,10 @@ async def safe_fetch_channel(bot, channel_id: int) -> Optional[discord.abc.Guild
     except (discord.NotFound, discord.Forbidden):
         return None
     except Exception as e:
-        logger.error(f"Failed to fetch channel {channel_id}: {e}")
+        logger.error("Channel Fetch Failed", [
+            ("Channel ID", str(channel_id)),
+            ("Error", str(e)[:50]),
+        ])
         return None
 
 
@@ -132,7 +142,10 @@ async def safe_fetch_message(
     except (discord.NotFound, discord.Forbidden):
         return None
     except Exception as e:
-        logger.error(f"Failed to fetch message {message_id}: {e}")
+        logger.error("Message Fetch Failed", [
+            ("Message ID", str(message_id)),
+            ("Error", str(e)[:50]),
+        ])
         return None
 
 
@@ -164,7 +177,9 @@ async def safe_send(
             **kwargs,
         )
     except (discord.Forbidden, discord.HTTPException) as e:
-        logger.error(f"Failed to send message: {e}")
+        logger.error("Message Send Failed", [
+            ("Error", str(e)[:50]),
+        ])
         return None
 
 
@@ -193,7 +208,10 @@ async def safe_edit(
             **kwargs,
         )
     except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
-        logger.error(f"Failed to edit message {message.id}: {e}")
+        logger.error("Message Edit Failed", [
+            ("Message ID", str(message.id)),
+            ("Error", str(e)[:50]),
+        ])
         return None
 
 

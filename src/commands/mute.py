@@ -534,8 +534,8 @@ class MuteCog(commands.Cog):
                         await sent_message.edit(embed=embed, attachments=[static_file], view=view)
                     else:
                         await sent_message.edit(embed=embed, attachments=[static_file])
-            except Exception:
-                pass  # Silent fail - animation already played
+            except Exception as e:
+                logger.debug(f"GIF replacement edit skipped: {e}")
 
         # ---------------------------------------------------------------------
         # Concurrent Post-Response Operations
@@ -905,8 +905,8 @@ class MuteCog(commands.Cog):
                     await sent_message.edit(embed=embed, attachments=[], view=view)
                 else:
                     await sent_message.edit(embed=embed, attachments=[])
-            except Exception:
-                pass  # Silent fail - animation already played
+            except Exception as e:
+                logger.debug(f"GIF replacement edit skipped: {e}")
 
         # ---------------------------------------------------------------------
         # Concurrent Post-Response Operations

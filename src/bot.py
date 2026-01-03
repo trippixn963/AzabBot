@@ -611,7 +611,7 @@ class AzabBot(commands.Bot):
                         self._invite_cache[invite.code] = invite.uses or 0
                     logger.info(f"Cached {len(invites)} invites for {guild.name}")
                 except discord.Forbidden:
-                    pass
+                    logger.debug(f"No permission to fetch invites for {guild.name}")
                 except asyncio.TimeoutError:
                     logger.warning(f"Invite fetch timeout for {guild.name}")
         except Exception as e:
@@ -648,8 +648,8 @@ class AzabBot(commands.Bot):
                             if self.config.developer_id:
                                 alert_msg = f"<@{self.config.developer_id}> {alert_msg}"
                             await alert_channel.send(alert_msg)
-                        except discord.HTTPException:
-                            pass
+                        except discord.HTTPException as e:
+                            logger.warning(f"Failed to send lockdown restart alert: {e}")
 
     async def _find_used_invite(self, guild: discord.Guild) -> Optional[tuple]:
         """Find which invite was used by comparing use counts."""
@@ -662,7 +662,7 @@ class AzabBot(commands.Bot):
                     return (invite.code, invite.inviter)
                 self._invite_cache[invite.code] = invite.uses or 0
         except discord.Forbidden:
-            pass
+            logger.debug(f"No permission to check invites for {guild.name}")
         except Exception as e:
             logger.debug(f"Find invite failed: {e}")
         return None
