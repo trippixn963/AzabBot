@@ -2,21 +2,7 @@
 Azab Discord Bot - Mute Command Cog
 ====================================
 
-Server moderation mute/unmute commands with role-based muting.
-
-DESIGN:
-    Uses role-based muting instead of Discord's native timeout.
-    Role ID is configured via MUTED_ROLE_ID environment variable.
-    Supports timed mutes with auto-unmute via background scheduler.
-
-Features:
-    - /mute <user> [duration] [reason]: Assign muted role
-    - /unmute <user> [reason]: Remove muted role
-    - Duration autocomplete with common options
-    - Reason autocomplete with common moderation reasons
-    - Permission checks (moderator/admin only)
-    - DM notification to muted user
-    - Mod log channel posting
+Role-based mute/unmute commands with timed auto-unmute.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

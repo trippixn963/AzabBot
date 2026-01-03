@@ -2,15 +2,7 @@
 Azab Discord Bot - Main Bot Class
 ==================================
 
-Core Discord client for the Syria Discord server providing
-comprehensive moderation for muted users (prisoners).
-
-Features:
-- Prisoner tracking with message batching
-- Dynamic presence updates
-- Polls-only channel enforcement
-- Health check HTTP endpoint
-- Mod activity tracking
+Core Discord client with prisoner tracking and moderation services.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

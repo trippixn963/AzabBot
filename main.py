@@ -3,23 +3,7 @@
 Azab Discord Bot - Main Entry Point
 ====================================
 
-Application entry point with single-instance enforcement and graceful startup.
-
-This module handles:
-- Single-instance lock acquisition (prevents duplicate bots)
-- Environment configuration loading
-- Temp file cleanup
-- Graceful error handling and logging
-- Bot initialization and execution
-
-Usage:
-    python main.py
-
-    Or with a process manager:
-    nohup python main.py > /dev/null 2>&1 &
-
-Environment Variables:
-    DISCORD_TOKEN: Required. Discord bot authentication token.
+Application entry point with single-instance lock and graceful startup.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

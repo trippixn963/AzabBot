@@ -4,16 +4,6 @@ Azab Discord Bot - Mute Scheduler Service
 
 Background service for automatic unmuting of expired mutes.
 
-DESIGN:
-    Runs as a background task checking for expired mutes every 30 seconds.
-    On bot startup, syncs database with actual role state to handle
-    cases where roles were manually removed while bot was offline.
-
-    Key responsibilities:
-    - Check for expired mutes and remove muted role
-    - Log automatic unmutes to mod log channel
-    - Handle edge cases (user left, role deleted, etc.)
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

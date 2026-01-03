@@ -2,11 +2,7 @@
 Azab Discord Bot - Mod Tracker Service
 =======================================
 
-Service for tracking moderator activities in a separate server forum.
-
-DESIGN:
-    Each tracked mod gets a forum thread where all their activities
-    are logged: avatar changes, name changes, message edits/deletes, etc.
+Service for tracking moderator activities in forum threads.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

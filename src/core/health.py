@@ -4,14 +4,6 @@ Azab Discord Bot - Health Check Server
 
 HTTP health check endpoint for external monitoring.
 
-DESIGN:
-    Provides a lightweight HTTP server that external monitoring tools
-    (like uptime checkers or orchestration systems) can ping to verify
-    the bot is running and responsive.
-
-    The /health endpoint returns JSON with bot status, connection state,
-    and basic metrics without exposing sensitive information.
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

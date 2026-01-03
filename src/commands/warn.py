@@ -2,19 +2,7 @@
 Azab Discord Bot - Warn Command Cog
 ====================================
 
-Server moderation warning command.
-
-DESIGN:
-    Issues warnings to users without applying any role or timeout.
-    Warnings are tracked in the database and displayed in user history.
-
-Features:
-    - /warn <user> [reason] [evidence]: Issue a warning
-    - Reason autocomplete with common options
-    - Permission checks (moderator only)
-    - DM notification to warned user
-    - Case log integration
-    - Mod tracker integration
+Server moderation warning command with case logging.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

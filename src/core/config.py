@@ -4,16 +4,6 @@ Azab Discord Bot - Configuration Module
 
 Centralized configuration management with environment variable validation.
 
-DESIGN:
-    This module provides a single source of truth for all configuration,
-    loaded from environment variables at startup. Using a dataclass ensures
-    type safety and immutability once loaded.
-
-    Key patterns:
-    - Singleton pattern via get_config() ensures one Config instance
-    - Validation happens once at load time, not on every access
-    - Permission helpers centralize authorization logic
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

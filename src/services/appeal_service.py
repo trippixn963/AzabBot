@@ -4,13 +4,6 @@ Azab Discord Bot - Appeal Service
 
 Service for handling ban and mute appeals.
 
-Features:
-    - Create appeals via DM or button
-    - Appeals create forum threads in mods server
-    - Links to original case via case_id
-    - Approve/deny/close appeals with actions
-    - Mutes over 6 hours and all bans can be appealed
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

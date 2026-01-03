@@ -4,12 +4,6 @@ Azab Discord Bot - Modmail Service
 
 Service for handling modmail from banned users.
 
-Features:
-    - Banned users can DM the bot to contact staff
-    - Creates forum threads in mods server
-    - Relays messages between DM and thread
-    - Staff can close modmail threads
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

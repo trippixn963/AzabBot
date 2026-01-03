@@ -4,9 +4,6 @@ Azab Discord Bot - Voice Handler
 
 Handles voice-related events and enforcement.
 
-- Muted user VC restriction enforcement
-- Voice activity logging delegation
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

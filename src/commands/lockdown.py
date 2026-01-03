@@ -4,15 +4,6 @@ Azab Discord Bot - Lockdown Command Cog
 
 Emergency server lockdown command for raid protection.
 
-DESIGN:
-    Uses role-based lockdown for instant server-wide effect.
-    Modifies @everyone role permissions directly instead of
-    iterating through channels one by one.
-
-Features:
-    - /lockdown [reason] - Lock server instantly
-    - /unlock - Restore original permissions
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

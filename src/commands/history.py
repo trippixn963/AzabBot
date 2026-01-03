@@ -4,10 +4,6 @@ Azab Discord Bot - History Command Cog
 
 View moderation history for a user.
 
-DESIGN:
-    Shows all cases, warnings, and mutes for a user.
-    Displays summary counts and recent actions.
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

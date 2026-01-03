@@ -4,20 +4,6 @@ Azab Discord Bot - Link Command Cog
 
 Links alliance channel messages to members for auto-deletion on leave.
 
-DESIGN:
-    When a member posts in the alliances channel, moderators can link
-    that message to the member. If the member leaves the server, their
-    linked messages are automatically deleted.
-
-    Supports cross-server moderation: command can be run from mod server
-    to link messages in the main server's alliance channel.
-
-Features:
-    - /link <message_id> <member>: Link a message to a member
-    - Confirmation flow with approve/deny buttons
-    - Logging when links are created
-    - Auto-delete linked messages on member leave with logging
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

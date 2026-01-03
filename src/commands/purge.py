@@ -4,17 +4,6 @@ Azab Discord Bot - Purge Command Cog
 
 Bulk message deletion command for channel moderation.
 
-DESIGN:
-    Uses Discord's bulk_delete for efficient message removal.
-    Messages older than 14 days cannot be bulk deleted (Discord limitation).
-    All purge actions are logged for accountability.
-
-Features:
-    - /purge <amount> [filter] [user] [text] [reason]
-    - Filter dropdown: all, user, bots, humans, contains, attachments, embeds, links, reactions, mentions
-    - Permission checks (manage_messages required)
-    - Mod log integration
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

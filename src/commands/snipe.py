@@ -4,11 +4,6 @@ Azab Discord Bot - Snipe Command Cog
 
 View deleted and edited messages in a channel.
 
-Features:
-    /snipe [number] - View deleted messages (1-10)
-    /editsnipe [number] - View edited messages (1-10)
-    /clearsnipe [@user] - Clear both snipe caches (mod only)
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

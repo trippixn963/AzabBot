@@ -2,15 +2,7 @@
 Azab Discord Bot - Mute Handler
 ===============================
 
-Handles mute detection and embed processing from mod logs channel.
-
-DESIGN:
-    This handler parses mod bot embeds to extract mute information.
-    When a user is muted, the reason is often logged in an embed
-    by moderation bots like Carl-bot, MEE6, or Dyno. This handler
-    captures that information for display in prison notifications.
-
-    Supports multiple embed formats to handle different mod bots.
+Handles mute detection and embed processing from mod logs.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

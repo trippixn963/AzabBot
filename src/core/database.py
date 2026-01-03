@@ -4,14 +4,6 @@ Azab Discord Bot - Unified Database
 
 Central SQLite database manager for all bot data.
 
-Consolidates:
-- Bot state (active/disabled)
-- Ignored users list
-- Prisoner tracking and statistics
-- Message logging
-
-Single database file: data/azab.db
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

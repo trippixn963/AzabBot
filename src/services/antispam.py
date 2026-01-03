@@ -1,37 +1,8 @@
 """
-Azab Discord Bot - Anti-Spam Service (Enhanced)
-================================================
+Azab Discord Bot - Anti-Spam Service
+=====================================
 
-Automatic spam detection and prevention system with advanced features.
-
-DESIGN:
-    Tracks message patterns per user and detects various spam types.
-    Uses progressive punishment: warn → short mute → longer mute.
-    Integrates with case logging and server logs.
-    Persists violations to database (survives restarts).
-    Includes reputation system for trusted members.
-
-Spam Types Detected:
-    - Message flood: Too many messages too fast
-    - Duplicate spam: Similar messages repeated (fuzzy matching)
-    - Mention spam: Too many mentions
-    - Emoji spam: Excessive emojis
-    - Link flood: Multiple links in short time
-    - Invite spam: Discord invite links to other servers
-    - Caps spam: Excessive capital letters
-    - Newline spam: Excessive line breaks
-    - Character spam: Repeated characters
-    - Attachment flood: Too many attachments
-    - Image duplicate: Same image posted repeatedly
-    - Zalgo/Unicode abuse: Malicious unicode text
-    - Webhook spam: Spam from webhooks
-
-Advanced Features:
-    - User reputation system (trusted members get leniency)
-    - Per-channel thresholds
-    - Enhanced raid detection (similar accounts/avatars/usernames)
-    - Invite link detection with whitelist
-    - Image hash matching
+Automatic spam detection and prevention with progressive punishment.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

@@ -2,16 +2,7 @@
 Azab Discord Bot - Ban Command Cog
 ===================================
 
-Server moderation ban/unban commands.
-
-Features:
-    - /ban <user> [reason] [evidence]: Ban a user
-    - /unban <user> [reason] [evidence]: Unban a user (with autocomplete)
-    - Right-click context menu ban
-    - Management role protection
-    - DM notification before ban
-    - Case logging with forum threads
-    - Ban count tracking
+Server moderation ban/unban commands with case logging.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

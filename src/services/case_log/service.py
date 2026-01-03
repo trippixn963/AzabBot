@@ -1,8 +1,8 @@
 """
-Case Log Service
-================
+Azab Discord Bot - Case Log Service
+====================================
 
-Main service class for logging moderation actions to forum threads.
+Logging moderation actions to forum threads.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

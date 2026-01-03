@@ -2,14 +2,7 @@
 Azab Discord Bot - Presence Handler
 ===================================
 
-Manages dynamic Discord rich presence updates with rotating status
-and hourly promotional presence.
-
-Features:
-- Rotating status showing moderation stats
-- Hourly promotional presence (trippixn.com/azab for 10 mins)
-- Event-triggered presence for prisoner arrivals/releases
-- Clean error handling for connection issues
+Manages dynamic Discord rich presence with rotating status.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

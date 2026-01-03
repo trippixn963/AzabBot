@@ -4,13 +4,6 @@ Azab Discord Bot - Prison Handler
 
 Handles prisoner welcome and release functionality.
 
-This module manages:
-- New prisoner welcome messages
-- Prisoner release notifications
-- VC kick with progressive timeout
-- Daily prison channel cleanup
-- Message cleanup after release
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """

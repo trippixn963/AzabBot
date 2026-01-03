@@ -2,30 +2,7 @@
 Azab Discord Bot - Logger
 ==========================
 
-Custom logging system with tree-style formatting and EST timezone support.
-Provides structured logging for Discord bot events with visual formatting
-and file output for debugging and monitoring.
-
-Features:
-- Unique run ID generation for tracking bot sessions
-- EST/EDT timezone timestamp formatting (auto-adjusts)
-- Tree-style log formatting for structured data
-- Nested tree support for hierarchical data
-- Console and file output simultaneously
-- Emoji-enhanced log levels for visual clarity
-- Daily log folders with separate log and error files
-- Automatic cleanup of old logs (7+ days)
-- Smart spacing between tree logs
-
-Log Structure:
-    logs/
-    ├── 2025-12-06/
-    │   ├── Azab-2025-12-06.log
-    │   └── Azab-Errors-2025-12-06.log
-    ├── 2025-12-07/
-    │   ├── Azab-2025-12-07.log
-    │   └── Azab-Errors-2025-12-07.log
-    └── ...
+Custom logging system with tree-style formatting and EST timezone.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

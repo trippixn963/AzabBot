@@ -1,6 +1,6 @@
 """
-Ticket Service
-==============
+Azab Discord Bot - Ticket Service
+==================================
 
 Core service logic for the ticket system.
 

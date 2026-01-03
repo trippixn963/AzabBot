@@ -4,27 +4,6 @@ Azab Discord Bot - Forbid Command Cog
 
 Restrict specific permissions for users without fully muting them.
 
-Features:
-    /forbid @user <restriction> [duration] [reason] - Add a restriction
-    /unforbid @user <restriction> - Remove a restriction
-
-Restrictions:
-    - reactions: Can't add reactions
-    - attachments: Can't send files
-    - voice: Can't join voice channels
-    - streaming: Can join VC but can't stream
-    - embeds: Can't send embeds/link previews
-    - threads: Can't create threads
-    - external_emojis: Can't use external emojis
-    - stickers: Can't use stickers
-
-Automation:
-    - New channels automatically get forbid role overwrites
-    - Nightly scan at 3 AM fixes any missing overwrites
-    - Expiry scheduler checks every minute for expired forbids
-    - DM notification sent to user when forbidden
-    - Appeal integration for users to appeal restrictions
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
