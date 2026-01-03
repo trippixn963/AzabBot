@@ -335,7 +335,7 @@ class LoggingService:
             ]
             if sync_issues:
                 log_items.append(("Sync Issues", str(len(sync_issues))))
-                logger.tree("Logging Service Initialized (with issues)", log_items, emoji="⚠️")
+                logger.warning("Logging Service Initialized (with issues)", log_items)
             else:
                 logger.tree("Logging Service Initialized", log_items, emoji="✅")
 
@@ -754,6 +754,7 @@ class LoggingService:
         user: discord.Member,
         moderator: Optional[discord.Member] = None,
         reason: Optional[str] = None,
+        duration: Optional[str] = None,
         case_id: Optional[str] = None,
     ) -> None:
         """Log a mute (role-based)."""
@@ -763,6 +764,7 @@ class LoggingService:
         logger.tree("Server Logs: log_mute Called", [
             ("User", f"{user.name} ({user.id})"),
             ("Moderator", f"{moderator.name} ({moderator.id})" if moderator else "System"),
+            ("Duration", duration or "Permanent"),
             ("Case ID", case_id or "None"),
         ], emoji="📋")
 
@@ -770,6 +772,7 @@ class LoggingService:
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
+        embed.add_field(name="Duration", value=f"`{duration}`" if duration else "`Permanent`", inline=True)
         if case_id:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
 
@@ -790,6 +793,7 @@ class LoggingService:
         self,
         user: discord.Member,
         moderator: Optional[discord.Member] = None,
+        reason: Optional[str] = None,
         case_id: Optional[str] = None,
     ) -> None:
         """Log an unmute (role-based)."""
@@ -799,6 +803,7 @@ class LoggingService:
         logger.tree("Server Logs: log_unmute Called", [
             ("User", f"{user.name} ({user.id})"),
             ("Moderator", f"{moderator.name} ({moderator.id})" if moderator else "System"),
+            ("Reason", reason or "None"),
             ("Case ID", case_id or "None"),
         ], emoji="📋")
 
@@ -808,6 +813,8 @@ class LoggingService:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
         if case_id:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
         self._set_user_thumbnail(embed, user)
 
         view = ModActionLogView(user.id, user.guild.id, case_id=case_id)
@@ -4096,6 +4103,7 @@ class LoggingService:
     async def _retention_cleanup_loop(self) -> None:
         """Loop that runs retention cleanup daily at 3 AM EST."""
         from datetime import timedelta
+        from src.utils.jail_gif import clear_avatar_cache
 
         while True:
             try:
@@ -4110,6 +4118,9 @@ class LoggingService:
 
                 # Run cleanup
                 await self._cleanup_old_logs()
+
+                # Clear avatar cache (used for jail GIFs)
+                clear_avatar_cache()
 
             except asyncio.CancelledError:
                 break

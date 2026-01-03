@@ -130,11 +130,11 @@ class ClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clai
             ], emoji="✋")
             # No ephemeral message - the channel embed is sufficient
         else:
-            logger.tree("Ticket Claim Failed (Button)", [
+            logger.error("Ticket Claim Failed (Button)", [
                 ("Ticket ID", self.ticket_id),
                 ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
                 ("Reason", message),
-            ], emoji="❌")
+            ])
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 
@@ -215,11 +215,11 @@ class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clos
                 ], emoji="📝")
                 # No ephemeral message - the channel embed with ping is sufficient
             else:
-                logger.tree("Close Request Failed", [
+                logger.error("Close Request Failed", [
                     ("Ticket ID", self.ticket_id),
                     ("Requester", f"{interaction.user.name} ({interaction.user.id})"),
                     ("Reason", message),
-                ], emoji="❌")
+                ])
                 await interaction.followup.send(f"❌ {message}", ephemeral=True)
         else:
             await interaction.response.send_message(
@@ -499,11 +499,11 @@ class RevertTransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r
             except discord.HTTPException:
                 pass
         else:
-            logger.tree("Transfer Revert Failed", [
+            logger.error("Transfer Revert Failed", [
                 ("Ticket ID", self.ticket_id),
                 ("Original Staff", f"{original_staff.name} ({original_staff.id})"),
                 ("Reason", message),
-            ], emoji="❌")
+            ])
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 
@@ -573,11 +573,11 @@ class ReopenButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_reo
             ], emoji="🔓")
             # No ephemeral message - the channel embed is sufficient
         else:
-            logger.tree("Ticket Reopen Failed (Button)", [
+            logger.error("Ticket Reopen Failed (Button)", [
                 ("Ticket ID", self.ticket_id),
                 ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
                 ("Reason", message),
-            ], emoji="❌")
+            ])
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 
@@ -1109,12 +1109,12 @@ class TransferSelectView(discord.ui.View):
             # No ephemeral message - the channel embed is sufficient
             self.stop()
         else:
-            logger.tree("Ticket Transfer Failed", [
+            logger.error("Ticket Transfer Failed", [
                 ("Ticket ID", self.ticket_id),
                 ("From", f"{interaction.user.name} ({interaction.user.id})"),
                 ("To", f"{target.name} ({target.id})"),
                 ("Reason", message),
-            ], emoji="❌")
+            ])
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 
@@ -1193,11 +1193,11 @@ class CloseApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"t
                 ])
             # No ephemeral message - the channel close embed is sufficient
         else:
-            logger.tree("Close Request Approve Failed", [
+            logger.error("Close Request Approve Failed", [
                 ("Ticket ID", self.ticket_id),
                 ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
                 ("Reason", message),
-            ], emoji="❌")
+            ])
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 

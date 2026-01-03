@@ -19,7 +19,7 @@ Server: discord.gg/syria
 """
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Set
 from zoneinfo import ZoneInfo
 
@@ -87,8 +87,7 @@ class Config:
     # Optional: Channels
     # -------------------------------------------------------------------------
 
-    polls_only_channel_id: Optional[int] = None
-    permanent_polls_channel_id: Optional[int] = None
+    polls_only_channel_ids: set[int] = field(default_factory=set)  # Channels where only polls are allowed
     case_log_forum_id: Optional[int] = None
     links_allowed_channel_id: Optional[int] = None
     alliances_channel_id: Optional[int] = None  # Channel for alliance posts (auto-delete on leave)
@@ -468,8 +467,7 @@ def load_config() -> Config:
     # Parse Optional Values
     # -------------------------------------------------------------------------
 
-    polls_only_channel_id = _parse_int_optional(os.getenv("POLLS_ONLY_CHANNEL_ID"))
-    permanent_polls_channel_id = _parse_int_optional(os.getenv("PERMANENT_POLLS_CHANNEL_ID"))
+    polls_only_channel_ids = _parse_int_set(os.getenv("POLLS_ONLY_CHANNEL_IDS", ""))
     case_log_forum_id = _parse_int_optional(os.getenv("CASE_LOG_FORUM_ID"))
     links_allowed_channel_id = _parse_int_optional(os.getenv("LINKS_ALLOWED_CHANNEL_ID"))
     alliances_channel_id = _parse_int_optional(os.getenv("ALLIANCES_CHANNEL_ID"))
@@ -508,8 +506,7 @@ def load_config() -> Config:
         prison_channel_ids=prison_channel_ids,
         general_channel_id=general_channel_id,
         muted_role_id=muted_role_id,
-        polls_only_channel_id=polls_only_channel_id,
-        permanent_polls_channel_id=permanent_polls_channel_id,
+        polls_only_channel_ids=polls_only_channel_ids,
         case_log_forum_id=case_log_forum_id,
         links_allowed_channel_id=links_allowed_channel_id,
         alliances_channel_id=alliances_channel_id,

@@ -4036,6 +4036,7 @@ class DatabaseManager:
         Save a username or nickname change to history.
 
         Automatically maintains a rolling window of 10 entries per user.
+        Ignores AFK nicknames (containing "[AFK]").
 
         Args:
             user_id: Discord user ID.
@@ -4044,8 +4045,13 @@ class DatabaseManager:
             guild_id: Guild ID for nickname changes (None for global).
 
         Returns:
-            The row ID of the inserted record.
+            The row ID of the inserted record, or 0 if skipped.
         """
+        # Skip AFK nicknames - these are temporary and not real name changes
+        if display_name and "[AFK]" in display_name:
+            logger.debug(f"Skipped AFK nickname for user {user_id}: {display_name[:30]}")
+            return 0
+
         now = time.time()
 
         # Insert new record

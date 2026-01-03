@@ -312,11 +312,10 @@ class WarnCog(commands.Cog):
 
         embed = discord.Embed(
             title="⚠️ User Warned",
-            description=f"**{display_name}** has received a warning.",
-            color=EmbedColors.WARNING,
+            color=EmbedColors.GOLD,
         )
-        embed.add_field(name="User", value=f"`{user.name}`\n{user.mention}", inline=True)
-        embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`\n{interaction.user.mention}", inline=True)
+        embed.add_field(name="User", value=user.mention, inline=True)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
 
         # Show active warnings with total in parentheses if different
         if active_warns != total_warns:
@@ -327,11 +326,8 @@ class WarnCog(commands.Cog):
         if case_info:
             embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
 
-        if reason:
-            embed.add_field(name="Reason", value=reason, inline=False)
-
-        # Note: Evidence is intentionally not shown in public embed
-        # It's only visible in DMs, case logs, and mod logs
+        # Note: Reason and evidence are intentionally not shown in public embed
+        # They're only visible in DMs, case logs, and mod logs
 
         embed.set_thumbnail(url=avatar_url)
         set_footer(embed)

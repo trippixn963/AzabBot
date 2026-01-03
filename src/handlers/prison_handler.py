@@ -158,27 +158,35 @@ class PrisonHandler:
             # Get prisoner stats for personalized message
             prisoner_stats = await self.bot.db.get_prisoner_stats(member.id)
 
+            # Get mute info for sentence duration
+            guild = member.guild
+            mute_record = self.bot.db.get_active_mute(member.id, guild.id)
+            sentence_text = None
+            if mute_record and mute_record["expires_at"]:
+                # Calculate duration from muted_at to expires_at
+                duration_seconds = int(mute_record["expires_at"] - mute_record["muted_at"])
+                duration_minutes = duration_seconds // 60
+                sentence_text = format_duration(duration_minutes)
+            elif mute_record:
+                sentence_text = "Permanent"
+
             # Create welcome embed
             visit_num = prisoner_stats['total_mutes'] + 1
             embed = discord.Embed(
-                title="🔒 Sent to Prison",
-                description=f"**{member.display_name}** has been sent to prison.",
-                color=EmbedColors.PRISON,
+                title="🔒 Arrived to Prison",
+                color=EmbedColors.GOLD,
             )
 
-            embed.add_field(name="Prisoner", value=f"`{member.name}`\n{member.mention}", inline=True)
+            embed.add_field(name="Prisoner", value=member.mention, inline=True)
+
+            if sentence_text:
+                embed.add_field(name="Sentence", value=f"`{sentence_text}`", inline=True)
 
             if prisoner_stats["total_mutes"] > 0:
                 total_time = format_duration(prisoner_stats["total_minutes"] or 0)
                 embed.add_field(name="Visit #", value=f"`{visit_num}`", inline=True)
                 embed.add_field(name="Total Time Served", value=f"`{total_time}`", inline=True)
 
-            if mute_reason:
-                embed.add_field(
-                    name="Reason",
-                    value=mute_reason[:self.config.mute_reason_max_length],
-                    inline=False,
-                )
 
             embed.set_thumbnail(
                 url=member.avatar.url if member.avatar else member.default_avatar.url

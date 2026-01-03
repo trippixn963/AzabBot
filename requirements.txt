@@ -23,6 +23,10 @@ aiohttp>=3.9.1
 # ==================
 psutil>=5.9.0
 
+# Image Processing
+# =================
+Pillow>=10.0.0
+
 # Testing
 # ========
 pytest>=7.4.0

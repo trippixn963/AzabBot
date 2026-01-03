@@ -1520,17 +1520,33 @@ class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approv
                     new_name = new_name[:100]
                 await thread.edit(name=new_name)
 
-            # Archive and lock the thread
-            await thread.edit(
-                archived=True,
-                locked=True,
-                reason=f"Case approved by {interaction.user.display_name}",
-            )
+            # Update tags to show "Approved" status
+            approved_tags = []
+            if hasattr(interaction.client, 'case_log_service') and interaction.client.case_log_service:
+                approved_tags = interaction.client.case_log_service.get_tags_for_case(
+                    action_type, is_approved=True
+                )
 
+            # Lock the thread (but DON'T archive - keep visible during cooldown)
+            # Thread will be deleted by scheduler after retention period
+            if approved_tags:
+                await thread.edit(
+                    locked=True,
+                    applied_tags=approved_tags,
+                    reason=f"Case approved by {interaction.user.display_name}",
+                )
+            else:
+                await thread.edit(
+                    locked=True,
+                    reason=f"Case approved by {interaction.user.display_name}",
+                )
+
+            tag_names = [t.name for t in approved_tags] if approved_tags else []
             logger.tree("Case Approved", [
                 ("Case ID", self.case_id),
                 ("Thread ID", str(self.thread_id)),
                 ("Approved By", f"{interaction.user.display_name} ({interaction.user.id})"),
+                ("Tags Updated", ", ".join(tag_names) if tag_names else "None"),
                 ("Transcript", "Yes" if transcript_url else "No"),
                 ("Deletes At", f"<t:{deletion_timestamp}:F>"),
             ], emoji="✅")

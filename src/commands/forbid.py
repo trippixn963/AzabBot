@@ -47,6 +47,7 @@ from src.utils.views import APPEAL_EMOJI, CaseButtonView
 from src.utils.rate_limiter import rate_limit
 from src.utils.duration import parse_duration, format_duration_short as format_duration
 from src.utils.async_utils import create_safe_task
+from src.utils.forbid_gif import generate_forbid_gif, generate_unforbid_gif
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -489,7 +490,6 @@ class ForbidCog(commands.Cog):
                 color=EmbedColors.WARNING,
                 timestamp=datetime.now(NY_TZ),
             )
-            embed.set_thumbnail(url=user.display_avatar.url)
             embed.add_field(name="User", value=f"{user.mention}\n`{user.id}`", inline=True)
             embed.add_field(name="Moderator", value=f"{moderator.mention}", inline=True)
             embed.add_field(name="Duration", value=duration_display, inline=True)
@@ -505,15 +505,35 @@ class ForbidCog(commands.Cog):
                 already_text = "\n".join([f"⚪ {r} (already active)" for r in already_had])
                 embed.add_field(name="Already Had", value=already_text, inline=False)
 
+            # Generate forbid GIF (chains wrapping)
+            forbid_gif = None
+            forbid_file = None
+            try:
+                forbid_gif = await generate_forbid_gif(user.display_avatar.url, user_id=user.id)
+                if forbid_gif:
+                    forbid_file = discord.File(forbid_gif, filename="forbid.gif")
+                    embed.set_image(url="attachment://forbid.gif")
+                else:
+                    embed.set_thumbnail(url=user.display_avatar.url)
+            except Exception as e:
+                logger.debug(f"Forbid GIF generation failed: {e}")
+                embed.set_thumbnail(url=user.display_avatar.url)
+
             # Note: Reason intentionally not shown in public embed
             set_footer(embed)
 
             # Send public embed with buttons
             if case_info:
                 view = CaseButtonView(guild.id, case_info["thread_id"], user.id)
-                await interaction.followup.send(embed=embed, view=view)
+                if forbid_file:
+                    await interaction.followup.send(embed=embed, file=forbid_file, view=view)
+                else:
+                    await interaction.followup.send(embed=embed, view=view)
             else:
-                await interaction.followup.send(embed=embed)
+                if forbid_file:
+                    await interaction.followup.send(embed=embed, file=forbid_file)
+                else:
+                    await interaction.followup.send(embed=embed)
 
             # Send DM notification to user
             if applied:
@@ -698,7 +718,6 @@ class ForbidCog(commands.Cog):
                 color=EmbedColors.SUCCESS,
                 timestamp=datetime.now(NY_TZ),
             )
-            embed.set_thumbnail(url=user.display_avatar.url)
             embed.add_field(name="User", value=f"{user.mention}\n`{user.id}`", inline=True)
             embed.add_field(name="Moderator", value=f"{moderator.mention}", inline=True)
 
@@ -708,14 +727,34 @@ class ForbidCog(commands.Cog):
             removed_text = "\n".join([f"{RESTRICTIONS[r]['emoji']} {r}" for r in removed])
             embed.add_field(name="Removed", value=removed_text, inline=False)
 
+            # Generate unforbid GIF (chains unwrapping)
+            unforbid_gif = None
+            unforbid_file = None
+            try:
+                unforbid_gif = await generate_unforbid_gif(user.display_avatar.url, user_id=user.id)
+                if unforbid_gif:
+                    unforbid_file = discord.File(unforbid_gif, filename="unforbid.gif")
+                    embed.set_image(url="attachment://unforbid.gif")
+                else:
+                    embed.set_thumbnail(url=user.display_avatar.url)
+            except Exception as e:
+                logger.debug(f"Unforbid GIF generation failed: {e}")
+                embed.set_thumbnail(url=user.display_avatar.url)
+
             set_footer(embed)
 
             # Send public embed with buttons
             if case_info:
                 view = CaseButtonView(guild.id, case_info["thread_id"], user.id)
-                await interaction.followup.send(embed=embed, view=view)
+                if unforbid_file:
+                    await interaction.followup.send(embed=embed, file=unforbid_file, view=view)
+                else:
+                    await interaction.followup.send(embed=embed, view=view)
             else:
-                await interaction.followup.send(embed=embed)
+                if unforbid_file:
+                    await interaction.followup.send(embed=embed, file=unforbid_file)
+                else:
+                    await interaction.followup.send(embed=embed)
 
             # Log to server logs
             await self._log_forbid(
@@ -1135,7 +1174,7 @@ class ForbidCog(commands.Cog):
         embed = discord.Embed(
             title="🚫 You've Been Restricted",
             description=f"A moderator has applied restrictions to your account in **{guild.name}**.",
-            color=0xFF6B6B,
+            color=EmbedColors.GOLD,
             timestamp=datetime.now(NY_TZ),
         )
 

@@ -37,6 +37,7 @@ from .metrics import (
     SLOW_THRESHOLD_MS,
     LOG_SLOW_OPERATIONS,
 )
+from .jail_gif import generate_jail_gif, generate_unjail_gif
 
 
 # =============================================================================
@@ -64,4 +65,7 @@ __all__ = [
     "get_metrics_summary",
     "SLOW_THRESHOLD_MS",
     "LOG_SLOW_OPERATIONS",
+    # Jail GIF
+    "generate_jail_gif",
+    "generate_unjail_gif",
 ]

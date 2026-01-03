@@ -234,13 +234,9 @@ class MessageEvents(commands.Cog):
             return
 
         # -----------------------------------------------------------------
-        # Route 2: Polls-only channel - delete non-polls and poll results
+        # Route 2: Polls-only channels - delete non-polls and poll results
         # -----------------------------------------------------------------
-        is_polls_channel = (
-            message.channel.id == self.config.polls_only_channel_id or
-            message.channel.id == self.config.permanent_polls_channel_id
-        )
-        if is_polls_channel:
+        if message.channel.id in self.config.polls_only_channel_ids:
             # Delete poll result messages ("X's poll has closed")
             if message.type == discord.MessageType.poll_result:
                 try:

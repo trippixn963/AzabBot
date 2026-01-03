@@ -46,6 +46,12 @@ from src.utils.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
 from src.utils.dm_helpers import send_moderation_dm, safe_send_dm, build_appeal_dm
 from src.utils.duration import parse_duration, format_duration
+from src.utils.jail_gif import (
+    generate_jail_gif,
+    generate_unjail_gif,
+    generate_jail_static_png,
+    generate_unjail_static_png,
+)
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -459,14 +465,12 @@ class MuteCog(commands.Cog):
         # ---------------------------------------------------------------------
 
         embed_title = "🔇 Mute Extended" if is_extension else "🔇 User Muted"
-        action_desc = "mute has been extended" if is_extension else "has been muted"
         embed = discord.Embed(
             title=embed_title,
-            description=f"**{target_member.display_name}**'s {action_desc}." if is_extension else f"**{target_member.display_name}** has been muted.",
-            color=EmbedColors.ERROR,
+            color=EmbedColors.GOLD,
         )
-        embed.add_field(name="User", value=f"`{user.name}`\n{user.mention}", inline=True)
-        embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`\n{interaction.user.mention}", inline=True)
+        embed.add_field(name="User", value=user.mention, inline=True)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
         embed.add_field(name="Duration", value=f"`{duration_display}`", inline=True)
 
         if case_info:
@@ -475,22 +479,62 @@ class MuteCog(commands.Cog):
         # Note: Reason/Evidence intentionally not shown in public embed
         # Only visible in DMs, case logs, and mod logs
 
-        embed.set_thumbnail(url=target_member.display_avatar.url)
         set_footer(embed)
+
+        # Generate jail bars GIF
+        jail_gif = None
+        jail_file = None
+        try:
+            jail_gif = await generate_jail_gif(target_member.display_avatar.url, user_id=user.id)
+            if jail_gif:
+                jail_file = discord.File(jail_gif, filename="jail.gif")
+                embed.set_image(url="attachment://jail.gif")
+            else:
+                # Fallback to thumbnail if GIF generation fails
+                embed.set_thumbnail(url=target_member.display_avatar.url)
+        except Exception as e:
+            logger.warning("Jail GIF Generation Failed", [
+                ("User", f"{user.name} ({user.id})"),
+                ("Error", str(e)[:50]),
+            ])
+            embed.set_thumbnail(url=target_member.display_avatar.url)
 
         sent_message = None
         try:
             if case_info:
                 view = CaseButtonView(target_guild.id, case_info["thread_id"], user.id)
-                sent_message = await interaction.followup.send(embed=embed, view=view)
+                sent_message = await interaction.followup.send(
+                    embed=embed,
+                    view=view,
+                    file=jail_file if jail_file else discord.utils.MISSING,
+                )
             else:
-                sent_message = await interaction.followup.send(embed=embed)
+                sent_message = await interaction.followup.send(
+                    embed=embed,
+                    file=jail_file if jail_file else discord.utils.MISSING,
+                )
         except Exception as e:
             logger.error("Mute Followup Failed", [
                 ("User", f"{user.name} ({user.id})"),
                 ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
                 ("Error", str(e)[:100]),
             ])
+
+        # Replace GIF with static PNG after animation completes
+        if sent_message and jail_file:
+            try:
+                await asyncio.sleep(1.5)  # Wait for animation to finish
+                static_png = await generate_jail_static_png(target_member.display_avatar.url, user_id=user.id)
+                if static_png:
+                    static_file = discord.File(static_png, filename="jailed.png")
+                    embed.set_image(url="attachment://jailed.png")
+                    if case_info:
+                        view = CaseButtonView(target_guild.id, case_info["thread_id"], user.id)
+                        await sent_message.edit(embed=embed, attachments=[static_file], view=view)
+                    else:
+                        await sent_message.edit(embed=embed, attachments=[static_file])
+            except Exception:
+                pass  # Silent fail - animation already played
 
         # ---------------------------------------------------------------------
         # Concurrent Post-Response Operations
@@ -794,11 +838,10 @@ class MuteCog(commands.Cog):
 
         embed = discord.Embed(
             title="🔊 User Unmuted",
-            description=f"**{target_member.display_name}** has been unmuted.",
-            color=EmbedColors.SUCCESS,
+            color=EmbedColors.GREEN,
         )
-        embed.add_field(name="User", value=f"`{user.name}`\n{user.mention}", inline=True)
-        embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`\n{interaction.user.mention}", inline=True)
+        embed.add_field(name="User", value=user.mention, inline=True)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
         embed.add_field(name="Was Muted For", value=f"`{muted_duration or 'Unknown'}`", inline=True)
 
         if case_info:
@@ -807,22 +850,61 @@ class MuteCog(commands.Cog):
         # Note: Reason intentionally not shown in public embed
         # Only visible in DMs, case logs, and mod logs
 
-        embed.set_thumbnail(url=target_member.display_avatar.url)
         set_footer(embed)
+
+        # Generate unjail bars GIF (bars opening)
+        unjail_gif = None
+        unjail_file = None
+        try:
+            unjail_gif = await generate_unjail_gif(target_member.display_avatar.url, user_id=user.id)
+            if unjail_gif:
+                unjail_file = discord.File(unjail_gif, filename="unjail.gif")
+                embed.set_image(url="attachment://unjail.gif")
+            else:
+                # Fallback to thumbnail if GIF generation fails
+                embed.set_thumbnail(url=target_member.display_avatar.url)
+        except Exception as e:
+            logger.warning("Unjail GIF Generation Failed", [
+                ("User", f"{user.name} ({user.id})"),
+                ("Error", str(e)[:50]),
+            ])
+            embed.set_thumbnail(url=target_member.display_avatar.url)
 
         sent_message = None
         try:
             if case_info:
                 view = CaseButtonView(target_guild.id, case_info["thread_id"], user.id)
-                sent_message = await interaction.followup.send(embed=embed, view=view)
+                sent_message = await interaction.followup.send(
+                    embed=embed,
+                    view=view,
+                    file=unjail_file if unjail_file else discord.utils.MISSING,
+                )
             else:
-                sent_message = await interaction.followup.send(embed=embed)
+                sent_message = await interaction.followup.send(
+                    embed=embed,
+                    file=unjail_file if unjail_file else discord.utils.MISSING,
+                )
         except Exception as e:
             logger.error("Unmute Followup Failed", [
                 ("User", f"{user.name} ({user.id})"),
                 ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
                 ("Error", str(e)[:100]),
             ])
+
+        # Replace GIF with static avatar after animation completes
+        if sent_message and unjail_file:
+            try:
+                await asyncio.sleep(1.5)  # Wait for animation to finish
+                # For unmute, just show the avatar as thumbnail (no bars)
+                embed.set_image(url=discord.Embed.Empty)
+                embed.set_thumbnail(url=target_member.display_avatar.url)
+                if case_info:
+                    view = CaseButtonView(target_guild.id, case_info["thread_id"], user.id)
+                    await sent_message.edit(embed=embed, attachments=[], view=view)
+                else:
+                    await sent_message.edit(embed=embed, attachments=[])
+            except Exception:
+                pass  # Silent fail - animation already played
 
         # ---------------------------------------------------------------------
         # Concurrent Post-Response Operations
@@ -1027,16 +1109,14 @@ class MuteCog(commands.Cog):
         try:
             if action.lower() == "mute":
                 await self.bot.logging_service.log_mute(
-                    guild=user.guild,
-                    target=user,
+                    user=user,
                     moderator=moderator,
                     reason=reason,
                     duration=duration,
                 )
             elif action.lower() == "unmute":
                 await self.bot.logging_service.log_unmute(
-                    guild=user.guild,
-                    target=user,
+                    user=user,
                     moderator=moderator,
                     reason=reason,
                 )

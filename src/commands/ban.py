@@ -41,6 +41,7 @@ from src.utils.views import CaseButtonView
 from src.utils.duration import format_duration
 from src.utils.async_utils import create_safe_task
 from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
+from src.utils.ban_gif import generate_ban_gif
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -380,14 +381,12 @@ class BanCog(commands.Cog):
         # -----------------------------------------------------------------
 
         title = "🧹 User Softbanned" if is_softban else "🔨 User Banned"
-        action_word = "softbanned" if is_softban else "banned"
         embed = discord.Embed(
             title=title,
-            description=f"**{user.display_name}** has been {action_word} from the server.",
-            color=EmbedColors.ERROR,
+            color=EmbedColors.GOLD,
         )
-        embed.add_field(name="User", value=f"`{user.name}`\n{user.mention}", inline=True)
-        embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`\n{interaction.user.mention}", inline=True)
+        embed.add_field(name="User", value=user.mention, inline=True)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
 
         if case_info:
             embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
@@ -397,16 +396,36 @@ class BanCog(commands.Cog):
         # Note: Reason/Evidence intentionally not shown in public embed
         # Only visible in DMs, case logs, and mod logs
 
-        embed.set_thumbnail(url=user.display_avatar.url)
+        # Generate ban GIF (red overlay + BANNED stamp)
+        ban_gif = None
+        ban_file = None
+        try:
+            ban_gif = await generate_ban_gif(user.display_avatar.url, user_id=user.id)
+            if ban_gif:
+                ban_file = discord.File(ban_gif, filename="ban.gif")
+                embed.set_image(url="attachment://ban.gif")
+            else:
+                # Fallback to thumbnail if GIF generation fails
+                embed.set_thumbnail(url=user.display_avatar.url)
+        except Exception as e:
+            logger.debug(f"Ban GIF generation failed: {e}")
+            embed.set_thumbnail(url=user.display_avatar.url)
+
         set_footer(embed)
 
         sent_message = None
         try:
             if case_info:
                 view = CaseButtonView(target_guild.id, case_info["thread_id"], user.id)
-                sent_message = await interaction.followup.send(embed=embed, view=view)
+                if ban_file:
+                    sent_message = await interaction.followup.send(embed=embed, file=ban_file, view=view)
+                else:
+                    sent_message = await interaction.followup.send(embed=embed, view=view)
             else:
-                sent_message = await interaction.followup.send(embed=embed)
+                if ban_file:
+                    sent_message = await interaction.followup.send(embed=embed, file=ban_file)
+                else:
+                    sent_message = await interaction.followup.send(embed=embed)
         except Exception as e:
             logger.error("Ban Followup Failed", [
                 ("User", f"{user.name} ({user.id})"),
@@ -743,11 +762,10 @@ class BanCog(commands.Cog):
 
         embed = discord.Embed(
             title="🔓 User Unbanned",
-            description=f"**{target_user.name}** has been unbanned from the server.",
-            color=EmbedColors.SUCCESS,
+            color=EmbedColors.GREEN,
         )
-        embed.add_field(name="User", value=f"`{target_user.name}`\n{target_user.mention}", inline=True)
-        embed.add_field(name="Moderator", value=f"`{interaction.user.display_name}`\n{interaction.user.mention}", inline=True)
+        embed.add_field(name="User", value=target_user.mention, inline=True)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
 
         if case_info:
             embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)

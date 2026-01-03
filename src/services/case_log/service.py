@@ -82,6 +82,140 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
         self._pending_profile_updates: Dict[int, dict] = {}
         self._profile_update_task: Optional[asyncio.Task] = None
 
+        # Forum tag cache: tag_name -> ForumTag
+        self._tag_cache: Dict[str, discord.ForumTag] = {}
+        self._tags_initialized: bool = False
+
+    # =========================================================================
+    # Forum Tag Definitions
+    # =========================================================================
+
+    # Status tags
+    TAG_PENDING_REVIEW = ("🔴 Pending Review", discord.Colour.red())
+    TAG_APPROVED = ("🟢 Approved", discord.Colour.green())
+
+    # Action type tags
+    TAG_MUTE = ("🔇 Mute", discord.Colour.orange())
+    TAG_BAN = ("🔨 Ban", discord.Colour.dark_red())
+    TAG_WARN = ("⚠️ Warn", discord.Colour.gold())
+    TAG_FORBID = ("🚫 Forbid", discord.Colour.purple())
+
+    ALL_TAGS = [TAG_PENDING_REVIEW, TAG_APPROVED, TAG_MUTE, TAG_BAN, TAG_WARN, TAG_FORBID]
+
+    # =========================================================================
+    # Forum Tag Management
+    # =========================================================================
+
+    async def ensure_forum_tags(self) -> bool:
+        """
+        Ensure all required tags exist on the case forum.
+        Creates missing tags and caches all tag references.
+
+        Returns:
+            True if tags are ready, False if failed.
+        """
+        if self._tags_initialized:
+            return True
+
+        if not self.enabled:
+            return False
+
+        try:
+            forum = await self._get_forum()
+            if not forum:
+                logger.warning("Case Log: Cannot ensure tags - forum not found")
+                return False
+
+            existing_tags = {tag.name: tag for tag in forum.available_tags}
+            tags_to_create = []
+            created_count = 0
+
+            # Check which tags need to be created
+            for tag_name, tag_color in self.ALL_TAGS:
+                if tag_name in existing_tags:
+                    self._tag_cache[tag_name] = existing_tags[tag_name]
+                else:
+                    tags_to_create.append(discord.ForumTag(name=tag_name, emoji=None, moderated=False))
+
+            # Create missing tags (need to update forum with all tags)
+            if tags_to_create:
+                new_tags = list(forum.available_tags) + tags_to_create
+                # Discord limits to 20 tags
+                if len(new_tags) > 20:
+                    logger.warning("Case Log: Too many tags, cannot add all")
+                    new_tags = new_tags[:20]
+
+                await forum.edit(available_tags=new_tags)
+                created_count = len(tags_to_create)
+
+                # Refresh forum to get new tag IDs
+                forum = await self.bot.fetch_channel(self.config.case_log_forum_id)
+                if forum and isinstance(forum, discord.ForumChannel):
+                    for tag in forum.available_tags:
+                        self._tag_cache[tag.name] = tag
+
+            self._tags_initialized = True
+
+            if created_count > 0:
+                logger.tree("Case Forum Tags Created", [
+                    ("Created", str(created_count)),
+                    ("Total Tags", str(len(self._tag_cache))),
+                ], emoji="🏷️")
+            else:
+                logger.tree("Case Forum Tags Ready", [
+                    ("Tags Cached", str(len(self._tag_cache))),
+                ], emoji="🏷️")
+
+            return True
+
+        except discord.Forbidden:
+            logger.error("Case Log: No permission to manage forum tags")
+            return False
+        except Exception as e:
+            logger.error("Case Log: Failed to ensure forum tags", [
+                ("Error", str(e)[:100]),
+            ])
+            return False
+
+    def get_tags_for_case(self, action_type: str, is_approved: bool = False) -> List[discord.ForumTag]:
+        """
+        Get the appropriate tags for a case.
+
+        Args:
+            action_type: The action type (mute, ban, warn, forbid).
+            is_approved: Whether the case is approved.
+
+        Returns:
+            List of ForumTag objects to apply.
+        """
+        tags = []
+
+        # Status tag
+        if is_approved:
+            status_tag = self._tag_cache.get(self.TAG_APPROVED[0])
+        else:
+            status_tag = self._tag_cache.get(self.TAG_PENDING_REVIEW[0])
+
+        if status_tag:
+            tags.append(status_tag)
+
+        # Action type tag
+        action_tag_map = {
+            "mute": self.TAG_MUTE[0],
+            "timeout": self.TAG_MUTE[0],
+            "ban": self.TAG_BAN[0],
+            "warn": self.TAG_WARN[0],
+            "forbid": self.TAG_FORBID[0],
+        }
+
+        action_tag_name = action_tag_map.get(action_type.lower())
+        if action_tag_name:
+            action_tag = self._tag_cache.get(action_tag_name)
+            if action_tag:
+                tags.append(action_tag)
+
+        return tags
+
     # =========================================================================
     # Properties
     # =========================================================================
@@ -121,6 +255,9 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
         """Start the background task for checking expired pending reasons."""
         if self._reason_check_task and not self._reason_check_task.done():
             self._reason_check_task.cancel()
+
+        # Ensure forum tags exist on startup
+        await self.ensure_forum_tags()
 
         self._reason_check_running = True
         self._reason_check_task = create_safe_task(
@@ -563,12 +700,14 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
 
             self._thread_cache[thread.id] = (thread, datetime.now(NY_TZ))
 
+            tag_names = [t.name for t in case_tags] if case_tags else []
             logger.tree("ACTION CASE CREATED", [
                 ("User", user.name),
                 ("ID", str(user.id)),
                 ("Action", action_type.title()),
                 ("Case ID", case_id),
                 ("Thread ID", str(thread.id)),
+                ("Tags", ", ".join(tag_names) if tag_names else "None"),
                 ("Control Panel", "Yes" if control_panel_msg_id else "No"),
             ], emoji="📂")
 
@@ -660,10 +799,14 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
         display_name = user.display_name if hasattr(user, 'display_name') else user.name
         thread_name = f"[{case_id}] | {action_display} | {display_name}"
 
+        # Get tags for this case
+        case_tags = self.get_tags_for_case(action_type, is_approved=False)
+
         try:
             thread_with_msg = await forum.create_thread(
                 name=thread_name[:100],
                 embed=user_embed,
+                applied_tags=case_tags if case_tags else None,
             )
 
             try:

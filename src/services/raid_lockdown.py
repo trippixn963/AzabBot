@@ -262,7 +262,7 @@ class RaidLockdownService:
                 "The server has been automatically locked to protect members.\n\n"
                 f"Detected: `{join_count}` accounts joined in `{time_window}` seconds"
             ),
-            color=0xFF0000,  # Red
+            color=EmbedColors.GOLD,  # Public-facing uses GOLD
             timestamp=datetime.now(NY_TZ),
         )
         embed.add_field(

@@ -395,9 +395,8 @@ class MuteScheduler:
 
         try:
             await self.bot.logging_service.log_unmute(
-                guild=guild,
-                target=user,
-                moderator=self.bot.user,
+                user=user,
+                moderator=None,  # System/auto unmute
                 reason="Mute duration expired",
             )
         except Exception as e:

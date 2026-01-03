@@ -198,7 +198,7 @@ class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ld:(?
         deny_embed = discord.Embed(
             title="Link Cancelled",
             description="The link request was cancelled.",
-            color=EmbedColors.RED,
+            color=EmbedColors.GOLD,
             timestamp=datetime.now(NY_TZ),
         )
         set_footer(deny_embed)
@@ -389,11 +389,11 @@ class LinkCog(commands.Cog):
             try:
                 msg_id = int(message_id)
             except ValueError:
-                logger.tree("Link Command Failed", [
+                logger.warning("Link Command Failed", [
                     ("User", str(interaction.user)),
                     ("Message ID", message_id),
                     ("Reason", "Invalid message ID format"),
-                ], emoji="⚠️")
+                ])
                 await interaction.response.send_message(
                     "Invalid message ID. Please provide a valid number.",
                     ephemeral=True,
@@ -404,11 +404,11 @@ class LinkCog(commands.Cog):
             try:
                 parsed_member_id = int(member_id)
             except ValueError:
-                logger.tree("Link Command Failed", [
+                logger.warning("Link Command Failed", [
                     ("User", str(interaction.user)),
                     ("Member ID", member_id),
                     ("Reason", "Invalid member ID format"),
-                ], emoji="⚠️")
+                ])
                 await interaction.response.send_message(
                     "Invalid member ID. Please provide a valid number.",
                     ephemeral=True,
@@ -422,12 +422,12 @@ class LinkCog(commands.Cog):
             # Fetch member from target guild
             member = target_guild.get_member(parsed_member_id)
             if not member:
-                logger.tree("Link Command Failed", [
+                logger.warning("Link Command Failed", [
                     ("User", str(interaction.user)),
                     ("Member ID", str(parsed_member_id)),
                     ("Reason", "Member not found in target guild"),
                     ("Target Guild", target_guild.name),
-                ], emoji="⚠️")
+                ])
                 await interaction.response.send_message(
                     f"Member with ID `{parsed_member_id}` not found in {target_guild.name}.",
                     ephemeral=True,
@@ -461,11 +461,11 @@ class LinkCog(commands.Cog):
             try:
                 message = await channel.fetch_message(msg_id)
             except discord.NotFound:
-                logger.tree("Link Command Failed", [
+                logger.warning("Link Command Failed", [
                     ("User", str(interaction.user)),
                     ("Message ID", str(msg_id)),
                     ("Reason", "Message not found"),
-                ], emoji="⚠️")
+                ])
                 await interaction.response.send_message(
                     "Message not found in the alliance channel.",
                     ephemeral=True,
@@ -486,12 +486,12 @@ class LinkCog(commands.Cog):
             # Check if already linked
             existing = self.db.get_linked_message(msg_id, channel.id)
             if existing:
-                logger.tree("Link Command Failed", [
+                logger.warning("Link Command Failed", [
                     ("User", str(interaction.user)),
                     ("Message ID", str(msg_id)),
                     ("Reason", "Message already linked"),
                     ("Linked To", str(existing['member_id'])),
-                ], emoji="⚠️")
+                ])
                 await interaction.response.send_message(
                     f"This message is already linked to <@{existing['member_id']}>.",
                     ephemeral=True,

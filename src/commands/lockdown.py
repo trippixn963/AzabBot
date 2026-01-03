@@ -199,8 +199,6 @@ class LockdownCog(commands.Cog):
                         color=EmbedColors.ERROR,
                         timestamp=datetime.now(NY_TZ),
                     )
-                    if reason:
-                        announcement.add_field(name="Reason", value=reason, inline=False)
                     set_footer(announcement)
                     try:
                         await general_channel.send(embed=announcement)

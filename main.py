@@ -28,9 +28,13 @@ Server: discord.gg/syria
 import asyncio
 import fcntl
 import os
+import platform
 import signal
+import subprocess
 import sys
 import tempfile
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -54,6 +58,33 @@ LOCK_FILE_PATH = Path(tempfile.gettempdir()) / "azab_bot.lock"
 
 FILE_PERMISSION_RW = 0o644
 """File permission for lock file (owner read/write, others read)."""
+
+BOT_NAME = "Azab"
+"""Bot display name for logging."""
+
+RUN_ID = str(uuid.uuid4())[:8]
+"""Unique identifier for this bot run (first 8 chars of UUID)."""
+
+
+def _get_start_time() -> str:
+    """Get formatted start time."""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _get_git_commit() -> str:
+    """Get current git commit hash (short)."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
 
 
 # =============================================================================
@@ -266,12 +297,15 @@ async def main() -> None:
         ])
         sys.exit(1)
 
-    logger.tree("📦 AZAB STARTING", [
-        ("Purpose", "Prison Warden Bot"),
-        ("Features", "AI roasts, prisoner tracking, moderation"),
-        ("Lock File", str(LOCK_FILE_PATH)),
+    logger.tree(f"{BOT_NAME} Starting", [
+        ("Run ID", RUN_ID),
+        ("Started At", _get_start_time()),
+        ("Version", _get_git_commit()),
+        ("Host", platform.node()),
         ("PID", str(os.getpid())),
-    ])
+        ("Python", platform.python_version()),
+        ("Developer", "حَـــــنَّـــــا"),
+    ], emoji="🚀")
 
     token = os.getenv("DISCORD_TOKEN")
     if not token:

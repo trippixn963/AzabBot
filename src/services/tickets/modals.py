@@ -82,11 +82,11 @@ class TicketCreateModal(discord.ui.Modal, title="Create Ticket"):
                 ], emoji="🎫")
                 await interaction.followup.send(f"✅ {message}", ephemeral=True)
             else:
-                logger.tree("Ticket Creation Failed (Modal)", [
+                logger.error("Ticket Creation Failed (Modal)", [
                     ("User", f"{interaction.user.name} ({interaction.user.id})"),
                     ("Category", self.category),
                     ("Reason", message),
-                ], emoji="❌")
+                ])
                 await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
         except Exception as e:
@@ -180,11 +180,11 @@ class TicketCloseModal(discord.ui.Modal, title="Close Ticket"):
             ], emoji="🔒")
             # No ephemeral message - the channel embed is sufficient
         else:
-            logger.tree("Ticket Close Failed (Modal)", [
+            logger.error("Ticket Close Failed (Modal)", [
                 ("Ticket ID", self.ticket_id),
                 ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
                 ("Reason", message),
-            ], emoji="❌")
+            ])
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
 
 
@@ -229,13 +229,13 @@ class TicketAddUserModal(discord.ui.Modal, title="Add User to Ticket"):
         elif user_input.isdigit():
             user_id = int(user_input)
         else:
-            logger.tree("Ticket Add User Failed", [
+            logger.error("Ticket Add User Failed", [
                 ("Ticket ID", self.ticket_id),
                 ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
                 ("ID", str(interaction.user.id)),
                 ("Input", user_input[:50]),
                 ("Reason", "Invalid user format"),
-            ], emoji="❌")
+            ])
             await interaction.response.send_message(
                 "❌ Invalid user. Please enter a user ID or @mention.",
                 ephemeral=True,
@@ -292,10 +292,10 @@ class TicketAddUserModal(discord.ui.Modal, title="Add User to Ticket"):
             ], emoji="➕")
             # No followup - the channel embed is sufficient
         else:
-            logger.tree("Add User Failed (Modal)", [
+            logger.error("Add User Failed (Modal)", [
                 ("Ticket ID", self.ticket_id),
                 ("User", f"{member.name} ({member.id})"),
                 ("Added By", f"{interaction.user.name} ({interaction.user.id})"),
                 ("Reason", message),
-            ], emoji="❌")
+            ])
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
