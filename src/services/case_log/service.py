@@ -126,33 +126,46 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
                 logger.warning("Case Log: Cannot ensure tags - forum not found")
                 return False
 
+            # Cache all existing tags first
             existing_tags = {tag.name: tag for tag in forum.available_tags}
-            tags_to_create = []
-            created_count = 0
+            for tag in forum.available_tags:
+                self._tag_cache[tag.name] = tag
 
-            # Check which tags need to be created
+            # Find which tags we need to create
+            tags_to_create_names = []
             for tag_name, tag_color in self.ALL_TAGS:
-                if tag_name in existing_tags:
-                    self._tag_cache[tag_name] = existing_tags[tag_name]
-                else:
-                    tags_to_create.append(discord.ForumTag(name=tag_name, emoji=None, moderated=False))
+                if tag_name not in existing_tags:
+                    tags_to_create_names.append(tag_name)
 
             # Create missing tags (need to update forum with all tags)
-            if tags_to_create:
-                new_tags = list(forum.available_tags) + tags_to_create
+            created_count = 0
+            if tags_to_create_names:
+                # Build new tags list - existing + new
+                new_tags = list(forum.available_tags)
+                for tag_name in tags_to_create_names:
+                    new_tags.append(discord.ForumTag(name=tag_name, emoji=None, moderated=False))
+
                 # Discord limits to 20 tags
                 if len(new_tags) > 20:
                     logger.warning("Case Log: Too many tags, cannot add all")
                     new_tags = new_tags[:20]
 
-                await forum.edit(available_tags=new_tags)
-                created_count = len(tags_to_create)
+                try:
+                    await forum.edit(available_tags=new_tags)
+                    created_count = len(tags_to_create_names)
 
-                # Refresh forum to get new tag IDs
-                forum = await self.bot.fetch_channel(self.config.case_log_forum_id)
-                if forum and isinstance(forum, discord.ForumChannel):
-                    for tag in forum.available_tags:
-                        self._tag_cache[tag.name] = tag
+                    # Refresh forum to get new tag IDs
+                    forum = await self.bot.fetch_channel(self.config.case_log_forum_id)
+                    if forum and isinstance(forum, discord.ForumChannel):
+                        for tag in forum.available_tags:
+                            self._tag_cache[tag.name] = tag
+
+                except discord.HTTPException as e:
+                    # If tags already exist (race condition), just cache what we have
+                    if "unique" in str(e).lower() or "40061" in str(e):
+                        logger.debug("Case Log: Tags already exist, using existing tags")
+                    else:
+                        raise
 
             self._tags_initialized = True
 
