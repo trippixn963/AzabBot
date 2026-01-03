@@ -16,6 +16,7 @@ Server: discord.gg/syria
 """
 
 import asyncio
+import time
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, Dict
 
@@ -235,7 +236,6 @@ class AppealService:
             return (False, "You can only appeal your own cases", None)
 
         # Check cooldown (24h between appeals for same case)
-        import time
         last_appeal_time = self.db.get_last_appeal_time(case_id)
         if last_appeal_time:
             time_since_last = time.time() - last_appeal_time
@@ -920,6 +920,10 @@ class ApproveAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"
         )
 
         if not has_permission:
+            logger.warning("Appeal Approve Permission Denied", [
+                ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Appeal ID", self.appeal_id),
+            ])
             await interaction.response.send_message(
                 "You don't have permission to approve appeals.",
                 ephemeral=True,
@@ -977,6 +981,10 @@ class DenyAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"app
         )
 
         if not has_permission:
+            logger.warning("Appeal Deny Permission Denied", [
+                ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Appeal ID", self.appeal_id),
+            ])
             await interaction.response.send_message(
                 "You don't have permission to deny appeals.",
                 ephemeral=True,
@@ -1027,6 +1035,10 @@ class OpenAppealTicketButton(discord.ui.DynamicItem[discord.ui.Button], template
         )
 
         if not has_permission:
+            logger.warning("Appeal Ticket Permission Denied", [
+                ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Appeal ID", self.appeal_id),
+            ])
             await interaction.response.send_message(
                 "You don't have permission to open appeal tickets.",
                 ephemeral=True,
@@ -1146,6 +1158,10 @@ class ContactBannedUserButton(discord.ui.DynamicItem[discord.ui.Button], templat
         )
 
         if not has_permission:
+            logger.warning("Appeal Contact Permission Denied", [
+                ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Appeal ID", self.appeal_id),
+            ])
             await interaction.response.send_message(
                 "You don't have permission to contact banned users.",
                 ephemeral=True,
@@ -1373,6 +1389,11 @@ class SubmitAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"s
         # This button should only appear in the original case thread
         # and only the affected user can submit
         if interaction.user.id != self.user_id:
+            logger.warning("Appeal Button Wrong User", [
+                ("Clicked By", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Expected User", str(self.user_id)),
+                ("Case ID", self.case_id),
+            ])
             await interaction.response.send_message(
                 "You can only appeal your own cases.",
                 ephemeral=True,
@@ -1382,6 +1403,10 @@ class SubmitAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"s
         # Check if appeal service is available
         bot = interaction.client
         if not hasattr(bot, "appeal_service") or not bot.appeal_service:
+            logger.warning("Appeal Service Unavailable", [
+                ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Case ID", self.case_id),
+            ])
             await interaction.response.send_message(
                 "Appeal system is not available.",
                 ephemeral=True,
@@ -1391,6 +1416,11 @@ class SubmitAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"s
         # Check eligibility
         can_appeal, reason, _ = bot.appeal_service.can_appeal(self.case_id)
         if not can_appeal:
+            logger.tree("Appeal Eligibility Failed", [
+                ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Case ID", self.case_id),
+                ("Reason", reason or "Unknown"),
+            ], emoji="⚠️")
             await interaction.response.send_message(
                 f"Cannot submit appeal: {reason}",
                 ephemeral=True,

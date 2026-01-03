@@ -603,6 +603,10 @@ class ModmailCloseButton(
             return
 
         if not isinstance(interaction.channel, discord.Thread):
+            logger.warning("Modmail Close Wrong Channel Type", [
+                ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Channel Type", type(interaction.channel).__name__),
+            ])
             await interaction.response.send_message(
                 "This can only be used in a thread.",
                 ephemeral=True
@@ -623,6 +627,10 @@ class ModmailCloseButton(
                 allowed_mentions=discord.AllowedMentions.none()
             )
         else:
+            logger.warning("Modmail Close Failed", [
+                ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Thread", str(interaction.channel.id)),
+            ])
             await interaction.followup.send(
                 "Failed to close modmail.",
                 ephemeral=True

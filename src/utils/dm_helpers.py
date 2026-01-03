@@ -167,7 +167,7 @@ def build_moderation_dm(
 
 def build_appeal_dm(
     action_type: str,
-    case_id: int,
+    case_id: str,
     guild: discord.Guild,
 ) -> discord.Embed:
     """
