@@ -378,11 +378,11 @@ class CaseLogExtendedActionsMixin:
                         )
 
                 # Update control panel to show resolved status
+                # Note: Don't pass moderator - preserve original moderator who took action
                 await self._update_control_panel(
                     case_id=active_ban_case["case_id"],
                     case_thread=case_thread,
                     new_status="resolved",
-                    moderator=moderator,
                 )
 
                 # Re-lock the thread if it was locked
@@ -628,11 +628,11 @@ class CaseLogExtendedActionsMixin:
                     )
 
             # Update control panel to show resolved status
+            # Note: Don't pass moderator - preserve original moderator who took action
             await self._update_control_panel(
                 case_id=active_case["case_id"],
                 case_thread=case_thread,
                 new_status="resolved",
-                moderator=moderator,
             )
 
             # Re-lock the thread if it was locked

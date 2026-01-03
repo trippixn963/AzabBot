@@ -1482,10 +1482,11 @@ class ApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"approv
                     control_msg = await safe_fetch_message(thread, control_panel_msg_id)
                     if control_msg:
                         # Build updated control panel embed
+                        # Note: Don't pass moderator here - use case data to preserve original moderator
                         control_embed = build_control_panel_embed(
                             case=case,
                             user=None,
-                            moderator=interaction.user,
+                            moderator=None,  # Let it use case.get("moderator_id")
                             status="approved",
                         )
 
