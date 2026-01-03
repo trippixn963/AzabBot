@@ -110,6 +110,7 @@ WEBHOOK_TIME_WINDOW = 10  # seconds
 
 # Memory bounds: Maximum tracked users per guild to prevent unbounded growth
 MAX_TRACKED_USERS_PER_GUILD = 5000
+MAX_IMAGE_HASHES_PER_USER = 50  # Max unique image hashes to track per user
 
 # Arabic characters range (exempt from char spam and lenient on duplicates)
 # Arabic script: U+0600 to U+06FF
@@ -653,13 +654,19 @@ class AntiSpamService:
                     del guild_states[user_id]
                 logger.debug(f"Anti-spam: Evicted {excess} oldest users from guild {guild_id}")
 
-        # Clean image hashes
+        # Clean image hashes (TTL + size limit)
         image_cutoff = now - timedelta(seconds=IMAGE_DUPLICATE_TIME_WINDOW * 2)
         for guild_hashes in self._image_hashes.values():
             for user_id, hashes in list(guild_hashes.items()):
-                guild_hashes[user_id] = [
+                # First filter by TTL
+                valid_hashes = [
                     (h, t) for h, t in hashes if t > image_cutoff
                 ]
+                # Then enforce size limit (keep most recent)
+                if len(valid_hashes) > MAX_IMAGE_HASHES_PER_USER:
+                    valid_hashes.sort(key=lambda x: x[1], reverse=True)
+                    valid_hashes = valid_hashes[:MAX_IMAGE_HASHES_PER_USER]
+                guild_hashes[user_id] = valid_hashes
                 if not guild_hashes[user_id]:
                     del guild_hashes[user_id]
 

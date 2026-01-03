@@ -66,3 +66,14 @@ PRIORITY_LOW = 3       # Informational logs (avatar changes, etc.)
 # Queue processing
 QUEUE_PROCESS_INTERVAL = 0.5  # Seconds between processing items
 QUEUE_BATCH_SIZE = 5  # Max items to process per batch (prioritized)
+
+# =============================================================================
+# Cache Limits
+# =============================================================================
+
+# Maximum entries per cache to prevent memory growth
+ACTION_HISTORY_MAX_ENTRIES = 100  # Max action types tracked per mod
+BAN_HISTORY_MAX_ENTRIES = 500     # Max ban records per mod
+PERMISSION_CHANGES_MAX = 100      # Max permission change records per mod
+TARGET_ACTIONS_MAX_ENTRIES = 100  # Max targets tracked per mod
+CACHE_CLEANUP_INTERVAL = 3600     # Run cleanup every hour

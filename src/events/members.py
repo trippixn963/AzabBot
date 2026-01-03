@@ -47,10 +47,13 @@ class MemberEvents(commands.Cog):
             return
 
         # -----------------------------------------------------------------
-        # Mute Role Detection
+        # Mute Role Detection (using set for O(1) lookup)
         # -----------------------------------------------------------------
-        had_muted = any(r.id == self.config.muted_role_id for r in before.roles)
-        has_muted = any(r.id == self.config.muted_role_id for r in after.roles)
+        before_role_ids = {r.id for r in before.roles}
+        after_role_ids = {r.id for r in after.roles}
+
+        had_muted = self.config.muted_role_id in before_role_ids
+        has_muted = self.config.muted_role_id in after_role_ids
 
         if not had_muted and has_muted:
             logger.tree("NEW PRISONER DETECTED", [
@@ -79,8 +82,8 @@ class MemberEvents(commands.Cog):
         # Mod Tracker: Auto-track on role add/remove
         # -----------------------------------------------------------------
         if self.bot.mod_tracker and self.bot.mod_tracker.enabled and self.config.moderation_role_id:
-            had_mod_role = any(r.id == self.config.moderation_role_id for r in before.roles)
-            has_mod_role = any(r.id == self.config.moderation_role_id for r in after.roles)
+            had_mod_role = self.config.moderation_role_id in before_role_ids
+            has_mod_role = self.config.moderation_role_id in after_role_ids
 
             if not had_mod_role and has_mod_role:
                 if not self.bot.mod_tracker.is_tracked(after.id):

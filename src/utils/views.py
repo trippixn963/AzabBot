@@ -135,15 +135,20 @@ async def build_history_embed(
         embed.set_footer(text="0 cases")
         return embed
 
-    # Pre-fetch all unique moderator names in one batch
+    # Pre-fetch all unique moderator names in parallel
     mod_ids = set(c.get("moderator_id") for c in cases if c.get("moderator_id"))
     mod_names = {}
-    for mod_id in mod_ids:
+
+    async def fetch_mod_name(mid: int) -> tuple:
         try:
-            mod = await client.fetch_user(mod_id)
-            mod_names[mod_id] = mod.name[:10]
+            mod = await client.fetch_user(mid)
+            return (mid, mod.name[:10])
         except Exception:
-            mod_names[mod_id] = str(mod_id)[:8]
+            return (mid, str(mid)[:8])
+
+    if mod_ids:
+        results = await asyncio.gather(*[fetch_mod_name(mid) for mid in mod_ids])
+        mod_names = {mid: name for mid, name in results}
 
     # Build compact table
     lines = []

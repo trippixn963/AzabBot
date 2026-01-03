@@ -535,11 +535,14 @@ class AzabBot(commands.Bot):
                 await asyncio.sleep(sleep_seconds)
 
                 # Run cleanup
-                logger.tree("Midnight Polls Cleanup Starting", [
+                logger.tree("Midnight Cleanup Starting", [
                     ("Time", datetime.now(NY_TZ).strftime("%I:%M %p %Z")),
                 ], emoji="🌙")
 
                 await self._scan_and_clean_poll_results()
+
+                # Clean up prisoner tracking for users no longer muted
+                self._cleanup_prisoner_tracking()
 
             except asyncio.CancelledError:
                 logger.tree("Polls Cleanup Scheduler Stopped", [
@@ -552,6 +555,51 @@ class AzabBot(commands.Bot):
                     ("Retry", "1 hour"),
                 ])
                 await asyncio.sleep(3600)  # Retry in 1 hour on error
+
+    def _cleanup_prisoner_tracking(self) -> int:
+        """
+        Clean up prisoner tracking for users no longer muted.
+
+        Removes entries from prisoner_cooldowns, prisoner_message_buffer,
+        and prisoner_pending_response for users not currently muted.
+
+        Returns:
+            Number of entries cleaned up.
+        """
+        if not self.config.muted_role_id:
+            return 0
+
+        # Get all currently muted user IDs across all guilds
+        muted_user_ids: set = set()
+        for guild in self.guilds:
+            for member in guild.members:
+                if any(r.id == self.config.muted_role_id for r in member.roles):
+                    muted_user_ids.add(member.id)
+
+        cleaned = 0
+
+        # Clean cooldowns
+        for user_id in list(self.prisoner_cooldowns.keys()):
+            if user_id not in muted_user_ids:
+                del self.prisoner_cooldowns[user_id]
+                cleaned += 1
+
+        # Clean message buffers
+        for user_id in list(self.prisoner_message_buffer.keys()):
+            if user_id not in muted_user_ids:
+                del self.prisoner_message_buffer[user_id]
+                cleaned += 1
+
+        # Clean pending response flags
+        for user_id in list(self.prisoner_pending_response.keys()):
+            if user_id not in muted_user_ids:
+                del self.prisoner_pending_response[user_id]
+                cleaned += 1
+
+        if cleaned > 0:
+            logger.debug(f"Prisoner tracking cleanup: {cleaned} stale entries removed")
+
+        return cleaned
 
     async def _cache_invites(self) -> None:
         """Cache all server invites for tracking."""

@@ -56,6 +56,11 @@ from .constants import (
     QUEUE_PROCESS_INTERVAL,
     QUEUE_BATCH_SIZE,
     QUEUE_MAX_SIZE,
+    ACTION_HISTORY_MAX_ENTRIES,
+    BAN_HISTORY_MAX_ENTRIES,
+    PERMISSION_CHANGES_MAX,
+    TARGET_ACTIONS_MAX_ENTRIES,
+    CACHE_CLEANUP_INTERVAL,
 )
 from .helpers import CachedMessage, strip_emojis
 from .logs import ModTrackerLogsMixin
@@ -216,6 +221,61 @@ class ModTrackerService(ModTrackerLogsMixin):
         logger.debug("Mod Tracker: Queue processor stopped")
         return remaining
 
+    # =========================================================================
+    # Cache Cleanup
+    # =========================================================================
+
+    def _cleanup_caches(self) -> None:
+        """
+        Clean up memory caches to prevent unbounded growth.
+
+        Evicts old entries from action history, ban history, permission changes,
+        and target action tracking based on configured limits.
+        """
+        now = datetime.now(NY_TZ)
+        cleaned = 0
+
+        # Clean action history (keep only recent actions per mod)
+        for mod_id in list(self._action_history.keys()):
+            for action_type in list(self._action_history[mod_id].keys()):
+                actions = self._action_history[mod_id][action_type]
+                if len(actions) > ACTION_HISTORY_MAX_ENTRIES:
+                    # Keep most recent entries
+                    self._action_history[mod_id][action_type] = sorted(actions)[-ACTION_HISTORY_MAX_ENTRIES:]
+                    cleaned += len(actions) - ACTION_HISTORY_MAX_ENTRIES
+
+        # Clean ban history (keep only recent bans per mod)
+        for mod_id in list(self._ban_history.keys()):
+            bans = self._ban_history[mod_id]
+            if len(bans) > BAN_HISTORY_MAX_ENTRIES:
+                # Sort by timestamp and keep most recent
+                sorted_bans = sorted(bans.items(), key=lambda x: x[1])
+                self._ban_history[mod_id] = dict(sorted_bans[-BAN_HISTORY_MAX_ENTRIES:])
+                cleaned += len(bans) - BAN_HISTORY_MAX_ENTRIES
+
+        # Clean permission changes (keep only recent per mod)
+        for mod_id in list(self._permission_changes.keys()):
+            changes = self._permission_changes[mod_id]
+            if len(changes) > PERMISSION_CHANGES_MAX:
+                self._permission_changes[mod_id] = sorted(changes)[-PERMISSION_CHANGES_MAX:]
+                cleaned += len(changes) - PERMISSION_CHANGES_MAX
+
+        # Clean target actions (keep only recent targets per mod)
+        for mod_id in list(self._target_actions.keys()):
+            targets = self._target_actions[mod_id]
+            if len(targets) > TARGET_ACTIONS_MAX_ENTRIES:
+                # Sort by most recent action and keep top entries
+                sorted_targets = sorted(
+                    targets.items(),
+                    key=lambda x: max(t[1] for t in x[1]) if x[1] else datetime.min.replace(tzinfo=NY_TZ),
+                    reverse=True
+                )
+                self._target_actions[mod_id] = dict(sorted_targets[:TARGET_ACTIONS_MAX_ENTRIES])
+                cleaned += len(targets) - TARGET_ACTIONS_MAX_ENTRIES
+
+        if cleaned > 0:
+            logger.debug(f"Mod Tracker: Cleaned {cleaned} stale cache entries")
+
     async def _enqueue(
         self,
         thread_id: int,
@@ -268,6 +328,8 @@ class ModTrackerService(ModTrackerLogsMixin):
 
     async def _process_queue(self) -> None:
         """Background task to process the message queue with priority."""
+        last_cleanup = datetime.now(NY_TZ)
+
         while self._queue_running:
             try:
                 items_to_send: List[QueueItem] = []
@@ -283,6 +345,12 @@ class ModTrackerService(ModTrackerLogsMixin):
                         await self._send_queued_item(item)
                         # Small delay between sends to avoid rate limits
                         await rate_limit("mod_tracker")
+
+                # Periodic cache cleanup
+                now = datetime.now(NY_TZ)
+                if (now - last_cleanup).total_seconds() >= CACHE_CLEANUP_INTERVAL:
+                    self._cleanup_caches()
+                    last_cleanup = now
 
                 # Wait before next batch
                 await asyncio.sleep(QUEUE_PROCESS_INTERVAL)
