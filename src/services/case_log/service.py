@@ -713,7 +713,8 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
 
             self._thread_cache[thread.id] = (thread, datetime.now(NY_TZ))
 
-            tag_names = [t.name for t in case_tags] if case_tags else []
+            # Get applied tags from thread for logging
+            tag_names = [t.name for t in thread.applied_tags] if hasattr(thread, 'applied_tags') and thread.applied_tags else []
             logger.tree("ACTION CASE CREATED", [
                 ("User", user.name),
                 ("ID", str(user.id)),
