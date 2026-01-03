@@ -18,7 +18,7 @@ Usage:
     seconds = parse_duration("permanent")  # None
     display = format_duration(None)  # "Permanent"
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 

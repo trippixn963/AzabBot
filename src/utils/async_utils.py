@@ -18,7 +18,7 @@ Usage:
         ("Mod Tracker", update_tracker()),
     )
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 

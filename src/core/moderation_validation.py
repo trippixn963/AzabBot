@@ -23,7 +23,7 @@ Usage:
         await interaction.followup.send(result.error_message, ephemeral=True)
         return
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 

@@ -5,7 +5,7 @@ AzabBot - Centralized Constants
 All magic numbers and constants are defined here for maintainability.
 Import from this module instead of hardcoding values.
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
@@ -27,7 +27,7 @@ MS_PER_SECOND = 1000
 # =============================================================================
 
 # Health check server port (AzabBot uses 8081)
-# Note: OthmanBot=8080, AzabBot=8081, JawdatBot=8082, TahaBot=8083
+# NOTE: OthmanBot=8080, AzabBot=8081, JawdatBot=8082, TahaBot=8083
 HEALTH_CHECK_PORT = 8081
 
 # Stats API port

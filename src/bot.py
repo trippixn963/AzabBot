@@ -198,7 +198,7 @@ class AzabBot(commands.Bot):
             Blocks all slash commands in DMs while allowing buttons/modals
             to continue working (for appeal system, etc.).
 
-            Note: This only affects ApplicationCommand interactions.
+            NOTE: This only affects ApplicationCommand interactions.
             Component (button) and ModalSubmit interactions bypass this check.
             """
             if interaction.guild is None:
