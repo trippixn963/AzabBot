@@ -724,24 +724,25 @@ class MuteCog(commands.Cog):
 
         # Get member from target guild
         target_member = target_guild.get_member(user.id)
-        if not skip_validation:
-            if not target_member:
+        if not target_member:
+            if not skip_validation:
                 guild_name = target_guild.name if cross_server else "this server"
                 await interaction.followup.send(
                     f"User is not a member of {guild_name}.",
                     ephemeral=True,
                 )
-                return
+            return
 
         muted_role = target_guild.get_role(self.config.muted_role_id)
-        if not skip_validation:
-            if not muted_role:
+        if not muted_role:
+            if not skip_validation:
                 await interaction.followup.send(
                     f"Muted role not found (ID: {self.config.muted_role_id}).",
                     ephemeral=True,
                 )
-                return
+            return
 
+        if not skip_validation:
             if muted_role not in target_member.roles:
                 await interaction.followup.send(
                     f"**{target_member.display_name}** is not muted.",
