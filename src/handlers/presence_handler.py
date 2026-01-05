@@ -97,6 +97,10 @@ class PresenceHandler:
                 pass
             self._promo_task = None
 
+        logger.tree("Presence Handler Stopped", [
+            ("Status", "Tasks cancelled"),
+        ], emoji="🛑")
+
     # =========================================================================
     # Main Presence Loop
     # =========================================================================
@@ -138,129 +142,67 @@ class PresenceHandler:
         except Exception as e:
             self._log_presence_error("Presence Update Failed", e)
 
+    def _get_stats(self) -> list[str]:
+        """
+        Get list of all-time stat strings to rotate through.
+
+        Returns only stats with values > 0.
+        """
+        stats = []
+
+        try:
+            # Current prisoners
+            prisoners = self._count_prisoners()
+            if prisoners > 0:
+                stats.append(f"🔒 {prisoners:,} prisoners")
+
+            # Total cases logged
+            row = self.bot.db.fetchone("SELECT COUNT(*) as count FROM cases")
+            if row and row["count"] > 0:
+                stats.append(f"📋 {row['count']:,} cases logged")
+
+            # Total mutes (all time)
+            row = self.bot.db.fetchone("SELECT COUNT(*) as count FROM mute_history")
+            if row and row["count"] > 0:
+                stats.append(f"🔇 {row['count']:,} mutes")
+
+            # Total bans
+            row = self.bot.db.fetchone(
+                "SELECT COUNT(*) as count FROM cases WHERE action_type = 'ban'"
+            )
+            if row and row["count"] > 0:
+                stats.append(f"🔨 {row['count']:,} bans")
+
+            # Total warns
+            row = self.bot.db.fetchone(
+                "SELECT COUNT(*) as count FROM cases WHERE action_type = 'warn'"
+            )
+            if row and row["count"] > 0:
+                stats.append(f"⚠️ {row['count']:,} warnings")
+
+            # Total tickets
+            row = self.bot.db.fetchone("SELECT COUNT(*) as count FROM tickets")
+            if row and row["count"] > 0:
+                stats.append(f"🎫 {row['count']:,} tickets")
+
+        except Exception as e:
+            logger.debug(f"Stats fetch error: {e}")
+
+        return stats
+
     async def _get_rotating_status(self) -> str:
-        """
-        Get the current rotating status text.
+        """Get the current rotating status text from all-time stats."""
+        stats = self._get_stats()
 
-        Cycles through various stats - always shows real numbers.
-        """
-        # List of stat getters
-        stat_getters = [
-            self._get_prisoners_status,
-            self._get_mutes_today_status,
-            self._get_tickets_status,
-            self._get_cases_status,
-            self._get_total_mutes_status,
-            self._get_total_bans_status,
-            self._get_total_warns_status,
-            self._get_week_mutes_status,
-        ]
+        if not stats:
+            logger.debug("No stats available, using promo fallback")
+            return PROMO_TEXT
 
-        self._presence_index = (self._presence_index + 1) % len(stat_getters)
-        getter = stat_getters[self._presence_index]
+        self._presence_index = self._presence_index % len(stats)
+        status = stats[self._presence_index]
+        self._presence_index += 1
 
-        # Handle both sync and async getters
-        if asyncio.iscoroutinefunction(getter):
-            return await getter()
-        return getter()
-
-    def _get_prisoners_status(self) -> str:
-        """Get current prisoners count status."""
-        count = self._count_prisoners()
-        return f"🔒 {count} prisoner{'s' if count != 1 else ''}" if count > 0 else "🔓 0 prisoners"
-
-    async def _get_mutes_today_status(self) -> str:
-        """Get today's mutes count status."""
-        try:
-            today_start = datetime.now(NY_TZ).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            ).timestamp()
-
-            row = self.bot.db.fetchone(
-                """SELECT COUNT(*) as count FROM mute_history
-                   WHERE muted_at >= ?""",
-                (today_start,)
-            )
-            count = row["count"] if row else 0
-            return f"⚡ {count} mute{'s' if count != 1 else ''} today"
-        except Exception:
-            return "⚡ 0 mutes today"
-
-    async def _get_tickets_status(self) -> str:
-        """Get open tickets count status."""
-        try:
-            row = self.bot.db.fetchone(
-                """SELECT COUNT(*) as count FROM tickets
-                   WHERE status IN ('open', 'claimed')"""
-            )
-            count = row["count"] if row else 0
-            return f"🎫 {count} open ticket{'s' if count != 1 else ''}"
-        except Exception:
-            return "🎫 0 open tickets"
-
-    async def _get_cases_status(self) -> str:
-        """Get total cases count status."""
-        try:
-            row = self.bot.db.fetchone(
-                """SELECT COUNT(*) as count FROM cases"""
-            )
-            count = row["count"] if row else 0
-            return f"📋 {count:,} cases logged"
-        except Exception:
-            return "📋 0 cases logged"
-
-    async def _get_total_mutes_status(self) -> str:
-        """Get total mutes ever count."""
-        try:
-            row = self.bot.db.fetchone(
-                """SELECT COUNT(*) as count FROM mute_history"""
-            )
-            count = row["count"] if row else 0
-            return f"🔇 {count:,} total mutes"
-        except Exception:
-            return "🔇 0 total mutes"
-
-    async def _get_total_bans_status(self) -> str:
-        """Get total bans count."""
-        try:
-            row = self.bot.db.fetchone(
-                """SELECT COUNT(*) as count FROM cases WHERE action_type = 'ban'"""
-            )
-            count = row["count"] if row else 0
-            return f"🔨 {count:,} bans issued"
-        except Exception:
-            return "🔨 0 bans issued"
-
-    async def _get_total_warns_status(self) -> str:
-        """Get total warns count."""
-        try:
-            row = self.bot.db.fetchone(
-                """SELECT COUNT(*) as count FROM cases WHERE action_type = 'warn'"""
-            )
-            count = row["count"] if row else 0
-            return f"⚠️ {count:,} warnings given"
-        except Exception:
-            return "⚠️ 0 warnings given"
-
-    async def _get_week_mutes_status(self) -> str:
-        """Get this week's mutes count."""
-        try:
-            week_start = datetime.now(NY_TZ).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
-            # Go back to start of week (Monday)
-            days_since_monday = week_start.weekday()
-            week_start = week_start.timestamp() - (days_since_monday * 86400)
-
-            row = self.bot.db.fetchone(
-                """SELECT COUNT(*) as count FROM mute_history
-                   WHERE muted_at >= ?""",
-                (week_start,)
-            )
-            count = row["count"] if row else 0
-            return f"📊 {count} mutes this week"
-        except Exception:
-            return "📊 0 mutes this week"
+        return status
 
     def _count_prisoners(self) -> int:
         """Count current prisoners across all servers."""
@@ -333,7 +275,11 @@ class PresenceHandler:
         try:
             self._promo_active = False
             await self._update_rotating_presence()
-            logger.info("📢 Promo Presence Ended - Normal Presence Restored")
+
+            logger.tree("Promo Presence Ended", [
+                ("Status", "Normal rotation resumed"),
+            ], emoji="🔄")
+
         except Exception as e:
             self._log_presence_error("Restore Presence Failed", e)
             self._promo_active = False
@@ -358,6 +304,7 @@ class PresenceHandler:
         """
         # Skip during promo
         if self._promo_active:
+            logger.debug(f"Prisoner arrival presence skipped (promo active): {username}")
             return
 
         try:
@@ -379,6 +326,7 @@ class PresenceHandler:
 
             logger.tree("Presence Updated", [
                 ("Event", "Prisoner Arrived"),
+                ("User", username or "Unknown"),
                 ("Status", status_text),
             ], emoji="🔴")
 
@@ -403,6 +351,7 @@ class PresenceHandler:
         """
         # Skip during promo
         if self._promo_active:
+            logger.debug(f"Prisoner release presence skipped (promo active): {username}")
             return
 
         try:
@@ -432,6 +381,8 @@ class PresenceHandler:
 
             logger.tree("Presence Updated", [
                 ("Event", "Prisoner Released"),
+                ("User", username or "Unknown"),
+                ("Duration", time_str if duration_minutes else "N/A"),
                 ("Status", status_text),
             ], emoji="🟢")
 
@@ -459,6 +410,11 @@ class PresenceHandler:
                 # Refresh banner
                 from src.utils.banner import refresh_banner
                 await refresh_banner()
+
+                logger.tree("Midnight Tasks Complete", [
+                    ("Date", today),
+                    ("Task", "Banner refreshed"),
+                ], emoji="🌙")
 
         except Exception as e:
             logger.error("Midnight Tasks Failed", [
