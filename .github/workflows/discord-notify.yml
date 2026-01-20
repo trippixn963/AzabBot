@@ -13,88 +13,69 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Get commit info
-        id: commit
-        run: |
-          # Get title (first line)
-          TITLE=$(git log -1 --pretty=%s)
-          echo "title=$TITLE" >> $GITHUB_OUTPUT
-
-          # Determine commit type and color
-          if echo "$TITLE" | grep -qiE '^fix|bug|patch'; then
-            echo "color=15158332" >> $GITHUB_OUTPUT  # Red for fixes
-            echo "type=🐛 Bug Fix" >> $GITHUB_OUTPUT
-          elif echo "$TITLE" | grep -qiE '^feat|add|new'; then
-            echo "color=3066993" >> $GITHUB_OUTPUT   # Green for features
-            echo "type=✨ New Feature" >> $GITHUB_OUTPUT
-          elif echo "$TITLE" | grep -qiE '^refactor|clean|improve'; then
-            echo "color=10181046" >> $GITHUB_OUTPUT  # Purple for refactor
-            echo "type=♻️ Refactor" >> $GITHUB_OUTPUT
-          elif echo "$TITLE" | grep -qiE '^doc|readme'; then
-            echo "color=3447003" >> $GITHUB_OUTPUT   # Blue for docs
-            echo "type=📚 Documentation" >> $GITHUB_OUTPUT
-          else
-            echo "color=9807270" >> $GITHUB_OUTPUT   # Gray for other
-            echo "type=📝 Update" >> $GITHUB_OUTPUT
-          fi
-
-          # Get body - extract bullet points and convert to numbered list
-          BODY=$(git log -1 --pretty=%b | grep -E '^- ' | nl -w1 -s'. ' | sed 's/^[[:space:]]*//' | sed 's/^[0-9]*\. - /&/' | sed 's/- //')
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$BODY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-          echo "author=$(git log -1 --pretty=%an)" >> $GITHUB_OUTPUT
-          echo "sha=$(git log -1 --pretty=%h)" >> $GITHUB_OUTPUT
-
-          # Get file count and list
-          FILE_COUNT=$(git diff --name-only HEAD~1 HEAD | wc -l | tr -d ' ')
-          echo "file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
-
-          FILES=$(git diff --name-only HEAD~1 HEAD | head -8 | tr '\n' ',' | sed 's/,$//')
-          echo "files=$FILES" >> $GITHUB_OUTPUT
-
-          # Get stats
-          STATS=$(git diff --shortstat HEAD~1 HEAD | sed 's/ files\? changed//' | sed 's/ insertions\?(+)/+/' | sed 's/ deletions\?(-)/−/' | tr -d ' ')
-          echo "stats=${STATS:-no changes}" >> $GITHUB_OUTPUT
-
       - name: Send Discord notification
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          MODS_CATEGORY_ID: ${{ secrets.MODS_CATEGORY_ID }}
         run: |
           set -eo pipefail
 
-          # Read values into variables
-          TITLE='${{ steps.commit.outputs.title }}'
-          BODY='${{ steps.commit.outputs.body }}'
-          FILES='${{ steps.commit.outputs.files }}'
-          TYPE='${{ steps.commit.outputs.type }}'
-          COLOR='${{ steps.commit.outputs.color }}'
-          FILE_COUNT='${{ steps.commit.outputs.file_count }}'
-          SHA='${{ steps.commit.outputs.sha }}'
-          STATS='${{ steps.commit.outputs.stats }}'
-          AUTHOR='${{ steps.commit.outputs.author }}'
-          BRANCH='${{ github.ref_name }}'
-          REPO='${{ github.repository }}'
-          COMMIT_SHA='${{ github.sha }}'
-          BEFORE='${{ github.event.before }}'
-          ACTOR='${{ github.actor }}'
+          # === Gather commit info ===
+          TITLE=$(git log -1 --pretty=%s)
+          AUTHOR=$(git log -1 --pretty=%an)
+          SHA=$(git log -1 --pretty=%h)
+          FULL_SHA="${{ github.sha }}"
+          BEFORE="${{ github.event.before }}"
+          BRANCH="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+          ACTOR="${{ github.actor }}"
           TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-          # Build description with jq
-          if [ -n "$BODY" ]; then
-            DESC=$(jq -n --arg t "$TITLE" --arg b "$BODY" '"**" + $t + "**\n\n```\n" + $b + "```"') || {
-              echo "::error::Failed to build description with jq"
-              exit 1
-            }
-          else
-            DESC=$(jq -n --arg t "$TITLE" '"**" + $t + "**"') || {
-              echo "::error::Failed to build description with jq"
-              exit 1
-            }
+          # === Determine commit type and color (case-insensitive) ===
+          TYPE="📝 Update"
+          COLOR=9807270
+
+          shopt -s nocasematch
+          case "$TITLE" in
+            fix*|bug*|patch*)          TYPE="🐛 Bug Fix";       COLOR=15158332 ;;
+            feat*|add*|new*)           TYPE="✨ New Feature";   COLOR=3066993  ;;
+            refactor*|clean*|improve*) TYPE="♻️ Refactor";      COLOR=10181046 ;;
+            doc*|readme*)              TYPE="📚 Documentation"; COLOR=3447003  ;;
+            test*)                     TYPE="🧪 Tests";         COLOR=16776960 ;;
+          esac
+          shopt -u nocasematch
+
+          # === Extract body (bullet points to numbered list) ===
+          RAW_BODY=$(git log -1 --pretty=%b)
+          BODY=""
+          if [ -n "$RAW_BODY" ]; then
+            BODY=$(echo "$RAW_BODY" | grep -E '^\s*-\s+' | sed 's/^\s*-\s*//' | nl -w1 -s'. ' | sed 's/^ *//' || true)
           fi
 
-          # Build full payload with jq (handles all escaping automatically)
+          # === Get file changes (handle first commit) ===
+          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            FILE_COUNT=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | wc -l | tr -d ' ')
+            FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | head -8 | tr '\n' ',' | sed 's/,$//')
+
+            STAT_LINE=$(git diff --shortstat HEAD~1 HEAD 2>/dev/null || echo "")
+            INSERTIONS=$(echo "$STAT_LINE" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
+            DELETIONS=$(echo "$STAT_LINE" | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo "0")
+            STATS="+${INSERTIONS:-0} −${DELETIONS:-0}"
+          else
+            FILE_COUNT=$(git ls-files | wc -l | tr -d ' ')
+            FILES=$(git ls-files | head -8 | tr '\n' ',' | sed 's/,$//')
+            STATS="initial commit"
+          fi
+
+          # === Build description with jq (safe escaping) ===
+          if [ -n "$BODY" ]; then
+            DESC=$(jq -n --arg t "$TITLE" --arg b "$BODY" '"**" + $t + "**\n\n```\n" + $b + "```"')
+          else
+            DESC=$(jq -n --arg t "$TITLE" '"**" + $t + "**"')
+          fi
+
+          # === Build payload ===
           PAYLOAD=$(jq -n \
             --argjson desc "$DESC" \
             --arg type "$TYPE" \
@@ -105,7 +86,7 @@ jobs:
             --arg stats "$STATS" \
             --arg branch "$BRANCH" \
             --arg repo "$REPO" \
-            --arg commit_sha "$COMMIT_SHA" \
+            --arg full_sha "$FULL_SHA" \
             --arg before "$BEFORE" \
             --arg author "$AUTHOR" \
             --arg actor "$ACTOR" \
@@ -116,74 +97,39 @@ jobs:
                 description: $desc,
                 color: $color,
                 fields: [
-                  {
-                    name: "📁 Files Changed",
-                    value: ("`" + $file_count + "` files\n```" + $files + "```"),
-                    inline: false
-                  },
-                  {
-                    name: "🔗 Commit",
-                    value: ("[`" + $sha + "`](https://github.com/" + $repo + "/commit/" + $commit_sha + ")"),
-                    inline: true
-                  },
-                  {
-                    name: "📊 Changes",
-                    value: ("`" + $stats + "`"),
-                    inline: true
-                  },
-                  {
-                    name: "🌿 Branch",
-                    value: ("`" + $branch + "`"),
-                    inline: true
-                  },
-                  {
-                    name: "🔍 Compare",
-                    value: ("[View Diff](https://github.com/" + $repo + "/compare/" + $before + "..." + $commit_sha + ")"),
-                    inline: true
-                  }
+                  { name: "📁 Files Changed", value: ("`" + $file_count + "` files\n```" + $files + "```"), inline: false },
+                  { name: "🔗 Commit", value: ("[`" + $sha + "`](https://github.com/" + $repo + "/commit/" + $full_sha + ")"), inline: true },
+                  { name: "📊 Changes", value: ("`" + $stats + "`"), inline: true },
+                  { name: "🌿 Branch", value: ("`" + $branch + "`"), inline: true },
+                  { name: "🔍 Compare", value: ("[View Diff](https://github.com/" + $repo + "/compare/" + $before + "..." + $full_sha + ")"), inline: true }
                 ],
-                author: {
-                  name: $author,
-                  icon_url: ("https://github.com/" + $actor + ".png")
-                },
+                author: { name: $author, icon_url: ("https://github.com/" + $actor + ".png") },
                 timestamp: $timestamp,
-                footer: {
-                  text: ("AzabBot • " + $repo),
-                  icon_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-                }
+                footer: { text: ("AzabBot • " + $repo), icon_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" }
               }]
-            }') || {
-            echo "::error::Failed to build JSON payload with jq"
-            exit 1
-          }
+            }')
 
-          # Send to Discord and check response
+          # === Send to Discord ===
           HTTP_CODE=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
             -H "Content-Type: application/json" \
             -X POST -d "$PAYLOAD" "$WEBHOOK_URL")
 
           if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "::error::Discord webhook failed with HTTP $HTTP_CODE"
+            echo "::error::Discord webhook failed (HTTP $HTTP_CODE)"
             cat /tmp/response.txt
             exit 1
           fi
+          echo "✓ Discord notification sent (HTTP $HTTP_CODE)"
 
-          echo "Discord notification sent successfully (HTTP $HTTP_CODE)"
-
-      - name: Update category name with commit ID
-        env:
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          MODS_CATEGORY_ID: ${{ secrets.MODS_CATEGORY_ID }}
-        run: |
-          HTTP_CODE=$(curl -s -o /tmp/category_response.txt -w "%{http_code}" \
+          # === Update category name ===
+          HTTP_CODE=$(curl -s -o /tmp/cat.txt -w "%{http_code}" \
             -X PATCH "https://discord.com/api/v10/channels/${MODS_CATEGORY_ID}" \
             -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"name\": \"AZAB・${{ steps.commit.outputs.sha }}\"}")
+            -d "{\"name\": \"AZAB・${SHA}\"}")
 
           if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "::warning::Failed to update category name (HTTP $HTTP_CODE)"
-            cat /tmp/category_response.txt
+            echo "::warning::Category update failed (HTTP $HTTP_CODE)"
           else
-            echo "Category name updated successfully (HTTP $HTTP_CODE)"
+            echo "✓ Category updated (HTTP $HTTP_CODE)"
           fi

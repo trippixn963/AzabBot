@@ -37,7 +37,9 @@ from .mute_scheduler import MuteScheduler
 from .case_log import CaseLogService
 from .mod_tracker import ModTrackerService
 from .server_logs import LoggingService
-from .webhook_alerts import WebhookAlertService, get_alert_service
+from .status_webhook import StatusWebhookService, get_status_service
+# Compatibility aliases
+from .status_webhook import WebhookAlertService, get_alert_service
 
 
 # =============================================================================
@@ -49,6 +51,9 @@ __all__ = [
     "CaseLogService",
     "ModTrackerService",
     "LoggingService",
+    "StatusWebhookService",
+    "get_status_service",
+    # Compatibility aliases
     "WebhookAlertService",
     "get_alert_service",
 ]

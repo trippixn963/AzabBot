@@ -123,7 +123,9 @@ class CaseLogActionsMixin:
             # Action embeds no longer have buttons - control panel handles all controls
             embed_message = await safe_send(case_thread, embed=embed)
 
-            if not reason and embed_message:
+            # Skip "no reason" warning for developer/owner
+            is_developer = self.config.developer_id and moderator.id == self.config.developer_id
+            if not reason and embed_message and not is_developer:
                 action_type = "extension" if is_extension else "mute"
                 warning_message = await safe_send(
                     case_thread,
@@ -240,7 +242,9 @@ class CaseLogActionsMixin:
             # Action embeds no longer have buttons - control panel handles all controls
             embed_message = await safe_send(case_thread, embed=embed)
 
-            if not reason and embed_message:
+            # Skip "no reason" warning for developer/owner
+            is_developer = self.config.developer_id and moderator.id == self.config.developer_id
+            if not reason and embed_message and not is_developer:
                 warning_message = await safe_send(
                     case_thread,
                     f"⚠️ {moderator.mention} No reason was provided for this warning.\n\n"

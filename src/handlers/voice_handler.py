@@ -117,7 +117,10 @@ class VoiceHandler:
                     action="join",
                 )
         except Exception as e:
-            logger.debug(f"Failed to save voice activity: {e}")
+            logger.warning("Voice Activity Save Failed", [
+                ("Member", str(member)),
+                ("Error", str(e)[:100]),
+            ])
 
     async def _enforce_muted_vc_restriction(
         self,
@@ -173,7 +176,7 @@ class VoiceHandler:
         # 3. Tree Logging
         # -----------------------------------------------------------------
         logger.tree("MUTED USER VC VIOLATION", [
-            ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+            ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
             ("ID", str(member.id)),
             ("Attempted Channel", channel_name),
             ("Action", "Disconnected + 1h Timeout"),

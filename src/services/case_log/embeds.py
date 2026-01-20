@@ -713,6 +713,7 @@ ACTION_DISPLAY = {
 # Status display info
 STATUS_DISPLAY = {
     "open": ("🟢", "Active", EmbedColors.ERROR),
+    "approved": ("✅", "Approved", EmbedColors.SUCCESS),
     "resolved": ("✅", "Resolved", EmbedColors.SUCCESS),
     "expired": ("⏰", "Expired", EmbedColors.INFO),
 }

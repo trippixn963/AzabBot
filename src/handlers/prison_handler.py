@@ -107,7 +107,7 @@ class PrisonHandler:
                 account_age = f"{age_days // 365}y {(age_days % 365) // 30}mo"
 
             logger.tree("Processing New Prisoner", [
-                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
                 ("ID", str(member.id)),
                 ("Account Age", account_age),
             ], emoji="⛓️")
@@ -216,7 +216,8 @@ class PrisonHandler:
             )
 
             logger.tree("Prisoner Welcome Complete", [
-                ("Prisoner", str(member)),
+                ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
+                ("ID", str(member.id)),
                 ("Reason", (mute_reason or "Unknown")[:50]),
                 ("Visit #", str(prisoner_stats["total_mutes"] + 1)),
             ], emoji="😈")
@@ -224,7 +225,8 @@ class PrisonHandler:
         except Exception as e:
             logger.error("Prison Handler Error", [
                 ("Location", "handle_new_prisoner"),
-                ("Member", str(member)),
+                ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
+                ("ID", str(member.id)),
                 ("Error", str(e)),
             ])
 
@@ -239,8 +241,8 @@ class PrisonHandler:
         """
         try:
             logger.tree("Processing Prisoner Release", [
-                ("User", str(member)),
-                ("User ID", str(member.id)),
+                ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
+                ("ID", str(member.id)),
             ], emoji="🔓")
 
             current_duration = await self.bot.db.get_current_mute_duration(member.id)
@@ -325,7 +327,8 @@ class PrisonHandler:
                         reason=f"Prisoner VC violation #{kick_count}"
                     )
                     logger.tree("Timeout Applied", [
-                        ("User", str(member)),
+                        ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
+                        ("ID", str(member.id)),
                         ("Duration", f"{timeout_minutes}min"),
                         ("Offense #", str(kick_count)),
                     ], emoji="⏱️")
@@ -350,7 +353,8 @@ class PrisonHandler:
                 await prison_channel.send(msg)
 
             logger.tree("VC Kick", [
-                ("User", str(member)),
+                ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
+                ("ID", str(member.id)),
                 ("Channel", f"#{vc_name}"),
                 ("Offense #", str(kick_count)),
                 ("Timeout", f"{timeout_minutes}min" if timeout_minutes else "None"),
@@ -358,7 +362,7 @@ class PrisonHandler:
 
         except discord.Forbidden:
             logger.warning("VC Kick Failed (Permissions)", [
-                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
                 ("ID", str(member.id)),
                 ("VC", vc_name),
             ])

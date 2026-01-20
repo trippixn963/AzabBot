@@ -1,0 +1,19 @@
+"""
+AzabBot - Appeal Constants
+==========================
+
+Constants for the appeal system.
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
+"""
+
+# Minimum mute duration (in seconds) that can be appealed (6 hours)
+MIN_APPEALABLE_MUTE_DURATION = 6 * 60 * 60  # 6 hours in seconds
+
+# Appeal cooldown: 24 hours between appeals for the same case
+APPEAL_COOLDOWN_SECONDS = 24 * 60 * 60  # 24 hours
+
+# Appeal rate limit: max 3 appeals per user per week
+MAX_APPEALS_PER_WEEK = 3
+APPEAL_RATE_LIMIT_SECONDS = 7 * 24 * 60 * 60  # 7 days

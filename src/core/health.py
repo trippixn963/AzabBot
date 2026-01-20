@@ -124,7 +124,7 @@ class HealthCheckServer:
         try:
             self.runner = web.AppRunner(self.app)
             await self.runner.setup()
-            site = web.TCPSite(self.runner, "0.0.0.0", self.port)
+            site = web.TCPSite(self.runner, "0.0.0.0", self.port, reuse_address=True)
             await site.start()
 
             logger.tree("Health Server Started", [

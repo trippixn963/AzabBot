@@ -188,7 +188,7 @@ class Config:
     # Optional: Webhooks
     # -------------------------------------------------------------------------
 
-    alert_webhook_url: Optional[str] = None
+    status_webhook_url: Optional[str] = None
     error_webhook_url: Optional[str] = None
     live_logs_webhook_url: Optional[str] = None
 
@@ -203,6 +203,7 @@ class Config:
     # -------------------------------------------------------------------------
 
     whitelisted_webhook_ids: Set[int] = None  # Webhook IDs to exclude from spam detection
+    mention_spam_exempt_channel_ids: Set[int] = None  # Channel IDs exempt from mention spam detection
 
 
 # =============================================================================
@@ -484,6 +485,7 @@ def load_config() -> Config:
     appeal_allowed_user_ids = _parse_int_set(os.getenv("APPEAL_ALLOWED_USER_IDS"))
     modmail_forum_id = _parse_int_optional(os.getenv("MODMAIL_FORUM_ID"))
     whitelisted_webhook_ids = _parse_int_set(os.getenv("WHITELISTED_WEBHOOK_IDS"))
+    mention_spam_exempt_channel_ids = _parse_int_set(os.getenv("MENTION_SPAM_EXEMPT_CHANNEL_IDS"))
 
     # -------------------------------------------------------------------------
     # Build Config Object
@@ -537,7 +539,7 @@ def load_config() -> Config:
         developer_name=os.getenv("DEVELOPER_NAME", "حَـــــنَّـــــا"),
         server_name=os.getenv("SERVER_NAME", "discord.gg/syria"),
         moderator_ids=moderator_ids if moderator_ids else None,
-        alert_webhook_url=_validate_url(os.getenv("ALERT_WEBHOOK_URL"), "ALERT_WEBHOOK_URL"),
+        status_webhook_url=_validate_url(os.getenv("STATUS_WEBHOOK"), "STATUS_WEBHOOK"),
         error_webhook_url=_validate_url(os.getenv("ERROR_WEBHOOK_URL"), "ERROR_WEBHOOK_URL"),
         live_logs_webhook_url=_validate_url(os.getenv("LIVE_LOGS_WEBHOOK_URL"), "LIVE_LOGS_WEBHOOK_URL"),
         ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,
@@ -546,6 +548,7 @@ def load_config() -> Config:
         appeal_allowed_user_ids=appeal_allowed_user_ids if appeal_allowed_user_ids else None,
         modmail_forum_id=modmail_forum_id,
         whitelisted_webhook_ids=whitelisted_webhook_ids if whitelisted_webhook_ids else None,
+        mention_spam_exempt_channel_ids=mention_spam_exempt_channel_ids if mention_spam_exempt_channel_ids else None,
     )
 
 
@@ -604,8 +607,8 @@ def validate_and_log_config() -> None:
         optional_features.append("Mod Logs")
     if config.server_logs_forum_id:
         optional_features.append("Server Logs")
-    if config.alert_webhook_url:
-        optional_features.append("Webhook Alerts")
+    if config.status_webhook_url:
+        optional_features.append("Status Webhook")
 
     missing_optional = []
     if not config.case_log_forum_id:

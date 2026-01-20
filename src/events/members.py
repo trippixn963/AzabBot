@@ -226,7 +226,7 @@ class MemberEvents(commands.Cog):
             account_age = f"{age_days} days"
 
         logger.tree("MEMBER JOINED", [
-            ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+            ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
             ("ID", str(member.id)),
             ("Account Age", account_age),
             ("Invite", invite_code or "Unknown"),
@@ -272,7 +272,7 @@ class MemberEvents(commands.Cog):
             await member.add_roles(muted_role, reason="Mute evasion: User rejoined with active mute")
 
             logger.tree("MUTE EVASION DETECTED", [
-                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
             ("ID", str(member.id)),
                 ("Action", "Re-applied muted role"),
             ], emoji="⚠️")
@@ -287,13 +287,13 @@ class MemberEvents(commands.Cog):
                 except asyncio.TimeoutError:
                     logger.warning("Case Log Timeout", [
                         ("Action", "Mute Evasion Return"),
-                        ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                        ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
             ("ID", str(member.id)),
                     ])
                 except Exception as e:
                     logger.error("Case Log Failed", [
                         ("Action", "Mute Evasion Return"),
-                        ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                        ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
             ("ID", str(member.id)),
                         ("Error", str(e)[:100]),
                     ])
@@ -338,7 +338,7 @@ class MemberEvents(commands.Cog):
         try:
             await member.add_roles(role, reason="Verification role failsafe (backup)")
             logger.tree("VERIFICATION ROLE BACKUP", [
-                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
             ("ID", str(member.id)),
                 ("Action", "Assigned verification role (other bot missed)"),
             ], emoji="✅")
@@ -392,7 +392,7 @@ class MemberEvents(commands.Cog):
 
         leave_type = "BANNED" if was_banned else "MEMBER LEFT"
         logger.tree(leave_type, [
-            ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+            ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
             ("ID", str(member.id)),
             ("Membership", membership_duration),
             ("Roles", str(role_count)),
@@ -412,7 +412,7 @@ class MemberEvents(commands.Cog):
             return
 
         logger.tree("MUTED USER LEFT", [
-            ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+            ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
             ("ID", str(member.id)),
             ("Status", "Left with active mute"),
         ], emoji="🚪")
@@ -431,13 +431,13 @@ class MemberEvents(commands.Cog):
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
                     ("Action", "Member Left Muted"),
-                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                    ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
             ("ID", str(member.id)),
                 ])
             except Exception as e:
                 logger.error("Case Log Failed", [
                     ("Action", "Member Left Muted"),
-                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                    ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
             ("ID", str(member.id)),
                     ("Error", str(e)[:100]),
                 ])
@@ -480,7 +480,7 @@ class MemberEvents(commands.Cog):
 
         if deleted_count > 0 or failed_count > 0:
             logger.tree("LINKED MESSAGES DELETED", [
-                ("Member", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("Member", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
                 ("ID", str(member.id)),
                 ("Deleted", str(deleted_count)),
                 ("Failed", str(failed_count)),

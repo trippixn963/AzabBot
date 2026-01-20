@@ -30,12 +30,6 @@ from src.utils.async_utils import create_safe_task
 from .constants import (
     THREAD_CACHE_TTL,
     THREAD_CACHE_MAX_SIZE,
-    PROFILE_UPDATE_DEBOUNCE,
-    REASON_CHECK_INTERVAL,
-    REASON_EXPIRY_TIME,
-    REASON_CLEANUP_AGE,
-    REPEAT_MUTE_THRESHOLD,
-    REPEAT_WARN_THRESHOLD,
 )
 from .utils import (
     format_duration_precise,
@@ -47,12 +41,21 @@ from .views import CaseLogView, CaseControlPanelView
 from .embeds import build_control_panel_embed
 from .actions import CaseLogActionsMixin
 from .actions_extended import CaseLogExtendedActionsMixin
+from .tags import CaseLogTagsMixin
+from .scheduler import CaseLogSchedulerMixin
+from .updates import CaseLogUpdatesMixin
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
 
 
-class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
+class CaseLogService(
+    CaseLogTagsMixin,
+    CaseLogSchedulerMixin,
+    CaseLogUpdatesMixin,
+    CaseLogActionsMixin,
+    CaseLogExtendedActionsMixin,
+):
     """
     Service for logging moderation actions to forum threads.
 
@@ -87,149 +90,6 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
         self._tags_initialized: bool = False
 
     # =========================================================================
-    # Forum Tag Definitions
-    # =========================================================================
-
-    # Status tags
-    TAG_PENDING_REVIEW = ("🔴 Pending Review", discord.Colour.red())
-    TAG_APPROVED = ("🟢 Approved", discord.Colour.green())
-
-    # Action type tags
-    TAG_MUTE = ("🔇 Mute", discord.Colour.orange())
-    TAG_BAN = ("🔨 Ban", discord.Colour.dark_red())
-    TAG_WARN = ("⚠️ Warn", discord.Colour.gold())
-    TAG_FORBID = ("🚫 Forbid", discord.Colour.purple())
-
-    ALL_TAGS = [TAG_PENDING_REVIEW, TAG_APPROVED, TAG_MUTE, TAG_BAN, TAG_WARN, TAG_FORBID]
-
-    # =========================================================================
-    # Forum Tag Management
-    # =========================================================================
-
-    async def ensure_forum_tags(self) -> bool:
-        """
-        Ensure all required tags exist on the case forum.
-        Creates missing tags and caches all tag references.
-
-        Returns:
-            True if tags are ready, False if failed.
-        """
-        if self._tags_initialized:
-            return True
-
-        if not self.enabled:
-            return False
-
-        try:
-            forum = await self._get_forum()
-            if not forum:
-                logger.warning("Case Log: Cannot ensure tags - forum not found")
-                return False
-
-            # Cache all existing tags first
-            existing_tags = {tag.name: tag for tag in forum.available_tags}
-            for tag in forum.available_tags:
-                self._tag_cache[tag.name] = tag
-
-            # Find which tags we need to create
-            tags_to_create_names = []
-            for tag_name, tag_color in self.ALL_TAGS:
-                if tag_name not in existing_tags:
-                    tags_to_create_names.append(tag_name)
-
-            # Create missing tags (need to update forum with all tags)
-            created_count = 0
-            if tags_to_create_names:
-                # Build new tags list - existing + new
-                new_tags = list(forum.available_tags)
-                for tag_name in tags_to_create_names:
-                    new_tags.append(discord.ForumTag(name=tag_name, emoji=None, moderated=False))
-
-                # Discord limits to 20 tags
-                if len(new_tags) > 20:
-                    logger.warning("Case Log: Too many tags, cannot add all")
-                    new_tags = new_tags[:20]
-
-                try:
-                    await forum.edit(available_tags=new_tags)
-                    created_count = len(tags_to_create_names)
-
-                    # Refresh forum to get new tag IDs
-                    forum = await self.bot.fetch_channel(self.config.case_log_forum_id)
-                    if forum and isinstance(forum, discord.ForumChannel):
-                        for tag in forum.available_tags:
-                            self._tag_cache[tag.name] = tag
-
-                except discord.HTTPException as e:
-                    # If tags already exist (race condition), just cache what we have
-                    if "unique" in str(e).lower() or "40061" in str(e):
-                        logger.debug("Case Log: Tags already exist, using existing tags")
-                    else:
-                        raise
-
-            self._tags_initialized = True
-
-            if created_count > 0:
-                logger.tree("Case Forum Tags Created", [
-                    ("Created", str(created_count)),
-                    ("Total Tags", str(len(self._tag_cache))),
-                ], emoji="🏷️")
-            else:
-                logger.tree("Case Forum Tags Ready", [
-                    ("Tags Cached", str(len(self._tag_cache))),
-                ], emoji="🏷️")
-
-            return True
-
-        except discord.Forbidden:
-            logger.error("Case Log: No permission to manage forum tags")
-            return False
-        except Exception as e:
-            logger.error("Case Log: Failed to ensure forum tags", [
-                ("Error", str(e)[:100]),
-            ])
-            return False
-
-    def get_tags_for_case(self, action_type: str, is_approved: bool = False) -> List[discord.ForumTag]:
-        """
-        Get the appropriate tags for a case.
-
-        Args:
-            action_type: The action type (mute, ban, warn, forbid).
-            is_approved: Whether the case is approved.
-
-        Returns:
-            List of ForumTag objects to apply.
-        """
-        tags = []
-
-        # Status tag
-        if is_approved:
-            status_tag = self._tag_cache.get(self.TAG_APPROVED[0])
-        else:
-            status_tag = self._tag_cache.get(self.TAG_PENDING_REVIEW[0])
-
-        if status_tag:
-            tags.append(status_tag)
-
-        # Action type tag
-        action_tag_map = {
-            "mute": self.TAG_MUTE[0],
-            "timeout": self.TAG_MUTE[0],
-            "ban": self.TAG_BAN[0],
-            "warn": self.TAG_WARN[0],
-            "forbid": self.TAG_FORBID[0],
-        }
-
-        action_tag_name = action_tag_map.get(action_type.lower())
-        if action_tag_name:
-            action_tag = self._tag_cache.get(action_tag_name)
-            if action_tag:
-                tags.append(action_tag)
-
-        return tags
-
-    # =========================================================================
     # Properties
     # =========================================================================
 
@@ -259,338 +119,6 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
                 ("Error", str(e)[:100]),
             ])
             return None
-
-    # =========================================================================
-    # Pending Reason Scheduler
-    # =========================================================================
-
-    async def start_reason_scheduler(self) -> None:
-        """Start the background task for checking expired pending reasons."""
-        if self._reason_check_task and not self._reason_check_task.done():
-            self._reason_check_task.cancel()
-
-        # Ensure forum tags exist on startup
-        await self.ensure_forum_tags()
-
-        self._reason_check_running = True
-        self._reason_check_task = create_safe_task(
-            self._reason_check_loop(), "Case Log Reason Checker"
-        )
-
-        logger.tree("Pending Reason Scheduler Started", [
-            ("Check Interval", "5 minutes"),
-            ("Expiry Time", "1 hour"),
-        ], emoji="⏰")
-
-    async def stop_reason_scheduler(self) -> None:
-        """Stop the pending reason scheduler."""
-        self._reason_check_running = False
-
-        if self._reason_check_task and not self._reason_check_task.done():
-            self._reason_check_task.cancel()
-            try:
-                await self._reason_check_task
-            except asyncio.CancelledError:
-                pass
-
-        logger.tree("Pending Reason Scheduler Stopped", [
-            ("Status", "Inactive"),
-        ], emoji="⏹️")
-
-    async def _reason_check_loop(self) -> None:
-        """Background loop to check for expired pending reasons."""
-        await self.bot.wait_until_ready()
-
-        while self._reason_check_running:
-            try:
-                await self._process_expired_reasons()
-                await asyncio.sleep(REASON_CHECK_INTERVAL)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("Pending Reason Scheduler Error", [
-                    ("Error", str(e)[:100]),
-                ])
-                await asyncio.sleep(REASON_CHECK_INTERVAL)
-
-    async def _process_expired_reasons(self) -> None:
-        """Process expired pending reasons (cleanup only, no owner ping)."""
-        self.db.cleanup_old_pending_reasons(max_age_seconds=REASON_CLEANUP_AGE)
-        expired = self.db.get_expired_pending_reasons(max_age_seconds=REASON_EXPIRY_TIME)
-
-        for pending in expired:
-            try:
-                # Just mark as processed and clean up - no owner ping needed
-                self.db.mark_pending_reason_notified(pending["id"])
-
-                logger.tree("Missing Reason Expired", [
-                    ("Thread ID", str(pending["thread_id"])),
-                    ("Moderator ID", str(pending["moderator_id"])),
-                    ("Action", pending["action_type"]),
-                ], emoji="⚠️")
-
-            except Exception as e:
-                logger.error("Failed To Process Expired Reason", [
-                    ("Pending ID", str(pending["id"])),
-                    ("Error", str(e)[:50]),
-                ])
-
-    # =========================================================================
-    # Profile Updates (Debounced)
-    # =========================================================================
-
-    def _schedule_profile_update(self, user_id: int, case: dict) -> None:
-        """Schedule a debounced profile stats update."""
-        self._pending_profile_updates[user_id] = case
-
-        if self._profile_update_task is None or self._profile_update_task.done():
-            self._profile_update_task = create_safe_task(
-                self._process_profile_updates(), "Case Log Profile Updates"
-            )
-
-    async def _process_profile_updates(self) -> None:
-        """Process all pending profile updates after debounce delay."""
-        await asyncio.sleep(PROFILE_UPDATE_DEBOUNCE)
-
-        pending = self._pending_profile_updates.copy()
-        self._pending_profile_updates.clear()
-
-        if not pending:
-            return
-
-        success_count = 0
-        fail_count = 0
-        for user_id, case in pending.items():
-            try:
-                await self._update_profile_stats(user_id, case)
-                success_count += 1
-            except Exception as e:
-                fail_count += 1
-                logger.warning("Profile Stats Update Failed", [
-                    ("User ID", str(user_id)),
-                    ("Error", str(e)[:50]),
-                ])
-
-        if success_count > 0 or fail_count > 0:
-            logger.tree("PROFILE STATS UPDATED", [
-                ("Processed", str(success_count)),
-                ("Failed", str(fail_count)),
-            ], emoji="📊")
-
-    async def _update_profile_stats(self, user_id: int, case: dict) -> None:
-        """Update the pinned profile message with current stats."""
-        try:
-            case_thread = await self._get_case_thread(case["thread_id"])
-            if not case_thread:
-                return
-
-            profile_msg = None
-
-            if case.get("profile_message_id"):
-                profile_msg = await safe_fetch_message(case_thread, case["profile_message_id"])
-
-            if not profile_msg:
-                try:
-                    pinned = await case_thread.pins()
-                    for msg in pinned:
-                        if msg.embeds and msg.embeds[0].title == "📋 User Profile":
-                            profile_msg = msg
-                            self.db.set_profile_message_id(user_id, msg.id)
-                            break
-                except Exception:
-                    pass
-
-            if not profile_msg:
-                return
-
-            main_guild_id = self.config.logging_guild_id
-            guild = self.bot.get_guild(main_guild_id) if main_guild_id else case_thread.guild
-            member = guild.get_member(user_id) if guild else None
-
-            embed = discord.Embed(
-                title="📋 User Profile",
-                color=EmbedColors.INFO,
-                timestamp=datetime.now(NY_TZ),
-            )
-
-            if member:
-                embed.set_thumbnail(url=member.display_avatar.url)
-                embed.add_field(name="Username", value=f"{member.name}", inline=True)
-                embed.add_field(name="Display Name", value=f"{member.display_name}", inline=True)
-            else:
-                try:
-                    user = await self.bot.fetch_user(user_id)
-                    embed.set_thumbnail(url=user.display_avatar.url)
-                    embed.add_field(name="Username", value=f"{user.name}", inline=True)
-                    embed.add_field(name="Display Name", value=f"⚠️ Left Server", inline=True)
-                except discord.NotFound:
-                    embed.add_field(name="Username", value=f"Unknown", inline=True)
-                    embed.add_field(name="Display Name", value=f"⚠️ User Not Found", inline=True)
-
-            embed.add_field(name="User ID", value=f"`{user_id}`", inline=True)
-
-            mute_count = case.get("mute_count", 0)
-            ban_count = case.get("ban_count", 0)
-
-            embed.add_field(name="Total Mutes", value=f"`{mute_count}`", inline=True)
-            embed.add_field(name="Total Bans", value=f"`{ban_count}`", inline=True)
-
-            last_mute = case.get("last_mute_at")
-            last_ban = case.get("last_ban_at")
-            if last_mute or last_ban:
-                last_action = max(filter(None, [last_mute, last_ban]))
-                embed.add_field(
-                    name="Last Action",
-                    value=f"<t:{int(last_action)}:R>",
-                    inline=True,
-                )
-
-            if mute_count >= 3 or ban_count >= 2:
-                warnings = []
-                if mute_count >= 3:
-                    warnings.append(f"{mute_count} mutes")
-                if ban_count >= 2:
-                    warnings.append(f"{ban_count} bans")
-                embed.add_field(
-                    name="⚠️ Repeat Offender",
-                    value=f"{', '.join(warnings)}",
-                    inline=False,
-                )
-
-            previous_names = self.db.get_previous_names(user_id, limit=3)
-            if previous_names:
-                names_str = ", ".join(f"`{name}`" for name in previous_names)
-                embed.add_field(name="Previous Names", value=names_str, inline=False)
-
-            await safe_edit(profile_msg, embed=embed)
-
-        except Exception as e:
-            logger.warning("Profile Stats Update Failed", [
-                ("Error", str(e)[:50]),
-            ])
-
-    async def _update_control_panel(
-        self,
-        case_id: str,
-        case_thread: discord.Thread,
-        new_status: Optional[str] = None,
-        user: Optional[discord.Member] = None,
-        moderator: Optional[discord.Member] = None,
-        transcript_url: Optional[str] = None,
-    ) -> bool:
-        """
-        Update the control panel message in place.
-
-        Args:
-            case_id: The case ID.
-            case_thread: The case thread.
-            new_status: New status (open, resolved, expired, approved).
-            user: The target user.
-            moderator: The moderator.
-            transcript_url: URL to the transcript (for approved cases).
-
-        Returns:
-            True if updated successfully.
-        """
-        try:
-            # Get case data
-            case = self.db.get_case(case_id)
-            if not case:
-                logger.warning("Control Panel Update - Case Not Found", [
-                    ("Case ID", case_id),
-                ])
-                return False
-
-            control_panel_msg_id = case.get("control_panel_message_id")
-            if not control_panel_msg_id:
-                # No control panel, try to find it in pinned messages
-                try:
-                    pinned = await case_thread.pins()
-                    for msg in pinned:
-                        if msg.embeds and msg.embeds[0].title and "Control Panel" in msg.embeds[0].title:
-                            control_panel_msg_id = msg.id
-                            self.db.set_case_control_panel_message(case_id, msg.id)
-                            logger.tree("Control Panel Found In Pins", [
-                                ("Case ID", case_id),
-                                ("Message ID", str(msg.id)),
-                            ], emoji="📌")
-                            break
-                except Exception as e:
-                    logger.warning("Control Panel Pin Search Failed", [
-                        ("Case ID", case_id),
-                        ("Error", str(e)[:50]),
-                    ])
-
-            if not control_panel_msg_id:
-                logger.warning("Control Panel Not Found", [
-                    ("Case ID", case_id),
-                    ("Thread ID", str(case_thread.id)),
-                ])
-                return False
-
-            # Fetch the message
-            control_msg = await safe_fetch_message(case_thread, control_panel_msg_id)
-            if not control_msg:
-                logger.warning("Control Panel Message Fetch Failed", [
-                    ("Case ID", case_id),
-                    ("Message ID", str(control_panel_msg_id)),
-                ])
-                return False
-
-            # Determine status
-            status = new_status or case.get("status", "open")
-
-            # Build updated embed
-            control_embed = build_control_panel_embed(
-                case=case,
-                user=user,
-                moderator=moderator,
-                status=status,
-            )
-
-            # Build updated view
-            action_type = case.get("action_type", "")
-            is_mute = action_type in ("mute", "timeout")
-
-            # Check if evidence exists for this case
-            evidence_urls = self.db.get_case_evidence(case_id)
-            has_evidence = len(evidence_urls) > 0
-
-            # Build transcript URL if approved and not provided
-            final_transcript_url = transcript_url
-            if status == "approved" and not final_transcript_url:
-                if self.config.case_transcript_base_url:
-                    final_transcript_url = f"{self.config.case_transcript_base_url}/{case_id}"
-
-            control_view = CaseControlPanelView(
-                user_id=case.get("user_id"),
-                guild_id=case.get("guild_id"),
-                case_id=case_id,
-                case_thread_id=case_thread.id,
-                status=status,
-                is_mute=is_mute,
-                has_evidence=has_evidence,
-                transcript_url=final_transcript_url,
-            )
-
-            # Edit the message
-            await safe_edit(control_msg, embed=control_embed, view=control_view)
-
-            logger.tree("Control Panel Updated", [
-                ("Case ID", case_id),
-                ("Status", status),
-                ("Transcript URL", "Yes" if final_transcript_url else "No"),
-            ], emoji="🎛️")
-
-            return True
-
-        except Exception as e:
-            logger.warning("Control Panel Update Failed", [
-                ("Case ID", case_id),
-                ("Error Type", type(e).__name__),
-                ("Error", str(e)[:50]),
-            ])
-            return False
 
     # =========================================================================
     # Forum & Thread Access
@@ -917,6 +445,10 @@ class CaseLogService(CaseLogActionsMixin, CaseLogExtendedActionsMixin):
         Returns:
             The evidence request message, or None if failed.
         """
+        # Skip evidence request for developer/owner
+        if self.config.developer_id and moderator.id == self.config.developer_id:
+            return None
+
         try:
             embed = discord.Embed(
                 title="⚠️ Evidence Required",

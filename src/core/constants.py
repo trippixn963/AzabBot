@@ -268,6 +268,44 @@ EMOJI_ID_STAFF = 1455178387927732381
 # Minutes threshold for duration formatting
 MINUTES_PER_DAY = 1440
 
+
+# =============================================================================
+# Moderation Reason Choices (Unified)
+# =============================================================================
+
+MODERATION_REASONS = [
+    "Spam",
+    "Advertising",
+    "Harassment",
+    "NSFW Content",
+    "Trolling",
+    "Disrespect",
+    "Rule Violation",
+    "Bypassing Filters",
+    "Excessive Mentions",
+    "Off-topic",
+    "Impersonation",
+    "Scam / Phishing",
+    "Raiding",
+    "Bot / Selfbot",
+    "Evading Punishment",
+    "Breaking Discord ToS",
+]
+"""Reasons for punishment actions: warn, mute, ban, forbid."""
+
+MODERATION_REMOVAL_REASONS = [
+    "Appeal Accepted",
+    "Time Served",
+    "Mistake / Wrong User",
+    "Insufficient Evidence",
+    "Second Chance",
+    "Moderator Request",
+    "Resolved with User",
+    "Changed Circumstances",
+]
+"""Reasons for removal actions: unmute, unban, unforbid."""
+
+
 # =============================================================================
 # Module Export
 # =============================================================================
@@ -415,4 +453,7 @@ __all__ = [
     "EMOJI_ID_TICKET",
     "EMOJI_ID_SUGGESTION",
     "EMOJI_ID_STAFF",
+    # Moderation
+    "MODERATION_REASONS",
+    "MODERATION_REMOVAL_REASONS",
 ]

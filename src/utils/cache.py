@@ -51,7 +51,10 @@ class TTLCache(Generic[K, V]):
         value, cached_at = self._cache[key]
         if datetime.now() - cached_at > self._ttl:
             # Expired - remove and return None
-            del self._cache[key]
+            try:
+                del self._cache[key]
+            except KeyError:
+                pass  # Already removed by another coroutine
             return None
 
         return value
@@ -81,8 +84,11 @@ class TTLCache(Generic[K, V]):
             True if item was deleted, False if not found.
         """
         if key in self._cache:
-            del self._cache[key]
-            return True
+            try:
+                del self._cache[key]
+                return True
+            except KeyError:
+                pass  # Already removed by another coroutine
         return False
 
     def clear(self) -> None:
@@ -93,8 +99,11 @@ class TTLCache(Generic[K, V]):
         """Evict the oldest item from the cache."""
         if not self._cache:
             return
-        oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k][1])
-        del self._cache[oldest_key]
+        try:
+            oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k][1])
+            del self._cache[oldest_key]
+        except (KeyError, ValueError):
+            pass  # Cache modified by another coroutine
 
     def cleanup_expired(self) -> int:
         """
@@ -108,9 +117,14 @@ class TTLCache(Generic[K, V]):
             k for k, (_, cached_at) in self._cache.items()
             if now - cached_at > self._ttl
         ]
+        removed = 0
         for key in expired_keys:
-            del self._cache[key]
-        return len(expired_keys)
+            try:
+                del self._cache[key]
+                removed += 1
+            except KeyError:
+                pass  # Already removed by another coroutine
+        return removed
 
     def __len__(self) -> int:
         return len(self._cache)

@@ -169,7 +169,7 @@ class AzabBot(commands.Bot):
         from src.utils.views import setup_moderation_views
         setup_moderation_views(self)
 
-        from src.services.appeal_service import setup_appeal_views
+        from src.services.appeals import setup_appeal_views
         setup_appeal_views(self)
 
         from src.services.tickets import setup_ticket_views
@@ -289,6 +289,11 @@ class AzabBot(commands.Bot):
 
     async def _init_services(self) -> None:
         """Initialize all services after Discord connection."""
+        # Guard against re-initialization on reconnects
+        if self.prison_handler is not None:
+            logger.debug("Services already initialized, skipping")
+            return
+
         try:
             from src.handlers.prison_handler import PrisonHandler
             self.prison_handler = PrisonHandler(self)
@@ -302,9 +307,10 @@ class AzabBot(commands.Bot):
             self.presence_handler = PresenceHandler(self)
             logger.info("Presence Handler Initialized")
 
-            from src.core.health import HealthCheckServer
-            self.health_server = HealthCheckServer(self)
-            await self.health_server.start()
+            if not self.health_server:
+                from src.core.health import HealthCheckServer
+                self.health_server = HealthCheckServer(self)
+                await self.health_server.start()
 
             from src.services.stats_api import AzabAPI
             self.stats_api = AzabAPI(self)
@@ -382,7 +388,7 @@ class AzabBot(commands.Bot):
             from src.services.raid_lockdown import RaidLockdownService
             self.raid_lockdown_service = RaidLockdownService(self)
 
-            from src.services.appeal_service import AppealService
+            from src.services.appeals import AppealService
             self.appeal_service = AppealService(self)
             if self.appeal_service.enabled:
                 logger.tree("Appeal Service Initialized", [

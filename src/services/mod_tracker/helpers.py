@@ -10,7 +10,7 @@ Server: discord.gg/syria
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Tuple, Callable, Any
+from typing import List, Optional, Tuple, Callable, Any
 import asyncio
 import re
 
@@ -32,6 +32,18 @@ class CachedMessage:
     content: str
     cached_at: datetime
     attachments: List[Tuple[str, bytes]] = field(default_factory=list)  # (filename, data)
+
+
+@dataclass(order=True)
+class QueueItem:
+    """Item in the priority queue for mod tracker messages."""
+    priority: int
+    timestamp: float = field(compare=False)
+    thread_id: int = field(compare=False)
+    content: Optional[str] = field(compare=False, default=None)
+    embed: discord.Embed = field(compare=False, default=None)
+    view: Optional[discord.ui.View] = field(compare=False, default=None)
+    is_alert: bool = field(compare=False, default=False)
 
 
 # =============================================================================

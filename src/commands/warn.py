@@ -29,31 +29,10 @@ from src.utils.footer import set_footer
 from src.utils.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
 from src.utils.dm_helpers import send_moderation_dm
-from src.core.constants import CASE_LOG_TIMEOUT
+from src.core.constants import CASE_LOG_TIMEOUT, MODERATION_REASONS
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
-
-
-# =============================================================================
-# Constants
-# =============================================================================
-
-REASON_CHOICES = [
-    "Spam",
-    "Inappropriate content",
-    "Harassment",
-    "Advertising",
-    "NSFW content",
-    "Trolling",
-    "Disrespect",
-    "Rule violation",
-    "Bypassing filters",
-    "Excessive mentions",
-    "Off-topic discussion",
-    "Impersonation",
-]
-"""Common warning reasons for autocomplete."""
 
 
 # =============================================================================
@@ -165,11 +144,11 @@ class WarnCog(commands.Cog):
         choices = []
         current_lower = current.lower()
 
-        for reason in REASON_CHOICES:
+        for reason in MODERATION_REASONS:
             if current_lower in reason.lower():
                 choices.append(app_commands.Choice(name=reason, value=reason))
 
-        if current and current not in REASON_CHOICES:
+        if current and current not in MODERATION_REASONS:
             choices.insert(0, app_commands.Choice(name=current, value=current))
 
         return choices[:25]
