@@ -1,34 +1,19 @@
-AzabBot - Source Available License
-===================================
+Source Available License
 
-Copyright (c) 2025 discord.gg/syria
+Copyright (c) 2025 John Hamwi
 
-This source code is provided for EDUCATIONAL and VIEWING purposes only.
+Permission is hereby granted to view and study the source code of this
+software for educational and personal reference purposes only.
 
-PERMISSIONS:
-- You MAY view and study this source code
-- You MAY learn from the techniques and patterns used
-- You MAY reference small snippets (under 20 lines) with attribution
+The following restrictions apply:
 
-RESTRICTIONS:
-- You may NOT run your own instance of this bot
-- You may NOT copy substantial portions for your own projects
-- You may NOT redistribute, sell, or sublicense this code
-- You may NOT create derivative works based on this code
-- You may NOT use this code commercially in any form
+1. You may NOT run, execute, or deploy this software.
+2. You may NOT redistribute, publish, or share this software.
+3. You may NOT create derivative works based on this software.
+4. You may NOT use this software for commercial purposes.
 
-ATTRIBUTION:
-If referencing this code in educational content, please credit:
-"AzabBot by discord.gg/syria"
+This software is provided "as-is" without warranty of any kind, express or
+implied. The author is not liable for any damages arising from viewing or
+attempting to use this software.
 
-DISCLAIMER:
-This software is provided "as is", without warranty of any kind.
-The authors are not liable for any damages arising from use of this code.
-
-NO SUPPORT:
-This project is provided as-is. No support, documentation, or assistance
-will be provided for running, modifying, or deploying this code.
-
-For permissions beyond this license, contact the developers at discord.gg/syria.
-
-All rights reserved.
+For the official deployment, visit: https://discord.gg/syria
