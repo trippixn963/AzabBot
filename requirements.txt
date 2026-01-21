@@ -1,34 +1,32 @@
-# Azab Discord Bot - Dependencies
-# ================================
-#
-# Required packages for the Azab Discord bot built for discord.gg/syria
-#
-# Author: حَـــــنَّـــــا
-# Server: discord.gg/syria
+# =============================================================================
+# AzabBot - Python Dependencies
+# =============================================================================
+# Install: pip install -r requirements.txt
+# =============================================================================
 
-# Core Discord API Library
-# =========================
-# Discord.py 2.7.0 dev for latest features
-git+https://github.com/Rapptz/discord.py.git@master#egg=discord.py
+# -----------------------------------------------------------------------------
+# Core
+# -----------------------------------------------------------------------------
+discord.py @ git+https://github.com/Rapptz/discord.py@master  # Discord API
+python-dotenv>=1.0.0            # Environment variables
 
-# Environment Configuration
-# ==========================
-python-dotenv>=1.0.0
+# -----------------------------------------------------------------------------
+# HTTP & APIs
+# -----------------------------------------------------------------------------
+aiohttp>=3.9.0                  # Async HTTP client
 
-# HTTP Client
-# ============
-aiohttp>=3.9.1
-
-# System Monitoring
-# ==================
-psutil>=5.9.0
-
+# -----------------------------------------------------------------------------
 # Image Processing
-# =================
-Pillow>=10.0.0
+# -----------------------------------------------------------------------------
+Pillow>=10.0.0                  # Image manipulation
 
-# Testing
-# ========
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-dpytest>=0.7.0
+# -----------------------------------------------------------------------------
+# Utilities
+# -----------------------------------------------------------------------------
+psutil>=5.9.0                   # Process management
+
+# -----------------------------------------------------------------------------
+# Testing (development only)
+# -----------------------------------------------------------------------------
+pytest>=7.4.0                   # Test framework
+pytest-asyncio>=0.21.0          # Async test support
