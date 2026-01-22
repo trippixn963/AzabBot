@@ -16,10 +16,10 @@ Server: discord.gg/syria
 from src.core.database.manager import (
     DatabaseManager,
     get_db,
-    _safe_json_loads,
     DATA_DIR,
     DB_PATH,
 )
+from src.core.database.base import _safe_json_loads
 
 # Backward compatibility alias
 Database = DatabaseManager

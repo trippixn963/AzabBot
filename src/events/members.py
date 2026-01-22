@@ -90,8 +90,9 @@ class MemberEvents(commands.Cog):
                     await self.bot.mod_tracker.add_tracked_mod(after)
 
             elif had_mod_role and not has_mod_role:
+                # Mod lost role - delete thread and remove from tracking
                 if self.bot.mod_tracker.is_tracked(after.id):
-                    await self.bot.mod_tracker.remove_tracked_mod(after.id)
+                    await self.bot.mod_tracker.handle_mod_role_removed(after)
 
         # -----------------------------------------------------------------
         # Mod Tracker: Avatar, Name, Role Changes

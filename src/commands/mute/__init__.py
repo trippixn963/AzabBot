@@ -28,3 +28,8 @@ __all__ = [
     "mute_author_context",
     "unmute_author_context",
 ]
+
+
+async def setup(bot) -> None:
+    """Load the MuteCog."""
+    await bot.add_cog(MuteCog(bot))

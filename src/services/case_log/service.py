@@ -89,6 +89,14 @@ class CaseLogService(
         self._tag_cache: Dict[str, discord.ForumTag] = {}
         self._tags_initialized: bool = False
 
+        if self.enabled:
+            logger.tree("Case Log Service Created", [
+                ("Forum ID", str(self.config.case_log_forum_id)),
+                ("Thread Cache", f"Max {THREAD_CACHE_MAX_SIZE}"),
+            ], emoji="📝")
+        else:
+            logger.debug("Case Log Service Disabled (no forum configured)")
+
     # =========================================================================
     # Properties
     # =========================================================================

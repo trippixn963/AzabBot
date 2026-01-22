@@ -56,6 +56,14 @@ class ModmailService:
         self._forum_cache_time: Optional[datetime] = None
         self._thread_cache: Dict[int, tuple[discord.Thread, datetime]] = {}
 
+        if self.enabled:
+            logger.tree("Modmail Service Initialized", [
+                ("Forum ID", str(self.config.modmail_forum_id)),
+                ("Guild ID", str(self.config.logging_guild_id)),
+            ], emoji="📬")
+        else:
+            logger.debug("Modmail Service Disabled (no forum configured)")
+
     # =========================================================================
     # Properties
     # =========================================================================

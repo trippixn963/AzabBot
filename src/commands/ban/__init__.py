@@ -22,3 +22,8 @@ __all__ = [
     "BanModal",
     "BanCog",
 ]
+
+
+async def setup(bot) -> None:
+    """Load the BanCog."""
+    await bot.add_cog(BanCog(bot))

@@ -11,7 +11,7 @@ DESIGN:
     to ensure consistent state across the application:
     - get_config() returns the same Config instance
     - get_db() returns the same Database instance
-    - logger is a global MiniTreeLogger instance
+    - logger is a global Logger instance
 
     All core modules are imported here for convenient access.
 
@@ -35,7 +35,7 @@ from .config import (
 
 from .database import Database, get_db
 
-from .logger import logger, MiniTreeLogger, TreeSymbols
+from .logger import logger, Logger, TreeSymbols
 
 from .health import HealthCheckServer
 
@@ -86,7 +86,7 @@ __all__ = [
     "get_db",
     # Logger
     "logger",
-    "MiniTreeLogger",
+    "Logger",
     "TreeSymbols",
     # Health
     "HealthCheckServer",

@@ -109,6 +109,11 @@ class SignalWeights:
     BOTH_PREVIOUSLY_PUNISHED = 25
     BOTH_PUNISHED_SAME_DAY = 40
 
+    # Enhanced signals
+    WRITING_STYLE_MATCH = 35  # Similar message patterns
+    ACTIVITY_TIME_CORRELATION = 40  # Active at same hours
+    MUTUAL_AVOIDANCE = 45  # Never interact with each other despite being active
+
 
 # Confidence thresholds
 CONFIDENCE_THRESHOLDS = {
@@ -398,6 +403,30 @@ class AltDetectionService:
             signals['punishment_correlation'] = punishment_signal
             total_score += punishment_score
 
+        # Signal 11: Writing Style Match
+        style_score, style_signal = self._check_writing_style(
+            banned_data, candidate_data, guild
+        )
+        if style_score > 0:
+            signals['writing_style'] = style_signal
+            total_score += style_score
+
+        # Signal 12: Activity Time Correlation
+        activity_score, activity_signal = self._check_activity_correlation(
+            banned_data, candidate_data, guild
+        )
+        if activity_score > 0:
+            signals['activity_time'] = activity_signal
+            total_score += activity_score
+
+        # Signal 13: Mutual Avoidance
+        avoidance_score, avoidance_signal = self._check_mutual_avoidance(
+            banned_data, candidate_data, guild
+        )
+        if avoidance_score > 0:
+            signals['mutual_avoidance'] = avoidance_signal
+            total_score += avoidance_score
+
         if not signals:
             return None
 
@@ -571,6 +600,133 @@ class AltDetectionService:
 
         # Both have punishment history
         return SignalWeights.BOTH_PREVIOUSLY_PUNISHED, "Both have previous punishments"
+
+    def _check_writing_style(
+        self,
+        banned_data: Dict,
+        candidate_data: Dict,
+        guild: discord.Guild,
+    ) -> Tuple[int, str]:
+        """Check if accounts have similar writing styles."""
+        banned_samples = self.db.get_message_samples(banned_data['user_id'], guild.id)
+        candidate_samples = self.db.get_message_samples(candidate_data['user_id'], guild.id)
+
+        if not banned_samples or not candidate_samples:
+            return 0, ""
+
+        # Calculate average metrics for each user
+        def avg_metrics(samples):
+            if not samples:
+                return None
+            total_wc = sum(s['word_count'] for s in samples)
+            total_awl = sum(s['avg_word_length'] for s in samples)
+            total_emoji = sum(s['emoji_count'] for s in samples)
+            total_caps = sum(s['caps_ratio'] for s in samples)
+            n = len(samples)
+            return {
+                'avg_word_count': total_wc / n,
+                'avg_word_length': total_awl / n,
+                'avg_emoji': total_emoji / n,
+                'avg_caps': total_caps / n,
+            }
+
+        banned_metrics = avg_metrics(banned_samples)
+        candidate_metrics = avg_metrics(candidate_samples)
+
+        if not banned_metrics or not candidate_metrics:
+            return 0, ""
+
+        # Compare metrics - calculate similarity
+        matches = 0
+
+        # Word count similarity (within 30%)
+        wc_ratio = min(banned_metrics['avg_word_count'], candidate_metrics['avg_word_count']) / max(banned_metrics['avg_word_count'], candidate_metrics['avg_word_count']) if max(banned_metrics['avg_word_count'], candidate_metrics['avg_word_count']) > 0 else 0
+        if wc_ratio > 0.7:
+            matches += 1
+
+        # Word length similarity (within 20%)
+        awl_diff = abs(banned_metrics['avg_word_length'] - candidate_metrics['avg_word_length'])
+        if awl_diff < 1.0:
+            matches += 1
+
+        # Emoji usage similarity
+        emoji_diff = abs(banned_metrics['avg_emoji'] - candidate_metrics['avg_emoji'])
+        if emoji_diff < 1.0:
+            matches += 1
+
+        # Caps ratio similarity
+        caps_diff = abs(banned_metrics['avg_caps'] - candidate_metrics['avg_caps'])
+        if caps_diff < 0.1:
+            matches += 1
+
+        if matches >= 3:
+            return SignalWeights.WRITING_STYLE_MATCH, f"Similar writing style ({matches}/4 metrics match)"
+
+        return 0, ""
+
+    def _check_activity_correlation(
+        self,
+        banned_data: Dict,
+        candidate_data: Dict,
+        guild: discord.Guild,
+    ) -> Tuple[int, str]:
+        """Check if accounts are active at the same hours."""
+        banned_hours = self.db.get_activity_hours(banned_data['user_id'], guild.id)
+        candidate_hours = self.db.get_activity_hours(candidate_data['user_id'], guild.id)
+
+        if not banned_hours or not candidate_hours:
+            return 0, ""
+
+        # Find peak hours for each user (hours with > 10% of their total activity)
+        def get_peak_hours(hours_dict):
+            total = sum(hours_dict.values())
+            if total == 0:
+                return set()
+            threshold = total * 0.1
+            return {h for h, c in hours_dict.items() if c >= threshold}
+
+        banned_peaks = get_peak_hours(banned_hours)
+        candidate_peaks = get_peak_hours(candidate_hours)
+
+        if not banned_peaks or not candidate_peaks:
+            return 0, ""
+
+        # Check overlap
+        overlap = banned_peaks & candidate_peaks
+        overlap_ratio = len(overlap) / min(len(banned_peaks), len(candidate_peaks)) if min(len(banned_peaks), len(candidate_peaks)) > 0 else 0
+
+        if overlap_ratio >= 0.7:
+            hours_str = ", ".join(f"{h}:00" for h in sorted(list(overlap)[:3]))
+            return SignalWeights.ACTIVITY_TIME_CORRELATION, f"Active same hours ({hours_str})"
+
+        return 0, ""
+
+    def _check_mutual_avoidance(
+        self,
+        banned_data: Dict,
+        candidate_data: Dict,
+        guild: discord.Guild,
+    ) -> Tuple[int, str]:
+        """Check if accounts never interact despite both being active."""
+        user1 = banned_data['user_id']
+        user2 = candidate_data['user_id']
+
+        # Get interaction count between these two
+        interaction_count = self.db.get_interaction_count(user1, user2, guild.id)
+
+        # Get total interactions for each user
+        user1_total = self.db.get_user_total_interactions(user1, guild.id)
+        user2_total = self.db.get_user_total_interactions(user2, guild.id)
+
+        # Both need to be somewhat active (at least 5 interactions each)
+        if user1_total < 5 or user2_total < 5:
+            return 0, ""
+
+        # If they have zero interactions with each other but both are active
+        if interaction_count == 0:
+            return SignalWeights.MUTUAL_AVOIDANCE, f"Never interact (0 interactions, both active)"
+
+        return 0, ""
 
     # =========================================================================
     # Alert & Persistence

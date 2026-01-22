@@ -214,8 +214,8 @@ class DataHelpersMixin:
                     "time_served": duration_str,
                     "released": time_str,
                 })
-            except Exception:
-                # Skip problematic entries
+            except Exception as e:
+                logger.debug(f"Stats API: Skipping release entry for user {release.get('user_id', '?')}: {str(e)[:50]}")
                 continue
 
         return enriched
@@ -334,7 +334,10 @@ class DataHelpersMixin:
                 "disk_used_gb": round(disk.used / 1024 / 1024 / 1024, 1),
                 "disk_total_gb": round(disk.total / 1024 / 1024 / 1024, 1),
             }
-        except Exception:
+        except Exception as e:
+            logger.warning("Stats API: System stats fetch failed", [
+                ("Error", str(e)[:50]),
+            ])
             return {
                 "bot_mem_mb": 0,
                 "cpu_percent": 0,
@@ -378,7 +381,13 @@ class DataHelpersMixin:
 
             return changelog
 
-        except Exception:
+        except asyncio.TimeoutError:
+            logger.debug("Stats API: Git log command timed out")
+            return []
+        except Exception as e:
+            logger.warning("Stats API: Changelog fetch failed", [
+                ("Error", str(e)[:50]),
+            ])
             return []
 
     def _format_uptime(self: "AzabAPI") -> str:

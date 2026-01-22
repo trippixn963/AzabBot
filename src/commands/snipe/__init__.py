@@ -18,3 +18,8 @@ Server: discord.gg/syria
 from .cog import SnipeCog
 
 __all__ = ["SnipeCog"]
+
+
+async def setup(bot) -> None:
+    """Load the SnipeCog."""
+    await bot.add_cog(SnipeCog(bot))

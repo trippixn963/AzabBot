@@ -15,3 +15,8 @@ Server: discord.gg/syria
 from .cog import MessageEvents
 
 __all__ = ["MessageEvents"]
+
+
+async def setup(bot) -> None:
+    """Load the MessageEvents cog."""
+    await bot.add_cog(MessageEvents(bot))

@@ -364,6 +364,17 @@ class SchedulerMixin:
                 ("Duration", f"{scan_duration:.1f}s"),
             ], emoji="✅")
 
+            # Run maintenance scan (cleanup duplicates & orphans)
+            try:
+                maint = await self.run_maintenance_scan()
+                if maint.get("duplicates_deleted", 0) > 0 or maint.get("orphan_threads_deleted", 0) > 0:
+                    logger.tree("Mod Tracker: Maintenance Cleanup", [
+                        ("Duplicates", str(maint.get("duplicates_deleted", 0))),
+                        ("Orphans", str(maint.get("orphan_threads_deleted", 0))),
+                    ], emoji="🧹")
+            except Exception as me:
+                logger.debug(f"Maintenance scan failed: {me}")
+
             # Update health metrics on success
             self._last_scan_time = datetime.now(NY_TZ)
             self._consecutive_failures = 0
@@ -443,6 +454,17 @@ class SchedulerMixin:
                 ("Failed", str(mods_failed)),
                 ("Total Mods", str(len(mod_role.members))),
             ], emoji="👁️")
+
+            # Run maintenance on startup
+            try:
+                maint = await self.run_maintenance_scan()
+                if maint.get("duplicates_deleted", 0) > 0 or maint.get("orphan_threads_deleted", 0) > 0:
+                    logger.tree("Mod Tracker: Startup Cleanup", [
+                        ("Duplicates", str(maint.get("duplicates_deleted", 0))),
+                        ("Orphans", str(maint.get("orphan_threads_deleted", 0))),
+                    ], emoji="🧹")
+            except Exception as me:
+                logger.debug(f"Startup maintenance failed: {me}")
 
         except Exception as e:
             logger.error("Mod Tracker: Auto-Scan Failed", [

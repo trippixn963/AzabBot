@@ -61,7 +61,6 @@ from .case import (
     MessageButtonView,
     EditCaseModal,
     EditCaseButton,
-    ApproveButton,
 )
 
 from .select import (
@@ -92,7 +91,6 @@ def setup_moderation_views(bot: "AzabBot") -> None:
         PaginationNextButton,
         ExtendButton,
         UnmuteButton,
-        ApproveButton,
         EditCaseButton,
         UserInfoSelect,
     )
@@ -138,7 +136,6 @@ __all__ = [
     "MessageButtonView",
     "EditCaseModal",
     "EditCaseButton",
-    "ApproveButton",
     # Select
     "UserInfoSelect",
     # Setup function

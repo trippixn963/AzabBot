@@ -29,6 +29,14 @@ class ChannelEvents(commands.Cog):
         self.bot = bot
         self.config = get_config()
 
+        logger.tree("Channel Events Loaded", [
+            ("Channels", "Create/Delete/Update"),
+            ("Roles", "Create/Delete/Update"),
+            ("Emojis", "Create/Delete/Update"),
+            ("Threads", "Create/Delete/Update"),
+            ("Voice", "State changes"),
+        ], emoji="📍")
+
     async def _get_audit_moderator(
         self,
         guild: discord.Guild,
@@ -43,8 +51,13 @@ class ChannelEvents(commands.Cog):
                 elif entry.user:
                     # Try to get as member
                     return guild.get_member(entry.user.id)
-        except (discord.Forbidden, discord.HTTPException):
-            pass
+        except discord.Forbidden:
+            logger.debug(f"Channel Events: No permission to access audit log for {action.name}")
+        except discord.HTTPException as e:
+            logger.warning("Channel Events: Audit log fetch failed", [
+                ("Action", action.name),
+                ("Error", str(e)[:50]),
+            ])
         return None
 
     # =========================================================================
@@ -469,8 +482,15 @@ class ChannelEvents(commands.Cog):
                     if guild:
                         rule = await guild.fetch_automod_rule(execution.rule_id)
                         rule_name = rule.name
-                except Exception:
-                    pass
+                except discord.NotFound:
+                    logger.debug(f"Channel Events: AutoMod rule {execution.rule_id} not found (deleted?)")
+                except discord.Forbidden:
+                    logger.debug(f"Channel Events: No permission to fetch AutoMod rule {execution.rule_id}")
+                except Exception as e:
+                    logger.warning("Channel Events: AutoMod rule fetch failed", [
+                        ("Rule ID", str(execution.rule_id)),
+                        ("Error", str(e)[:50]),
+                    ])
 
             channel = None
             if execution.channel_id:

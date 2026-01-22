@@ -31,6 +31,12 @@ class AuditLogEvents(AntiNukeMixin, ModTrackerMixin, LoggingMixin, commands.Cog)
         self.bot = bot
         self.config = get_config()
 
+        logger.tree("Audit Log Events Loaded", [
+            ("Anti-Nuke", "Enabled"),
+            ("Mod Tracker", "Routing enabled"),
+            ("Server Logs", "Routing enabled"),
+        ], emoji="📋")
+
     @commands.Cog.listener()
     async def on_audit_log_entry_create(self, entry: discord.AuditLogEntry) -> None:
         """

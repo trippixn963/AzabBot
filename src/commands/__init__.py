@@ -50,6 +50,7 @@ COMMAND_COGS = [
     "src.commands.snipe",
     "src.commands.forbid",
     "src.commands.link",
+    "src.commands.alt",
 ]
 """
 List of command cog module paths for dynamic loading.

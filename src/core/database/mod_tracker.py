@@ -99,6 +99,13 @@ class ModTrackerMixin:
         rows = self.fetchall("SELECT * FROM mod_tracker")
         return [dict(row) for row in rows]
 
+    def update_tracked_mod_thread(self: "DatabaseManager", mod_id: int, thread_id: int) -> None:
+        """Update the thread ID for a tracked mod."""
+        self.execute(
+            "UPDATE mod_tracker SET thread_id = ? WHERE mod_id = ?",
+            (thread_id, mod_id)
+        )
+
     def update_mod_info(
         self: "DatabaseManager",
         mod_id: int,

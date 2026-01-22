@@ -60,6 +60,11 @@ class TicketCreateModal(discord.ui.Modal, title="Create Ticket"):
 
             bot: "AzabBot" = interaction.client
             if not hasattr(bot, "ticket_service") or not bot.ticket_service:
+                logger.error("Ticket Service Check Failed", [
+                    ("Has Attribute", str(hasattr(bot, "ticket_service"))),
+                    ("Value", str(getattr(bot, "ticket_service", "MISSING"))),
+                    ("Bot Type", type(bot).__name__),
+                ])
                 await interaction.followup.send(
                     "Ticket system is not available.",
                     ephemeral=True,

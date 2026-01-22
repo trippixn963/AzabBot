@@ -326,20 +326,6 @@ class BanOpsMixin:
                 ("Error", str(e)[:100]),
             ])
 
-        # -----------------------------------------------------------------
-        # Alt Detection (background task, regular bans only)
-        # -----------------------------------------------------------------
-
-        if not is_softban and self.bot.alt_detection and self.bot.alt_detection.enabled and case_info:
-            create_safe_task(
-                self.bot.alt_detection.detect_alts_for_ban(
-                    banned_user=user,
-                    guild=interaction.guild,
-                    case_thread_id=case_info["thread_id"],
-                ),
-                name="alt_detection_ban",
-            )
-
         return True
 
     # =========================================================================

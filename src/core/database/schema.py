@@ -765,4 +765,61 @@ class SchemaMixin:
             "CREATE INDEX IF NOT EXISTS idx_modmail_status ON modmail(status)"
         )
 
+        # -----------------------------------------------------------------
+        # Message Samples Table (for alt detection writing style)
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS message_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                word_count INTEGER NOT NULL,
+                avg_word_length REAL NOT NULL,
+                emoji_count INTEGER DEFAULT 0,
+                caps_ratio REAL DEFAULT 0,
+                recorded_at REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_msg_samples_user ON message_samples(user_id, guild_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # User Activity Hours Table (for alt detection time patterns)
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_activity_hours (
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                hour INTEGER NOT NULL,
+                message_count INTEGER DEFAULT 0,
+                last_updated REAL NOT NULL,
+                PRIMARY KEY (user_id, guild_id, hour)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activity_hours_user ON user_activity_hours(user_id, guild_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # User Interactions Table (for alt detection mutual avoidance)
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_interactions (
+                user_id INTEGER NOT NULL,
+                target_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                interaction_count INTEGER DEFAULT 0,
+                last_interaction REAL NOT NULL,
+                PRIMARY KEY (user_id, target_id, guild_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_interactions_user ON user_interactions(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_interactions_target ON user_interactions(target_id, guild_id)"
+        )
+
         conn.commit()

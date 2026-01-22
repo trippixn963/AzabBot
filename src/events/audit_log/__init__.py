@@ -17,3 +17,8 @@ Server: discord.gg/syria
 from .cog import AuditLogEvents
 
 __all__ = ["AuditLogEvents"]
+
+
+async def setup(bot) -> None:
+    """Load the AuditLogEvents cog."""
+    await bot.add_cog(AuditLogEvents(bot))

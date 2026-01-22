@@ -2,21 +2,25 @@
 Azab Discord Bot - Presence Handler
 ===================================
 
-Manages dynamic Discord rich presence with rotating status.
+Wrapper around unified presence system with AzabBot-specific stats.
+Includes prisoner event presence and midnight tasks.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-import discord
 import asyncio
 from datetime import datetime
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, List, TYPE_CHECKING
+
+import discord
 
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
 from src.core.constants import PRESENCE_UPDATE_INTERVAL, PROMO_DURATION_MINUTES
-from src.utils.async_utils import create_safe_task
+
+# Import from shared unified presence system
+from shared.services.presence import BasePresenceHandler
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -26,128 +30,37 @@ if TYPE_CHECKING:
 # Constants
 # =============================================================================
 
-# Promotional presence text
 PROMO_TEXT = "🌐 trippixn.com/azab"
 
 
 # =============================================================================
-# Presence Handler Class
+# AzabBot Presence Handler
 # =============================================================================
 
-class PresenceHandler:
+class PresenceHandler(BasePresenceHandler):
     """
-    Manages Discord rich presence for the bot.
+    Presence handler configured for AzabBot with moderation stats.
 
-    Features:
-    - Rotating status messages about moderation activity
-    - Hourly promotional presence window
-    - Event-triggered presence for prisoner events
+    Additional features beyond base:
+    - Prisoner arrived/released event presence
+    - Midnight tasks (banner refresh, guild protection)
     """
 
     def __init__(self, bot: "AzabBot") -> None:
-        """Initialize the presence handler."""
-        self.bot = bot
+        super().__init__(
+            bot,
+            update_interval=PRESENCE_UPDATE_INTERVAL,
+            promo_duration_minutes=PROMO_DURATION_MINUTES,
+        )
         self.config = get_config()
-
-        # Background tasks
-        self._presence_task: Optional[asyncio.Task] = None
-        self._promo_task: Optional[asyncio.Task] = None
-
-        # State tracking
-        self._presence_index: int = 0
-        self._promo_active: bool = False
-        self._last_banner_refresh_date: Optional[str] = None
+        self._last_midnight_date: Optional[str] = None
 
     # =========================================================================
-    # Lifecycle
+    # Required Implementations
     # =========================================================================
 
-    async def start(self) -> None:
-        """Start the presence update and promo scheduler loops."""
-        # Set initial presence immediately
-        await self._update_rotating_presence()
-
-        # Start presence update loop (using create_safe_task for error logging)
-        self._presence_task = create_safe_task(self._presence_loop(), "Presence Update Loop")
-
-        # Start promo scheduler
-        self._promo_task = create_safe_task(self._promo_loop(), "Promo Scheduler Loop")
-
-        logger.tree("Presence Handler Loaded", [
-            ("Update Interval", f"{PRESENCE_UPDATE_INTERVAL}s"),
-            ("Promo Schedule", "Every hour on the hour"),
-            ("Promo Duration", f"{PROMO_DURATION_MINUTES} minutes"),
-        ], emoji="🔄")
-
-    async def stop(self) -> None:
-        """Stop all presence tasks."""
-        if self._presence_task:
-            self._presence_task.cancel()
-            try:
-                await self._presence_task
-            except asyncio.CancelledError:
-                pass
-            self._presence_task = None
-
-        if self._promo_task:
-            self._promo_task.cancel()
-            try:
-                await self._promo_task
-            except asyncio.CancelledError:
-                pass
-            self._promo_task = None
-
-        logger.tree("Presence Handler Stopped", [
-            ("Status", "Tasks cancelled"),
-        ], emoji="🛑")
-
-    # =========================================================================
-    # Main Presence Loop
-    # =========================================================================
-
-    async def _presence_loop(self) -> None:
-        """Background task that updates presence periodically."""
-        while True:
-            try:
-                await asyncio.sleep(PRESENCE_UPDATE_INTERVAL)
-                await self._update_rotating_presence()
-                await self._check_midnight_tasks()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self._log_presence_error("Presence Loop Error", e)
-                await asyncio.sleep(PRESENCE_UPDATE_INTERVAL)
-
-    async def _update_rotating_presence(self) -> None:
-        """Update presence with rotating status messages."""
-        # Skip during promo window
-        if self._promo_active:
-            return
-
-        try:
-            status_text = await self._get_rotating_status()
-
-            activity = discord.Activity(
-                type=discord.ActivityType.watching,
-                name=status_text
-            )
-
-            await self.bot.change_presence(
-                status=discord.Status.online,
-                activity=activity
-            )
-
-            logger.debug(f"Rotating presence updated: {status_text}")
-
-        except Exception as e:
-            self._log_presence_error("Presence Update Failed", e)
-
-    def _get_stats(self) -> list[str]:
-        """
-        Get list of all-time stat strings to rotate through.
-
-        Returns only stats with values > 0.
-        """
+    def get_status_messages(self) -> List[str]:
+        """Get moderation stats for presence rotation."""
         stats = []
 
         try:
@@ -190,19 +103,64 @@ class PresenceHandler:
 
         return stats
 
-    async def _get_rotating_status(self) -> str:
-        """Get the current rotating status text from all-time stats."""
-        stats = self._get_stats()
+    def get_promo_text(self) -> str:
+        """Return AzabBot promo text."""
+        return PROMO_TEXT
 
-        if not stats:
-            logger.debug("No stats available, using promo fallback")
-            return PROMO_TEXT
+    def get_timezone(self):
+        """Return NY timezone for promo scheduling."""
+        return NY_TZ
 
-        self._presence_index = self._presence_index % len(stats)
-        status = stats[self._presence_index]
-        self._presence_index += 1
+    # =========================================================================
+    # Logging Hooks
+    # =========================================================================
 
-        return status
+    def on_rotation_start(self) -> None:
+        pass  # Logged in on_handler_ready
+
+    def on_promo_start(self) -> None:
+        pass  # Logged in on_handler_ready
+
+    def on_promo_activated(self) -> None:
+        now = datetime.now(NY_TZ)
+        logger.tree("Promo Presence Activated", [
+            ("Text", PROMO_TEXT),
+            ("Duration", f"{self.promo_duration_minutes} minutes"),
+            ("Time", now.strftime("%I:%M %p EST")),
+        ], emoji="📢")
+
+    def on_promo_ended(self) -> None:
+        logger.tree("Promo Presence Ended", [
+            ("Status", "Normal rotation resumed"),
+        ], emoji="🔄")
+
+    def on_handler_ready(self) -> None:
+        logger.tree("Presence Handler Loaded", [
+            ("Update Interval", f"{self.update_interval}s"),
+            ("Promo Schedule", "Every hour on the hour"),
+            ("Promo Duration", f"{self.promo_duration_minutes} minutes"),
+        ], emoji="🔄")
+
+    def on_handler_stopped(self) -> None:
+        logger.tree("Presence Handler Stopped", [
+            ("Status", "Tasks cancelled"),
+        ], emoji="🛑")
+
+    def on_error(self, context: str, error: Exception) -> None:
+        error_msg = str(error).lower()
+        if any(x in error_msg for x in ["transport", "not connected", "closed", "connection"]):
+            logger.debug(f"{context} (Connection Issue)", [
+                ("Error", str(error)[:50]),
+            ])
+        else:
+            logger.warning(context, [
+                ("Error Type", type(error).__name__),
+                ("Error", str(error)[:50]),
+            ])
+
+    # =========================================================================
+    # Helpers
+    # =========================================================================
 
     def _count_prisoners(self) -> int:
         """Count current prisoners across all servers."""
@@ -214,78 +172,66 @@ class PresenceHandler:
         return count
 
     # =========================================================================
-    # Promotional Presence
+    # Override Rotation Loop for Midnight Tasks
     # =========================================================================
 
-    async def _promo_loop(self) -> None:
-        """Background loop that triggers promo presence on the hour."""
-        while True:
+    async def _rotation_loop(self) -> None:
+        """Background task that updates presence periodically and handles midnight tasks."""
+        await self.bot.wait_until_ready()
+
+        self.on_rotation_start()
+
+        while self._running:
             try:
-                now = datetime.now(NY_TZ)
-                # Calculate seconds until next hour
-                minutes_until_hour = 60 - now.minute
-                seconds_until_hour = minutes_until_hour * 60 - now.second
+                await asyncio.sleep(self.update_interval)
 
-                # Wait until next hour
-                await asyncio.sleep(seconds_until_hour)
+                # Skip if promo is active
+                if self._is_promo_active:
+                    continue
 
-                # Show promo presence
-                await self._show_promo_presence()
-
-                # Wait for promo duration
-                await asyncio.sleep(PROMO_DURATION_MINUTES * 60)
-
-                # Restore normal presence
-                await self._restore_normal_presence()
+                await self._update_rotating_presence()
+                await self._check_midnight_tasks()
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                self._promo_active = False
-                self._log_presence_error("Promo Loop Error", e)
-                await asyncio.sleep(60)
-
-    async def _show_promo_presence(self) -> None:
-        """Show promotional presence."""
-        try:
-            self._promo_active = True
-
-            activity = discord.Activity(
-                type=discord.ActivityType.watching,
-                name=PROMO_TEXT
-            )
-            await self.bot.change_presence(
-                status=discord.Status.online,
-                activity=activity
-            )
-
-            now = datetime.now(NY_TZ)
-            logger.tree("Promo Presence Activated", [
-                ("Text", PROMO_TEXT),
-                ("Duration", f"{PROMO_DURATION_MINUTES} minutes"),
-                ("Time", now.strftime("%I:%M %p EST")),
-            ], emoji="📢")
-
-        except Exception as e:
-            self._log_presence_error("Promo Presence Failed", e)
-            self._promo_active = False
-
-    async def _restore_normal_presence(self) -> None:
-        """Restore normal presence after promo ends."""
-        try:
-            self._promo_active = False
-            await self._update_rotating_presence()
-
-            logger.tree("Promo Presence Ended", [
-                ("Status", "Normal rotation resumed"),
-            ], emoji="🔄")
-
-        except Exception as e:
-            self._log_presence_error("Restore Presence Failed", e)
-            self._promo_active = False
+                self.on_error("Rotation Loop", e)
+                await asyncio.sleep(self.update_interval)
 
     # =========================================================================
-    # Event-Triggered Presence
+    # Midnight Tasks
+    # =========================================================================
+
+    async def _check_midnight_tasks(self) -> None:
+        """Run daily tasks at midnight EST."""
+        try:
+            now = datetime.now(NY_TZ)
+            today = now.strftime("%Y-%m-%d")
+
+            # Check if it's a new day and within first hour
+            if self._last_midnight_date != today and now.hour == 0:
+                self._last_midnight_date = today
+
+                # Guild protection check
+                try:
+                    await self.bot._leave_unauthorized_guilds()
+                except Exception as e:
+                    logger.warning("Guild Protection Check Failed", [
+                        ("Error", str(e)[:50]),
+                    ])
+
+                logger.tree("Midnight Tasks Complete", [
+                    ("Date", today),
+                    ("Tasks", "Guild check"),
+                ], emoji="🌙")
+
+        except Exception as e:
+            logger.error("Midnight Tasks Failed", [
+                ("Error", str(e)[:50]),
+            ])
+
+    # =========================================================================
+    # Event-Triggered Presence (AzabBot specific)
     # =========================================================================
 
     async def show_prisoner_arrived(
@@ -302,8 +248,7 @@ class PresenceHandler:
             reason: Mute reason for context.
             mute_count: Number of times this user has been muted.
         """
-        # Skip during promo
-        if self._promo_active:
+        if self._is_promo_active:
             logger.debug(f"Prisoner arrival presence skipped (promo active): {username}")
             return
 
@@ -318,10 +263,7 @@ class PresenceHandler:
 
             await self.bot.change_presence(
                 status=discord.Status.dnd,
-                activity=discord.Activity(
-                    type=discord.ActivityType.watching,
-                    name=status_text,
-                ),
+                activity=discord.CustomActivity(name=status_text),
             )
 
             logger.tree("Presence Updated", [
@@ -335,7 +277,7 @@ class PresenceHandler:
             await self._update_rotating_presence()
 
         except Exception as e:
-            self._log_presence_error("Prisoner Arrival Presence Failed", e)
+            self.on_error("Prisoner Arrival Presence", e)
 
     async def show_prisoner_released(
         self,
@@ -349,8 +291,7 @@ class PresenceHandler:
             username: Released user's display name.
             duration_minutes: How long they were muted.
         """
-        # Skip during promo
-        if self._promo_active:
+        if self._is_promo_active:
             logger.debug(f"Prisoner release presence skipped (promo active): {username}")
             return
 
@@ -373,10 +314,7 @@ class PresenceHandler:
 
             await self.bot.change_presence(
                 status=discord.Status.online,
-                activity=discord.Activity(
-                    type=discord.ActivityType.watching,
-                    name=status_text,
-                ),
+                activity=discord.CustomActivity(name=status_text),
             )
 
             logger.tree("Presence Updated", [
@@ -391,54 +329,7 @@ class PresenceHandler:
             await self._update_rotating_presence()
 
         except Exception as e:
-            self._log_presence_error("Prisoner Release Presence Failed", e)
-
-    # =========================================================================
-    # Midnight Tasks
-    # =========================================================================
-
-    async def _check_midnight_tasks(self) -> None:
-        """Run daily tasks at midnight EST."""
-        try:
-            now = datetime.now(NY_TZ)
-            today = now.strftime("%Y-%m-%d")
-
-            # Check if it's a new day and within first hour
-            if self._last_banner_refresh_date != today and now.hour == 0:
-                self._last_banner_refresh_date = today
-
-                # Refresh banner
-                from src.utils.banner import refresh_banner
-                await refresh_banner()
-
-                logger.tree("Midnight Tasks Complete", [
-                    ("Date", today),
-                    ("Task", "Banner refreshed"),
-                ], emoji="🌙")
-
-        except Exception as e:
-            logger.error("Midnight Tasks Failed", [
-                ("Error", str(e)[:50]),
-            ])
-
-    # =========================================================================
-    # Error Handling
-    # =========================================================================
-
-    def _log_presence_error(self, context: str, error: Exception) -> None:
-        """Log presence errors appropriately based on type."""
-        error_msg = str(error).lower()
-
-        # Connection errors during shutdown/reconnection - debug level
-        if any(x in error_msg for x in ["transport", "not connected", "closed", "connection"]):
-            logger.debug(f"{context} (Connection Issue)", [
-                ("Error", str(error)[:50]),
-            ])
-        else:
-            logger.warning(context, [
-                ("Error Type", type(error).__name__),
-                ("Error", str(error)[:50]),
-            ])
+            self.on_error("Prisoner Release Presence", e)
 
 
 # =============================================================================

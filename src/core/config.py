@@ -415,9 +415,9 @@ def load_config() -> Config:
     if not discord_token:
         missing.append("DISCORD_TOKEN")
 
-    developer_id_str = os.getenv("DEVELOPER_ID")
+    developer_id_str = os.getenv("OWNER_ID")
     if not developer_id_str:
-        missing.append("DEVELOPER_ID")
+        missing.append("OWNER_ID")
 
     mod_logs_forum_id_str = os.getenv("MOD_LOGS_FORUM_ID")
     if not mod_logs_forum_id_str:
@@ -448,7 +448,7 @@ def load_config() -> Config:
     # Parse Required Values
     # -------------------------------------------------------------------------
 
-    developer_id = _parse_int(developer_id_str, "DEVELOPER_ID")
+    developer_id = _parse_int(developer_id_str, "OWNER_ID")
     mod_logs_forum_id = _parse_int(mod_logs_forum_id_str, "MOD_LOGS_FORUM_ID")
     prison_channel_ids = _parse_int_set(prison_channel_ids_str)
     general_channel_id = _parse_int(general_channel_id_str, "GENERAL_CHANNEL_ID")
@@ -464,7 +464,7 @@ def load_config() -> Config:
     alliances_channel_id = _parse_int_optional(os.getenv("ALLIANCES_CHANNEL_ID"))
     verification_role_id = _parse_int_optional(os.getenv("VERIFICATION_ROLE_ID"))
     moderation_role_id = _parse_int_optional(os.getenv("MODERATION_ROLE_ID"))
-    mod_server_id = _parse_int_optional(os.getenv("MOD_SERVER_ID"))
+    mod_server_id = _parse_int_optional(os.getenv("MODS_GUILD_ID"))
     alert_channel_id = _parse_int_optional(os.getenv("ALERT_CHANNEL_ID"))
     appeal_forum_id = _parse_int_optional(os.getenv("APPEAL_FORUM_ID"))
     ticket_channel_id = _parse_int_optional(os.getenv("TICKET_CHANNEL_ID"))
@@ -477,7 +477,7 @@ def load_config() -> Config:
     transcript_assets_thread_id = _parse_int_optional(os.getenv("TRANSCRIPT_ASSETS_THREAD_ID"))
     case_transcripts_thread_id = _parse_int_optional(os.getenv("CASE_TRANSCRIPTS_THREAD_ID"))
     server_logs_forum_id = _parse_int_optional(os.getenv("SERVER_LOGS_FORUM_ID"))
-    logging_guild_id = _parse_int_optional(os.getenv("LOGGING_GUILD_ID"))
+    logging_guild_id = _parse_int_optional(os.getenv("GUILD_ID"))
     moderator_ids = _parse_int_set(os.getenv("MODERATOR_IDS"))
     ignored_bot_ids = _parse_int_set(os.getenv("IGNORED_BOT_IDS"))
     lockdown_exclude_ids = _parse_int_set(os.getenv("LOCKDOWN_EXCLUDE_IDS"))
@@ -539,7 +539,7 @@ def load_config() -> Config:
         developer_name=os.getenv("DEVELOPER_NAME", "حَـــــنَّـــــا"),
         server_name=os.getenv("SERVER_NAME", "discord.gg/syria"),
         moderator_ids=moderator_ids if moderator_ids else None,
-        status_webhook_url=_validate_url(os.getenv("STATUS_WEBHOOK"), "STATUS_WEBHOOK"),
+        status_webhook_url=_validate_url(os.getenv("STATUS_WEBHOOK_URL"), "STATUS_WEBHOOK_URL"),
         error_webhook_url=_validate_url(os.getenv("ERROR_WEBHOOK_URL"), "ERROR_WEBHOOK_URL"),
         live_logs_webhook_url=_validate_url(os.getenv("LIVE_LOGS_WEBHOOK_URL"), "LIVE_LOGS_WEBHOOK_URL"),
         ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,

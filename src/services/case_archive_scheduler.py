@@ -157,8 +157,13 @@ class CaseArchiveScheduler:
                                 ("Old Name", thread.name),
                                 ("New Name", "📁 Assets"),
                             ])
-                        except Exception:
-                            pass
+                        except discord.Forbidden:
+                            logger.debug(f"Case Archive: No permission to rename assets thread {thread.id}")
+                        except Exception as e:
+                            logger.warning("Case Archive: Failed to rename assets thread", [
+                                ("Thread ID", str(thread.id)),
+                                ("Error", str(e)[:50]),
+                            ])
                     logger.info("Found Existing Assets Thread", [
                         ("Thread ID", str(thread.id)),
                     ])
@@ -175,8 +180,13 @@ class CaseArchiveScheduler:
                                 ("Old Name", thread.name),
                                 ("New Name", "📁 Assets"),
                             ])
-                        except Exception:
-                            pass
+                        except discord.Forbidden:
+                            logger.debug(f"Case Archive: No permission to rename assets thread {thread.id}")
+                        except Exception as e:
+                            logger.warning("Case Archive: Failed to rename assets thread", [
+                                ("Thread ID", str(thread.id)),
+                                ("Error", str(e)[:50]),
+                            ])
                     logger.info("Found Existing Assets Thread", [
                         ("Thread ID", str(thread.id)),
                     ])
@@ -371,15 +381,19 @@ class CaseArchiveScheduler:
                 try:
                     target_user = await self.bot.fetch_user(target_user_id)
                     target_user_name = target_user.display_name
-                except Exception:
-                    pass
+                except discord.NotFound:
+                    logger.debug(f"Case Archive: Target user {target_user_id} not found")
+                except Exception as e:
+                    logger.debug(f"Case Archive: Failed to fetch target user {target_user_id}: {str(e)[:30]}")
 
             if moderator_id:
                 try:
                     moderator_user = await self.bot.fetch_user(moderator_id)
                     moderator_name = moderator_user.display_name
-                except Exception:
-                    pass
+                except discord.NotFound:
+                    logger.debug(f"Case Archive: Moderator {moderator_id} not found")
+                except Exception as e:
+                    logger.debug(f"Case Archive: Failed to fetch moderator {moderator_id}: {str(e)[:30]}")
 
             # Build transcript
             transcript_builder = TranscriptBuilder(self.bot, self.assets_thread_id)

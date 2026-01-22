@@ -23,7 +23,6 @@ from src.utils.views import (
     InfoButton,
     DownloadButton,
     HistoryButton,
-    ApproveButton,
     EditCaseButton,
     UserInfoSelect,
 )
@@ -113,7 +112,7 @@ class CaseLogView(discord.ui.View):
 
     Row 0: Link buttons (Case, Message)
     Row 1: Info buttons (Info, Avatar, History)
-    Row 2: Edit button (mods), Approve button (owner only)
+    Row 2: Edit button (mods)
     """
 
     def __init__(
@@ -170,18 +169,13 @@ class CaseLogView(discord.ui.View):
         self.add_item(history_btn)
 
         # =================================================================
-        # Row 2: Edit button (mods), Approve button (owner only)
+        # Row 2: Edit button (mods)
         # =================================================================
 
         if case_id:
             edit_btn = EditCaseButton(case_id)
             edit_btn.row = 2
             self.add_item(edit_btn)
-
-        if case_thread_id and case_id:
-            approve_btn = ApproveButton(case_thread_id, case_id)
-            approve_btn.row = 2
-            self.add_item(approve_btn)
 
         # NOTE: Appeal button is now sent via DM to the user, not in the case log
         # This allows the affected user to appeal rather than moderators seeing it
@@ -195,7 +189,7 @@ class CaseControlPanelView(discord.ui.View):
     It's sent once when the case is created and updated in place.
 
     Row 0: User Info dropdown (Info, Avatar, History) + Message link (if available)
-    Row 1: Evidence (if exists), Edit, Approve buttons
+    Row 1: Evidence (if exists), Edit buttons
            OR Transcript button (if approved)
     """
 
@@ -269,7 +263,7 @@ class CaseControlPanelView(discord.ui.View):
                 evidence_btn.row = 1
                 self.add_item(evidence_btn)
         else:
-            # Open/resolved: Show Evidence, Edit, Approve buttons
+            # Open/resolved: Show Evidence, Edit buttons
             if self.case_id:
                 # Evidence button - only show if evidence was submitted
                 if self.has_evidence:
@@ -280,11 +274,6 @@ class CaseControlPanelView(discord.ui.View):
                 edit_btn = EditCaseButton(self.case_id)
                 edit_btn.row = 1
                 self.add_item(edit_btn)
-
-            if self.case_thread_id and self.case_id:
-                approve_btn = ApproveButton(self.case_thread_id, self.case_id)
-                approve_btn.row = 1
-                self.add_item(approve_btn)
 
 
 # =============================================================================

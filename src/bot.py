@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import os
 import asyncio
 import aiohttp
 from datetime import datetime, timedelta
@@ -23,6 +24,21 @@ from src.core.database import get_db
 from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
 from src.core.constants import GUILD_FETCH_TIMEOUT
+
+
+# =============================================================================
+# Guild Protection
+# =============================================================================
+
+def get_authorized_guilds() -> set:
+    """Get authorized guild IDs from config (loaded after dotenv)."""
+    config = get_config()
+    guilds = set()
+    if config.logging_guild_id:
+        guilds.add(config.logging_guild_id)
+    if config.mod_server_id:
+        guilds.add(config.mod_server_id)
+    return guilds
 
 
 # =============================================================================
@@ -247,19 +263,17 @@ class AzabBot(commands.Bot):
             self.config.ignored_bot_ids = set()
         self.config.ignored_bot_ids.add(self.user.id)
 
-        logger.tree("BOT ONLINE", [
-            ("Name", self.user.name),
-            ("ID", str(self.user.id)),
-            ("Guilds", str(len(self.guilds))),
-        ], emoji="🚀")
+        logger.startup_banner(
+            "AzabBot",
+            self.user.id,
+            len(self.guilds),
+            self.latency * 1000,
+        )
 
         await self._init_services()
 
         from src.utils.footer import init_footer
         await init_footer(self)
-
-        from src.utils.banner import init_banner
-        await init_banner(self)
 
         from src.utils.metrics import init_metrics
         init_metrics()
@@ -284,6 +298,61 @@ class AzabBot(commands.Bot):
         ], emoji="🔥")
 
     # =========================================================================
+    # Guild Protection
+    # =========================================================================
+
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        """Leave immediately if guild is not authorized."""
+        authorized = get_authorized_guilds()
+        # Safety: Don't leave if authorized set is empty (misconfigured env)
+        if not authorized:
+            return
+        if guild.id not in authorized:
+            logger.warning("Added To Unauthorized Guild - Leaving", [
+                ("Guild", guild.name),
+                ("ID", str(guild.id)),
+                ("Authorized", str(authorized)),
+            ])
+            try:
+                await guild.leave()
+            except Exception as e:
+                logger.error("Failed To Leave Unauthorized Guild", [
+                    ("Guild", guild.name),
+                    ("Error", str(e)),
+                ])
+
+    async def _leave_unauthorized_guilds(self) -> None:
+        """Leave any guilds not in authorized list."""
+        authorized = get_authorized_guilds()
+        # Safety: Don't leave any guilds if authorized set is empty (misconfigured env)
+        if not authorized:
+            logger.warning("Guild Protection Skipped", [
+                ("Reason", "Authorized guild set is empty"),
+                ("Action", "Check GUILD_ID and MODS_GUILD_ID in .env"),
+            ])
+            return
+        unauthorized = [g for g in self.guilds if g.id not in authorized]
+        if not unauthorized:
+            return
+
+        logger.tree("Leaving Unauthorized Guilds", [
+            ("Count", str(len(unauthorized))),
+        ], emoji="⚠️")
+
+        for guild in unauthorized:
+            try:
+                logger.warning("Leaving Unauthorized Guild", [
+                    ("Guild", guild.name),
+                    ("ID", str(guild.id)),
+                ])
+                await guild.leave()
+            except Exception as e:
+                logger.error("Failed To Leave Guild", [
+                    ("Guild", guild.name),
+                    ("Error", str(e)),
+                ])
+
+    # =========================================================================
     # Service Initialization
     # =========================================================================
 
@@ -293,6 +362,9 @@ class AzabBot(commands.Bot):
         if self.prison_handler is not None:
             logger.debug("Services already initialized, skipping")
             return
+
+        # Leave unauthorized guilds before initializing services
+        await self._leave_unauthorized_guilds()
 
         try:
             from src.handlers.prison_handler import PrisonHandler
@@ -310,11 +382,47 @@ class AzabBot(commands.Bot):
             if not self.health_server:
                 from src.core.health import HealthCheckServer
                 self.health_server = HealthCheckServer(self)
+
+                # Register database health callback
+                async def db_health() -> dict:
+                    try:
+                        connected = self.db.is_active() if self.db else False
+                        return {"connected": connected, "error": None}
+                    except Exception as e:
+                        return {"connected": False, "error": str(e)}
+
+                self.health_server.register_db_health(db_health)
+
+                # Register system health callback
+                import psutil
+                _psutil_process = psutil.Process()
+
+                async def system_health() -> dict:
+                    cpu_percent = psutil.cpu_percent(interval=None)
+                    memory = psutil.virtual_memory()
+                    disk = psutil.disk_usage("/")
+                    bot_memory_mb = _psutil_process.memory_info().rss / (1024 * 1024)
+                    return {
+                        "cpu_percent": cpu_percent,
+                        "memory_percent": memory.percent,
+                        "disk_percent": disk.percent,
+                        "disk_total_gb": round(disk.total / (1024 ** 3), 1),
+                        "disk_used_gb": round(disk.used / (1024 ** 3), 1),
+                        "bot_memory_mb": round(bot_memory_mb, 1),
+                        "threads": _psutil_process.num_threads(),
+                        "open_files": len(_psutil_process.open_files()),
+                    }
+
+                self.health_server.register_system(system_health)
                 await self.health_server.start()
 
             from src.services.stats_api import AzabAPI
             self.stats_api = AzabAPI(self)
             await self.stats_api.start()
+
+            from src.services.backup import BackupScheduler
+            self.backup_scheduler = BackupScheduler()
+            await self.backup_scheduler.start()
 
             from src.services.mute_scheduler import MuteScheduler
             self.mute_scheduler = MuteScheduler(self)
@@ -368,12 +476,6 @@ class AzabBot(commands.Bot):
                 await self.logging_service.start_retention_cleanup()
             else:
                 logger.info("Logging Service Disabled (no forum configured)")
-
-            from src.services.webhook_alerts import get_alert_service
-            self.webhook_alert_service = get_alert_service()
-            self.webhook_alert_service.set_bot(self)
-            await self.webhook_alert_service.send_startup_alert()
-            await self.webhook_alert_service.start_hourly_alerts()
 
             from src.handlers.voice_handler import VoiceHandler
             self.voice_handler = VoiceHandler(self)
@@ -831,6 +933,9 @@ class AzabBot(commands.Bot):
 
         if self.stats_api:
             await self.stats_api.stop()
+
+        if hasattr(self, 'backup_scheduler') and self.backup_scheduler:
+            await self.backup_scheduler.stop()
 
         # Close shared HTTP session
         if self._http_session and not self._http_session.closed:

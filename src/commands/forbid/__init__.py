@@ -34,3 +34,8 @@ __all__ = [
     "setup_forbid_views",
     "ForbidCog",
 ]
+
+
+async def setup(bot) -> None:
+    """Load the ForbidCog."""
+    await bot.add_cog(ForbidCog(bot))

@@ -15,6 +15,7 @@ import discord
 
 from src.core.config import get_config
 from src.core.database import get_db
+from src.core.logger import logger
 
 from .helpers import HelpersMixin
 from .eligibility import EligibilityMixin
@@ -45,6 +46,14 @@ class AppealService(HelpersMixin, EligibilityMixin, CreateMixin, ResolveMixin):
         self._forum: Optional[discord.ForumChannel] = None
         self._forum_cache_time: Optional[datetime] = None
         self._thread_cache: Dict[int, tuple[discord.Thread, datetime]] = {}
+
+        if self.enabled:
+            logger.tree("Appeal Service Initialized", [
+                ("Forum ID", str(self.config.appeal_forum_id)),
+                ("Min Mute Duration", "6 hours"),
+            ], emoji="📨")
+        else:
+            logger.debug("Appeal Service Disabled (no forum configured)")
 
     # =========================================================================
     # Properties

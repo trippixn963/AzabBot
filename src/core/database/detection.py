@@ -677,3 +677,144 @@ class DetectionMixin:
         return intersection / union if union > 0 else 0.0
 
     # =========================================================================
+    # Message Samples for Alt Detection
+    # =========================================================================
+
+    def save_message_sample(
+        self,
+        user_id: int,
+        guild_id: int,
+        content: str,
+        word_count: int,
+        avg_word_length: float,
+        emoji_count: int = 0,
+        caps_ratio: float = 0.0,
+    ) -> None:
+        """
+        Save a message sample for writing style analysis.
+
+        Args:
+            user_id: The user's ID.
+            guild_id: The guild ID.
+            content: Message content (truncated).
+            word_count: Number of words.
+            avg_word_length: Average word length.
+            emoji_count: Number of emojis.
+            caps_ratio: Ratio of uppercase letters.
+        """
+        # Keep only last 10 samples per user
+        self.execute(
+            """DELETE FROM message_samples
+               WHERE id IN (
+                   SELECT id FROM message_samples
+                   WHERE user_id = ? AND guild_id = ?
+                   ORDER BY recorded_at DESC
+                   LIMIT -1 OFFSET 9
+               )""",
+            (user_id, guild_id)
+        )
+
+        self.execute(
+            """INSERT INTO message_samples
+               (user_id, guild_id, content, word_count, avg_word_length, emoji_count, caps_ratio, recorded_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, guild_id, content[:200], word_count, avg_word_length, emoji_count, caps_ratio, time.time())
+        )
+
+    def get_message_samples(self: "DatabaseManager", user_id: int, guild_id: int) -> List[Dict]:
+        """Get message samples for a user."""
+        rows = self.fetchall(
+            """SELECT * FROM message_samples
+               WHERE user_id = ? AND guild_id = ?
+               ORDER BY recorded_at DESC LIMIT 10""",
+            (user_id, guild_id)
+        )
+        return [dict(row) for row in rows]
+
+    # =========================================================================
+    # Activity Hours for Alt Detection
+    # =========================================================================
+
+    def increment_activity_hour(
+        self,
+        user_id: int,
+        guild_id: int,
+        hour: int,
+    ) -> None:
+        """
+        Increment activity count for a specific hour.
+
+        Args:
+            user_id: The user's ID.
+            guild_id: The guild ID.
+            hour: Hour of day (0-23).
+        """
+        self.execute(
+            """INSERT INTO user_activity_hours (user_id, guild_id, hour, message_count, last_updated)
+               VALUES (?, ?, ?, 1, ?)
+               ON CONFLICT(user_id, guild_id, hour)
+               DO UPDATE SET message_count = message_count + 1, last_updated = ?""",
+            (user_id, guild_id, hour, time.time(), time.time())
+        )
+
+    def get_activity_hours(self: "DatabaseManager", user_id: int, guild_id: int) -> Dict[int, int]:
+        """
+        Get activity hour distribution for a user.
+
+        Returns:
+            Dict mapping hour (0-23) to message count.
+        """
+        rows = self.fetchall(
+            "SELECT hour, message_count FROM user_activity_hours WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        return {row["hour"]: row["message_count"] for row in rows}
+
+    # =========================================================================
+    # User Interactions for Alt Detection
+    # =========================================================================
+
+    def record_interaction(
+        self,
+        user_id: int,
+        target_id: int,
+        guild_id: int,
+    ) -> None:
+        """
+        Record an interaction (reply/mention) between two users.
+
+        Args:
+            user_id: The user who initiated interaction.
+            target_id: The user being interacted with.
+            guild_id: The guild ID.
+        """
+        self.execute(
+            """INSERT INTO user_interactions (user_id, target_id, guild_id, interaction_count, last_interaction)
+               VALUES (?, ?, ?, 1, ?)
+               ON CONFLICT(user_id, target_id, guild_id)
+               DO UPDATE SET interaction_count = interaction_count + 1, last_interaction = ?""",
+            (user_id, target_id, guild_id, time.time(), time.time())
+        )
+
+    def get_interaction_count(self: "DatabaseManager", user_id: int, target_id: int, guild_id: int) -> int:
+        """Get total interactions between two users (both directions)."""
+        row = self.fetchone(
+            """SELECT COALESCE(SUM(interaction_count), 0) as total
+               FROM user_interactions
+               WHERE guild_id = ? AND (
+                   (user_id = ? AND target_id = ?) OR
+                   (user_id = ? AND target_id = ?)
+               )""",
+            (guild_id, user_id, target_id, target_id, user_id)
+        )
+        return row["total"] if row else 0
+
+    def get_user_total_interactions(self: "DatabaseManager", user_id: int, guild_id: int) -> int:
+        """Get total interactions a user has with anyone."""
+        row = self.fetchone(
+            """SELECT COALESCE(SUM(interaction_count), 0) as total
+               FROM user_interactions
+               WHERE guild_id = ? AND (user_id = ? OR target_id = ?)""",
+            (guild_id, user_id, user_id)
+        )
+        return row["total"] if row else 0
