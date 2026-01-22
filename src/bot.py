@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Main Bot Class
-==================================
+AzabBot - Main Bot
+==================
 
 Core Discord client with prisoner tracking and moderation services.
 
