@@ -17,7 +17,7 @@ from src.core.database import get_db
 from src.core.config import EmbedColors
 from src.core.logger import logger
 from src.utils.footer import set_footer
-from src.utils.views import (
+from src.views import (
     CASE_EMOJI,
     MESSAGE_EMOJI,
     InfoButton,

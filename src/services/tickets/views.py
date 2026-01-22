@@ -14,7 +14,7 @@ import discord
 
 from src.core.config import get_config
 from src.core.logger import logger
-from src.utils.views import UserInfoSelect
+from src.views import UserInfoSelect
 
 from .buttons import (
     ClaimButton,

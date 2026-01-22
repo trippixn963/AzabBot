@@ -182,7 +182,7 @@ class AzabBot(commands.Bot):
         from src.services.server_logs.service import setup_log_views
         setup_log_views(self)
 
-        from src.utils.views import setup_moderation_views
+        from src.views import setup_moderation_views
         setup_moderation_views(self)
 
         from src.services.appeals import setup_appeal_views

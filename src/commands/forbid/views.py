@@ -15,7 +15,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
-from src.utils.views import APPEAL_EMOJI
+from src.views import APPEAL_EMOJI
 from src.utils.footer import set_footer
 
 if TYPE_CHECKING:

@@ -17,7 +17,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
-from src.utils.views import CASE_EMOJI
+from src.views import CASE_EMOJI
 from src.utils.async_utils import create_safe_task
 from src.utils.rate_limiter import rate_limit
 from src.core.constants import CASE_LOG_TIMEOUT

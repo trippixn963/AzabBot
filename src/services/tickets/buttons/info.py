@@ -17,7 +17,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors
 from src.utils.footer import set_footer
-from src.utils.views import build_history_embed, build_history_view
+from src.views import build_history_embed, build_history_view
 from ..constants import INFO_EMOJI
 
 if TYPE_CHECKING:

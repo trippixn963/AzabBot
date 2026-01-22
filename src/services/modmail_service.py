@@ -20,7 +20,7 @@ from src.core.database import get_db
 from src.core.constants import EMOJI_MODMAIL, EMOJI_CLOSE
 from src.utils.footer import set_footer
 from src.utils.retry import safe_fetch_channel, safe_send
-from src.utils.views import UserInfoSelect
+from src.views import UserInfoSelect
 
 if TYPE_CHECKING:
     from src.bot import AzabBot

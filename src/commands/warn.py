@@ -26,7 +26,7 @@ from src.core.moderation_validation import (
     is_cross_server,
 )
 from src.utils.footer import set_footer
-from src.utils.views import CaseButtonView
+from src.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
 from src.utils.dm_helpers import send_moderation_dm
 from src.core.constants import CASE_LOG_TIMEOUT, MODERATION_REASONS

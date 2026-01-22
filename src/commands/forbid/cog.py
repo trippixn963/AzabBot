@@ -21,7 +21,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ, has_mod_role
 from src.core.database import get_db
 from src.core.moderation_validation import validate_moderation_target
 from src.utils.footer import set_footer
-from src.utils.views import CaseButtonView
+from src.views import CaseButtonView
 from src.utils.duration import parse_duration, format_duration_short as format_duration
 from src.utils.async_utils import create_safe_task
 from src.core.constants import CASE_LOG_TIMEOUT, MODERATION_REASONS, MODERATION_REMOVAL_REASONS

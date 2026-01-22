@@ -23,7 +23,7 @@ from src.core.moderation_validation import (
     send_management_blocked_embed,
 )
 from src.utils.footer import set_footer
-from src.utils.views import CaseButtonView
+from src.views import CaseButtonView
 from src.utils.async_utils import create_safe_task
 from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
 from src.core.constants import CASE_LOG_TIMEOUT, GUILD_FETCH_TIMEOUT

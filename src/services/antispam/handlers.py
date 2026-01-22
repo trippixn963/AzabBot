@@ -15,7 +15,7 @@ from src.core.config import EmbedColors, NY_TZ
 from src.core.constants import CASE_LOG_TIMEOUT
 from src.core.logger import logger
 from src.utils.footer import set_footer
-from src.utils.views import CASE_EMOJI
+from src.views import CASE_EMOJI
 
 from .constants import (
     MUTE_DURATIONS,

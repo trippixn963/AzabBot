@@ -22,7 +22,7 @@ from src.core.moderation_validation import (
     send_management_blocked_embed,
 )
 from src.utils.footer import set_footer
-from src.utils.views import CaseButtonView
+from src.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
 from src.utils.duration import parse_duration, format_duration
 from src.core.constants import CASE_LOG_TIMEOUT

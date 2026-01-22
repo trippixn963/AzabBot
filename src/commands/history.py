@@ -26,7 +26,7 @@ from src.core.constants import (
     EMOJI_KICK,
 )
 from src.utils.footer import set_footer
-from src.utils.views import CASE_EMOJI, InfoButton, DownloadButton, build_history_embed, build_history_view
+from src.views import CASE_EMOJI, InfoButton, DownloadButton, build_history_embed, build_history_view
 
 if TYPE_CHECKING:
     from src.bot import AzabBot

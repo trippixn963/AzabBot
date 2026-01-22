@@ -20,7 +20,7 @@ from src.core.constants import (
     EMOJI_ID_MESSAGE,
     EMOJI_USERID,
 )
-from src.utils.views import DownloadButton, OldAvatarButton, NewAvatarButton, CASE_EMOJI
+from src.views import DownloadButton, OldAvatarButton, NewAvatarButton, CASE_EMOJI
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
