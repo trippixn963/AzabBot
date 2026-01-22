@@ -10,6 +10,12 @@ DESIGN:
     to other components they need. They process Discord events
     and coordinate between services.
 
+    Event Cogs are loaded dynamically by the bot using load_extension().
+    - messages/: Message create/delete/edit
+    - members_handler.py: Member join/leave/update
+    - channels_handler.py: Channel/thread/role/emoji events
+    - audit_log/: Audit log routing to mod_tracker and logging_service
+
     To add a new handler:
     1. Create new_handler.py in this directory
     2. Follow the existing handler pattern (class with bot reference)
@@ -19,10 +25,27 @@ DESIGN:
 Available Handlers:
     PrisonHandler: Manages prisoner welcome and release notifications
     MuteHandler: Processes mute embeds and extracts reasons from logs
-    PresenceHandler: Manages dynamic Discord rich presence updates
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
+"""
+
+# =============================================================================
+# Event Cog Registry
+# =============================================================================
+
+EVENT_COGS = [
+    "src.handlers.messages",
+    "src.handlers.members_handler",
+    "src.handlers.channels_handler",
+    "src.handlers.audit_log",
+]
+"""
+List of event cog module paths for dynamic loading.
+
+DESIGN:
+    Bot iterates this list and calls load_extension() for each.
+    Add new event cogs here to have them loaded automatically.
 """
 
 # =============================================================================
@@ -31,7 +54,6 @@ Server: discord.gg/syria
 
 from .prison_handler import PrisonHandler
 from .mute_handler import MuteHandler
-from .presence_handler import PresenceHandler
 
 
 # =============================================================================
@@ -39,7 +61,7 @@ from .presence_handler import PresenceHandler
 # =============================================================================
 
 __all__ = [
+    "EVENT_COGS",
     "PrisonHandler",
     "MuteHandler",
-    "PresenceHandler",
 ]

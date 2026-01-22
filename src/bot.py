@@ -170,7 +170,7 @@ class AzabBot(commands.Bot):
                 logger.error("Failed to Load Cog", [("Cog", cog), ("Error", str(e))])
 
         # Load event cogs
-        from src.events import EVENT_COGS
+        from src.handlers import EVENT_COGS
         for cog in EVENT_COGS:
             try:
                 await self.load_extension(cog)
@@ -375,7 +375,7 @@ class AzabBot(commands.Bot):
             self.mute_handler = MuteHandler(self.prison_handler)
             logger.info("Mute Handler Initialized")
 
-            from src.handlers.presence_handler import PresenceHandler
+            from src.services.presence_handler import PresenceHandler
             self.presence_handler = PresenceHandler(self)
             logger.info("Presence Handler Initialized")
 
