@@ -93,7 +93,7 @@ class AzabBot(commands.Bot):
         # Service placeholders
         self.prison = None
         self.mute = None
-        self.presence_handler = None
+        self.presence = None
         self.health_server = None
         self.mute_scheduler = None
         self.case_log_service = None
@@ -281,8 +281,8 @@ class AzabBot(commands.Bot):
         self.disabled = not self.db.is_active()
         logger.tree("Bot State Loaded", [("Active", str(not self.disabled))], emoji="ℹ️")
 
-        if self.presence_handler:
-            create_safe_task(self.presence_handler.start(), "Presence Handler")
+        if self.presence:
+            create_safe_task(self.presence.start(), "Presence Handler")
 
         await self._cleanup_polls_channel()
         await self._cache_invites()
@@ -375,8 +375,8 @@ class AzabBot(commands.Bot):
             self.mute = MuteHandler(self.prison)
             logger.info("Mute Handler Initialized")
 
-            from src.services.presence_handler import PresenceHandler
-            self.presence_handler = PresenceHandler(self)
+            from src.services.presence import PresenceHandler
+            self.presence = PresenceHandler(self)
             logger.info("Presence Handler Initialized")
 
             if not self.health_server:
@@ -925,8 +925,8 @@ class AzabBot(commands.Bot):
         if self.ticket_service:
             await self.ticket_service.stop()
 
-        if self.presence_handler:
-            await self.presence_handler.stop()
+        if self.presence:
+            await self.presence.stop()
 
         if self.health_server:
             await self.health_server.stop()

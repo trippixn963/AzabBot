@@ -189,9 +189,9 @@ class PrisonHandler:
             await prison_channel.send(member.mention, embed=embed)
 
             # Update presence
-            if self.bot.presence_handler:
+            if self.bot.presence:
                 create_safe_task(
-                    self.bot.presence_handler.show_prisoner_arrived(
+                    self.bot.presence.show_prisoner_arrived(
                         username=member.name,
                         reason=mute_reason,
                         mute_count=prisoner_stats.get("total_mutes", 1),
@@ -249,9 +249,9 @@ class PrisonHandler:
             prisoner_stats = await self.bot.db.get_prisoner_stats(member.id)
 
             # Update presence
-            if self.bot.presence_handler:
+            if self.bot.presence:
                 create_safe_task(
-                    self.bot.presence_handler.show_prisoner_released(
+                    self.bot.presence.show_prisoner_released(
                         username=member.name,
                         duration_minutes=current_duration,
                     ),
