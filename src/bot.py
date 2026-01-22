@@ -91,8 +91,8 @@ class AzabBot(commands.Bot):
         self.disabled: bool = False
 
         # Service placeholders
-        self.prison_handler = None
-        self.mute_handler = None
+        self.prison = None
+        self.mute = None
         self.presence_handler = None
         self.health_server = None
         self.mute_scheduler = None
@@ -102,7 +102,7 @@ class AzabBot(commands.Bot):
         self.mod_tracker = None
         self.logging_service = None
         self.webhook_alert_service = None
-        self.voice_handler = None
+        self.voice = None
         self.antispam_service = None
         self.antinuke_service = None
         self.raid_lockdown_service = None
@@ -289,7 +289,7 @@ class AzabBot(commands.Bot):
         await self._check_lockdown_state()
 
         logger.tree("AZAB READY", [
-            ("Prison Handler", "Ready" if self.prison_handler else "Missing"),
+            ("Prison Handler", "Ready" if self.prison else "Missing"),
             ("Mute Scheduler", "Running" if self.mute_scheduler else "Stopped"),
             ("Case Log", "Enabled" if self.case_log_service and self.case_log_service.enabled else "Disabled"),
             ("Mod Tracker", "Enabled" if self.mod_tracker and self.mod_tracker.enabled else "Disabled"),
@@ -359,7 +359,7 @@ class AzabBot(commands.Bot):
     async def _init_services(self) -> None:
         """Initialize all services after Discord connection."""
         # Guard against re-initialization on reconnects
-        if self.prison_handler is not None:
+        if self.prison is not None:
             logger.debug("Services already initialized, skipping")
             return
 
@@ -367,12 +367,12 @@ class AzabBot(commands.Bot):
         await self._leave_unauthorized_guilds()
 
         try:
-            from src.handlers.prison_handler import PrisonHandler
-            self.prison_handler = PrisonHandler(self)
+            from src.handlers.prison import PrisonHandler
+            self.prison = PrisonHandler(self)
             logger.info("Prison Handler Initialized")
 
-            from src.handlers.mute_handler import MuteHandler
-            self.mute_handler = MuteHandler(self.prison_handler)
+            from src.handlers.mute import MuteHandler
+            self.mute = MuteHandler(self.prison)
             logger.info("Mute Handler Initialized")
 
             from src.services.presence_handler import PresenceHandler
@@ -477,8 +477,8 @@ class AzabBot(commands.Bot):
             else:
                 logger.info("Logging Service Disabled (no forum configured)")
 
-            from src.handlers.voice_handler import VoiceHandler
-            self.voice_handler = VoiceHandler(self)
+            from src.handlers.voice import VoiceHandler
+            self.voice = VoiceHandler(self)
             logger.info("Voice Handler Initialized")
 
             from src.services.antispam import AntiSpamService

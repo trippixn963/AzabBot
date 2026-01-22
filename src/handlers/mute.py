@@ -15,7 +15,7 @@ from typing import Optional, TYPE_CHECKING
 from src.core.logger import logger
 
 if TYPE_CHECKING:
-    from src.handlers.prison_handler import PrisonHandler
+    from src.handlers.prison import PrisonHandler
 
 
 # =============================================================================
@@ -32,25 +32,25 @@ class MuteHandler:
         Handles multiple mod bot formats gracefully.
 
     Attributes:
-        prison_handler: Reference to the prison handler for storing reasons.
+        prison: Reference to the prison handler for storing reasons.
     """
 
     # =========================================================================
     # Initialization
     # =========================================================================
 
-    def __init__(self, prison_handler: "PrisonHandler") -> None:
+    def __init__(self, prison: "PrisonHandler") -> None:
         """
         Initialize the mute handler.
 
         Args:
-            prison_handler: Prison handler instance for storing mute reasons.
+            prison: Prison handler instance for storing mute reasons.
         """
-        self.prison_handler = prison_handler
+        self.prison = prison
 
         logger.tree("Mute Handler Loaded", [
             ("Purpose", "Parse mute embeds from logs"),
-            ("Storage", "prison_handler.mute_reasons"),
+            ("Storage", "prison.mute_reasons"),
         ], emoji="🔒")
 
     # =========================================================================
@@ -129,18 +129,18 @@ class MuteHandler:
 
             if reason:
                 # LRU eviction if at limit
-                while len(self.prison_handler.mute_reasons) >= self.prison_handler._mute_reasons_limit:
-                    self.prison_handler.mute_reasons.popitem(last=False)
+                while len(self.prison.mute_reasons) >= self.prison._mute_reasons_limit:
+                    self.prison.mute_reasons.popitem(last=False)
 
                 if user_id:
-                    self.prison_handler.mute_reasons[user_id] = reason
+                    self.prison.mute_reasons[user_id] = reason
                     logger.tree("Mute Reason Captured", [
                         ("User ID", str(user_id)),
                         ("Reason", reason[:50] + "..." if len(reason) > 50 else reason),
                     ], emoji="🔒")
 
                 if user_name:
-                    self.prison_handler.mute_reasons[user_name.lower()] = reason
+                    self.prison.mute_reasons[user_name.lower()] = reason
                     logger.tree("Mute Reason Captured", [
                         ("Username", user_name),
                         ("Reason", reason[:50] + "..." if len(reason) > 50 else reason),

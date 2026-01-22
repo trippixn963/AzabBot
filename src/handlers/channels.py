@@ -328,8 +328,8 @@ class ChannelEvents(commands.Cog):
         after: discord.VoiceState,
     ) -> None:
         """Delegate voice state changes to the voice handler."""
-        if self.bot.voice_handler:
-            await self.bot.voice_handler.handle_voice_state_update(member, before, after)
+        if self.bot.voice:
+            await self.bot.voice.handle_voice_state_update(member, before, after)
 
     # =========================================================================
     # Reaction Events

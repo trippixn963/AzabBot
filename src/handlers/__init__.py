@@ -12,8 +12,8 @@ DESIGN:
 
     Event Cogs are loaded dynamically by the bot using load_extension().
     - messages/: Message create/delete/edit
-    - members_handler.py: Member join/leave/update
-    - channels_handler.py: Channel/thread/role/emoji events
+    - members.py: Member join/leave/update
+    - channels.py: Channel/thread/role/emoji events
     - audit_log/: Audit log routing to mod_tracker and logging_service
 
     To add a new handler:
@@ -36,8 +36,8 @@ Server: discord.gg/syria
 
 EVENT_COGS = [
     "src.handlers.messages",
-    "src.handlers.members_handler",
-    "src.handlers.channels_handler",
+    "src.handlers.members",
+    "src.handlers.channels",
     "src.handlers.audit_log",
 ]
 """
@@ -52,8 +52,8 @@ DESIGN:
 # Handler Imports
 # =============================================================================
 
-from .prison_handler import PrisonHandler
-from .mute_handler import MuteHandler
+from .prison import PrisonHandler
+from .mute import MuteHandler
 
 
 # =============================================================================

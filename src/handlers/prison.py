@@ -377,7 +377,7 @@ class PrisonHandler:
         logs_channel: discord.abc.GuildChannel,
     ) -> None:
         """Scan logs channel for mute reason in recent embeds."""
-        if not self.bot.mute_handler:
+        if not self.bot.mute:
             return
 
         # Skip if logs_channel is a forum (forums don't have history)
@@ -388,7 +388,7 @@ class PrisonHandler:
         try:
             async for message in logs_channel.history(limit=50):
                 if message.embeds:
-                    await self.bot.mute_handler.process_mute_embed(message)
+                    await self.bot.mute.process_mute_embed(message)
                     if member.id in self.mute_reasons or member.name.lower() in self.mute_reasons:
                         break
         except Exception as e:

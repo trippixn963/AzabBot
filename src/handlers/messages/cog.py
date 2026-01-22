@@ -92,8 +92,8 @@ class MessageEvents(HelpersMixin, commands.Cog):
             and message.channel.parent_id == self.config.mod_logs_forum_id
             and message.embeds
         ):
-            if self.bot.mute_handler:
-                await self.bot.mute_handler.process_mute_embed(message)
+            if self.bot.mute:
+                await self.bot.mute.process_mute_embed(message)
             return
 
         # -----------------------------------------------------------------

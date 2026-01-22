@@ -61,8 +61,8 @@ class MemberEvents(commands.Cog):
                 ("User ID", str(after.id)),
             ], emoji="⛓️")
 
-            if self.bot.prison_handler:
-                await self.bot.prison_handler.handle_new_prisoner(after)
+            if self.bot.prison:
+                await self.bot.prison.handle_new_prisoner(after)
 
         elif had_muted and not has_muted:
             logger.tree("PRISONER RELEASED", [
@@ -70,8 +70,8 @@ class MemberEvents(commands.Cog):
                 ("User ID", str(after.id)),
             ], emoji="🔓")
 
-            if self.bot.prison_handler:
-                await self.bot.prison_handler.handle_prisoner_release(after)
+            if self.bot.prison:
+                await self.bot.prison.handle_prisoner_release(after)
 
             # Clean up rate limiting state
             self.bot.prisoner_cooldowns.pop(after.id, None)
