@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Source Package
-=================================
+AzabBot - Source Package
+========================
 
 The main source package for the Azab Discord bot, built specifically
 for discord.gg/syria. This package contains all core bot functionality

@@ -1,6 +1,6 @@
 """
-Audit Log Events - Mod Tracker Mixin
-====================================
+AzabBot - Mod Tracker Mixin
+===========================
 
 Routes audit log events to mod tracker service.
 

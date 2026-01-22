@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Lockdown Command Cog
-========================================
+AzabBot - Lockdown Command Cog
+==============================
 
 Emergency server lockdown command for raid protection.
 

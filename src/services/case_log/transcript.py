@@ -1,6 +1,6 @@
 """
-Case Transcript Service
-=======================
+AzabBot - Case Transcript Service
+=================================
 
 Handles building and storing transcripts of case threads before deletion.
 

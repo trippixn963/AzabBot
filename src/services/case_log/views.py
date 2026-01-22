@@ -1,6 +1,6 @@
 """
-Case Log Views
-==============
+AzabBot - Case Log Views
+========================
 
 Discord UI views for case log embeds.
 

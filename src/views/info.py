@@ -1,6 +1,6 @@
 """
-Info Button Views
-=================
+AzabBot - Info Button Views
+===========================
 
 Buttons for displaying user info and downloading avatars.
 

@@ -1,6 +1,6 @@
 """
-Ticket Buttons - Other Buttons
-==============================
+AzabBot - Other Buttons
+=======================
 
 Reopen and Transcript buttons.
 

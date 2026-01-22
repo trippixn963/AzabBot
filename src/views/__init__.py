@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Shared UI Views
-===================================
+AzabBot - Shared UI Views
+=========================
 
 Reusable UI components for moderation commands.
 

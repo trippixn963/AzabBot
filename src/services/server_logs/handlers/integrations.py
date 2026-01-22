@@ -1,6 +1,6 @@
 """
-Server Logs - Integrations Handler
-==================================
+AzabBot - Integrations Handler
+==============================
 
 Handles webhook and integration logging.
 

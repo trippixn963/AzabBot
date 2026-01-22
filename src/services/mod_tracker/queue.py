@@ -1,6 +1,6 @@
 """
-Mod Tracker - Queue Mixin
-=========================
+AzabBot - Queue Mixin
+=====================
 
 Priority queue system for mod tracker messages.
 

@@ -1,6 +1,6 @@
 """
-Anti-Spam Punishment Handlers
-=============================
+AzabBot - Anti-Spam Punishment Handlers
+=======================================
 
 Handlers for spam detection results - warnings, mutes, and logging.
 """

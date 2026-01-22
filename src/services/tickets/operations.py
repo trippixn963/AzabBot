@@ -1,6 +1,6 @@
 """
-Ticket Service - Operations Mixin
-=================================
+AzabBot - Operations Mixin
+==========================
 
 Core ticket operations: create, close, reopen, claim, transfer, etc.
 

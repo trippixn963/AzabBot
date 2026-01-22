@@ -1,6 +1,6 @@
 """
-Database Type Definitions
-=========================
+AzabBot - Database Type Definitions
+===================================
 
 TypedDict definitions for database records.
 

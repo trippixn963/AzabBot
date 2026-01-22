@@ -1,6 +1,6 @@
 """
-Server Logs - Stage Handler
-===========================
+AzabBot - Stage Handler
+=======================
 
 Handles stage instance logging.
 

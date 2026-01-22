@@ -1,6 +1,6 @@
 """
-Database - Voice Activity Mixin
-===============================
+AzabBot - Voice Activity Mixin
+==============================
 
 Voice activity tracking operations.
 

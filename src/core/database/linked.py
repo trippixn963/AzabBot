@@ -1,6 +1,6 @@
 """
-Database - Linked Messages Mixin
-================================
+AzabBot - Linked Messages Mixin
+===============================
 
 Linked messages operations for auto-deletion on leave.
 

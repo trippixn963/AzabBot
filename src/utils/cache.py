@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Shared Cache Utilities
-==========================================
+AzabBot - Shared Cache Utilities
+================================
 
 Provides reusable TTL-based caching classes to eliminate code duplication
 across services that implement similar caching patterns.

@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Snipe Package
-================================
+AzabBot - Snipe Package
+=======================
 
 View deleted and edited messages in a channel.
 

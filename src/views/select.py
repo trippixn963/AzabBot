@@ -1,6 +1,6 @@
 """
-User Info Select View
-=====================
+AzabBot - User Info Select View
+===============================
 
 Dropdown for user info actions (Info, Avatar, History).
 

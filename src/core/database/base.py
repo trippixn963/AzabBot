@@ -1,6 +1,6 @@
 """
-Database Base Module
-====================
+AzabBot - Database Base Module
+==============================
 
 Core database connection and execution methods.
 

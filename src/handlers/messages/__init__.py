@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Message Events Package
-==========================================
+AzabBot - Message Events Package
+================================
 
 Handles message create, delete, and edit events.
 

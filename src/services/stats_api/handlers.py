@@ -1,6 +1,6 @@
 """
-Stats API - Handlers Mixin
-==========================
+AzabBot - Handlers Mixin
+========================
 
 HTTP endpoint handlers.
 

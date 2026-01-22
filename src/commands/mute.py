@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Mute Command Cog
-====================================
+AzabBot - Mute Command Cog
+==========================
 
 Role-based mute/unmute commands with timed auto-unmute.
 

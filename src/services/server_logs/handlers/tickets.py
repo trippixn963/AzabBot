@@ -1,6 +1,6 @@
 """
-Server Logs - Tickets Handler
-=============================
+AzabBot - Tickets Handler
+=========================
 
 Handles ticket logging.
 

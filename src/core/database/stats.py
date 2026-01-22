@@ -1,6 +1,6 @@
 """
-Database Statistics Module
-==========================
+AzabBot - Database Statistics Module
+====================================
 
 Statistics and metrics database operations.
 

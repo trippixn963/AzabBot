@@ -1,6 +1,6 @@
 """
-Forbid Command - Scheduler Mixin
-================================
+AzabBot - Scheduler Mixin
+=========================
 
 Background tasks: nightly scan, startup scan, expiry scheduler.
 

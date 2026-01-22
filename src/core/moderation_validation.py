@@ -1,6 +1,6 @@
 """
 AzabBot - Centralized Moderation Validation
-============================================
+===========================================
 
 Shared validation logic for moderation commands (ban, mute, warn, forbid).
 Eliminates duplicate validation code and ensures consistent behavior.

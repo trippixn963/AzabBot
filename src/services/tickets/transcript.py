@@ -1,6 +1,6 @@
 """
-Ticket Transcript Generator
-===========================
+AzabBot - Ticket Transcript Generator
+=====================================
 
 HTML and JSON transcript generation for tickets.
 

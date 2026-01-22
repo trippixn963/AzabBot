@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Member Events
-================================
+AzabBot - Member Events
+=======================
 
 Handles member join, leave, and update events.
 

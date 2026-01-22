@@ -1,6 +1,6 @@
 """
-Logging Service - Categories
-============================
+AzabBot - Categories
+====================
 
 Log category definitions for the server logging service.
 

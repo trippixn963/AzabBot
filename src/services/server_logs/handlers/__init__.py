@@ -1,6 +1,6 @@
 """
-Server Logs Handlers Package
-============================
+AzabBot - Server Logs Handlers Package
+======================================
 
 Handler mixins for the LoggingService, organized by category.
 

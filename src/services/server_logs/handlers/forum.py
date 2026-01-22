@@ -1,6 +1,6 @@
 """
-Server Logs - Forum Handler
-===========================
+AzabBot - Forum Handler
+=======================
 
 Handles forum post and tag logging.
 

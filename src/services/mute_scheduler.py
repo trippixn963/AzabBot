@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Mute Scheduler Service
-==========================================
+AzabBot - Mute Scheduler Service
+================================
 
 Background service for automatic unmuting of expired mutes.
 

@@ -1,6 +1,6 @@
 """
-Ticket Buttons - Helper Functions
-=================================
+AzabBot - Helper Functions
+==========================
 
 Common helper functions for ticket buttons.
 

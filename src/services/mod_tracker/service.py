@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Mod Tracker Service
-=======================================
+AzabBot - Mod Tracker Service
+=============================
 
 Service for tracking moderator activities in forum threads.
 

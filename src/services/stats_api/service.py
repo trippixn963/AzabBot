@@ -1,6 +1,6 @@
 """
-Stats API - Service
-===================
+AzabBot - Service
+=================
 
 Main AzabAPI class with lifecycle methods.
 

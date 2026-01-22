@@ -1,6 +1,6 @@
 """
-Ticket Buttons - Claim Button
-=============================
+AzabBot - Claim Button
+======================
 
 Button to claim a ticket.
 

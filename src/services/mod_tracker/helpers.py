@@ -1,6 +1,6 @@
 """
-Mod Tracker Service - Helpers
-=============================
+AzabBot - Helpers
+=================
 
 Data classes and utility functions for the mod tracker service.
 

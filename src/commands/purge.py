@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Purge Command Cog
-=====================================
+AzabBot - Purge Command Cog
+===========================
 
 Bulk message deletion command for channel moderation.
 

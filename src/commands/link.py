@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Link Command Cog
-====================================
+AzabBot - Link Command Cog
+==========================
 
 Links alliance channel messages to members for auto-deletion on leave.
 

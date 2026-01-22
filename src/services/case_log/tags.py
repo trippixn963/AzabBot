@@ -1,6 +1,6 @@
 """
-Case Log Service - Tag Management
-=================================
+AzabBot - Tag Management
+========================
 
 Mixin for forum tag management.
 

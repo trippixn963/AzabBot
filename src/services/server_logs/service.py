@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Server Logging Service
-==========================================
+AzabBot - Server Logging Service
+================================
 
 Comprehensive server activity logging using a forum channel with categorized threads.
 

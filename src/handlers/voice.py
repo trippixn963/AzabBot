@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Voice Handler
-=================================
+AzabBot - Voice Handler
+=======================
 
 Handles voice-related events and enforcement.
 

@@ -1,6 +1,6 @@
 """
-Ticket Service - Auto-Close Mixin
-=================================
+AzabBot - Auto-Close Mixin
+==========================
 
 Auto-close logic for inactive tickets.
 

@@ -1,6 +1,6 @@
 """
-Audit Log Events - Logging Service Mixin
-=========================================
+AzabBot - Logging Service Mixin
+===============================
 
 Routes audit log events to logging service.
 

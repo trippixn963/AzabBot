@@ -1,6 +1,6 @@
 """
-Database - History Operations Mixin
-===================================
+AzabBot - History Operations Mixin
+==================================
 
 Nickname, username, and combined history operations.
 

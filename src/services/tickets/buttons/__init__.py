@@ -1,6 +1,6 @@
 """
-Ticket System Buttons
-=====================
+AzabBot - Ticket System Buttons
+===============================
 
 Dynamic button items for the ticket control panel.
 All buttons use custom_id prefixes for persistence across restarts.

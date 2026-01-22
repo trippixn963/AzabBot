@@ -1,6 +1,6 @@
 """
-Mute Command - Mute Operations Mixin
-====================================
+AzabBot - Mute Operations Mixin
+===============================
 
 Core mute execution logic.
 

@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Editsnipe Command Mixin
-==========================================
+AzabBot - Editsnipe Command Mixin
+=================================
 
 /editsnipe command implementation.
 

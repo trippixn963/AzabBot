@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Mute Views
-==============================
+AzabBot - Mute Views
+====================
 
 UI views and modals for the mute command.
 

@@ -1,6 +1,6 @@
 """
-Forbid Command - Roles Mixin
-============================
+AzabBot - Roles Mixin
+=====================
 
 Role management and channel overwrites for forbid system.
 

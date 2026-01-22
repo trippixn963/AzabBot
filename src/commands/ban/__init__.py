@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Ban Package
-===============================
+AzabBot - Ban Package
+=====================
 
 Server moderation ban/unban commands with case logging.
 

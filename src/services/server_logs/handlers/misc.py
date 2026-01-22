@@ -1,6 +1,6 @@
 """
-Server Logs - Misc Handler
-==========================
+AzabBot - Misc Handler
+======================
 
 Handles miscellaneous logging (pins, voice actions, verification, etc.).
 

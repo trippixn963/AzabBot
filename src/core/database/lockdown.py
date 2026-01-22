@@ -1,6 +1,6 @@
 """
-Database Lockdown Operations Module
-====================================
+AzabBot - Database Lockdown Operations Module
+=============================================
 
 Lockdown, spam violations, and forbid database operations.
 

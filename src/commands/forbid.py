@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Forbid Command Cog
-======================================
+AzabBot - Forbid Command Cog
+============================
 
 Restrict specific permissions for users without fully muting them.
 

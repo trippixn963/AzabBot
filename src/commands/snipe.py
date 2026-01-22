@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Snipe Command Cog
-=====================================
+AzabBot - Snipe Command Cog
+===========================
 
 View deleted and edited messages in a channel.
 

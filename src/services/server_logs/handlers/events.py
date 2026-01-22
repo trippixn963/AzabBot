@@ -1,6 +1,6 @@
 """
-Server Logs - Events Handler
-============================
+AzabBot - Events Handler
+========================
 
 Handles scheduled event logging.
 

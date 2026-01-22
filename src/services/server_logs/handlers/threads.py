@@ -1,6 +1,6 @@
 """
-Server Logs - Threads Handler
-=============================
+AzabBot - Threads Handler
+=========================
 
 Handles thread activity logging.
 

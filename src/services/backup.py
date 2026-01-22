@@ -1,6 +1,6 @@
 """
 AzabBot - Database Backup System
-=================================
+================================
 
 Wrapper around unified backup system with AzabBot-specific configuration.
 

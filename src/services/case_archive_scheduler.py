@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Case Archive Scheduler
-==========================================
+AzabBot - Case Archive Scheduler
+================================
 
 Background service for automatic deletion of old case threads.
 

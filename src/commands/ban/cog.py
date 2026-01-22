@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Ban Cog
-==========================
+AzabBot - Ban Cog
+=================
 
 Main BanCog class with command definitions.
 

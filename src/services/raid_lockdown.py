@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Auto Raid Lockdown Service
-==============================================
+AzabBot - Auto Raid Lockdown Service
+====================================
 
 Automatically locks server when raid is detected.
 

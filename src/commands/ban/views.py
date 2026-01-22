@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Ban Views
-=============================
+AzabBot - Ban Views
+===================
 
 UI views and modals for the ban command.
 

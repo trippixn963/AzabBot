@@ -1,6 +1,6 @@
 """
-Anti-Spam Module
-================
+AzabBot - Anti-Spam Module
+==========================
 
 Advanced spam detection and prevention with progressive punishment.
 

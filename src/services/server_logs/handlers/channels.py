@@ -1,6 +1,6 @@
 """
-Server Logs - Channels Handler
-===============================
+AzabBot - Channels Handler
+==========================
 
 Handles channel and role management logging.
 

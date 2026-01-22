@@ -1,6 +1,6 @@
 """
-Ticket System Views
-===================
+AzabBot - Ticket System Views
+=============================
 
 View classes for ticket panel and control panel.
 

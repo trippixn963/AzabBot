@@ -1,6 +1,6 @@
 """
-Forbid Command - Cog
-====================
+AzabBot - Cog
+=============
 
 Main ForbidCog class inheriting from all mixins.
 

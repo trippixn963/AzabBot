@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Forbid Views
-================================
+AzabBot - Forbid Views
+======================
 
 UI views and modals for the forbid command.
 

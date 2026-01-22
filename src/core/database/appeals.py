@@ -1,6 +1,6 @@
 """
-Database - Appeals Mixin
-========================
+AzabBot - Appeals Mixin
+=======================
 
 Appeal operations for ban/mute appeals.
 

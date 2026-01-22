@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Database Manager
-====================================
+AzabBot - Database Manager
+==========================
 
 Central SQLite database manager for all bot data.
 

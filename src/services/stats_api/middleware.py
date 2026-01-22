@@ -1,6 +1,6 @@
 """
-Stats API - Middleware
-======================
+AzabBot - Middleware
+====================
 
 Rate limiting, caching, and middleware functions.
 

@@ -1,6 +1,6 @@
 """
-Server Logs - Messages Handler
-===============================
+AzabBot - Messages Handler
+==========================
 
 Handles message delete, edit, and bulk delete logging.
 

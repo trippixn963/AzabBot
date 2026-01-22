@@ -1,6 +1,6 @@
 """
-Server Logs - Audit Handler
-===========================
+AzabBot - Audit Handler
+=======================
 
 Handles raw audit log logging.
 

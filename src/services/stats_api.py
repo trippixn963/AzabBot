@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Stats API
-============================
+AzabBot - Stats API
+===================
 
 HTTP API server exposing moderation statistics for the dashboard.
 

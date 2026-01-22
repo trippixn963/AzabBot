@@ -1,6 +1,6 @@
 """
-Message Events - Helpers Mixin
-==============================
+AzabBot - Helpers Mixin
+=======================
 
 Helper methods for message event handling.
 

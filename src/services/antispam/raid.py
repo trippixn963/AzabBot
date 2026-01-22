@@ -1,6 +1,6 @@
 """
-Anti-Spam Raid Detection
-========================
+AzabBot - Anti-Spam Raid Detection
+==================================
 
 Enhanced raid detection and handling.
 """

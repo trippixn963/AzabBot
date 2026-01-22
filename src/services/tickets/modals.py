@@ -1,6 +1,6 @@
 """
-Ticket System Modals
-====================
+AzabBot - Ticket System Modals
+==============================
 
 Modal dialogs for ticket creation, closing, and user management.
 

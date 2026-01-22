@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Mute Package
-================================
+AzabBot - Mute Package
+======================
 
 Role-based mute/unmute commands with timed auto-unmute.
 

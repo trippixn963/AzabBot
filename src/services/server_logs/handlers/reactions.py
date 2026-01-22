@@ -1,6 +1,6 @@
 """
-Server Logs - Reactions Handler
-===============================
+AzabBot - Reactions Handler
+===========================
 
 Handles reaction logging.
 

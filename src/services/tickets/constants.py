@@ -1,6 +1,6 @@
 """
-Ticket System Constants
-=======================
+AzabBot - Ticket System Constants
+=================================
 
 Categories, colors, timeouts, and configuration for the ticket system.
 

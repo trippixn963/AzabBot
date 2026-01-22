@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - History Command Cog
-=======================================
+AzabBot - History Command Cog
+=============================
 
 View moderation history for a user.
 

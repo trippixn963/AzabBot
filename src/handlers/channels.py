@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Channel & Misc Events
-=========================================
+AzabBot - Channel & Misc Events
+===============================
 
 Handles channel, thread, role, emoji, sticker, invite, voice,
 reaction, stage, scheduled event, and automod events.

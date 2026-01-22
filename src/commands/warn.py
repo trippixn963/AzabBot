@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Warn Command Cog
-====================================
+AzabBot - Warn Command Cog
+==========================
 
 Server moderation warning command with case logging.
 

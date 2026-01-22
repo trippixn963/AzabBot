@@ -1,6 +1,6 @@
 """
-Ticket Buttons - User Management
-================================
+AzabBot - User Management
+=========================
 
 Buttons for adding and removing users from tickets.
 

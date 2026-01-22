@@ -1,6 +1,6 @@
 """
-Case Log Service
-================
+AzabBot - Case Log Service
+==========================
 
 Modular case log service for AzabBot.
 

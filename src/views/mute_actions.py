@@ -1,6 +1,6 @@
 """
-Mute Action Button Views
-========================
+AzabBot - Mute Action Button Views
+==================================
 
 Buttons for extending and removing mutes.
 

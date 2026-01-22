@@ -1,6 +1,6 @@
 """
-Anti-Spam Data Models
-=====================
+AzabBot - Anti-Spam Data Models
+===============================
 
 Dataclasses for tracking message records, user states, and join records.
 """

@@ -1,6 +1,6 @@
 """
-Forbid Command - DM Mixin
-=========================
+AzabBot - DM Mixin
+==================
 
 DM notification methods for forbid/unforbid actions.
 

@@ -1,6 +1,6 @@
 """
-Case Log Embeds
-===============
+AzabBot - Case Log Embeds
+=========================
 
 Embed builders for case log messages.
 

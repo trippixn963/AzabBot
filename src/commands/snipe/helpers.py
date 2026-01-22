@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Snipe Helpers Mixin
-======================================
+AzabBot - Snipe Helpers Mixin
+=============================
 
 Server logging helper methods for snipe commands.
 

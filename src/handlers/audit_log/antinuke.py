@@ -1,6 +1,6 @@
 """
-Audit Log Events - Anti-Nuke Mixin
-==================================
+AzabBot - Anti-Nuke Mixin
+=========================
 
 Routes audit log events to anti-nuke service.
 

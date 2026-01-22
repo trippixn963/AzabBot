@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Rate Limiter
-===============================
+AzabBot - Rate Limiter
+======================
 
 Unified rate limiting with named buckets for Discord API operations.
 

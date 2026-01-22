@@ -1,6 +1,6 @@
 """
-Server Logs - Boosts Handler
-============================
+AzabBot - Boosts Handler
+========================
 
 Handles server boost logging.
 

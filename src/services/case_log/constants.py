@@ -1,6 +1,6 @@
 """
-Case Log Constants
-==================
+AzabBot - Case Log Constants
+============================
 
 Action types, limits, timeouts, and configuration for the case log system.
 

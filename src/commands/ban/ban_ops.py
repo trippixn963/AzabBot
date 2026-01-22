@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Ban Operations Mixin
-========================================
+AzabBot - Ban Operations Mixin
+==============================
 
 Execute ban method and context menu handlers.
 

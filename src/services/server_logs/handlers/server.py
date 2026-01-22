@@ -1,6 +1,6 @@
 """
-Server Logs - Server Handler
-=============================
+AzabBot - Server Handler
+========================
 
 Handles server settings, emoji, stickers, and bot/integration logging.
 

@@ -1,6 +1,6 @@
 """
-Server Logs - AutoMod Handler
-=============================
+AzabBot - AutoMod Handler
+=========================
 
 Handles AutoMod action logging.
 

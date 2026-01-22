@@ -1,6 +1,6 @@
 """
-Server Logs - Members Handler
-==============================
+AzabBot - Members Handler
+=========================
 
 Handles member join, leave, role changes, name changes, and avatar changes.
 

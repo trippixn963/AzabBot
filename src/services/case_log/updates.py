@@ -1,6 +1,6 @@
 """
-Case Log Service - Profile & Control Panel Updates
-==================================================
+AzabBot - Profile & Control Panel Updates
+=========================================
 
 Mixin for profile stats and control panel updates.
 

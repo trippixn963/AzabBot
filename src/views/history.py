@@ -1,6 +1,6 @@
 """
-History Button Views
-====================
+AzabBot - History Button Views
+==============================
 
 Buttons for viewing paginated moderation history.
 

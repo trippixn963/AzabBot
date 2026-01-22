@@ -1,6 +1,6 @@
 """
-Stats API - Data Helpers Mixin
-==============================
+AzabBot - Data Helpers Mixin
+============================
 
 Data fetching and transformation methods.
 

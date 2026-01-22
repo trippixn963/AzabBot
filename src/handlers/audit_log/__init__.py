@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Audit Log Events Package
-============================================
+AzabBot - Audit Log Events Package
+==================================
 
 Handles audit log entries and routes them to mod_tracker and logging_service.
 

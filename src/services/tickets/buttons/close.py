@@ -1,6 +1,6 @@
 """
-Ticket Buttons - Close Buttons
-==============================
+AzabBot - Close Buttons
+=======================
 
 Buttons for closing tickets and handling close requests.
 

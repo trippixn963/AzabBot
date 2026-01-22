@@ -1,6 +1,6 @@
 """
-Audit Log Events - Main Cog
-===========================
+AzabBot - Main Cog
+==================
 
 Handles audit log entries and routes them to mod_tracker and logging_service.
 

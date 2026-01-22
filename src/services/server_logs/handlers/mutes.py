@@ -1,6 +1,6 @@
 """
-Server Logs - Mutes Handler
-============================
+AzabBot - Mutes Handler
+=======================
 
 Handles timeout, mute, unmute logging.
 

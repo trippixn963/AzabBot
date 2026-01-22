@@ -1,6 +1,6 @@
 """
-Case Log Extended Actions
-=========================
+AzabBot - Case Log Extended Actions
+===================================
 
 Additional log_* action methods (timeout, ban, unban, forbid, unforbid).
 These methods are mixed into CaseLogService.

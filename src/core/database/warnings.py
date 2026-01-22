@@ -1,6 +1,6 @@
 """
-Database Warning Operations Module
-==================================
+AzabBot - Database Warning Operations Module
+============================================
 
 Warning database operations.
 

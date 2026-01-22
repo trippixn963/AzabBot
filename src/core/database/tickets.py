@@ -1,6 +1,6 @@
 """
-Database Ticket Operations Module
-=================================
+AzabBot - Database Ticket Operations Module
+===========================================
 
 Ticket system database operations.
 

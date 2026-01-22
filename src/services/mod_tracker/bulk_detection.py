@@ -1,6 +1,6 @@
 """
-Mod Tracker - Bulk Detection Mixin
-==================================
+AzabBot - Bulk Detection Mixin
+==============================
 
 Bulk action detection and alert sending.
 

@@ -1,6 +1,6 @@
 """
-Database - Pending Reasons Mixin
-================================
+AzabBot - Pending Reasons Mixin
+===============================
 
 Pending reason operations for case management.
 

@@ -1,6 +1,6 @@
 """
-Server Logs - Invites Handler
-=============================
+AzabBot - Invites Handler
+=========================
 
 Handles invite logging.
 

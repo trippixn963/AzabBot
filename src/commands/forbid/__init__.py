@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Forbid Package
-==================================
+AzabBot - Forbid Package
+========================
 
 Restrict specific permissions for users without fully muting them.
 

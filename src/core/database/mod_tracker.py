@@ -1,6 +1,6 @@
 """
-Database - Mod Tracker Operations Mixin
-=======================================
+AzabBot - Mod Tracker Operations Mixin
+======================================
 
 Moderator tracking database operations.
 

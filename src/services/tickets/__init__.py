@@ -1,6 +1,6 @@
 """
-Ticket System
-=============
+AzabBot - Ticket System
+=======================
 
 Modular ticket system for AzabBot.
 

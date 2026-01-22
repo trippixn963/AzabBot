@@ -1,6 +1,6 @@
 """
-Database Mute Operations Module
-===============================
+AzabBot - Database Mute Operations Module
+=========================================
 
 Prisoner and mute-related database operations.
 

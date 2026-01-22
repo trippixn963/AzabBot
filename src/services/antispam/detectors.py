@@ -1,6 +1,6 @@
 """
-Anti-Spam Detection Helpers
-===========================
+AzabBot - Anti-Spam Detection Helpers
+=====================================
 
 Functions for detecting various types of spam patterns.
 """

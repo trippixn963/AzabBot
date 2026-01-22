@@ -1,6 +1,6 @@
 """
-Mute Command - Cog
-==================
+AzabBot - Cog
+=============
 
 Main MuteCog class with commands.
 

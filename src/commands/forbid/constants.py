@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Forbid Constants
-====================================
+AzabBot - Forbid Constants
+==========================
 
 Constants and configuration for the forbid command.
 

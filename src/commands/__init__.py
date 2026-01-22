@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Commands Package
-==================================
+AzabBot - Commands Package
+==========================
 
 Slash command implementations for the Azab Discord bot.
 Commands are implemented as discord.py Cogs for modularity.

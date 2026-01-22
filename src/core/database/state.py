@@ -1,6 +1,6 @@
 """
-Database - State Operations Mixin
-=================================
+AzabBot - State Operations Mixin
+================================
 
 Bot state and ignored users operations.
 

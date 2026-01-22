@@ -1,6 +1,6 @@
 """
-Ticket Service - Helpers Mixin
-==============================
+AzabBot - Helpers Mixin
+=======================
 
 Helper methods for channel/thread access, control panel, and scheduling.
 

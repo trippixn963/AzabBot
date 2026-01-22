@@ -1,6 +1,6 @@
 """
-Database Case Operations Module
-===============================
+AzabBot - Database Case Operations Module
+=========================================
 
 Per-action case database operations (new cases table).
 

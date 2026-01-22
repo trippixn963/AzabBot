@@ -1,6 +1,6 @@
 """
-Anti-Spam Reputation System
-===========================
+AzabBot - Anti-Spam Reputation System
+=====================================
 
 User reputation tracking for dynamic spam thresholds.
 """

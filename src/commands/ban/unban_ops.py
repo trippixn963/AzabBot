@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Unban Operations Mixin
-==========================================
+AzabBot - Unban Operations Mixin
+================================
 
 Execute unban command logic.
 

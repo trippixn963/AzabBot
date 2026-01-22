@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Ban Command Cog
-===================================
+AzabBot - Ban Command Cog
+=========================
 
 Server moderation ban/unban commands with case logging.
 

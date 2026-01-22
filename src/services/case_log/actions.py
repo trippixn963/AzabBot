@@ -1,6 +1,6 @@
 """
-Case Log Actions
-================
+AzabBot - Case Log Actions
+==========================
 
 All log_* action methods for the case log service.
 These methods are mixed into CaseLogService.

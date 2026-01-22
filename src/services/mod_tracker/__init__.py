@@ -1,6 +1,6 @@
 """
-Mod Tracker Service Package
-===========================
+AzabBot - Mod Tracker Service Package
+=====================================
 
 Service for tracking moderator activities in a separate server forum.
 

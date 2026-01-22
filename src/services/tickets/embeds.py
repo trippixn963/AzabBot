@@ -1,6 +1,6 @@
 """
-Ticket System Embeds
-====================
+AzabBot - Ticket System Embeds
+==============================
 
 Embed builder functions for ticket system.
 

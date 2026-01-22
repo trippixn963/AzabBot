@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Core Package
-==============================
+AzabBot - Core Package
+======================
 
 Core components and utilities for the Azab Discord bot.
 This package contains essential services like database management,

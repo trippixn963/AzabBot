@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Clearsnipe Command Mixin
-===========================================
+AzabBot - Clearsnipe Command Mixin
+==================================
 
 /clearsnipe command implementation.
 

@@ -1,6 +1,6 @@
 """
-Database - Activity Operations Mixin
-====================================
+AzabBot - Activity Operations Mixin
+===================================
 
 Member activity and message logging operations.
 

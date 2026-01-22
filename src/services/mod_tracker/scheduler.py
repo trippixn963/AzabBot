@@ -1,6 +1,6 @@
 """
-Mod Tracker - Scheduler Mixin
-=============================
+AzabBot - Scheduler Mixin
+=========================
 
 Scheduled tasks: inactivity checker, title updates, auto-scan.
 

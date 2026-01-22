@@ -1,6 +1,6 @@
 """
-Case Log Utilities
-==================
+AzabBot - Case Log Utilities
+============================
 
 Helper functions for duration parsing, formatting, and media validation.
 

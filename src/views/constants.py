@@ -1,6 +1,6 @@
 """
-Shared UI Constants
-===================
+AzabBot - Shared UI Constants
+=============================
 
 Emoji constants used across UI views.
 

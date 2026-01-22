@@ -1,6 +1,6 @@
 """
-Mod Tracker - Threads Mixin
-===========================
+AzabBot - Threads Mixin
+=======================
 
 Forum and thread management operations.
 

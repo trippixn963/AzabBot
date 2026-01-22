@@ -1,6 +1,6 @@
 """
-Mute Command - Unmute Operations Mixin
-======================================
+AzabBot - Unmute Operations Mixin
+=================================
 
 Core unmute execution logic.
 

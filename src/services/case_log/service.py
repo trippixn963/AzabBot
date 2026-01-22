@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Case Log Service
-====================================
+AzabBot - Case Log Service
+==========================
 
 Logging moderation actions to forum threads.
 

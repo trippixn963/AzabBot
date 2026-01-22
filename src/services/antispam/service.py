@@ -1,6 +1,6 @@
 """
-Anti-Spam Service
-=================
+AzabBot - Anti-Spam Service
+===========================
 
 Main service class that combines all spam detection and handling.
 """

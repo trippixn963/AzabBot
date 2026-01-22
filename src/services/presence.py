@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Presence Handler
-===================================
+AzabBot - Presence Handler
+==========================
 
 Wrapper around unified presence system with AzabBot-specific stats.
 Includes prisoner event presence and midnight tasks.

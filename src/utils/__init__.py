@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Utils Package
-================================
+AzabBot - Utils Package
+=======================
 
 Utility modules for the Azab Discord bot.
 Contains helper functions and utility classes.

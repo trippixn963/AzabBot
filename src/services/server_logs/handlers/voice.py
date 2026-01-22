@@ -1,6 +1,6 @@
 """
-Server Logs - Voice Handler
-============================
+AzabBot - Voice Handler
+=======================
 
 Handles voice channel activity logging.
 

@@ -1,6 +1,6 @@
 """
-Case Log Service - Reason Scheduler
-===================================
+AzabBot - Reason Scheduler
+==========================
 
 Mixin for pending reason scheduler.
 

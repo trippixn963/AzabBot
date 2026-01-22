@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Modmail Service
-===================================
+AzabBot - Modmail Service
+=========================
 
 Service for handling modmail from banned users.
 

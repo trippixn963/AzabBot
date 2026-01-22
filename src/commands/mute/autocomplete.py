@@ -1,6 +1,6 @@
 """
-Mute Command - Autocomplete Mixin
-=================================
+AzabBot - Autocomplete Mixin
+============================
 
 Autocomplete handlers for mute/unmute commands.
 

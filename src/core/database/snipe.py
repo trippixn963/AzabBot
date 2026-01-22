@@ -1,6 +1,6 @@
 """
-Database - Snipe Cache Mixin
-============================
+AzabBot - Snipe Cache Mixin
+===========================
 
 Snipe cache operations for deleted messages.
 

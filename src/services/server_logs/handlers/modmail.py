@@ -1,6 +1,6 @@
 """
-Server Logs - Modmail Handler
-=============================
+AzabBot - Modmail Handler
+=========================
 
 Handles modmail logging.
 

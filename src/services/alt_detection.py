@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Alt Detection Service
-=========================================
+AzabBot - Alt Detection Service
+===============================
 
 Detects potential alt accounts when a user is banned.
 

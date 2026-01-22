@@ -1,6 +1,6 @@
 """
-Mute Command - Helpers Mixin
-============================
+AzabBot - Helpers Mixin
+=======================
 
 Helper methods for DM notifications and logging.
 

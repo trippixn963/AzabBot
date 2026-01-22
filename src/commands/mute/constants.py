@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Mute Constants
-==================================
+AzabBot - Mute Constants
+========================
 
 Constants and configuration for the mute command.
 

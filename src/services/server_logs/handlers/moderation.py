@@ -1,6 +1,6 @@
 """
-Server Logs - Moderation Handler
-=================================
+AzabBot - Moderation Handler
+============================
 
 Handles ban, unban, and kick logging.
 

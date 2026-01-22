@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Server Logs Views
-=====================================
+AzabBot - Server Logs Views
+===========================
 
 Persistent views and buttons for server log embeds.
 

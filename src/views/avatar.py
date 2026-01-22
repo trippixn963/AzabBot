@@ -1,6 +1,6 @@
 """
-Avatar Button Views
-===================
+AzabBot - Avatar Button Views
+=============================
 
 Buttons for viewing old/new avatars from log messages.
 

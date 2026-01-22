@@ -1,6 +1,6 @@
 """
-Database Detection Operations Module
-=====================================
+AzabBot - Database Detection Operations Module
+==============================================
 
 Alt detection, user join info, and ban evasion detection operations.
 

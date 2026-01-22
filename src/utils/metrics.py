@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Performance Metrics
-=======================================
+AzabBot - Performance Metrics
+=============================
 
 Lightweight performance monitoring for bot operations.
 

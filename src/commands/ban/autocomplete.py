@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Ban Autocomplete
-====================================
+AzabBot - Ban Autocomplete
+==========================
 
 Autocomplete functions for ban/unban commands.
 

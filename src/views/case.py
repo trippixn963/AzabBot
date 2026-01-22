@@ -1,6 +1,6 @@
 """
-Case Button Views
-=================
+AzabBot - Case Button Views
+===========================
 
 Buttons for case management (approve, edit, links).
 

@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Mute Handler
-===============================
+AzabBot - Mute Handler
+======================
 
 Handles mute detection and embed processing from mod logs.
 

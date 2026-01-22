@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Handlers Package
-===================================
+AzabBot - Handlers Package
+==========================
 
 Event and message handlers for the Discord bot.
 Specialized handlers manage different aspects of bot functionality.

@@ -1,6 +1,6 @@
 """
-Anti-Spam Constants
-===================
+AzabBot - Anti-Spam Constants
+=============================
 
 All thresholds, patterns, limits, and configuration for spam detection.
 """

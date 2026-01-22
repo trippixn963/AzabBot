@@ -1,6 +1,6 @@
 """
-Ticket Buttons - Info Button
-============================
+AzabBot - Info Button
+=====================
 
 Button for viewing user info and criminal history.
 

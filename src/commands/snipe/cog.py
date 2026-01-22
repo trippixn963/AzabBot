@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Snipe Cog
-============================
+AzabBot - Snipe Cog
+===================
 
 Main SnipeCog class combining all command mixins.
 

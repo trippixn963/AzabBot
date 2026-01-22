@@ -1,6 +1,6 @@
 """
-Server Logs - Appeals Handler
-=============================
+AzabBot - Appeals Handler
+=========================
 
 Handles appeal logging.
 

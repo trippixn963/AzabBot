@@ -1,6 +1,6 @@
 """
-Server Logs - Warnings Handler
-==============================
+AzabBot - Warnings Handler
+==========================
 
 Handles warning logging.
 

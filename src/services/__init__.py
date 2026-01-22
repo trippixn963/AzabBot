@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Services Package
-==================================
+AzabBot - Services Package
+==========================
 
 External service integrations for the Azab Discord bot.
 This package contains integrations with third-party services

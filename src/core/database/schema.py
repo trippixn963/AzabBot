@@ -1,6 +1,6 @@
 """
-Database Schema Module
-======================
+AzabBot - Database Schema Module
+================================
 
 Table definitions and migrations.
 

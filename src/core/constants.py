@@ -1,6 +1,6 @@
 """
 AzabBot - Centralized Constants
-================================
+===============================
 
 All magic numbers and constants are defined here for maintainability.
 Import from this module instead of hardcoding values.

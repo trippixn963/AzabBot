@@ -1,6 +1,6 @@
 """
-Ticket Buttons - Transfer
-=========================
+AzabBot - Transfer
+==================
 
 Buttons for transferring tickets between staff members.
 

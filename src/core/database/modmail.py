@@ -1,6 +1,6 @@
 """
-Database - Modmail Mixin
-========================
+AzabBot - Modmail Mixin
+=======================
 
 Modmail operations for banned user communication.
 

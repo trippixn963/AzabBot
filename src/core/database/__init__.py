@@ -1,6 +1,6 @@
 """
-Database Module
-===============
+AzabBot - Database Module
+=========================
 
 Centralized database management for AzabBot.
 

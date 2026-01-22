@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Prison Handler
-=================================
+AzabBot - Prison Handler
+========================
 
 Handles prisoner welcome and release functionality.
 

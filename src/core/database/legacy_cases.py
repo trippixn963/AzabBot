@@ -1,6 +1,6 @@
 """
-Database Legacy Case Operations Module
-======================================
+AzabBot - Database Legacy Case Operations Module
+================================================
 
 Legacy case log (per-user) database operations.
 

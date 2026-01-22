@@ -1,6 +1,6 @@
 """
-Message Events - Cog
-====================
+AzabBot - Cog
+=============
 
 Main MessageEvents cog with event listeners.
 

@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Anti-Nuke Protection
-========================================
+AzabBot - Anti-Nuke Protection
+==============================
 
 Detects and prevents server nuking (mass bans/kicks/deletions).
 

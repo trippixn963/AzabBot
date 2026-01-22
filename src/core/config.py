@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Configuration Module
-========================================
+AzabBot - Configuration Module
+==============================
 
 Centralized configuration management with environment variable validation.
 

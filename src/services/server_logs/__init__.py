@@ -1,6 +1,6 @@
 """
-Server Logs Service Package
-===========================
+AzabBot - Server Logs Service Package
+=====================================
 
 Comprehensive server activity logging using a forum channel with categorized threads.
 

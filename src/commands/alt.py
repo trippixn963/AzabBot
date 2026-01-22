@@ -1,6 +1,6 @@
 """
-Azab Discord Bot - Alt Detection Command
-=========================================
+AzabBot - Alt Detection Command
+===============================
 
 Manual alt detection command to check if a user might be an alt.
 

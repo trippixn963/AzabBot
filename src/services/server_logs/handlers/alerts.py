@@ -1,6 +1,6 @@
 """
-Server Logs - Alerts Handler
-============================
+AzabBot - Alerts Handler
+========================
 
 Handles raid detection and lockdown logging.
 
