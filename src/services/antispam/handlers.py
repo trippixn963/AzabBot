@@ -151,23 +151,28 @@ class SpamHandlerMixin:
         channel: discord.abc.Messageable,
         now: datetime,
     ) -> None:
-        """Log sticker spam warning to server logs."""
+        """Log sticker spam warning to automod thread."""
         bot: "AzabBot" = self.bot  # type: ignore
         if bot.logging_service and bot.logging_service.enabled:
             try:
+                from src.services.server_logs.categories import LogCategory
                 embed = discord.Embed(
-                    title="⚠️ Sticker Spam",
+                    title="⚠️ Auto-Spam Warning (Sticker Spam)",
                     color=EmbedColors.WARNING,
                     timestamp=now,
                 )
-                embed.add_field(name="User", value=f"{member.mention}", inline=True)
+                embed.add_field(name="User", value=f"{member.mention}\n{member.id}", inline=True)
                 embed.add_field(name="Stickers Deleted", value=str(deleted_count), inline=True)
                 embed.add_field(name="Channel", value=f"<#{channel.id}>", inline=True)
+                embed.add_field(name="Action", value="Warning issued", inline=True)
+                set_footer(embed)
 
                 await bot.logging_service._send_log(
-                    bot.logging_service.LogCategory.MOD_ACTIONS,
+                    LogCategory.AUTOMOD,
                     embed,
+                    user_id=member.id,
                 )
+                logger.debug(f"Sticker spam warning logged for user {member.id}")
             except Exception as e:
                 logger.debug(f"Failed to log sticker spam warning: {e}")
 
@@ -263,22 +268,27 @@ class SpamHandlerMixin:
                 ("DM Sent", "Yes" if dm_sent else "No (DMs disabled)"),
             ], emoji="🔇")
 
-            # Log to server logs
+            # Log to automod thread
             if bot.logging_service and bot.logging_service.enabled:
                 try:
+                    from src.services.server_logs.categories import LogCategory
                     log_embed = discord.Embed(
                         title="🔇 Auto-Spam Mute (Sticker Spam)",
                         color=EmbedColors.WARNING,
                         timestamp=now,
                     )
-                    log_embed.add_field(name="User", value=f"{member.mention}", inline=True)
+                    log_embed.add_field(name="User", value=f"{member.mention}\n{member.id}", inline=True)
                     log_embed.add_field(name="Duration", value="10 minutes", inline=True)
                     log_embed.add_field(name="Violations", value=f"#{violation_count}", inline=True)
+                    log_embed.add_field(name="Channel", value=f"<#{message.channel.id}>", inline=True)
+                    set_footer(log_embed)
 
                     await bot.logging_service._send_log(
-                        bot.logging_service.LogCategory.MOD_ACTIONS,
+                        LogCategory.AUTOMOD,
                         log_embed,
+                        user_id=member.id,
                     )
+                    logger.debug(f"Sticker spam mute logged for user {member.id}")
                 except Exception as e:
                     logger.debug(f"Failed to log sticker spam mute: {e}")
 
@@ -315,23 +325,25 @@ class SpamHandlerMixin:
 
         if bot.logging_service and bot.logging_service.enabled:
             try:
+                from src.services.server_logs.categories import LogCategory
                 embed = discord.Embed(
                     title="🛡️ Webhook Spam Detected",
                     color=EmbedColors.WARNING,
                     timestamp=datetime.now(NY_TZ),
                 )
                 embed.add_field(name="Webhook ID", value=str(message.webhook_id), inline=True)
-                embed.add_field(
-                    name="Channel",
-                    value=f"<#{message.channel.id}>",
-                    inline=True
-                )
+                embed.add_field(name="Channel", value=f"<#{message.channel.id}>", inline=True)
                 embed.add_field(name="Action", value="Message deleted", inline=True)
+                if message.content:
+                    content_preview = message.content[:200] + ("..." if len(message.content) > 200 else "")
+                    embed.add_field(name="Content", value=f"```{content_preview}```", inline=False)
+                set_footer(embed)
 
                 await bot.logging_service._send_log(
-                    bot.logging_service.LogCategory.ALERTS,
+                    LogCategory.AUTOMOD,
                     embed,
                 )
+                logger.debug(f"Webhook spam logged for webhook {message.webhook_id}")
             except Exception as e:
                 logger.debug(f"Failed to log webhook spam: {e}")
 
@@ -525,7 +537,7 @@ class SpamHandlerMixin:
         violation_count: int,
         mute_duration: int = 0,
     ) -> None:
-        """Log spam incident to server logs."""
+        """Log spam incident to automod thread."""
         bot: "AzabBot" = self.bot  # type: ignore
         spam_display = SPAM_DISPLAY_NAMES.get(spam_type, spam_type)
 
@@ -542,31 +554,61 @@ class SpamHandlerMixin:
 
         if bot.logging_service and bot.logging_service.enabled:
             try:
+                from src.services.server_logs.categories import LogCategory
+
                 if mute_duration > 0:
+                    # Mute action
                     if mute_duration >= 3600:
                         duration_str = f"{mute_duration // 3600}h"
                     else:
                         duration_str = f"{mute_duration // 60}m"
 
                     embed = discord.Embed(
-                        title="🛡️ Auto-Spam Mute",
+                        title=f"🔇 Auto-Spam Mute ({spam_display})",
                         color=EmbedColors.WARNING,
                         timestamp=datetime.now(NY_TZ),
                     )
-                    embed.add_field(name="User", value=f"{message.author.mention}", inline=True)
+                    embed.add_field(name="User", value=f"{message.author.mention}\n{message.author.id}", inline=True)
                     embed.add_field(name="Type", value=spam_display, inline=True)
                     embed.add_field(name="Duration", value=duration_str, inline=True)
                     embed.add_field(name="Violations", value=f"#{violation_count}", inline=True)
+                    embed.add_field(name="Channel", value=f"<#{message.channel.id}>", inline=True)
                     if message.content:
-                        content_preview = message.content[:100] + ("..." if len(message.content) > 100 else "")
+                        content_preview = message.content[:200] + ("..." if len(message.content) > 200 else "")
                         embed.add_field(name="Content", value=f"```{content_preview}```", inline=False)
+                    set_footer(embed)
 
                     await bot.logging_service._send_log(
-                        bot.logging_service.LogCategory.MOD_ACTIONS,
+                        LogCategory.AUTOMOD,
                         embed,
+                        user_id=message.author.id,
                     )
+                    logger.debug(f"Auto-spam mute logged for user {message.author.id}")
+                else:
+                    # Warning action
+                    embed = discord.Embed(
+                        title=f"⚠️ Auto-Spam Warning ({spam_display})",
+                        color=EmbedColors.WARNING,
+                        timestamp=datetime.now(NY_TZ),
+                    )
+                    embed.add_field(name="User", value=f"{message.author.mention}\n{message.author.id}", inline=True)
+                    embed.add_field(name="Type", value=spam_display, inline=True)
+                    embed.add_field(name="Violations", value=f"#{violation_count}", inline=True)
+                    embed.add_field(name="Channel", value=f"<#{message.channel.id}>", inline=True)
+                    embed.add_field(name="Action", value="Warning + message deleted", inline=True)
+                    if message.content:
+                        content_preview = message.content[:200] + ("..." if len(message.content) > 200 else "")
+                        embed.add_field(name="Content", value=f"```{content_preview}```", inline=False)
+                    set_footer(embed)
+
+                    await bot.logging_service._send_log(
+                        LogCategory.AUTOMOD,
+                        embed,
+                        user_id=message.author.id,
+                    )
+                    logger.debug(f"Auto-spam warning logged for user {message.author.id}")
             except Exception as e:
-                logger.warning("Server Log Failed", [
+                logger.warning("AutoMod Log Failed", [
                     ("Action", "Spam Detection"),
                     ("Type", spam_display),
                     ("Error", str(e)[:50]),
