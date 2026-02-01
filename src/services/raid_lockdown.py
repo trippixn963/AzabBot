@@ -87,7 +87,7 @@ class RaidLockdownService:
             ("Auto-Unlock", f"{AUTO_UNLOCK_DURATION}s"),
             ("Cooldown", f"{LOCKDOWN_COOLDOWN}s"),
             ("Max Concurrent", str(MAX_CONCURRENT_OPS)),
-        ], emoji="🚨")
+        ], emoji="🔒")
 
     # =========================================================================
     # Channel Lock/Unlock Helpers

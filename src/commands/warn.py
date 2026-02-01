@@ -116,7 +116,7 @@ class WarnCog(commands.Cog):
 
         logger.tree("Warn Cog Loaded", [
             ("Commands", "/warn, context menus"),
-        ], emoji="⚠️")
+        ], emoji="📋")
 
     # =========================================================================
     # Permission Check
