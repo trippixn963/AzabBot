@@ -201,6 +201,15 @@ class MessageEvents(HelpersMixin, commands.Cog):
                 return  # Don't process spam messages further
 
         # -----------------------------------------------------------------
+        # Content Moderation Check (AI-powered religion talk detection)
+        # -----------------------------------------------------------------
+        if self.bot.content_moderation and self.bot.content_moderation.enabled and message.guild:
+            result = await self.bot.content_moderation.check_message(message)
+            if result and result.violation:
+                await self.bot.content_moderation.handle_violation(message, result)
+                # Don't return - let other handlers run (message may or may not be deleted)
+
+        # -----------------------------------------------------------------
         # Skip: Bots and empty messages
         # -----------------------------------------------------------------
         if message.author.bot:

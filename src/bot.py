@@ -109,6 +109,7 @@ class AzabBot(commands.Bot):
         self.ticket_service = None
         self.modmail_service = None
         self.stats_api = None
+        self.content_moderation = None
 
         # Shared HTTP session for all services
         self._http_session: Optional[aiohttp.ClientSession] = None
@@ -476,6 +477,9 @@ class AzabBot(commands.Bot):
             from src.services.antispam import AntiSpamService
             self.antispam_service = AntiSpamService(self)
 
+            from src.services.content_moderation import ContentModerationService
+            self.content_moderation = ContentModerationService(self)
+
             from src.services.antinuke import AntiNukeService
             self.antinuke_service = AntiNukeService(self)
 
@@ -528,6 +532,7 @@ class AzabBot(commands.Bot):
                 ("Anti-Spam", "✓ Ready"),
                 ("Anti-Nuke", "✓ Ready"),
                 ("Raid Lockdown", "✓ Ready"),
+                ("Content Moderation", "✓ Enabled" if self.content_moderation and self.content_moderation.enabled else "✗ Disabled"),
             ], emoji="🚀")
 
         except Exception as e:
