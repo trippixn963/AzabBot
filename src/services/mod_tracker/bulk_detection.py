@@ -227,9 +227,10 @@ class BulkDetectionMixin:
         description: str,
         color: int = EmbedColors.WARNING,
         priority: int = PRIORITY_CRITICAL,
+        ping_owner: bool = True,
     ) -> None:
         """
-        Send an alert to a mod's thread with ping via priority queue.
+        Send an alert to a mod's thread with optional ping via priority queue.
 
         Security alerts are sent with PRIORITY_CRITICAL to ensure they
         are processed before regular logs during mass events/raids.
@@ -240,6 +241,7 @@ class BulkDetectionMixin:
             description: Alert description.
             color: Embed color.
             priority: Queue priority (default CRITICAL).
+            ping_owner: Whether to ping the owner (default True).
         """
         if not self.enabled:
             return
@@ -261,7 +263,7 @@ class BulkDetectionMixin:
             thread_id=tracked["thread_id"],
             embed=embed,
             priority=priority,
-            content=f"<@{self.config.owner_id}>",
+            content=f"<@{self.config.owner_id}>" if ping_owner else None,
             is_alert=True,
         )
 

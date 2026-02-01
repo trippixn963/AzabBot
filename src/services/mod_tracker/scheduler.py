@@ -107,6 +107,7 @@ class SchedulerMixin:
                 description=f"No mod actions recorded in **{days_inactive}** days\n"
                             f"Last activity: {last_action_str}",
                 color=EmbedColors.ERROR,
+                ping_owner=False,
             )
             inactive_count += 1
             await rate_limit("mod_tracker")
