@@ -57,7 +57,7 @@ class WarningsMixin:
             ("User ID", str(user_id)),
             ("Moderator ID", str(moderator_id)),
             ("Reason", (reason or "None")[:50]),
-        ], emoji="⚠️")
+        ], emoji="📋")
 
         return cursor.lastrowid
 

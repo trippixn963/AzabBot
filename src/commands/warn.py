@@ -68,7 +68,7 @@ class WarnModal(discord.ui.Modal, title="Warn User"):
         logger.tree("Warn Modal Submitted", [
             ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
             ("Target", f"{self.target_user.name} ({self.target_user.id})"),
-        ], emoji="⚠️")
+        ], emoji="📋")
 
         reason = self.reason_input.value or None
 
@@ -227,7 +227,7 @@ class WarnCog(commands.Cog):
         ]
         if cross_server:
             log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
-        logger.tree("USER WARNED", log_items, emoji="⚠️")
+        logger.tree("USER WARNED", log_items, emoji="👮")
 
         # ---------------------------------------------------------------------
         # Log to Case Forum (creates per-action case)

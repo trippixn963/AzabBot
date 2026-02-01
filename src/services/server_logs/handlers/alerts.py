@@ -38,7 +38,7 @@ class AlertsLogsMixin:
             ("Join Count", str(join_count)),
             ("Time Window", f"{time_window}s"),
             ("Recent Members", str(len(recent_members))),
-        ], emoji="🚨")
+        ], emoji="🔍")
 
         embed = self._create_embed("🚨 POTENTIAL RAID DETECTED", EmbedColors.LOG_NEGATIVE, category="Raid Alert")
         embed.add_field(
