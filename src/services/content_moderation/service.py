@@ -491,7 +491,7 @@ class ContentModerationService:
             # Send warning embed to channel
             try:
                 embed = discord.Embed(
-                    title=f"{VIOLATION_EMOJI} {VIOLATION_TYPE} Detected",
+                    title=f"{VIOLATION_EMOJI} Message Removed: No Religion Talk",
                     description=f"{message.author.mention}, discussing religion is not allowed in this server.",
                     color=EmbedColors.WARNING,
                 )
@@ -602,11 +602,15 @@ class ContentModerationService:
             logger.debug("Logging service not available for mod alert")
             return
 
-        status = "Deleted" if deleted else "Flagged for Review"
-        color = EmbedColors.LOG_NEGATIVE if deleted else EmbedColors.WARNING
+        if deleted:
+            title = f"{VIOLATION_EMOJI} Auto-Delete: Religion Talk Detected"
+            color = EmbedColors.LOG_NEGATIVE
+        else:
+            title = f"{VIOLATION_EMOJI} Flagged for Review: Possible Religion Talk"
+            color = EmbedColors.WARNING
 
         embed = discord.Embed(
-            title=f"{VIOLATION_EMOJI} Religion Discussion {status}",
+            title=title,
             color=color,
             timestamp=datetime.now(NY_TZ),
         )
