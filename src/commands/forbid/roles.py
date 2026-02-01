@@ -114,7 +114,8 @@ class RolesMixin:
         # Apply to all text channels (for embed_links, attach_files, etc.)
         text_perms = {"embed_links", "attach_files", "add_reactions",
                       "use_external_emojis", "use_external_stickers",
-                      "create_public_threads", "create_private_threads"}
+                      "create_public_threads", "create_private_threads",
+                      "send_voice_messages", "send_polls"}
 
         # Apply to all voice channels (for connect, stream)
         voice_perms = {"connect", "stream"}
@@ -124,31 +125,38 @@ class RolesMixin:
         apply_to_text = bool(perm_names & text_perms)
         apply_to_voice = bool(perm_names & voice_perms)
 
-        # OPTIMIZATION: Only apply to categories (children inherit) and uncategorized channels
-        # This reduces API calls from O(all_channels) to O(categories + orphan_channels)
-        categorized_channels = set()
-        for category in guild.categories:
-            categorized_channels.update(c.id for c in category.channels)
+        # Apply to ALL channels - Discord does NOT propagate category overwrites to existing children
+        applied_count = 0
+        failed_count = 0
 
         for channel in guild.channels:
             try:
-                # Always apply to categories (children inherit these permissions)
                 if isinstance(channel, discord.CategoryChannel):
                     if apply_to_text or apply_to_voice:
                         await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
-                # Only apply to uncategorized channels (orphans don't inherit from categories)
-                elif channel.id not in categorized_channels:
-                    if isinstance(channel, discord.TextChannel) and apply_to_text:
+                        applied_count += 1
+                elif isinstance(channel, (discord.TextChannel, discord.ForumChannel)) and apply_to_text:
+                    await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
+                    applied_count += 1
+                elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+                    # Voice channels need both voice AND text permissions (for VC text chat)
+                    if apply_to_voice or apply_to_text:
                         await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
-                    elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
-                        if apply_to_voice or apply_to_text:
-                            await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
-                    elif isinstance(channel, discord.ForumChannel) and apply_to_text:
-                        await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system")
+                        applied_count += 1
             except discord.Forbidden:
+                failed_count += 1
                 continue
             except discord.HTTPException:
+                failed_count += 1
                 continue
+
+        if applied_count > 0 or failed_count > 0:
+            logger.tree("Forbid Overwrites Applied", [
+                ("Role", role.name),
+                ("Guild", guild.name),
+                ("Channels", str(applied_count)),
+                ("Failed", str(failed_count)),
+            ], emoji="🔒")
 
     async def _get_or_create_role(
         self: "ForbidCog",
@@ -183,6 +191,10 @@ class RolesMixin:
             self._roles_cache[guild.id] = (roles, now)
             role = roles.get(restriction)
         else:
+            # Role exists - ensure channel overwrites are applied
+            # (handles case where new permissions were added to the restriction)
+            await self._apply_channel_overwrites(guild, role, restriction)
+
             # Update cache with this role
             if guild.id in self._roles_cache:
                 self._roles_cache[guild.id][0][restriction] = role

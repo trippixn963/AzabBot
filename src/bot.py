@@ -98,7 +98,6 @@ class AzabBot(commands.Bot):
         self.mute_scheduler = None
         self.case_log_service = None
         self.case_archive_scheduler = None
-        self.alt_detection = None
         self.mod_tracker = None
         self.logging_service = None
         self.webhook_alert_service = None
@@ -444,13 +443,6 @@ class AzabBot(commands.Bot):
             else:
                 logger.info("Case Log Service Disabled (no forum configured)")
 
-            from src.services.alt_detection import AltDetectionService
-            self.alt_detection = AltDetectionService(self)
-            if self.alt_detection.enabled:
-                logger.info("Alt Detection Service Initialized")
-            else:
-                logger.info("Alt Detection Service Disabled (no case log forum)")
-
             from src.services.mod_tracker import ModTrackerService
             self.mod_tracker = ModTrackerService(self)
             if self.mod_tracker.enabled:
@@ -526,7 +518,6 @@ class AzabBot(commands.Bot):
                 ("Prison Handler", "✓ Ready"),
                 ("Mute Scheduler", "✓ Running"),
                 ("Case Log", "✓ Enabled" if self.case_log_service.enabled else "✗ Disabled"),
-                ("Alt Detection", "✓ Enabled" if self.alt_detection.enabled else "✗ Disabled"),
                 ("Mod Tracker", "✓ Enabled" if self.mod_tracker.enabled else "✗ Disabled"),
                 ("Server Logs", "✓ Enabled" if self.logging_service.enabled else "✗ Disabled"),
                 ("Appeals", "✓ Enabled" if self.appeal_service.enabled else "✗ Disabled"),
@@ -776,8 +767,8 @@ class AzabBot(commands.Bot):
                                 f"Server is still locked since <t:{int(locked_at)}:R>\n"
                                 f"Use `/unlock` to restore permissions."
                             )
-                            if self.config.developer_id:
-                                alert_msg = f"<@{self.config.developer_id}> {alert_msg}"
+                            if self.config.owner_id:
+                                alert_msg = f"<@{self.config.owner_id}> {alert_msg}"
                             await alert_channel.send(alert_msg)
                         except discord.HTTPException as e:
                             logger.warning(f"Failed to send lockdown restart alert: {e}")

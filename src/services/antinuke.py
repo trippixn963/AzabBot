@@ -13,6 +13,9 @@ Actions Tracked:
     - Member kicks
     - Channel deletions
     - Role deletions
+    - Permission escalation (granting admin/dangerous perms)
+    - Unauthorized bot additions
+    - Quarantine mode for lockdown
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -22,7 +25,7 @@ import asyncio
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import Dict, List, Optional, Set, TYPE_CHECKING
 
 import discord
 
@@ -43,7 +46,20 @@ BAN_THRESHOLD = 5
 KICK_THRESHOLD = 5
 CHANNEL_DELETE_THRESHOLD = 3
 ROLE_DELETE_THRESHOLD = 3
+BOT_ADD_THRESHOLD = 2  # Adding multiple bots quickly is suspicious
 TIME_WINDOW = 60  # seconds
+
+# Dangerous permissions that trigger immediate action
+DANGEROUS_PERMISSIONS = {
+    "administrator",
+    "ban_members",
+    "kick_members",
+    "manage_guild",
+    "manage_channels",
+    "manage_roles",
+    "manage_webhooks",
+    "mention_everyone",
+}
 
 # Exempt users (owner is always exempt)
 EXEMPT_ROLE_NAMES = ["Owner", "Admin", "Administrator"]
@@ -60,6 +76,8 @@ class ActionTracker:
     kicks: List[datetime] = field(default_factory=list)
     channel_deletes: List[datetime] = field(default_factory=list)
     role_deletes: List[datetime] = field(default_factory=list)
+    bot_adds: List[datetime] = field(default_factory=list)
+    perm_escalations: List[datetime] = field(default_factory=list)
 
 
 # =============================================================================
@@ -72,6 +90,12 @@ class AntiNukeService:
 
     Monitors audit log for mass destructive actions and
     automatically strips permissions from offenders.
+
+    Features:
+        - Mass ban/kick/delete detection
+        - Permission escalation detection
+        - Unauthorized bot addition tracking
+        - Quarantine mode for full lockdown
     """
 
     def __init__(self, bot: "AzabBot") -> None:
@@ -86,11 +110,20 @@ class AntiNukeService:
         # Cooldown for alerts (don't spam)
         self._alert_cooldowns: Dict[int, datetime] = {}
 
+        # Quarantine state per guild
+        self._quarantined_guilds: Set[int] = set()
+
+        # Store original permissions when quarantine activates
+        self._quarantine_backup: Dict[int, Dict[int, discord.Permissions]] = {}
+
         logger.tree("Anti-Nuke Service Loaded", [
             ("Ban Threshold", f"{BAN_THRESHOLD} / {TIME_WINDOW}s"),
             ("Kick Threshold", f"{KICK_THRESHOLD} / {TIME_WINDOW}s"),
             ("Channel Delete", f"{CHANNEL_DELETE_THRESHOLD} / {TIME_WINDOW}s"),
             ("Role Delete", f"{ROLE_DELETE_THRESHOLD} / {TIME_WINDOW}s"),
+            ("Bot Add Threshold", f"{BOT_ADD_THRESHOLD} / {TIME_WINDOW}s"),
+            ("Perm Escalation", "Immediate detection"),
+            ("Quarantine Mode", "Available"),
         ], emoji="🛡️")
 
     def _is_exempt(self, member: discord.Member) -> bool:
@@ -100,7 +133,7 @@ class AntiNukeService:
             return True
 
         # Developer is exempt
-        if member.id == self.config.developer_id:
+        if member.id == self.config.owner_id:
             return True
 
         # Trusted bots are exempt (from config)
@@ -123,6 +156,8 @@ class AntiNukeService:
         tracker.kicks = [t for t in tracker.kicks if t > cutoff]
         tracker.channel_deletes = [t for t in tracker.channel_deletes if t > cutoff]
         tracker.role_deletes = [t for t in tracker.role_deletes if t > cutoff]
+        tracker.bot_adds = [t for t in tracker.bot_adds if t > cutoff]
+        tracker.perm_escalations = [t for t in tracker.perm_escalations if t > cutoff]
 
     async def track_ban(self, guild: discord.Guild, user_id: int) -> bool:
         """
@@ -130,17 +165,34 @@ class AntiNukeService:
 
         Returns True if nuke detected.
         """
-        now = datetime.now(NY_TZ)
-        tracker = self._trackers[guild.id][user_id]
-        self._clean_old_actions(tracker)
+        try:
+            now = datetime.now(NY_TZ)
+            tracker = self._trackers[guild.id][user_id]
+            self._clean_old_actions(tracker)
 
-        tracker.bans.append(now)
+            tracker.bans.append(now)
+            count = len(tracker.bans)
 
-        if len(tracker.bans) >= BAN_THRESHOLD:
-            await self._handle_nuke(guild, user_id, "mass_ban", len(tracker.bans))
-            return True
+            logger.debug("Ban Action Tracked", [
+                ("Guild", f"{guild.name} ({guild.id})"),
+                ("User ID", str(user_id)),
+                ("Count", f"{count} / {BAN_THRESHOLD}"),
+            ])
 
-        return False
+            if count >= BAN_THRESHOLD:
+                await self._handle_nuke(guild, user_id, "mass_ban", count)
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error("Track Ban Failed", [
+                ("Guild", str(guild.id)),
+                ("User ID", str(user_id)),
+                ("Error", str(e)[:100]),
+                ("Type", type(e).__name__),
+            ])
+            return False
 
     async def track_kick(self, guild: discord.Guild, user_id: int) -> bool:
         """
@@ -148,17 +200,34 @@ class AntiNukeService:
 
         Returns True if nuke detected.
         """
-        now = datetime.now(NY_TZ)
-        tracker = self._trackers[guild.id][user_id]
-        self._clean_old_actions(tracker)
+        try:
+            now = datetime.now(NY_TZ)
+            tracker = self._trackers[guild.id][user_id]
+            self._clean_old_actions(tracker)
 
-        tracker.kicks.append(now)
+            tracker.kicks.append(now)
+            count = len(tracker.kicks)
 
-        if len(tracker.kicks) >= KICK_THRESHOLD:
-            await self._handle_nuke(guild, user_id, "mass_kick", len(tracker.kicks))
-            return True
+            logger.debug("Kick Action Tracked", [
+                ("Guild", f"{guild.name} ({guild.id})"),
+                ("User ID", str(user_id)),
+                ("Count", f"{count} / {KICK_THRESHOLD}"),
+            ])
 
-        return False
+            if count >= KICK_THRESHOLD:
+                await self._handle_nuke(guild, user_id, "mass_kick", count)
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error("Track Kick Failed", [
+                ("Guild", str(guild.id)),
+                ("User ID", str(user_id)),
+                ("Error", str(e)[:100]),
+                ("Type", type(e).__name__),
+            ])
+            return False
 
     async def track_channel_delete(self, guild: discord.Guild, user_id: int) -> bool:
         """
@@ -166,21 +235,42 @@ class AntiNukeService:
 
         Returns True if nuke detected.
         """
-        # Skip tracking for exempt bots (from config)
-        if self.config.ignored_bot_ids and user_id in self.config.ignored_bot_ids:
+        try:
+            # Skip tracking for exempt bots (from config)
+            if self.config.ignored_bot_ids and user_id in self.config.ignored_bot_ids:
+                logger.debug("Channel Delete Skipped (Exempt)", [
+                    ("Guild", f"{guild.name} ({guild.id})"),
+                    ("User ID", str(user_id)),
+                ])
+                return False
+
+            now = datetime.now(NY_TZ)
+            tracker = self._trackers[guild.id][user_id]
+            self._clean_old_actions(tracker)
+
+            tracker.channel_deletes.append(now)
+            count = len(tracker.channel_deletes)
+
+            logger.debug("Channel Delete Tracked", [
+                ("Guild", f"{guild.name} ({guild.id})"),
+                ("User ID", str(user_id)),
+                ("Count", f"{count} / {CHANNEL_DELETE_THRESHOLD}"),
+            ])
+
+            if count >= CHANNEL_DELETE_THRESHOLD:
+                await self._handle_nuke(guild, user_id, "mass_channel_delete", count)
+                return True
+
             return False
 
-        now = datetime.now(NY_TZ)
-        tracker = self._trackers[guild.id][user_id]
-        self._clean_old_actions(tracker)
-
-        tracker.channel_deletes.append(now)
-
-        if len(tracker.channel_deletes) >= CHANNEL_DELETE_THRESHOLD:
-            await self._handle_nuke(guild, user_id, "mass_channel_delete", len(tracker.channel_deletes))
-            return True
-
-        return False
+        except Exception as e:
+            logger.error("Track Channel Delete Failed", [
+                ("Guild", str(guild.id)),
+                ("User ID", str(user_id)),
+                ("Error", str(e)[:100]),
+                ("Type", type(e).__name__),
+            ])
+            return False
 
     async def track_role_delete(self, guild: discord.Guild, user_id: int) -> bool:
         """
@@ -188,17 +278,418 @@ class AntiNukeService:
 
         Returns True if nuke detected.
         """
+        try:
+            now = datetime.now(NY_TZ)
+            tracker = self._trackers[guild.id][user_id]
+            self._clean_old_actions(tracker)
+
+            tracker.role_deletes.append(now)
+            count = len(tracker.role_deletes)
+
+            logger.debug("Role Delete Tracked", [
+                ("Guild", f"{guild.name} ({guild.id})"),
+                ("User ID", str(user_id)),
+                ("Count", f"{count} / {ROLE_DELETE_THRESHOLD}"),
+            ])
+
+            if count >= ROLE_DELETE_THRESHOLD:
+                await self._handle_nuke(guild, user_id, "mass_role_delete", count)
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error("Track Role Delete Failed", [
+                ("Guild", str(guild.id)),
+                ("User ID", str(user_id)),
+                ("Error", str(e)[:100]),
+                ("Type", type(e).__name__),
+            ])
+            return False
+
+    async def track_bot_add(
+        self,
+        guild: discord.Guild,
+        user_id: int,
+        bot_member: discord.Member,
+    ) -> bool:
+        """
+        Track when a bot is added to the server.
+
+        Returns True if suspicious activity detected.
+        """
+        # Check if bot is in trusted list
+        if self.config.ignored_bot_ids and bot_member.id in self.config.ignored_bot_ids:
+            logger.tree("Bot Add (Trusted)", [
+                ("Bot", f"{bot_member.name} ({bot_member.id})"),
+                ("Added By", str(user_id)),
+            ], emoji="🤖")
+            return False
+
         now = datetime.now(NY_TZ)
         tracker = self._trackers[guild.id][user_id]
         self._clean_old_actions(tracker)
 
-        tracker.role_deletes.append(now)
+        tracker.bot_adds.append(now)
 
-        if len(tracker.role_deletes) >= ROLE_DELETE_THRESHOLD:
-            await self._handle_nuke(guild, user_id, "mass_role_delete", len(tracker.role_deletes))
+        logger.tree("Bot Add Tracked", [
+            ("Bot", f"{bot_member.name} ({bot_member.id})"),
+            ("Added By", str(user_id)),
+            ("Count", f"{len(tracker.bot_adds)} / {BOT_ADD_THRESHOLD}"),
+        ], emoji="🤖")
+
+        # Multiple bots added quickly is suspicious
+        if len(tracker.bot_adds) >= BOT_ADD_THRESHOLD:
+            await self._handle_nuke(guild, user_id, "mass_bot_add", len(tracker.bot_adds))
+            # Also kick the suspicious bots
+            await self._kick_suspicious_bot(guild, bot_member, user_id)
             return True
 
         return False
+
+    async def _kick_suspicious_bot(
+        self,
+        guild: discord.Guild,
+        bot_member: discord.Member,
+        added_by: int,
+    ) -> None:
+        """Kick a bot that was added during suspicious activity."""
+        try:
+            await bot_member.kick(reason=f"Anti-nuke: Suspicious bot add by user {added_by}")
+            logger.tree("Suspicious Bot Kicked", [
+                ("Bot", f"{bot_member.name} ({bot_member.id})"),
+                ("Guild", guild.name),
+            ], emoji="🚫")
+        except discord.Forbidden:
+            logger.warning("Bot Kick Failed (Forbidden)", [
+                ("Bot", f"{bot_member.name} ({bot_member.id})"),
+                ("Guild", guild.name),
+                ("Error", "Missing permissions"),
+            ])
+        except discord.HTTPException as e:
+            logger.warning("Bot Kick Failed (HTTP)", [
+                ("Bot", f"{bot_member.name} ({bot_member.id})"),
+                ("Guild", guild.name),
+                ("Error", str(e)[:100]),
+            ])
+
+    async def track_permission_change(
+        self,
+        guild: discord.Guild,
+        user_id: int,
+        role: discord.Role,
+        before_perms: discord.Permissions,
+        after_perms: discord.Permissions,
+    ) -> bool:
+        """
+        Track permission changes on roles.
+
+        Detects when someone adds dangerous permissions to a role.
+        Returns True if escalation detected.
+        """
+        member = guild.get_member(user_id)
+        if member and self._is_exempt(member):
+            return False
+
+        # Check what permissions were added
+        added_dangerous = []
+        for perm_name in DANGEROUS_PERMISSIONS:
+            before_val = getattr(before_perms, perm_name, False)
+            after_val = getattr(after_perms, perm_name, False)
+            if not before_val and after_val:
+                added_dangerous.append(perm_name)
+
+        if not added_dangerous:
+            return False
+
+        # Administrator grant is IMMEDIATE action
+        if "administrator" in added_dangerous:
+            logger.tree("🚨 ADMIN PERMISSION ESCALATION", [
+                ("Role", f"{role.name} ({role.id})"),
+                ("Changed By", str(user_id)),
+                ("Perms Added", ", ".join(added_dangerous)),
+            ], emoji="🚨")
+
+            # Immediately revert and handle
+            await self._revert_permission_change(guild, role, before_perms)
+            await self._handle_nuke(guild, user_id, "permission_escalation", 1)
+            return True
+
+        # Track other dangerous permission additions
+        now = datetime.now(NY_TZ)
+        tracker = self._trackers[guild.id][user_id]
+        self._clean_old_actions(tracker)
+
+        tracker.perm_escalations.append(now)
+
+        logger.tree("Permission Change Tracked", [
+            ("Role", f"{role.name} ({role.id})"),
+            ("Changed By", str(user_id)),
+            ("Perms Added", ", ".join(added_dangerous)),
+            ("Count", f"{len(tracker.perm_escalations)}"),
+        ], emoji="⚠️")
+
+        # Multiple permission escalations in short time
+        if len(tracker.perm_escalations) >= 3:
+            await self._handle_nuke(guild, user_id, "mass_permission_escalation", len(tracker.perm_escalations))
+            return True
+
+        return False
+
+    async def _revert_permission_change(
+        self,
+        guild: discord.Guild,
+        role: discord.Role,
+        original_perms: discord.Permissions,
+    ) -> None:
+        """Revert a role's permissions to their original state."""
+        try:
+            await role.edit(
+                permissions=original_perms,
+                reason="Anti-nuke: Reverting suspicious permission escalation"
+            )
+            logger.tree("Permissions Reverted", [
+                ("Role", f"{role.name} ({role.id})"),
+                ("Guild", guild.name),
+            ], emoji="↩️")
+        except discord.Forbidden:
+            logger.warning("Permission Revert Failed (Forbidden)", [
+                ("Role", f"{role.name} ({role.id})"),
+                ("Guild", guild.name),
+                ("Error", "Missing permissions"),
+            ])
+        except discord.HTTPException as e:
+            logger.warning("Permission Revert Failed (HTTP)", [
+                ("Role", f"{role.name} ({role.id})"),
+                ("Guild", guild.name),
+                ("Error", str(e)[:100]),
+            ])
+
+    # =========================================================================
+    # Quarantine Mode
+    # =========================================================================
+
+    def is_quarantined(self, guild_id: int) -> bool:
+        """Check if a guild is in quarantine mode."""
+        return guild_id in self._quarantined_guilds
+
+    async def quarantine_guild(
+        self,
+        guild: discord.Guild,
+        reason: str = "Nuke attempt detected",
+    ) -> bool:
+        """
+        Put the guild in quarantine mode.
+
+        This removes all dangerous permissions from all roles except
+        the owner's top role. Use lift_quarantine to restore.
+
+        Returns True if quarantine was activated.
+        """
+        if guild.id in self._quarantined_guilds:
+            return False
+
+        logger.tree("🔒 ACTIVATING QUARANTINE", [
+            ("Guild", guild.name),
+            ("Reason", reason),
+        ], emoji="🔒")
+
+        # Backup current permissions
+        self._quarantine_backup[guild.id] = {}
+
+        try:
+            for role in guild.roles:
+                # Skip @everyone and the owner's top role
+                if role.is_default():
+                    continue
+                if guild.owner and role == guild.owner.top_role:
+                    continue
+                # Skip bot's role (we need to keep our perms)
+                if role.managed and role.tags and role.tags.bot_id == self.bot.user.id:
+                    continue
+
+                # Check if role has dangerous permissions
+                has_dangerous = any(
+                    getattr(role.permissions, perm, False)
+                    for perm in DANGEROUS_PERMISSIONS
+                )
+
+                if has_dangerous:
+                    # Backup original permissions
+                    self._quarantine_backup[guild.id][role.id] = role.permissions
+
+                    # Create safe permissions (remove dangerous ones)
+                    safe_perms = discord.Permissions(role.permissions.value)
+                    for perm_name in DANGEROUS_PERMISSIONS:
+                        setattr(safe_perms, perm_name, False)
+
+                    try:
+                        await role.edit(
+                            permissions=safe_perms,
+                            reason=f"Anti-nuke quarantine: {reason}"
+                        )
+                        logger.debug("Role Quarantined", [
+                            ("Role", f"{role.name} ({role.id})"),
+                            ("Guild", guild.name),
+                        ])
+                        await asyncio.sleep(0.5)  # Rate limit protection
+                    except discord.Forbidden:
+                        logger.warning("Role Quarantine Failed (Forbidden)", [
+                            ("Role", f"{role.name} ({role.id})"),
+                            ("Guild", guild.name),
+                            ("Error", "Missing permissions"),
+                        ])
+                    except discord.HTTPException as e:
+                        logger.warning("Role Quarantine Failed (HTTP)", [
+                            ("Role", f"{role.name} ({role.id})"),
+                            ("Guild", guild.name),
+                            ("Error", str(e)[:100]),
+                        ])
+
+            self._quarantined_guilds.add(guild.id)
+
+            # Alert about quarantine
+            await self._send_quarantine_alert(guild, reason, activated=True)
+
+            logger.tree("Quarantine Activated", [
+                ("Guild", guild.name),
+                ("Roles Modified", str(len(self._quarantine_backup.get(guild.id, {})))),
+            ], emoji="🔒")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Quarantine activation failed: {e}")
+            return False
+
+    async def lift_quarantine(self, guild: discord.Guild) -> bool:
+        """
+        Lift quarantine mode and restore original permissions.
+
+        Returns True if quarantine was lifted.
+        """
+        if guild.id not in self._quarantined_guilds:
+            return False
+
+        logger.tree("🔓 LIFTING QUARANTINE", [
+            ("Guild", guild.name),
+        ], emoji="🔓")
+
+        backup = self._quarantine_backup.get(guild.id, {})
+
+        try:
+            for role_id, original_perms in backup.items():
+                role = guild.get_role(role_id)
+                if role:
+                    try:
+                        await role.edit(
+                            permissions=original_perms,
+                            reason="Anti-nuke: Quarantine lifted, restoring permissions"
+                        )
+                        logger.debug("Role Restored", [
+                            ("Role", f"{role.name} ({role.id})"),
+                            ("Guild", guild.name),
+                        ])
+                        await asyncio.sleep(0.5)  # Rate limit protection
+                    except discord.Forbidden:
+                        logger.warning("Role Restore Failed (Forbidden)", [
+                            ("Role", f"{role.name} ({role.id})"),
+                            ("Guild", guild.name),
+                            ("Error", "Missing permissions"),
+                        ])
+                    except discord.HTTPException as e:
+                        logger.warning("Role Restore Failed (HTTP)", [
+                            ("Role", f"{role.name} ({role.id})"),
+                            ("Guild", guild.name),
+                            ("Error", str(e)[:100]),
+                        ])
+                else:
+                    logger.warning("Role Not Found During Restore", [
+                        ("Role ID", str(role_id)),
+                        ("Guild", guild.name),
+                    ])
+
+            self._quarantined_guilds.discard(guild.id)
+            if guild.id in self._quarantine_backup:
+                del self._quarantine_backup[guild.id]
+
+            await self._send_quarantine_alert(guild, "Manual lift", activated=False)
+
+            logger.tree("Quarantine Lifted", [
+                ("Guild", guild.name),
+                ("Roles Restored", str(len(backup))),
+            ], emoji="🔓")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to lift quarantine: {e}")
+            return False
+
+    async def _send_quarantine_alert(
+        self,
+        guild: discord.Guild,
+        reason: str,
+        activated: bool,
+    ) -> None:
+        """Send alert about quarantine status change."""
+        if activated:
+            embed = discord.Embed(
+                title="🔒 QUARANTINE MODE ACTIVATED",
+                description=(
+                    f"The server has been locked down due to: **{reason}**\n\n"
+                    f"**What this means:**\n"
+                    f"• All dangerous permissions have been stripped from roles\n"
+                    f"• Only server owner and bot retain full permissions\n"
+                    f"• Use `/antinuke lift` to restore when safe\n\n"
+                    f"**Roles affected:** {len(self._quarantine_backup.get(guild.id, {}))}"
+                ),
+                color=0xFF0000,
+                timestamp=datetime.now(NY_TZ),
+            )
+        else:
+            embed = discord.Embed(
+                title="🔓 QUARANTINE MODE LIFTED",
+                description=(
+                    f"The server quarantine has been lifted.\n\n"
+                    f"All role permissions have been restored to their "
+                    f"original state before the lockdown."
+                ),
+                color=0x00FF00,
+                timestamp=datetime.now(NY_TZ),
+            )
+
+        set_footer(embed)
+
+        # Send to alert channel
+        if self.config.alert_channel_id:
+            try:
+                alert_channel = self.bot.get_channel(self.config.alert_channel_id)
+                if alert_channel:
+                    await alert_channel.send(
+                        content=f"<@{self.config.owner_id}>" if activated else None,
+                        embed=embed,
+                    )
+                    logger.debug("Quarantine Alert Sent", [
+                        ("Guild", guild.name),
+                        ("Activated", str(activated)),
+                        ("Channel", str(self.config.alert_channel_id)),
+                    ])
+                else:
+                    logger.warning("Quarantine Alert Channel Not Found", [
+                        ("Channel ID", str(self.config.alert_channel_id)),
+                    ])
+            except discord.HTTPException as e:
+                logger.warning("Quarantine Alert Failed (HTTP)", [
+                    ("Guild", guild.name),
+                    ("Error", str(e)[:100]),
+                ])
+            except Exception as e:
+                logger.error("Quarantine Alert Failed", [
+                    ("Guild", guild.name),
+                    ("Error", str(e)[:100]),
+                    ("Type", type(e).__name__),
+                ])
 
     async def _handle_nuke(
         self,
@@ -229,6 +720,9 @@ class AntiNukeService:
             "mass_kick": "Mass Kicking",
             "mass_channel_delete": "Mass Channel Deletion",
             "mass_role_delete": "Mass Role Deletion",
+            "mass_bot_add": "Mass Bot Addition",
+            "permission_escalation": "Permission Escalation (Admin Grant)",
+            "mass_permission_escalation": "Mass Permission Escalation",
         }.get(nuke_type, nuke_type)
 
         logger.tree("🚨 NUKE DETECTED", [
@@ -252,7 +746,7 @@ class AntiNukeService:
         """Strip all dangerous roles from member."""
         try:
             # Get roles that have dangerous permissions
-            dangerous_roles = []
+            dangerous_roles: List[discord.Role] = []
             for role in member.roles:
                 if role.is_default():
                     continue
@@ -273,14 +767,29 @@ class AntiNukeService:
                     reason="Anti-nuke: Suspicious mass actions detected"
                 )
                 logger.tree("Permissions Stripped", [
-                    ("User", str(member)),
+                    ("User", f"{member.name} ({member.id})"),
+                    ("Guild", member.guild.name),
                     ("Roles Removed", str(len(dangerous_roles))),
+                    ("Role Names", ", ".join(r.name for r in dangerous_roles[:5])),
                 ], emoji="🔒")
+            else:
+                logger.debug("No Dangerous Roles Found", [
+                    ("User", f"{member.name} ({member.id})"),
+                    ("Guild", member.guild.name),
+                ])
 
         except discord.Forbidden:
-            logger.warning(f"Cannot strip roles from {member} - missing permissions")
+            logger.error("Strip Permissions Failed (Forbidden)", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Guild", member.guild.name),
+                ("Error", "Missing permissions to remove roles"),
+            ])
         except discord.HTTPException as e:
-            logger.warning(f"Failed to strip roles: {e}")
+            logger.error("Strip Permissions Failed (HTTP)", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Guild", member.guild.name),
+                ("Error", str(e)[:100]),
+            ])
 
     async def _send_alert(
         self,
@@ -296,6 +805,9 @@ class AntiNukeService:
             "mass_kick": "Mass Kicking",
             "mass_channel_delete": "Mass Channel Deletion",
             "mass_role_delete": "Mass Role Deletion",
+            "mass_bot_add": "Mass Bot Addition",
+            "permission_escalation": "Permission Escalation (Admin Grant)",
+            "mass_permission_escalation": "Mass Permission Escalation",
         }.get(nuke_type, nuke_type)
 
         embed = discord.Embed(
@@ -320,17 +832,31 @@ class AntiNukeService:
                 )
 
                 # Ping developer in alerts thread
-                if self.config.developer_id:
+                if self.config.owner_id:
                     thread = await self.bot.logging_service._get_or_create_thread(
                         self.bot.logging_service.LogCategory.ALERTS
                     )
                     if thread:
                         await thread.send(
-                            f"<@{self.config.developer_id}> 🚨 **NUKE ATTEMPT STOPPED!** "
+                            f"<@{self.config.owner_id}> 🚨 **NUKE ATTEMPT STOPPED!** "
                             f"{offender.mention} was caught performing {nuke_display.lower()}."
                         )
+
+                logger.debug("Nuke Alert Logged", [
+                    ("Offender", f"{offender.name} ({offender.id})"),
+                    ("Type", nuke_display),
+                ])
+            except discord.HTTPException as e:
+                logger.warning("Nuke Alert Log Failed (HTTP)", [
+                    ("Offender", f"{offender.name} ({offender.id})"),
+                    ("Error", str(e)[:100]),
+                ])
             except Exception as e:
-                logger.warning(f"Failed to log nuke alert: {e}")
+                logger.error("Nuke Alert Log Failed", [
+                    ("Offender", f"{offender.name} ({offender.id})"),
+                    ("Error", str(e)[:100]),
+                    ("Type", type(e).__name__),
+                ])
 
         # Send to mod server general channel for all mods to see
         if self.config.alert_channel_id:
@@ -350,8 +876,25 @@ class AntiNukeService:
                         f"4. Unban any wrongly banned members if needed"
                     )
                     await alert_channel.send(content=instructions, embed=embed)
+                    logger.debug("Nuke Alert Sent to Mods", [
+                        ("Channel", str(self.config.alert_channel_id)),
+                        ("Offender", f"{offender.name} ({offender.id})"),
+                    ])
+                else:
+                    logger.warning("Nuke Alert Channel Not Found", [
+                        ("Channel ID", str(self.config.alert_channel_id)),
+                    ])
+            except discord.HTTPException as e:
+                logger.warning("Nuke Alert to Mods Failed (HTTP)", [
+                    ("Channel", str(self.config.alert_channel_id)),
+                    ("Error", str(e)[:100]),
+                ])
             except Exception as e:
-                logger.warning(f"Failed to send nuke alert to alert channel: {e}")
+                logger.error("Nuke Alert to Mods Failed", [
+                    ("Channel", str(self.config.alert_channel_id)),
+                    ("Error", str(e)[:100]),
+                    ("Type", type(e).__name__),
+                ])
 
 
 # =============================================================================

@@ -49,7 +49,10 @@ class SchedulerMixin:
                     fixed = await self._scan_guild_forbids(guild)
                     total_fixed += fixed
                 except Exception as e:
-                    logger.debug(f"Forbid startup scan error for {guild.name}: {e}")
+                    logger.error("Forbid Startup Scan Error", [
+                        ("Guild", guild.name),
+                        ("Error", str(e)[:100]),
+                    ])
 
             logger.tree("Forbid Startup Scan Complete", [
                 ("Guilds Scanned", str(len(self.bot.guilds))),
@@ -59,7 +62,10 @@ class SchedulerMixin:
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            logger.debug(f"Forbid startup scan error: {e}")
+            logger.error("Forbid Startup Scan Failed", [
+                ("Error", str(e)[:100]),
+                ("Type", type(e).__name__),
+            ])
 
     # =========================================================================
     # Nightly Scan Task
@@ -90,7 +96,10 @@ class SchedulerMixin:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.debug(f"Forbid nightly scan error: {e}")
+                logger.error("Forbid Nightly Scan Error", [
+                    ("Error", str(e)[:100]),
+                    ("Type", type(e).__name__),
+                ])
                 # Wait an hour before retrying on error
                 await asyncio.sleep(3600)
 
@@ -105,7 +114,10 @@ class SchedulerMixin:
                 fixed = await self._scan_guild_forbids(guild)
                 total_fixed += fixed
             except Exception as e:
-                logger.debug(f"Forbid scan error for {guild.name}: {e}")
+                logger.error("Forbid Scan Error", [
+                    ("Guild", guild.name),
+                    ("Error", str(e)[:100]),
+                ])
 
         logger.tree("Forbid Nightly Scan Complete", [
             ("Guilds Scanned", str(len(self.bot.guilds))),
@@ -212,7 +224,10 @@ class SchedulerMixin:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.debug(f"Forbid expiry scheduler error: {e}")
+                logger.error("Forbid Expiry Scheduler Error", [
+                    ("Error", str(e)[:100]),
+                    ("Type", type(e).__name__),
+                ])
                 await asyncio.sleep(60)
 
     async def _process_expired_forbids(self: "ForbidCog") -> None:
@@ -232,12 +247,24 @@ class SchedulerMixin:
                 if not guild:
                     # Guild not accessible, just mark as removed in DB
                     self.db.remove_forbid(user_id, guild_id, restriction_type, self.bot.user.id)
+                    logger.tree("Forbid Expired (Guild Not Found)", [
+                        ("User ID", str(user_id)),
+                        ("Guild ID", str(guild_id)),
+                        ("Restriction", restriction_type),
+                        ("Action", "Removed from DB"),
+                    ], emoji="⏰")
                     continue
 
                 member = guild.get_member(user_id)
                 if not member:
                     # Member not in guild, just mark as removed in DB
                     self.db.remove_forbid(user_id, guild_id, restriction_type, self.bot.user.id)
+                    logger.tree("Forbid Expired (Member Not Found)", [
+                        ("User ID", str(user_id)),
+                        ("Guild", guild.name),
+                        ("Restriction", restriction_type),
+                        ("Action", "Removed from DB"),
+                    ], emoji="⏰")
                     continue
 
                 # Get the forbid role
@@ -270,7 +297,12 @@ class SchedulerMixin:
                 await safe_send_dm(member, embed=expiry_embed, context="Forbid Expiry DM")
 
             except Exception as e:
-                logger.debug(f"Error processing expired forbid: {e}")
+                logger.error("Forbid Expiry Processing Error", [
+                    ("User ID", str(forbid.get("user_id", "unknown"))),
+                    ("Guild ID", str(forbid.get("guild_id", "unknown"))),
+                    ("Restriction", forbid.get("restriction_type", "unknown")),
+                    ("Error", str(e)[:100]),
+                ])
 
 
 __all__ = ["SchedulerMixin"]

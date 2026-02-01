@@ -45,7 +45,7 @@ class Config:
 
     Attributes:
         discord_token: Discord bot authentication token.
-        developer_id: User ID of the bot developer.
+        owner_id: User ID of the bot owner.
         mod_logs_forum_id: Forum ID for mod action logs (mute, ban, warn).
         prison_channel_ids: Set of channel IDs for prisoner messages.
         general_channel_id: Main server channel ID.
@@ -57,7 +57,7 @@ class Config:
     # -------------------------------------------------------------------------
 
     discord_token: str
-    developer_id: int
+    owner_id: int
 
     # -------------------------------------------------------------------------
     # Required: Channels
@@ -106,7 +106,8 @@ class Config:
     # Optional: Tickets
     # -------------------------------------------------------------------------
 
-    ticket_channel_id: Optional[int] = None  # Text channel for ticket threads
+    ticket_channel_id: Optional[int] = None  # Text channel for ticket creation panel
+    ticket_category_id: Optional[int] = None  # Category where ticket channels are created (falls back to ticket_channel_id's category)
     ticket_staff_role_id: Optional[int] = None  # Role that can manage tickets
     ticket_partnership_user_id: Optional[int] = None  # User to assign partnership tickets
     ticket_suggestion_user_id: Optional[int] = None  # User to assign suggestion tickets
@@ -415,8 +416,8 @@ def load_config() -> Config:
     if not discord_token:
         missing.append("DISCORD_TOKEN")
 
-    developer_id_str = os.getenv("OWNER_ID")
-    if not developer_id_str:
+    owner_id_str = os.getenv("OWNER_ID")
+    if not owner_id_str:
         missing.append("OWNER_ID")
 
     mod_logs_forum_id_str = os.getenv("MOD_LOGS_FORUM_ID")
@@ -448,7 +449,7 @@ def load_config() -> Config:
     # Parse Required Values
     # -------------------------------------------------------------------------
 
-    developer_id = _parse_int(developer_id_str, "OWNER_ID")
+    owner_id = _parse_int(owner_id_str, "OWNER_ID")
     mod_logs_forum_id = _parse_int(mod_logs_forum_id_str, "MOD_LOGS_FORUM_ID")
     prison_channel_ids = _parse_int_set(prison_channel_ids_str)
     general_channel_id = _parse_int(general_channel_id_str, "GENERAL_CHANNEL_ID")
@@ -468,6 +469,7 @@ def load_config() -> Config:
     alert_channel_id = _parse_int_optional(os.getenv("ALERT_CHANNEL_ID"))
     appeal_forum_id = _parse_int_optional(os.getenv("APPEAL_FORUM_ID"))
     ticket_channel_id = _parse_int_optional(os.getenv("TICKET_CHANNEL_ID"))
+    ticket_category_id = _parse_int_optional(os.getenv("TICKET_CATEGORY_ID"))
     ticket_staff_role_id = _parse_int_optional(os.getenv("TICKET_STAFF_ROLE_ID"))
     ticket_partnership_user_id = _parse_int_optional(os.getenv("TICKET_PARTNERSHIP_USER_ID"))
     ticket_suggestion_user_id = _parse_int_optional(os.getenv("TICKET_SUGGESTION_USER_ID"))
@@ -493,7 +495,7 @@ def load_config() -> Config:
 
     return Config(
         discord_token=discord_token,
-        developer_id=developer_id,
+        owner_id=owner_id,
         mod_logs_forum_id=mod_logs_forum_id,
         prison_channel_ids=prison_channel_ids,
         general_channel_id=general_channel_id,
@@ -508,6 +510,7 @@ def load_config() -> Config:
         alert_channel_id=alert_channel_id,
         appeal_forum_id=appeal_forum_id,
         ticket_channel_id=ticket_channel_id,
+        ticket_category_id=ticket_category_id,
         ticket_staff_role_id=ticket_staff_role_id,
         ticket_partnership_user_id=ticket_partnership_user_id,
         ticket_suggestion_user_id=ticket_suggestion_user_id,
@@ -631,17 +634,17 @@ def validate_and_log_config() -> None:
 # Permission Helpers
 # =============================================================================
 
-def is_developer(user_id: int) -> bool:
+def is_owner(user_id: int) -> bool:
     """
-    Check if user is the bot developer.
+    Check if user is the bot owner.
 
     Args:
         user_id: Discord user ID to check.
 
     Returns:
-        True if user is the developer.
+        True if user is the owner.
     """
-    return user_id == get_config().developer_id
+    return user_id == get_config().owner_id
 
 
 def is_moderator(user_id: int) -> bool:
@@ -668,13 +671,13 @@ def has_mod_role(member) -> bool:
         member: Discord member object to check.
 
     Returns:
-        True if member has the moderation role or is developer/admin.
+        True if member has the moderation role or is owner/admin.
     """
     if member is None:
         return False
 
-    # Developer always has access
-    if is_developer(member.id):
+    # Owner always has access
+    if is_owner(member.id):
         return True
 
     # Check moderator IDs list
@@ -730,7 +733,7 @@ __all__ = [
     "load_config",
     "validate_and_log_config",
     # Permission helpers
-    "is_developer",
+    "is_owner",
     "is_moderator",
     "has_mod_role",
     "check_mod_permission",

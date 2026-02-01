@@ -30,6 +30,7 @@ def build_control_panel_embed(
     ticket: dict,
     user: Optional[discord.User] = None,
     closed_by: Optional[discord.Member] = None,
+    user_ticket_count: Optional[int] = None,
 ) -> discord.Embed:
     """
     Build the main control panel embed for a ticket.
@@ -39,8 +40,9 @@ def build_control_panel_embed(
 
     Args:
         ticket: Ticket data from database
-        user: The ticket creator (optional, for mention)
+        user: The ticket creator (optional, for mention and stats)
         closed_by: The staff who closed the ticket (optional, for thumbnail)
+        user_ticket_count: Total ticket count for the user (optional)
 
     Returns:
         Discord embed with ticket status and info
@@ -54,9 +56,11 @@ def build_control_panel_embed(
         color=STATUS_COLOR.get(status, EmbedColors.GREEN),
     )
 
-    # Add mod avatar thumbnail when closed
+    # Add user avatar thumbnail (or mod avatar when closed)
     if status == "closed" and closed_by:
         embed.set_thumbnail(url=closed_by.display_avatar.url)
+    elif user:
+        embed.set_thumbnail(url=user.display_avatar.url)
 
     # Row 1: Ticket ID, Category
     embed.add_field(
@@ -70,11 +74,21 @@ def build_control_panel_embed(
         inline=True,
     )
 
-    # Row 2: User, Claimed by (if applicable)
+    # Row 2: User info with stats
     if user:
+        # Build user info with account age
+        account_age_days = (datetime.now() - user.created_at.replace(tzinfo=None)).days if user.created_at else 0
+        user_info = f"{user.mention}\n`{user.name}`"
         embed.add_field(
             name="User",
-            value=f"{user.mention}\n`{user.name}`",
+            value=user_info,
+            inline=True,
+        )
+
+        # Account age
+        embed.add_field(
+            name="Account Age",
+            value=f"`{account_age_days}` days",
             inline=True,
         )
     else:
@@ -83,7 +97,35 @@ def build_control_panel_embed(
             value=f"<@{ticket['user_id']}>",
             inline=True,
         )
+        embed.add_field(
+            name="Account Age",
+            value="—",
+            inline=True,
+        )
 
+    # Row 3: Joined server (for Member) and Total tickets
+    if user and hasattr(user, 'joined_at') and user.joined_at:
+        embed.add_field(
+            name="Joined Server",
+            value=f"<t:{int(user.joined_at.timestamp())}:R>",
+            inline=True,
+        )
+    else:
+        embed.add_field(
+            name="Joined Server",
+            value="—",
+            inline=True,
+        )
+
+    # Total tickets (will be populated by caller if available)
+    if user_ticket_count is not None:
+        embed.add_field(
+            name="Total Tickets",
+            value=f"`{user_ticket_count}`",
+            inline=True,
+        )
+
+    # Row 4: Claimed by
     if ticket.get("claimed_by"):
         embed.add_field(
             name="Claimed by",
@@ -97,7 +139,7 @@ def build_control_panel_embed(
             inline=True,
         )
 
-    # Row 3: Created, Subject
+    # Row 5: Created
     created_at = ticket.get("created_at")
     if created_at:
         embed.add_field(
@@ -106,6 +148,7 @@ def build_control_panel_embed(
             inline=True,
         )
 
+    # Subject (full width)
     if ticket.get("subject"):
         # Truncate subject if too long
         subject = ticket["subject"]

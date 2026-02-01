@@ -137,7 +137,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
     @app_commands.command(name="forbid", description="Restrict a specific permission for a user")
     @app_commands.describe(
         user="The user to restrict",
-        restriction="What to forbid (reactions, attachments, voice, streaming, embeds, threads, external_emojis, stickers, all)",
+        restriction="What to forbid (reactions, embeds, attachments, voice_messages, polls, external_emojis, stickers, threads, voice, streaming, all)",
         duration="Duration (e.g., 7d, 24h, 1w) - leave empty for permanent",
         reason="Reason for the restriction",
     )
@@ -634,6 +634,8 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             return
 
         guild = channel.guild
+        applied_roles = []
+        failed_roles = []
 
         # Find all existing forbid roles and apply their overwrites
         for restriction, config in RESTRICTIONS.items():
@@ -656,7 +658,8 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             # Determine if this channel type needs the overwrite
             text_perms = {"embed_links", "attach_files", "add_reactions",
                           "use_external_emojis", "use_external_stickers",
-                          "create_public_threads", "create_private_threads"}
+                          "create_public_threads", "create_private_threads",
+                          "send_voice_messages", "send_polls"}
             voice_perms = {"connect", "stream"}
             perm_names = set(overwrite_kwargs.keys())
 
@@ -665,14 +668,32 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 if isinstance(channel, discord.CategoryChannel):
                     if perm_names & text_perms or perm_names & voice_perms:
                         await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system: new category")
+                        applied_roles.append(restriction)
                 elif isinstance(channel, (discord.TextChannel, discord.ForumChannel)) and (perm_names & text_perms):
                     await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system: new channel")
+                    applied_roles.append(restriction)
                 elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
                     # Voice channels need both voice AND text permissions (for VC text chat)
                     if perm_names & voice_perms or perm_names & text_perms:
                         await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system: new channel")
+                        applied_roles.append(restriction)
             except (discord.Forbidden, discord.HTTPException):
-                pass
+                failed_roles.append(restriction)
+
+        if applied_roles:
+            logger.tree("Forbid Overwrites Applied to New Channel", [
+                ("Channel", f"#{channel.name}"),
+                ("Type", type(channel).__name__),
+                ("Guild", guild.name),
+                ("Roles Applied", ", ".join(applied_roles)),
+            ], emoji="🔒")
+
+        if failed_roles:
+            logger.warning("Forbid Overwrites Failed on New Channel", [
+                ("Channel", f"#{channel.name}"),
+                ("Guild", guild.name),
+                ("Failed Roles", ", ".join(failed_roles)),
+            ])
 
 
 __all__ = ["ForbidCog"]

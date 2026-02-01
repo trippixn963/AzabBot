@@ -124,12 +124,12 @@ class CaseLogActionsMixin:
             embed_message = await safe_send(case_thread, embed=embed)
 
             # Skip "no reason" warning for developer/owner
-            is_developer = self.config.developer_id and moderator.id == self.config.developer_id
-            if not reason and embed_message and not is_developer:
+            is_owner = self.config.owner_id and moderator.id == self.config.owner_id
+            if not reason and embed_message and not is_owner:
                 action_type = "extension" if is_extension else "mute"
                 warning_message = await safe_send(
                     case_thread,
-                    f"⚠️ {moderator.mention} No reason was provided for this {action_type}.\n\n"
+                    f"⚠️ No reason was provided for this {action_type}.\n\n"
                     f"**Reply to this message** with the reason."
                 )
                 if warning_message:
@@ -243,11 +243,11 @@ class CaseLogActionsMixin:
             embed_message = await safe_send(case_thread, embed=embed)
 
             # Skip "no reason" warning for developer/owner
-            is_developer = self.config.developer_id and moderator.id == self.config.developer_id
-            if not reason and embed_message and not is_developer:
+            is_owner = self.config.owner_id and moderator.id == self.config.owner_id
+            if not reason and embed_message and not is_owner:
                 warning_message = await safe_send(
                     case_thread,
-                    f"⚠️ {moderator.mention} No reason was provided for this warning.\n\n"
+                    f"⚠️ No reason was provided for this warning.\n\n"
                     f"**Reply to this message** with the reason."
                 )
                 if warning_message:
@@ -382,21 +382,7 @@ class CaseLogActionsMixin:
                 time_served_seconds = now - muted_at
                 is_early_unmute = time_served_seconds < duration_seconds
 
-            if is_early_unmute and not reason and embed_message:
-                warning_message = await safe_send(
-                    case_thread,
-                    f"⚠️ {moderator.mention} This mute was ended **early** without a reason.\n\n"
-                    f"**Reply to this message** with the reason for the early unmute."
-                )
-                if warning_message:
-                    self.db.create_pending_reason(
-                        thread_id=case_thread.id,
-                        warning_message_id=warning_message.id,
-                        embed_message_id=embed_message.id,
-                        moderator_id=moderator.id,
-                        target_user_id=user_id,
-                        action_type="unmute",
-                    )
+            # No longer warn for early unmutes without reason
 
             # Update control panel to show resolved status
             # Note: Don't pass moderator - preserve original moderator who took action
@@ -621,14 +607,9 @@ class CaseLogActionsMixin:
                 # Action embeds no longer have buttons - control panel handles all controls
                 await safe_send(case_thread, embed=embed)
 
-                if moderator_ids:
-                    pings = " ".join(f"<@{mod_id}>" for mod_id in moderator_ids)
-                    await safe_send(case_thread, pings)
-
                 logger.tree("Case Log: Mute Evasion Return", [
                     ("User", member.name),
                     ("ID", str(member.id)),
-                    ("Mods Pinged", str(len(moderator_ids))),
                 ], emoji="⚠️")
 
         except Exception as e:

@@ -265,6 +265,14 @@ class TicketsMixin:
         )
         return row["c"] if row else 0
 
+    def get_user_ticket_count(self: "DatabaseManager", user_id: int, guild_id: int) -> int:
+        """Get total ticket count for a user (all statuses)."""
+        row = self.fetchone(
+            "SELECT COUNT(*) as c FROM tickets WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        )
+        return row["c"] if row else 0
+
     def update_ticket_activity(self: "DatabaseManager", ticket_id: str) -> bool:
         """Update last activity timestamp for a ticket."""
         cursor = self.execute(

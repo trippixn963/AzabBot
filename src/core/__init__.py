@@ -29,7 +29,7 @@ from .config import (
     EmbedColors,
     NY_TZ,
     get_config,
-    is_developer,
+    is_owner,
     is_moderator,
 )
 
@@ -79,7 +79,7 @@ __all__ = [
     "EmbedColors",
     "NY_TZ",
     "get_config",
-    "is_developer",
+    "is_owner",
     "is_moderator",
     # Database
     "Database",

@@ -18,7 +18,7 @@ def _is_ticket_staff(user: discord.Member) -> bool:
     """Check if user is ticket staff (configured staff, has manage_messages, OR is developer)."""
     config = get_config()
     # Developer can always access
-    if config.developer_id and user.id == config.developer_id:
+    if config.owner_id and user.id == config.owner_id:
         return True
     # Check if user is in configured ticket staff
     if config.ticket_support_user_ids and user.id in config.ticket_support_user_ids:

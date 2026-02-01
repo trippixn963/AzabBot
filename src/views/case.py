@@ -159,14 +159,14 @@ class EditCaseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"edit_
             ("Case ID", self.case_id),
         ], emoji="✏️")
 
-        from src.core.config import get_config, is_developer
+        from src.core.config import get_config, is_owner
 
         config = get_config()
 
         # Check if user is moderator or developer
         is_mod = False
         if isinstance(interaction.user, discord.Member):
-            if is_developer(interaction.user.id):
+            if is_owner(interaction.user.id):
                 is_mod = True
             elif interaction.user.guild_permissions.moderate_members:
                 is_mod = True

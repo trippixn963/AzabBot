@@ -350,7 +350,7 @@ class CaseLogService(
         thread_name = f"[{case_id}] | {action_display} | {display_name}"
 
         # Get tags for this case
-        case_tags = self.get_tags_for_case(action_type, is_approved=False)
+        case_tags = self.get_tags_for_case(action_type)
 
         try:
             thread_with_msg = await forum.create_thread(
@@ -454,7 +454,7 @@ class CaseLogService(
             The evidence request message, or None if failed.
         """
         # Skip evidence request for developer/owner
-        if self.config.developer_id and moderator.id == self.config.developer_id:
+        if self.config.owner_id and moderator.id == self.config.owner_id:
             return None
 
         try:
@@ -469,8 +469,7 @@ class CaseLogService(
             )
             embed.set_footer(text="Reply with media to complete this request")
 
-            # Ping moderator outside embed so they see it
-            msg = await safe_send(thread, content=f"{moderator.mention}", embed=embed)
+            msg = await safe_send(thread, embed=embed)
             if msg:
                 # Store the message ID so we can watch for replies
                 self.db.set_case_evidence_request_message(case_id, msg.id)

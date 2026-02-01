@@ -10,6 +10,7 @@ Server: discord.gg/syria
 """
 
 import asyncio
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional
 
 import discord
@@ -508,6 +509,50 @@ class ChannelEvents(commands.Cog):
                     content=content,
                     matched_keyword=matched,
                 )
+            elif execution.action and execution.action.type == discord.AutoModRuleActionType.timeout:
+                # Log to server logs
+                await self.bot.logging_service.log_automod_action(
+                    rule_name=rule_name,
+                    action_type=action_type,
+                    user=member,
+                    channel=channel,
+                    content=content,
+                    matched_keyword=matched,
+                )
+
+                # Create a case for the auto-timeout
+                if self.bot.case_log_service and execution.action.duration:
+                    try:
+                        until = datetime.now() + execution.action.duration
+                        reason = f"AutoMod: {rule_name}"
+                        if matched:
+                            reason += f" (matched: {matched})"
+
+                        await asyncio.wait_for(
+                            self.bot.case_log_service.log_timeout(
+                                user=member,
+                                moderator_id=self.bot.user.id,
+                                until=until,
+                                reason=reason,
+                            ),
+                            timeout=10.0,
+                        )
+                        logger.tree("AutoMod Case Created", [
+                            ("User", f"{member.name} ({member.id})"),
+                            ("Rule", rule_name),
+                            ("Duration", str(execution.action.duration)),
+                        ], emoji="🤖")
+                    except asyncio.TimeoutError:
+                        logger.warning("AutoMod Case Log Timeout", [
+                            ("User", member.name),
+                            ("Rule", rule_name),
+                        ])
+                    except Exception as e:
+                        logger.error("AutoMod Case Log Failed", [
+                            ("User", member.name),
+                            ("Rule", rule_name),
+                            ("Error", str(e)[:100]),
+                        ])
             else:
                 await self.bot.logging_service.log_automod_action(
                     rule_name=rule_name,

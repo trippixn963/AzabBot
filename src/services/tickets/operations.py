@@ -98,58 +98,87 @@ class OperationsMixin:
                 None,
             )
 
-        # Get ticket channel
-        channel = await self._get_channel()
-        if not channel:
-            return (False, "Ticket channel not found.", None)
+        # Get ticket category for channel creation
+        category_channel = await self._get_ticket_category(user.guild)
+        if not category_channel:
+            return (False, "Ticket category not found.", None)
 
         # Generate ticket ID
         ticket_id = self.db.generate_ticket_id()
 
-        # Create thread name (max 100 chars)
+        # Create channel name (max 100 chars)
         username = user.display_name[:20]
         cat_info = TICKET_CATEGORIES.get(category, TICKET_CATEGORIES["support"])
-        thread_name = f"[{ticket_id}] | {cat_info['label']} | {username}"
-        if len(thread_name) > 100:
-            thread_name = thread_name[:97] + "..."
+        channel_name = f"{ticket_id}-{cat_info['label'].lower()}-{username}".replace(" ", "-")
+        if len(channel_name) > 100:
+            channel_name = channel_name[:97] + "..."
 
         try:
-            # Create thread
-            thread = await channel.create_thread(
-                name=thread_name,
-                type=discord.ChannelType.private_thread,
-                auto_archive_duration=10080,  # 7 days
+            # Build permission overwrites (person-specific only, no role-based)
+            overwrites = {
+                # @everyone - hidden by default
+                user.guild.default_role: discord.PermissionOverwrite(
+                    view_channel=False,
+                ),
+                # Ticket creator - can view and send messages
+                user: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    attach_files=True,
+                    embed_links=True,
+                    read_message_history=True,
+                ),
+                # Bot - full permissions
+                user.guild.me: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    manage_channels=True,
+                    manage_messages=True,
+                    attach_files=True,
+                    embed_links=True,
+                    read_message_history=True,
+                ),
+            }
+
+            # Create the ticket channel
+            ticket_channel = await user.guild.create_text_channel(
+                name=channel_name,
+                category=category_channel,
+                overwrites=overwrites,
+                reason=f"Ticket {ticket_id} created by {user.name}",
             )
 
             # Save to database first (needed for control panel)
+            # Note: thread_id field stores channel ID for backward compatibility
             self.db.create_ticket(
                 ticket_id=ticket_id,
                 user_id=user.id,
                 guild_id=user.guild.id,
-                thread_id=thread.id,
+                thread_id=ticket_channel.id,
                 category=category,
                 subject=subject,
             )
 
             # Build and send control panel
             ticket_data = self.db.get_ticket(ticket_id)
-            control_embed = build_control_panel_embed(ticket_data, user)
+            user_ticket_count = self.db.get_user_ticket_count(user.id, user.guild.id)
+            control_embed = build_control_panel_embed(ticket_data, user, user_ticket_count=user_ticket_count)
             control_view = TicketControlPanelView.from_ticket(ticket_data)
-            control_msg = await thread.send(embed=control_embed, view=control_view)
+            control_msg = await ticket_channel.send(embed=control_embed, view=control_view)
 
             # Save control panel message ID
             self.db.set_control_panel_message(ticket_id, control_msg.id)
 
-            # Add user to thread
-            await thread.add_user(user)
-
-            # Determine who to assign
+            # Add permissions for assigned staff
+            assigned_user_id = None
             if category == "partnership" and self.config.ticket_partnership_user_id:
                 assigned_text = f"This ticket has been assigned to <@{self.config.ticket_partnership_user_id}>."
                 ping_content = f"<@{self.config.ticket_partnership_user_id}>"
+                assigned_user_id = self.config.ticket_partnership_user_id
             elif category == "suggestion" and self.config.ticket_suggestion_user_id:
                 assigned_text = f"This ticket has been assigned to <@{self.config.ticket_suggestion_user_id}>."
                 ping_content = f"<@{self.config.ticket_suggestion_user_id}>"
+                assigned_user_id = self.config.ticket_suggestion_user_id
             elif self.config.ticket_support_user_ids:
                 user_mentions = " and ".join(
                     f"<@{uid}>" for uid in self.config.ticket_support_user_ids
@@ -162,9 +191,50 @@ class OperationsMixin:
                 else:
                     assigned_text = f"This ticket has been assigned to {user_mentions}."
                 ping_content = ping_mentions
+                # Add permissions for all support users
+                for uid in self.config.ticket_support_user_ids:
+                    try:
+                        support_member = user.guild.get_member(uid)
+                        if support_member:
+                            await ticket_channel.set_permissions(
+                                support_member,
+                                view_channel=True,
+                                send_messages=True,
+                                manage_messages=True,
+                                attach_files=True,
+                                embed_links=True,
+                                read_message_history=True,
+                            )
+                    except discord.HTTPException as e:
+                        logger.warning("Failed to add support user permissions", [
+                            ("Ticket ID", ticket_id),
+                            ("User ID", str(uid)),
+                            ("Error", str(e)),
+                        ])
             else:
                 assigned_text = "A staff member will be with you shortly."
                 ping_content = None
+
+            # Add permission for specifically assigned user (partnership/suggestion)
+            if assigned_user_id:
+                try:
+                    assigned_member = user.guild.get_member(assigned_user_id)
+                    if assigned_member:
+                        await ticket_channel.set_permissions(
+                            assigned_member,
+                            view_channel=True,
+                            send_messages=True,
+                            manage_messages=True,
+                            attach_files=True,
+                            embed_links=True,
+                            read_message_history=True,
+                        )
+                except discord.HTTPException as e:
+                    logger.warning("Failed to add assigned user permissions", [
+                        ("Ticket ID", ticket_id),
+                        ("User ID", str(assigned_user_id)),
+                        ("Error", str(e)),
+                    ])
 
             # Get estimated wait time
             wait_time_text = self._get_estimated_wait_time(user.guild.id, ticket_id)
@@ -179,16 +249,16 @@ class OperationsMixin:
             )
 
             if ping_content:
-                await thread.send(content=ping_content, embed=welcome_embed)
+                await ticket_channel.send(content=ping_content, embed=welcome_embed)
             else:
-                await thread.send(embed=welcome_embed)
+                await ticket_channel.send(embed=welcome_embed)
 
             logger.tree("Ticket Created", [
                 ("Ticket ID", ticket_id),
                 ("Category", category),
                 ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
                 ("ID", str(user.id)),
-                ("Thread", str(thread.id)),
+                ("Channel", str(ticket_channel.id)),
             ], emoji="🎫")
 
             # Log to server logs
@@ -198,11 +268,11 @@ class OperationsMixin:
                     user=user,
                     category=category,
                     subject=subject,
-                    thread_id=thread.id,
+                    thread_id=ticket_channel.id,
                     guild_id=user.guild.id,
                 )
 
-            return (True, f"Ticket {ticket_id} created! Check {thread.mention}", ticket_id)
+            return (True, f"Ticket {ticket_id} created! Check {ticket_channel.mention}", ticket_id)
 
         except discord.HTTPException as e:
             logger.error("Ticket Creation Failed", [
@@ -252,14 +322,14 @@ class OperationsMixin:
             except Exception:
                 pass
 
-        # Get thread
-        thread = await self._get_ticket_thread(ticket["thread_id"])
+        # Get ticket channel
+        channel = await self._get_ticket_channel(ticket["thread_id"])
         transcript_messages = []
         mention_map = {}
 
-        if thread:
+        if channel:
             # Collect transcript with mention map
-            transcript_messages, mention_map = await collect_transcript_messages(thread, self.bot)
+            transcript_messages, mention_map = await collect_transcript_messages(channel, self.bot)
 
             # Save transcript to database (both HTML and JSON)
             if transcript_messages and ticket_user:
@@ -276,7 +346,7 @@ class OperationsMixin:
 
                     # Build and save JSON transcript for web viewer
                     json_transcript = await build_json_transcript(
-                        thread=thread,
+                        thread=channel,
                         ticket=ticket,
                         bot=self.bot,
                         user=ticket_user,
@@ -295,7 +365,7 @@ class OperationsMixin:
                     logger.error("Failed to save transcript", [("Error", str(e))])
 
             # Update control panel embed with closed_by for thumbnail
-            await self._update_control_panel(ticket_id, thread, closed_by, ticket_user=ticket_user)
+            await self._update_control_panel(ticket_id, channel, closed_by, ticket_user=ticket_user)
 
             # Get staff stats (after close, so count includes this ticket)
             staff_stats = self.db.get_staff_ticket_stats(closed_by.id, closed_by.guild.id)
@@ -303,16 +373,10 @@ class OperationsMixin:
             # Send close notification with staff stats and ping ticket owner
             close_embed = build_close_notification(closed_by, reason, stats=staff_stats)
             close_content = f"<@{ticket['user_id']}>" if ticket.get("user_id") else None
-            await safe_send(thread, content=close_content, embed=close_embed)
+            await safe_send(channel, content=close_content, embed=close_embed)
 
-            # Archive and lock thread
-            try:
-                await thread.edit(archived=True, locked=True)
-            except discord.HTTPException:
-                pass
-
-            # Schedule thread deletion
-            await self._schedule_thread_deletion(ticket_id, thread.id)
+            # Schedule channel deletion (no archive/lock for text channels)
+            await self._schedule_channel_deletion(ticket_id, channel.id)
 
         # DM the user
         if ticket_user:
@@ -402,7 +466,7 @@ class OperationsMixin:
             return (False, "Failed to reopen ticket.")
 
         # Cancel pending deletion
-        await self._cancel_thread_deletion(ticket_id)
+        await self._cancel_channel_deletion(ticket_id)
 
         # Get ticket user for control panel and logging
         try:
@@ -410,24 +474,21 @@ class OperationsMixin:
         except Exception:
             ticket_user = None
 
-        # Get thread
-        thread = await self._get_ticket_thread(ticket["thread_id"])
-        if thread:
-            # Unarchive and unlock
-            try:
-                await thread.edit(archived=False, locked=False)
-            except discord.HTTPException:
-                pass
+        # Get ticket channel
+        channel = await self._get_ticket_channel(ticket["thread_id"])
+        if channel:
+            # Restore staff access (ticket is now unclaimed)
+            await self._restore_staff_access(channel, ticket_id, ticket)
 
             # Update control panel
-            await self._update_control_panel(ticket_id, thread, ticket_user=ticket_user)
+            await self._update_control_panel(ticket_id, channel, ticket_user=ticket_user)
 
             # Get staff stats
             staff_stats = self.db.get_staff_ticket_stats(reopened_by.id, reopened_by.guild.id)
 
             # Send reopen notification with staff stats
             reopen_embed = build_reopen_notification(reopened_by, stats=staff_stats)
-            await safe_send(thread, embed=reopen_embed)
+            await safe_send(channel, embed=reopen_embed)
 
         logger.tree("Ticket Reopened", [
             ("Ticket ID", ticket_id),
@@ -484,10 +545,31 @@ class OperationsMixin:
         except Exception:
             ticket_user = None
 
-        thread = await self._get_ticket_thread(ticket["thread_id"])
-        if thread:
+        channel = await self._get_ticket_channel(ticket["thread_id"])
+        if channel:
+            # Add claimer permissions to channel
+            try:
+                await channel.set_permissions(
+                    staff,
+                    view_channel=True,
+                    send_messages=True,
+                    manage_messages=True,
+                    attach_files=True,
+                    embed_links=True,
+                    read_message_history=True,
+                )
+            except discord.HTTPException as e:
+                logger.warning("Failed to add staff permissions on claim", [
+                    ("Ticket ID", ticket_id),
+                    ("Staff ID", str(staff.id)),
+                    ("Error", str(e)),
+                ])
+
+            # Lock out other staff (can view but not send)
+            await self._lock_out_other_staff(channel, staff, ticket_id, ticket)
+
             # Update control panel
-            await self._update_control_panel(ticket_id, thread, ticket_user=ticket_user)
+            await self._update_control_panel(ticket_id, channel, ticket_user=ticket_user)
 
             # Get staff ticket stats
             staff_stats = self.db.get_staff_ticket_stats(staff.id, staff.guild.id)
@@ -495,9 +577,9 @@ class OperationsMixin:
             # Send claim notification with user ping outside embed
             claim_embed = build_claim_notification(staff, stats=staff_stats)
             if ticket_user:
-                await safe_send(thread, content=ticket_user.mention, embed=claim_embed)
+                await safe_send(channel, content=ticket_user.mention, embed=claim_embed)
             else:
-                await safe_send(thread, embed=claim_embed)
+                await safe_send(channel, embed=claim_embed)
 
             # DM user
             if ticket_user:
@@ -545,7 +627,7 @@ class OperationsMixin:
         added_by: discord.Member,
         ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
-        """Add a user to a ticket thread."""
+        """Add a user to a ticket channel via permission overwrite."""
         if ticket is None:
             ticket = self.db.get_ticket(ticket_id)
         if not ticket:
@@ -554,21 +636,28 @@ class OperationsMixin:
         if ticket["status"] == "closed":
             return (False, "Cannot add users to a closed ticket.")
 
-        # Get thread
-        thread = await self._get_ticket_thread(ticket["thread_id"])
-        if not thread:
-            return (False, "Ticket thread not found.")
+        # Get ticket channel
+        channel = await self._get_ticket_channel(ticket["thread_id"])
+        if not channel:
+            return (False, "Ticket channel not found.")
 
-        # Add user to thread
+        # Add user permissions to channel
         try:
-            await thread.add_user(user)
+            await channel.set_permissions(
+                user,
+                view_channel=True,
+                send_messages=True,
+                attach_files=True,
+                embed_links=True,
+                read_message_history=True,
+            )
         except discord.HTTPException as e:
             return (False, f"Failed to add user: {e}")
 
         # Send notification with remove button
         add_embed = build_user_added_notification(added_by, user)
         add_view = UserAddedView(ticket_id, user.id)
-        await safe_send(thread, embed=add_embed, view=add_view)
+        await safe_send(channel, embed=add_embed, view=add_view)
 
         logger.tree("User Added to Ticket", [
             ("Ticket ID", ticket_id),
@@ -585,7 +674,7 @@ class OperationsMixin:
                     ticket_user=ticket_user,
                     added_user=user,
                     added_by=added_by,
-                    thread_id=thread.id,
+                    thread_id=channel.id,
                     guild_id=added_by.guild.id,
                 )
             except Exception as e:
@@ -626,17 +715,52 @@ class OperationsMixin:
         except Exception:
             ticket_user = None
 
-        # Get thread
-        thread = await self._get_ticket_thread(ticket["thread_id"])
-        if thread:
-            # Add new staff to thread
+        # Get ticket channel
+        channel = await self._get_ticket_channel(ticket["thread_id"])
+        if channel:
+            # Add new staff permissions to channel
             try:
-                await thread.add_user(new_staff)
-            except discord.HTTPException:
-                pass
+                await channel.set_permissions(
+                    new_staff,
+                    view_channel=True,
+                    send_messages=True,
+                    manage_messages=True,
+                    attach_files=True,
+                    embed_links=True,
+                    read_message_history=True,
+                )
+            except discord.HTTPException as e:
+                logger.warning("Failed to add staff permissions on transfer", [
+                    ("Ticket ID", ticket_id),
+                    ("New Staff ID", str(new_staff.id)),
+                    ("Error", str(e)),
+                ])
+
+            # Lock out other staff (including old claimer)
+            await self._lock_out_other_staff(channel, new_staff, ticket_id, ticket)
+
+            # Lock out the old claimer specifically (if they're not in support users list)
+            if original_claimer_id and original_claimer_id != new_staff.id:
+                try:
+                    old_claimer = transferred_by.guild.get_member(original_claimer_id)
+                    if old_claimer:
+                        await channel.set_permissions(
+                            old_claimer,
+                            view_channel=True,
+                            send_messages=False,
+                            attach_files=False,
+                            embed_links=False,
+                            read_message_history=True,
+                        )
+                except discord.HTTPException as e:
+                    logger.warning("Failed to lock out old claimer on transfer", [
+                        ("Ticket ID", ticket_id),
+                        ("Old Claimer ID", str(original_claimer_id)),
+                        ("Error", str(e)),
+                    ])
 
             # Update control panel
-            await self._update_control_panel(ticket_id, thread, ticket_user=ticket_user)
+            await self._update_control_panel(ticket_id, channel, ticket_user=ticket_user)
 
             # Get new staff stats
             new_staff_stats = self.db.get_staff_ticket_stats(new_staff.id, new_staff.guild.id)
@@ -645,9 +769,9 @@ class OperationsMixin:
             transfer_embed = build_transfer_notification(new_staff, transferred_by, stats=new_staff_stats)
             if original_claimer_id:
                 transfer_view = TransferNotificationView(ticket_id, original_claimer_id)
-                await safe_send(thread, content=new_staff.mention, embed=transfer_embed, view=transfer_view)
+                await safe_send(channel, content=new_staff.mention, embed=transfer_embed, view=transfer_view)
             else:
-                await safe_send(thread, content=new_staff.mention, embed=transfer_embed)
+                await safe_send(channel, content=new_staff.mention, embed=transfer_embed)
 
         logger.tree("Ticket Transferred", [
             ("Ticket ID", ticket_id),
@@ -702,10 +826,10 @@ class OperationsMixin:
             # Set cooldown immediately to prevent race condition
             self._close_request_cooldowns[ticket_id] = now
 
-        # Get thread
-        thread = await self._get_ticket_thread(ticket["thread_id"])
-        if not thread:
-            return (False, "Ticket thread not found.")
+        # Get ticket channel
+        channel = await self._get_ticket_channel(ticket["thread_id"])
+        if not channel:
+            return (False, "Ticket channel not found.")
 
         # Determine who to ping
         # Priority: claimed_by > category-specific > support staff
@@ -727,7 +851,7 @@ class OperationsMixin:
         # Send close request embed with approve/deny buttons
         request_embed = build_close_request_embed(requester)
         request_view = CloseRequestView(ticket_id)
-        await thread.send(content=ping_content, embed=request_embed, view=request_view)
+        await channel.send(content=ping_content, embed=request_embed, view=request_view)
 
         return (True, "Close request sent. A staff member will review it.")
 
@@ -751,16 +875,16 @@ class OperationsMixin:
             return (True, "Transcript retrieved.", file)
 
         # Generate fresh transcript
-        thread = await self._get_ticket_thread(ticket["thread_id"])
-        if not thread:
-            return (False, "Ticket thread not found.", None)
+        channel = await self._get_ticket_channel(ticket["thread_id"])
+        if not channel:
+            return (False, "Ticket channel not found.", None)
 
         try:
             ticket_user = await self.bot.fetch_user(ticket["user_id"])
         except Exception:
             return (False, "Could not fetch ticket user.", None)
 
-        messages, mention_map = await collect_transcript_messages(thread, self.bot)
+        messages, mention_map = await collect_transcript_messages(channel, self.bot)
         if not messages:
             return (False, "No messages found in ticket.", None)
 

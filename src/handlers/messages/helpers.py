@@ -185,7 +185,7 @@ class HelpersMixin:
                 return
 
         # Skip if user is developer
-        if message.author.id == self.config.developer_id:
+        if message.author.id == self.config.owner_id:
             return
 
         # Skip if user is a mod (they know how the system works)

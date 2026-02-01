@@ -2,7 +2,7 @@
 AzabBot - Helpers Mixin
 =======================
 
-Helper methods for channel/thread access, control panel, and scheduling.
+Helper methods for channel access, control panel, and scheduling.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -10,7 +10,7 @@ Server: discord.gg/syria
 
 import asyncio
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Union
 
 import discord
 
@@ -30,17 +30,17 @@ class HelpersMixin:
     """Mixin for ticket helper methods."""
 
     # =========================================================================
-    # Channel/Thread Helpers
+    # Channel Helpers
     # =========================================================================
 
     async def _get_channel(self: "TicketService") -> Optional[discord.TextChannel]:
-        """Get the ticket channel with caching."""
+        """Get the ticket panel channel with caching."""
         if not self.config.ticket_channel_id:
             return None
 
         # Check cache
         if self._channel and self._channel_cache_time:
-            if datetime.now() - self._channel_cache_time < self.THREAD_CACHE_TTL:
+            if datetime.now() - self._channel_cache_time < self.CHANNEL_CACHE_TTL:
                 return self._channel
 
         # Fetch channel
@@ -52,62 +52,201 @@ class HelpersMixin:
 
         return None
 
-    async def _get_ticket_thread(
+    async def _get_ticket_category(
         self: "TicketService",
-        thread_id: int
-    ) -> Optional[discord.Thread]:
-        """Get a ticket thread with caching."""
+        guild: discord.Guild
+    ) -> Optional[discord.CategoryChannel]:
+        """Get the category for creating ticket channels."""
+        # Try configured category first
+        if self.config.ticket_category_id:
+            category = guild.get_channel(self.config.ticket_category_id)
+            if isinstance(category, discord.CategoryChannel):
+                return category
+            else:
+                logger.warning("Configured ticket_category_id is not a category", [
+                    ("Category ID", str(self.config.ticket_category_id)),
+                    ("Guild ID", str(guild.id)),
+                ])
+
+        # Fall back to ticket_channel_id's parent category
+        panel_channel = await self._get_channel()
+        if panel_channel and panel_channel.category:
+            return panel_channel.category
+
+        logger.warning("No ticket category found", [
+            ("Guild ID", str(guild.id)),
+            ("ticket_category_id", str(self.config.ticket_category_id)),
+            ("ticket_channel_id", str(self.config.ticket_channel_id)),
+        ])
+        return None
+
+    async def _get_ticket_channel(
+        self: "TicketService",
+        channel_id: int
+    ) -> Optional[Union[discord.TextChannel, discord.Thread]]:
+        """Get a ticket channel with caching (supports both channels and legacy threads)."""
         now = datetime.now()
 
         # Periodic cache cleanup (every 50 lookups or when cache is large)
         self._cache_lookup_count += 1
-        if self._cache_lookup_count >= 50 or len(self._thread_cache) > 100:
-            self._cleanup_thread_cache(now)
+        if self._cache_lookup_count >= 50 or len(self._channel_cache_map) > 100:
+            self._cleanup_channel_cache(now)
             self._cache_lookup_count = 0
 
         # Check cache
-        if thread_id in self._thread_cache:
-            thread, cached_at = self._thread_cache[thread_id]
-            if now - cached_at < self.THREAD_CACHE_TTL:
-                return thread
+        if channel_id in self._channel_cache_map:
+            channel, cached_at = self._channel_cache_map[channel_id]
+            if now - cached_at < self.CHANNEL_CACHE_TTL:
+                return channel
             # Expired entry, remove it
-            self._thread_cache.pop(thread_id, None)
+            try:
+                self._channel_cache_map.pop(channel_id, None)
+            except (KeyError, ValueError):
+                pass
 
-        # Fetch thread
+        # Fetch channel
         try:
-            thread = await self.bot.fetch_channel(thread_id)
-            if isinstance(thread, discord.Thread):
-                self._thread_cache[thread_id] = (thread, now)
-                return thread
+            channel = await self.bot.fetch_channel(channel_id)
+            if isinstance(channel, (discord.TextChannel, discord.Thread)):
+                self._channel_cache_map[channel_id] = (channel, now)
+                return channel
         except discord.NotFound:
-            # Thread deleted, remove from cache
-            self._thread_cache.pop(thread_id, None)
+            # Channel deleted, remove from cache
+            try:
+                self._channel_cache_map.pop(channel_id, None)
+            except (KeyError, ValueError):
+                pass
         except discord.HTTPException:
             pass
 
         return None
 
-    def _cleanup_thread_cache(
+    def _cleanup_channel_cache(
         self: "TicketService",
         now: Optional[datetime] = None
     ) -> None:
-        """Remove expired entries from thread cache."""
+        """Remove expired entries from channel cache."""
         if now is None:
             now = datetime.now()
 
         expired_keys = [
-            thread_id for thread_id, (_, cached_at) in self._thread_cache.items()
-            if now - cached_at >= self.THREAD_CACHE_TTL
+            channel_id for channel_id, (_, cached_at) in self._channel_cache_map.items()
+            if now - cached_at >= self.CHANNEL_CACHE_TTL
         ]
         for key in expired_keys:
-            self._thread_cache.pop(key, None)
+            try:
+                self._channel_cache_map.pop(key, None)
+            except (KeyError, ValueError):
+                pass
 
         if expired_keys:
-            logger.debug(f"Cleaned up {len(expired_keys)} expired thread cache entries")
+            logger.debug(f"Cleaned up {len(expired_keys)} expired channel cache entries")
 
     def has_staff_permission(self: "TicketService", member: discord.Member) -> bool:
         """Check if a member has staff permissions."""
         return member.guild_permissions.manage_messages
+
+    # =========================================================================
+    # Staff Permission Management
+    # =========================================================================
+
+    async def _lock_out_other_staff(
+        self: "TicketService",
+        channel: Union[discord.TextChannel, discord.Thread],
+        claimer: discord.Member,
+        ticket_id: str,
+        ticket: Optional[dict] = None,
+    ) -> None:
+        """Lock out other staff from sending messages (can still view)."""
+        guild = channel.guild
+        locked_count = 0
+        users_to_lock = set()
+
+        # Collect support users
+        if self.config.ticket_support_user_ids:
+            users_to_lock.update(self.config.ticket_support_user_ids)
+
+        # Collect category-specific assigned user
+        if ticket:
+            category = ticket.get("category", "support")
+            if category == "partnership" and self.config.ticket_partnership_user_id:
+                users_to_lock.add(self.config.ticket_partnership_user_id)
+            elif category == "suggestion" and self.config.ticket_suggestion_user_id:
+                users_to_lock.add(self.config.ticket_suggestion_user_id)
+
+        # Lock out all collected users (except the claimer)
+        for uid in users_to_lock:
+            if uid == claimer.id:
+                continue
+            try:
+                member = guild.get_member(uid)
+                if member:
+                    await channel.set_permissions(
+                        member,
+                        view_channel=True,
+                        send_messages=False,
+                        attach_files=False,
+                        embed_links=False,
+                        read_message_history=True,
+                    )
+                    locked_count += 1
+            except discord.HTTPException as e:
+                logger.warning("Failed to lock out staff user", [
+                    ("Ticket ID", ticket_id),
+                    ("User ID", str(uid)),
+                    ("Error", str(e)),
+                ])
+
+        if locked_count > 0:
+            logger.debug(f"Locked out {locked_count} staff from ticket {ticket_id}")
+
+    async def _restore_staff_access(
+        self: "TicketService",
+        channel: Union[discord.TextChannel, discord.Thread],
+        ticket_id: str,
+        ticket: Optional[dict] = None,
+    ) -> None:
+        """Restore staff access to send messages (when ticket is unclaimed/reopened)."""
+        guild = channel.guild
+        restored_count = 0
+        users_to_restore = set()
+
+        # Collect support users
+        if self.config.ticket_support_user_ids:
+            users_to_restore.update(self.config.ticket_support_user_ids)
+
+        # Collect category-specific assigned user
+        if ticket:
+            category = ticket.get("category", "support")
+            if category == "partnership" and self.config.ticket_partnership_user_id:
+                users_to_restore.add(self.config.ticket_partnership_user_id)
+            elif category == "suggestion" and self.config.ticket_suggestion_user_id:
+                users_to_restore.add(self.config.ticket_suggestion_user_id)
+
+        # Restore all collected users
+        for uid in users_to_restore:
+            try:
+                member = guild.get_member(uid)
+                if member:
+                    await channel.set_permissions(
+                        member,
+                        view_channel=True,
+                        send_messages=True,
+                        manage_messages=True,
+                        attach_files=True,
+                        embed_links=True,
+                        read_message_history=True,
+                    )
+                    restored_count += 1
+            except discord.HTTPException as e:
+                logger.warning("Failed to restore staff user permissions", [
+                    ("Ticket ID", ticket_id),
+                    ("User ID", str(uid)),
+                    ("Error", str(e)),
+                ])
+
+        if restored_count > 0:
+            logger.debug(f"Restored {restored_count} staff access to ticket {ticket_id}")
 
     # =========================================================================
     # Control Panel Management
@@ -116,12 +255,12 @@ class HelpersMixin:
     async def _update_control_panel(
         self: "TicketService",
         ticket_id: str,
-        thread: discord.Thread,
+        channel: Union[discord.TextChannel, discord.Thread],
         closed_by: Optional[discord.Member] = None,
         ticket: Optional[dict] = None,
         ticket_user: Optional[discord.User] = None,
     ) -> None:
-        """Update the control panel embed in a ticket thread."""
+        """Update the control panel embed in a ticket channel."""
         if ticket is None:
             ticket = self.db.get_ticket(ticket_id)
         if not ticket:
@@ -137,21 +276,26 @@ class HelpersMixin:
         # Get closed_by member if ticket is closed and not passed
         if ticket["status"] == "closed" and not closed_by and ticket.get("closed_by"):
             try:
-                guild = thread.guild or self.bot.get_guild(self.config.logging_guild_id)
+                guild = channel.guild or self.bot.get_guild(self.config.logging_guild_id)
                 if guild:
                     closed_by = guild.get_member(ticket["closed_by"])
             except Exception:
                 pass
 
+        # Get user ticket count for stats
+        user_ticket_count = None
+        if ticket_user:
+            user_ticket_count = self.db.get_user_ticket_count(ticket["user_id"], ticket["guild_id"])
+
         # Build new embed and view
-        new_embed = build_control_panel_embed(ticket, ticket_user, closed_by)
+        new_embed = build_control_panel_embed(ticket, ticket_user, closed_by, user_ticket_count=user_ticket_count)
         new_view = TicketControlPanelView.from_ticket(ticket)
 
         # Try to edit existing control panel message
         control_msg_id = ticket.get("control_panel_message_id")
         if control_msg_id:
             try:
-                message = await thread.fetch_message(control_msg_id)
+                message = await channel.fetch_message(control_msg_id)
                 await message.edit(embed=new_embed, view=new_view)
                 return
             except discord.NotFound:
@@ -161,7 +305,7 @@ class HelpersMixin:
 
         # Fallback: find first embed message
         try:
-            async for message in thread.history(limit=5, oldest_first=True):
+            async for message in channel.history(limit=5, oldest_first=True):
                 if message.embeds and "Control Panel" in str(message.embeds[0].title):
                     await message.edit(embed=new_embed, view=new_view)
                     # Update stored message ID
@@ -193,38 +337,41 @@ class HelpersMixin:
             return None
 
     # =========================================================================
-    # Thread Deletion
+    # Channel Deletion
     # =========================================================================
 
-    async def _schedule_thread_deletion(
+    async def _schedule_channel_deletion(
         self: "TicketService",
         ticket_id: str,
-        thread_id: int
+        channel_id: int
     ) -> None:
-        """Schedule a thread for deletion after delay."""
-        await self._cancel_thread_deletion(ticket_id)
+        """Schedule a ticket channel for deletion after delay."""
+        await self._cancel_channel_deletion(ticket_id)
 
         async def delete_after_delay():
             await asyncio.sleep(THREAD_DELETE_DELAY)
             try:
-                thread = await self.bot.fetch_channel(thread_id)
-                if isinstance(thread, discord.Thread):
-                    await thread.delete()
-                    logger.debug(f"Deleted thread for ticket {ticket_id}")
+                channel = await self.bot.fetch_channel(channel_id)
+                if isinstance(channel, (discord.TextChannel, discord.Thread)):
+                    await channel.delete()
+                    logger.debug(f"Deleted channel for ticket {ticket_id}")
             except discord.NotFound:
                 pass
             except Exception as e:
-                logger.error(f"Failed to delete thread: {e}")
+                logger.error(f"Failed to delete channel: {e}")
             finally:
                 async with self._deletions_lock:
-                    self._pending_deletions.pop(ticket_id, None)
+                    try:
+                        self._pending_deletions.pop(ticket_id, None)
+                    except (KeyError, ValueError):
+                        pass
 
-        task = create_safe_task(delete_after_delay(), f"Delete thread {ticket_id}")
+        task = create_safe_task(delete_after_delay(), f"Delete channel {ticket_id}")
         async with self._deletions_lock:
             self._pending_deletions[ticket_id] = task
 
-    async def _cancel_thread_deletion(self: "TicketService", ticket_id: str) -> None:
-        """Cancel a scheduled thread deletion."""
+    async def _cancel_channel_deletion(self: "TicketService", ticket_id: str) -> None:
+        """Cancel a scheduled channel deletion."""
         async with self._deletions_lock:
             task = self._pending_deletions.pop(ticket_id, None)
         if task and not task.done():

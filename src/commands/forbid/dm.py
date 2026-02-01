@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 import discord
 
+from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
 from src.utils.dm_helpers import safe_send_dm
 
@@ -77,7 +78,23 @@ class DMMixin:
         # Create appeal button view
         view = ForbidAppealView(guild.id, user.id)
 
-        return await safe_send_dm(user, embed=embed, view=view, context="Forbid DM")
+        result = await safe_send_dm(user, embed=embed, view=view, context="Forbid DM")
+
+        if result:
+            logger.tree("Forbid DM Sent", [
+                ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                ("ID", str(user.id)),
+                ("Restrictions", ", ".join(restrictions)),
+                ("Duration", duration_display),
+            ], emoji="📨")
+        else:
+            logger.warning("Forbid DM Failed", [
+                ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                ("ID", str(user.id)),
+                ("Reason", "DMs disabled or blocked"),
+            ])
+
+        return result
 
     async def _send_unforbid_dm(
         self: "ForbidCog",
@@ -113,7 +130,22 @@ class DMMixin:
 
         embed.set_footer(text=f"Server: {guild.name}")
 
-        return await safe_send_dm(user, embed=embed, context="Unforbid DM")
+        result = await safe_send_dm(user, embed=embed, context="Unforbid DM")
+
+        if result:
+            logger.tree("Unforbid DM Sent", [
+                ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                ("ID", str(user.id)),
+                ("Restrictions Removed", ", ".join(restrictions)),
+            ], emoji="📨")
+        else:
+            logger.warning("Unforbid DM Failed", [
+                ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                ("ID", str(user.id)),
+                ("Reason", "DMs disabled or blocked"),
+            ])
+
+        return result
 
 
 __all__ = ["DMMixin"]

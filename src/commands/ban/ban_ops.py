@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.logger import logger
-from src.core.config import is_developer, has_mod_role, EmbedColors
+from src.core.config import is_owner, has_mod_role, EmbedColors
 from src.core.database import get_db
 from src.core.moderation_validation import (
     validate_moderation_target,
@@ -345,7 +345,7 @@ class BanOpsMixin:
             )
             return
 
-        if user.bot and not is_developer(interaction.user.id):
+        if user.bot and not is_owner(interaction.user.id):
             await interaction.response.send_message(
                 "You cannot ban bots.",
                 ephemeral=True,
@@ -368,7 +368,7 @@ class BanOpsMixin:
             )
             return
 
-        if message.author.bot and not is_developer(interaction.user.id):
+        if message.author.bot and not is_owner(interaction.user.id):
             await interaction.response.send_message(
                 "You cannot ban bots.",
                 ephemeral=True,

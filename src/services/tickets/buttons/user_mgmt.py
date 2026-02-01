@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 
 class AddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_adduser:(?P<ticket_id>T\d+)"):
-    """Button to add a user to the ticket thread."""
+    """Button to add a user to the ticket channel."""
 
     def __init__(self, ticket_id: str):
         self.ticket_id = ticket_id
@@ -76,7 +76,7 @@ class AddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_ad
 
 
 class RemoveUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_rmuser:(?P<ticket_id>T\d+):(?P<user_id>\d+)"):
-    """Button to remove a user from the ticket thread."""
+    """Button to remove a user from the ticket channel."""
 
     def __init__(self, ticket_id: str, user_id: int = 0):
         self.ticket_id = ticket_id
@@ -133,10 +133,10 @@ class RemoveUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt
 
         await interaction.response.defer(ephemeral=True)
 
-        # Get the thread and remove the user
-        thread = await bot.ticket_service._get_ticket_thread(ticket["thread_id"])
-        if not thread:
-            await interaction.followup.send("Ticket thread not found.", ephemeral=True)
+        # Get the ticket channel
+        channel = await bot.ticket_service._get_ticket_channel(ticket["thread_id"])
+        if not channel:
+            await interaction.followup.send("Ticket channel not found.", ephemeral=True)
             return
 
         # Get the member to remove
@@ -146,7 +146,8 @@ class RemoveUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt
             return
 
         try:
-            await thread.remove_user(member)
+            # Remove user's permission overwrite
+            await channel.set_permissions(member, overwrite=None)
             logger.tree("User Removed from Ticket", [
                 ("Ticket ID", self.ticket_id),
                 ("Removed User", f"{member.name} ({member.id})"),

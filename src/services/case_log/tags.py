@@ -25,17 +25,13 @@ class CaseLogTagsMixin:
     # Forum Tag Definitions
     # =========================================================================
 
-    # Status tags
-    TAG_PENDING_REVIEW = ("🔴 Pending Review", discord.Colour.red())
-    TAG_APPROVED = ("🟢 Approved", discord.Colour.green())
-
     # Action type tags
     TAG_MUTE = ("🔇 Mute", discord.Colour.orange())
     TAG_BAN = ("🔨 Ban", discord.Colour.dark_red())
     TAG_WARN = ("⚠️ Warn", discord.Colour.gold())
     TAG_FORBID = ("🚫 Forbid", discord.Colour.purple())
 
-    ALL_TAGS = [TAG_PENDING_REVIEW, TAG_APPROVED, TAG_MUTE, TAG_BAN, TAG_WARN, TAG_FORBID]
+    ALL_TAGS = [TAG_MUTE, TAG_BAN, TAG_WARN, TAG_FORBID]
 
     # =========================================================================
     # Forum Tag Management
@@ -125,27 +121,17 @@ class CaseLogTagsMixin:
             ])
             return False
 
-    def get_tags_for_case(self: "CaseLogService", action_type: str, is_approved: bool = False) -> List[discord.ForumTag]:
+    def get_tags_for_case(self: "CaseLogService", action_type: str) -> List[discord.ForumTag]:
         """
         Get the appropriate tags for a case.
 
         Args:
             action_type: The action type (mute, ban, warn, forbid).
-            is_approved: Whether the case is approved.
 
         Returns:
             List of ForumTag objects to apply.
         """
-        tags = []
-
-        # Status tag
-        if is_approved:
-            status_tag = self._tag_cache.get(self.TAG_APPROVED[0])
-        else:
-            status_tag = self._tag_cache.get(self.TAG_PENDING_REVIEW[0])
-
-        if status_tag:
-            tags.append(status_tag)
+        tags: List[discord.ForumTag] = []
 
         # Action type tag
         action_tag_map = {

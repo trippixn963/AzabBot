@@ -261,7 +261,7 @@ class BulkDetectionMixin:
             thread_id=tracked["thread_id"],
             embed=embed,
             priority=priority,
-            content=f"<@{self.config.developer_id}>",
+            content=f"<@{self.config.owner_id}>",
             is_alert=True,
         )
 

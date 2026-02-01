@@ -119,7 +119,7 @@ class ApproveAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"
 
         # Check permissions - must have moderate_members OR be in allowed user list
         config = get_config()
-        allowed_ids = {config.developer_id}
+        allowed_ids = {config.owner_id}
         if config.appeal_allowed_user_ids:
             allowed_ids |= config.appeal_allowed_user_ids
 
@@ -180,7 +180,7 @@ class DenyAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"app
 
         # Check permissions - must have moderate_members OR be in allowed user list
         config = get_config()
-        allowed_ids = {config.developer_id}
+        allowed_ids = {config.owner_id}
         if config.appeal_allowed_user_ids:
             allowed_ids |= config.appeal_allowed_user_ids
 
@@ -234,7 +234,7 @@ class OpenAppealTicketButton(discord.ui.DynamicItem[discord.ui.Button], template
     async def callback(self, interaction: discord.Interaction) -> None:
         # Check permissions
         config = get_config()
-        allowed_ids = {config.developer_id}
+        allowed_ids = {config.owner_id}
         if config.appeal_allowed_user_ids:
             allowed_ids |= config.appeal_allowed_user_ids
 
@@ -357,7 +357,7 @@ class ContactBannedUserButton(discord.ui.DynamicItem[discord.ui.Button], templat
     async def callback(self, interaction: discord.Interaction) -> None:
         # Check permissions
         config = get_config()
-        allowed_ids = {config.developer_id}
+        allowed_ids = {config.owner_id}
         if config.appeal_allowed_user_ids:
             allowed_ids |= config.appeal_allowed_user_ids
 

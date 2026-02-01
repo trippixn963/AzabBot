@@ -46,8 +46,56 @@ class AntiNukeMixin:
             elif entry.action == discord.AuditLogAction.role_delete:
                 await self.bot.antinuke_service.track_role_delete(entry.guild, entry.user_id)
 
+            # Track bot additions
+            elif entry.action == discord.AuditLogAction.bot_add:
+                # entry.target is the bot that was added
+                if entry.target and isinstance(entry.target, discord.Member):
+                    await self.bot.antinuke_service.track_bot_add(
+                        entry.guild,
+                        entry.user_id,
+                        entry.target,
+                    )
+
+            # Track role permission changes (escalation detection)
+            elif entry.action == discord.AuditLogAction.role_update:
+                await self._check_permission_escalation(entry)
+
         except Exception as e:
             logger.warning(f"Anti-nuke check failed: {e}")
+
+    async def _check_permission_escalation(
+        self: "AuditLogEvents",
+        entry: discord.AuditLogEntry,
+    ) -> None:
+        """Check if a role update involves permission escalation."""
+        if not self.bot.antinuke_service:
+            return
+
+        # Get the role that was updated
+        if not entry.target or not isinstance(entry.target, discord.Role):
+            return
+
+        # Check if permissions were changed
+        before = entry.before
+        after = entry.after
+
+        if not hasattr(before, "permissions") or not hasattr(after, "permissions"):
+            return
+
+        before_perms = before.permissions
+        after_perms = after.permissions
+
+        # Only check if permissions actually changed
+        if before_perms == after_perms:
+            return
+
+        await self.bot.antinuke_service.track_permission_change(
+            entry.guild,
+            entry.user_id,
+            entry.target,
+            before_perms,
+            after_perms,
+        )
 
 
 __all__ = ["AntiNukeMixin"]

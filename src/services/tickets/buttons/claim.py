@@ -71,8 +71,8 @@ class ClaimButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clai
 
         # Ticket owner can't claim their own ticket (unless they're developer)
         config = get_config()
-        is_developer = config.developer_id and interaction.user.id == config.developer_id
-        if ticket and interaction.user.id == ticket["user_id"] and not is_developer:
+        is_owner = config.owner_id and interaction.user.id == config.owner_id
+        if ticket and interaction.user.id == ticket["user_id"] and not is_owner:
             await interaction.response.send_message(
                 "Only staff can claim tickets.",
                 ephemeral=True,

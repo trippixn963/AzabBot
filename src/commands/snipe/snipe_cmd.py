@@ -66,7 +66,7 @@ class SnipeCmdMixin:
             fresh_snipes = [
                 s for s in snipes
                 if (now - s["deleted_at"]) <= SNIPE_MAX_AGE
-                and s.get("author_id") != self.config.developer_id
+                and s.get("author_id") != self.config.owner_id
             ]
 
             # Apply user filter if specified

@@ -64,7 +64,7 @@ class EditsnipeCmdMixin:
             fresh_edits = [
                 e for e in channel_edits
                 if (now - e.get("edited_at", 0)) <= SNIPE_MAX_AGE
-                and e.get("author_id") != self.config.developer_id
+                and e.get("author_id") != self.config.owner_id
             ]
 
             # Apply user filter if specified

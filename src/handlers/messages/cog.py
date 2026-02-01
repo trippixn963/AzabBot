@@ -210,15 +210,13 @@ class MessageEvents(HelpersMixin, commands.Cog):
             return
 
         # -----------------------------------------------------------------
-        # Alt Detection Data Collection (writing style, activity, interactions)
+        # Auto-Response: Partnership keyword detection (main server only)
         # -----------------------------------------------------------------
-        if message.guild and message.guild.id == self.config.logging_guild_id:
-            self._collect_alt_detection_data(message)
-
-        # -----------------------------------------------------------------
-        # Auto-Response: Partnership keyword detection
-        # -----------------------------------------------------------------
-        if message.guild and "partnership" in message.content.lower():
+        if (
+            message.guild
+            and message.guild.id == self.config.logging_guild_id
+            and "partnership" in message.content.lower()
+        ):
             await self._handle_partnership_mention(message)
 
         # -----------------------------------------------------------------
@@ -233,7 +231,19 @@ class MessageEvents(HelpersMixin, commands.Cog):
                     self.config.links_allowed_channel_id
                     and message.channel.id == self.config.links_allowed_channel_id
                 )
-                if is_links_allowed_channel:
+                # Check if user is owner (always exempt)
+                is_owner = message.author.id == self.config.owner_id
+
+                if is_owner:
+                    logger.tree("INVITE LINK ALLOWED", [
+                        ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                        ("ID", str(message.author.id)),
+                        ("Channel", f"#{message.channel.name}"),
+                        ("Reason", "Owner"),
+                        ("Invite(s)", ", ".join(invite_matches)),
+                    ], emoji="✅")
+                    # Don't return - continue processing message
+                elif is_links_allowed_channel:
                     logger.tree("INVITE LINK ALLOWED", [
                         ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
                         ("ID", str(message.author.id)),
@@ -580,90 +590,5 @@ class MessageEvents(HelpersMixin, commands.Cog):
                 reply_to_user=reply_to_user,
                 reply_to_id=reply_to_id,
             )
-
-    # =========================================================================
-    # Alt Detection Data Collection
-    # =========================================================================
-
-    def _collect_alt_detection_data(self, message: discord.Message) -> None:
-        """
-        Collect data for alt detection: writing style, activity hours, interactions.
-
-        DESIGN:
-            Called for every message in the main server to build user profiles
-            for alt detection analysis. Data is stored in database tables:
-            - message_samples: Writing style metrics
-            - user_activity_hours: Activity time patterns
-            - user_interactions: Reply/mention tracking
-        """
-        import re
-        import random
-
-        user_id = message.author.id
-        guild_id = message.guild.id
-        content = message.content
-
-        # -----------------------------------------------------------------
-        # 1. Message Sample (writing style) - sample 1 in 10 messages
-        # -----------------------------------------------------------------
-        if random.random() < 0.1:  # 10% sampling rate
-            words = content.split()
-            word_count = len(words)
-
-            if word_count >= 3:  # Only meaningful messages
-                # Calculate average word length
-                total_chars = sum(len(w) for w in words)
-                avg_word_length = total_chars / word_count if word_count > 0 else 0
-
-                # Count emojis (custom Discord emojis + common unicode ranges)
-                custom_emoji_pattern = r'<a?:\w+:\d+>'
-                emoji_count = len(re.findall(custom_emoji_pattern, content))
-                # Count common unicode emoji ranges
-                unicode_emoji_pattern = r'[\U0001F300-\U0001F9FF\U00002600-\U000026FF\U00002700-\U000027BF]'
-                emoji_count += len(re.findall(unicode_emoji_pattern, content))
-
-                # Calculate caps ratio (letters only)
-                letters = [c for c in content if c.isalpha()]
-                caps_ratio = sum(1 for c in letters if c.isupper()) / len(letters) if letters else 0
-
-                try:
-                    self.db.save_message_sample(
-                        user_id=user_id,
-                        guild_id=guild_id,
-                        content=content[:200],
-                        word_count=word_count,
-                        avg_word_length=avg_word_length,
-                        emoji_count=emoji_count,
-                        caps_ratio=caps_ratio,
-                    )
-                except Exception:
-                    pass  # Don't break message flow for tracking errors
-
-        # -----------------------------------------------------------------
-        # 2. Activity Hour Tracking
-        # -----------------------------------------------------------------
-        try:
-            current_hour = datetime.now(NY_TZ).hour
-            self.db.increment_activity_hour(user_id, guild_id, current_hour)
-        except Exception:
-            pass
-
-        # -----------------------------------------------------------------
-        # 3. Interaction Tracking (replies and mentions)
-        # -----------------------------------------------------------------
-        try:
-            # Track reply interactions
-            if message.reference and message.reference.message_id:
-                ref_msg = message.reference.cached_message
-                if ref_msg and not ref_msg.author.bot and ref_msg.author.id != user_id:
-                    self.db.record_interaction(user_id, ref_msg.author.id, guild_id)
-
-            # Track mention interactions
-            for mentioned in message.mentions:
-                if not mentioned.bot and mentioned.id != user_id:
-                    self.db.record_interaction(user_id, mentioned.id, guild_id)
-        except Exception:
-            pass
-
 
 __all__ = ["MessageEvents"]

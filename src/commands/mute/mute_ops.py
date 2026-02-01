@@ -29,6 +29,10 @@ from src.core.constants import CASE_LOG_TIMEOUT
 
 from .views import MuteModal
 
+# Threshold for detecting concurrent mute operations (seconds)
+# If an existing mute was created within this window, treat as duplicate, not extension
+CONCURRENT_MUTE_THRESHOLD: float = 5.0
+
 if TYPE_CHECKING:
     from .cog import MuteCog
 
@@ -126,6 +130,38 @@ class MuteOpsMixin:
         is_extension = muted_role in target_member.roles
         duration_seconds = parse_duration(duration) if duration else None
         duration_display = format_duration(duration_seconds)
+
+        # Check for concurrent mute operations (race condition)
+        # If a DIFFERENT mod just muted this user within the last few seconds,
+        # treat this as a duplicate operation, not an intentional extension
+        if is_extension:
+            import time
+            existing_mute = self.db.get_active_mute(user.id, target_guild.id)
+            if existing_mute and existing_mute["muted_at"]:
+                mute_age = time.time() - existing_mute["muted_at"]
+                original_mod_id = existing_mute["moderator_id"]
+
+                # Only block if DIFFERENT moderator muted recently
+                # Same mod re-running = intentional adjustment, let it through
+                if mute_age < CONCURRENT_MUTE_THRESHOLD and original_mod_id != interaction.user.id:
+                    # Try to get the original moderator's name
+                    original_mod = target_guild.get_member(original_mod_id)
+                    mod_display = original_mod.mention if original_mod else f"another moderator (ID: {original_mod_id})"
+
+                    logger.debug("Concurrent Mute Blocked", [
+                        ("User", f"{user.name} ({user.id})"),
+                        ("Blocked Mod", f"{interaction.user.name} ({interaction.user.id})"),
+                        ("Original Mod", f"{original_mod_id}"),
+                        ("Mute Age", f"{mute_age:.1f}s"),
+                    ])
+
+                    await interaction.followup.send(
+                        f"**{target_member.display_name}** was just muted by {mod_display} "
+                        f"(`{mute_age:.0f}s` ago).\n"
+                        f"If you intended to extend the mute, please wait a moment and try again.",
+                        ephemeral=True,
+                    )
+                    return
 
         try:
             if not is_extension:

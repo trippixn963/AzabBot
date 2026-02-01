@@ -403,7 +403,7 @@ SLOWMODE_COOLDOWN = 300  # 5 minutes
 # =============================================================================
 
 MESSAGE_HISTORY_CLEANUP = 60  # seconds
-VIOLATION_DECAY_TIME = 300  # 5 minutes
+VIOLATION_DECAY_TIME = 600  # 10 minutes
 REPUTATION_UPDATE_INTERVAL = 3600  # 1 hour
 
 

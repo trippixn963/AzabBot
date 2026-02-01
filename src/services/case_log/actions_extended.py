@@ -102,8 +102,8 @@ class CaseLogExtendedActionsMixin:
             embed_message = await safe_send(case_thread, embed=embed)
 
             # Skip "no reason" warning for developer/owner
-            is_developer = moderator and self.config.developer_id and moderator.id == self.config.developer_id
-            if moderator and not reason and embed_message and not is_developer:
+            is_owner = moderator and self.config.owner_id and moderator.id == self.config.owner_id
+            if moderator and not reason and embed_message and not is_owner:
                 warning_message = await safe_send(
                     case_thread,
                     f"⚠️ {moderator.mention} No reason was provided for this timeout.\n\n"
@@ -237,8 +237,8 @@ class CaseLogExtendedActionsMixin:
             embed_message = await safe_send(case_thread, embed=embed)
 
             # Skip "no reason" warning for developer/owner
-            is_developer = self.config.developer_id and moderator.id == self.config.developer_id
-            if not reason and embed_message and not is_developer:
+            is_owner = self.config.owner_id and moderator.id == self.config.owner_id
+            if not reason and embed_message and not is_owner:
                 warning_message = await safe_send(
                     case_thread,
                     f"⚠️ {moderator.mention} No reason was provided for this ban.\n\n"
@@ -365,8 +365,8 @@ class CaseLogExtendedActionsMixin:
                 embed_message = await safe_send(case_thread, embed=embed)
 
                 # Request reason if not provided (skip for developer/owner)
-                is_developer = self.config.developer_id and moderator.id == self.config.developer_id
-                if not reason and embed_message and not is_developer:
+                is_owner = self.config.owner_id and moderator.id == self.config.owner_id
+                if not reason and embed_message and not is_owner:
                     warning_message = await safe_send(
                         case_thread,
                         f"⚠️ {moderator.mention} No reason was provided for this unban.\n\n"
@@ -616,8 +616,8 @@ class CaseLogExtendedActionsMixin:
             embed_message = await safe_send(case_thread, embed=embed)
 
             # Request reason if not explicitly provided (skip for developer/owner)
-            is_developer = self.config.developer_id and moderator.id == self.config.developer_id
-            if not reason and embed_message and not is_developer:
+            is_owner = self.config.owner_id and moderator.id == self.config.owner_id
+            if not reason and embed_message and not is_owner:
                 warning_message = await safe_send(
                     case_thread,
                     f"⚠️ {moderator.mention} No reason was provided for removing restrictions.\n\n"

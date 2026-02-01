@@ -45,8 +45,8 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
     Service for managing support tickets.
 
     DESIGN:
-        Tickets are created as threads in a dedicated text channel.
-        Each ticket gets its own thread with sequential ID (T001, T002, etc.).
+        Tickets are created as private text channels with permission overwrites.
+        Each ticket gets its own channel with sequential ID (T001, T002, etc.).
         All operations via buttons - no slash commands.
 
         Single Control Panel Pattern:
@@ -55,7 +55,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         - Simple notification messages (no buttons) for actions
     """
 
-    THREAD_CACHE_TTL = timedelta(minutes=5)
+    CHANNEL_CACHE_TTL = timedelta(minutes=5)
 
     def __init__(self, bot: "AzabBot") -> None:
         self.bot = bot
@@ -63,7 +63,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         self.db = get_db()
         self._channel: Optional[discord.TextChannel] = None
         self._channel_cache_time: Optional[datetime] = None
-        self._thread_cache: Dict[int, tuple[discord.Thread, datetime]] = {}
+        self._channel_cache_map: Dict[int, tuple] = {}  # ticket channel cache {channel_id: (channel, datetime)}
         self._auto_close_task: Optional[asyncio.Task] = None
         self._running: bool = False
         self._creation_cooldowns: Dict[int, float] = {}

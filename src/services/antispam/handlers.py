@@ -156,7 +156,7 @@ class SpamHandlerMixin:
         if bot.logging_service and bot.logging_service.enabled:
             try:
                 embed = discord.Embed(
-                    title="⚠️ Sticker Spam Warning",
+                    title="⚠️ Sticker Spam",
                     color=EmbedColors.WARNING,
                     timestamp=now,
                 )
@@ -215,8 +215,8 @@ class SpamHandlerMixin:
             case_info = await self._open_spam_case(member, "Sticker Spam", mute_duration, violation_count)
 
             embed = discord.Embed(
-                title="🔇 Muted for Sticker Spam",
-                description=f"{member.mention} has been muted for spamming stickers.",
+                title="🔇 Sticker Spam",
+                description=f"{member.mention} has been muted.",
                 color=EmbedColors.WARNING,
             )
             embed.add_field(name="Duration", value="10 minutes", inline=True)
@@ -236,12 +236,31 @@ class SpamHandlerMixin:
 
             await message.channel.send(embed=embed, view=view, delete_after=15)
 
+            # DM the user about the mute
+            dm_sent = False
+            try:
+                dm_embed = discord.Embed(
+                    title=f"🔇 You've been muted in {member.guild.name}",
+                    color=EmbedColors.WARNING,
+                )
+                dm_embed.add_field(name="Reason", value="Sticker Spam", inline=True)
+                dm_embed.add_field(name="Duration", value="10 minutes", inline=True)
+                dm_embed.add_field(name="Violation", value=f"#{violation_count}", inline=True)
+                dm_embed.set_footer(text="This was an automatic action by the anti-spam system.")
+                await member.send(embed=dm_embed)
+                dm_sent = True
+            except discord.Forbidden:
+                logger.debug(f"Sticker spam mute DM failed for {member.id}: DMs disabled")
+            except discord.HTTPException as e:
+                logger.debug(f"Sticker spam mute DM failed for {member.id}: {e}")
+
             logger.tree("STICKER SPAM MUTE", [
                 ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
                 ("User ID", str(member.id)),
                 ("Duration", "10 minutes"),
                 ("Violation", f"#{violation_count}"),
                 ("Channel", f"#{message.channel.name}" if hasattr(message.channel, 'name') else "Unknown"),
+                ("DM Sent", "Yes" if dm_sent else "No (DMs disabled)"),
             ], emoji="🔇")
 
             # Log to server logs
@@ -325,12 +344,11 @@ class SpamHandlerMixin:
         """Send a warning embed to the user."""
         try:
             embed = discord.Embed(
-                title="⚠️ Spam Warning",
-                description=f"{member.mention}, please don't spam.",
+                title=f"⚠️ {spam_type}",
+                description=f"{member.mention}, your message was deleted.",
                 color=EmbedColors.WARNING,
             )
-            embed.add_field(name="Reason", value=spam_type, inline=True)
-            embed.add_field(name="Action", value="Message deleted", inline=True)
+            embed.add_field(name="Action", value="Warning", inline=True)
             set_footer(embed)
 
             await channel.send(embed=embed, delete_after=10)
@@ -390,11 +408,10 @@ class SpamHandlerMixin:
             case_info = await self._open_spam_case(member, spam_type, duration, violation_count)
 
             embed = discord.Embed(
-                title="🔇 Auto-Muted",
-                description=f"{member.mention} has been muted for spamming.",
+                title=f"🔇 {spam_type}",
+                description=f"{member.mention} has been muted.",
                 color=EmbedColors.WARNING,
             )
-            embed.add_field(name="Reason", value=spam_type, inline=True)
             embed.add_field(name="Duration", value=duration_str, inline=True)
             embed.add_field(name="Violation", value=f"#{violation_count}", inline=True)
             set_footer(embed)
@@ -412,12 +429,31 @@ class SpamHandlerMixin:
 
             await channel.send(embed=embed, view=view, delete_after=15)
 
+            # DM the user about the mute
+            dm_sent = False
+            try:
+                dm_embed = discord.Embed(
+                    title=f"🔇 You've been muted in {member.guild.name}",
+                    color=EmbedColors.WARNING,
+                )
+                dm_embed.add_field(name="Reason", value=spam_type, inline=True)
+                dm_embed.add_field(name="Duration", value=duration_str, inline=True)
+                dm_embed.add_field(name="Violation", value=f"#{violation_count}", inline=True)
+                dm_embed.set_footer(text="This was an automatic action by the anti-spam system.")
+                await member.send(embed=dm_embed)
+                dm_sent = True
+            except discord.Forbidden:
+                logger.debug(f"Auto-mute DM failed for {member.id}: DMs disabled")
+            except discord.HTTPException as e:
+                logger.debug(f"Auto-mute DM failed for {member.id}: {e}")
+
             logger.tree("AUTO-MUTE APPLIED", [
                 ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
                 ("User ID", str(member.id)),
                 ("Type", spam_type),
                 ("Duration", duration_str),
                 ("Violation", f"#{violation_count}"),
+                ("DM Sent", "Yes" if dm_sent else "No (DMs disabled)"),
             ], emoji="🔇")
 
         except discord.Forbidden:

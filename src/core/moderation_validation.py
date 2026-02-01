@@ -32,7 +32,7 @@ from typing import Optional, TYPE_CHECKING
 
 import discord
 
-from src.core.config import get_config, is_developer, EmbedColors
+from src.core.config import get_config, is_owner, EmbedColors
 from src.core.logger import logger
 from src.utils.footer import set_footer
 
@@ -181,7 +181,7 @@ def validate_target_not_bot(
     Returns:
         ValidationResult with is_valid=False if target is bot and mod isn't developer.
     """
-    if target.bot and not is_developer(moderator.id):
+    if target.bot and not is_owner(moderator.id):
         logger.tree(f"{action.upper()} BLOCKED", [
             ("Reason", "Target is a bot"),
             ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
@@ -217,7 +217,7 @@ def validate_role_hierarchy(
         ValidationResult with is_valid=False if hierarchy check fails.
     """
     # Developers bypass hierarchy
-    if is_developer(moderator.id):
+    if is_owner(moderator.id):
         return ValidationResult(is_valid=True)
 
     # For cross-server, get mod's member object from target guild
@@ -273,7 +273,7 @@ def validate_management_protection(
         return ValidationResult(is_valid=True)
 
     # Developers bypass protection
-    if is_developer(moderator.id):
+    if is_owner(moderator.id):
         return ValidationResult(is_valid=True)
 
     management_role = target_guild.get_role(config.moderation_role_id)

@@ -165,13 +165,13 @@ class RaidDetectionMixin:
                     embed,
                 )
 
-                if config.developer_id:
+                if config.owner_id:
                     thread = await bot.logging_service._get_or_create_thread(
                         bot.logging_service.LogCategory.ALERTS
                     )
                     if thread:
                         await thread.send(
-                            f"<@{config.developer_id}> 🚨 **RAID DETECTED ({raid_type})!** "
+                            f"<@{config.owner_id}> 🚨 **RAID DETECTED ({raid_type})!** "
                             f"Consider running `/lockdown`."
                         )
             except Exception as e:

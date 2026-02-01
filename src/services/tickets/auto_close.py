@@ -76,9 +76,9 @@ class AutoCloseMixin:
             await self._auto_delete_ticket(ticket)
 
     async def _send_inactivity_warning(self: "TicketService", ticket: dict) -> None:
-        """Send inactivity warning to ticket thread."""
-        thread = await self._get_ticket_thread(ticket["thread_id"])
-        if not thread:
+        """Send inactivity warning to ticket channel."""
+        channel = await self._get_ticket_channel(ticket["thread_id"])
+        if not channel:
             return
 
         days_inactive = INACTIVE_WARNING_DAYS
@@ -91,7 +91,7 @@ class AutoCloseMixin:
         )
 
         try:
-            await thread.send(embed=embed)
+            await channel.send(embed=embed)
             self.db.mark_ticket_warned(ticket["ticket_id"])
             logger.tree("Inactivity Warning Sent", [
                 ("Ticket ID", ticket["ticket_id"]),
@@ -127,19 +127,19 @@ class AutoCloseMixin:
             ], emoji="🔒")
 
     async def _auto_delete_ticket(self: "TicketService", ticket: dict) -> None:
-        """Auto-delete a closed ticket thread after retention period."""
+        """Auto-delete a closed ticket channel after retention period."""
         ticket_id = ticket["ticket_id"]
-        thread_id = ticket["thread_id"]
+        channel_id = ticket["thread_id"]
 
-        # Delete the thread
-        thread = await self._get_ticket_thread(thread_id)
-        if thread:
+        # Delete the channel
+        channel = await self._get_ticket_channel(channel_id)
+        if channel:
             try:
-                await thread.delete()
+                await channel.delete()
             except discord.NotFound:
                 pass  # Already deleted
             except discord.HTTPException as e:
-                logger.error("Failed to delete ticket thread", [
+                logger.error("Failed to delete ticket channel", [
                     ("Ticket ID", ticket_id),
                     ("Error", str(e)),
                 ])

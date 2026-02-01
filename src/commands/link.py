@@ -67,7 +67,7 @@ class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"la
     async def callback(self, interaction: discord.Interaction) -> None:
         # Check if user has permission (developer or in link_allowed_user_ids)
         config = get_config()
-        allowed_ids = {config.developer_id}
+        allowed_ids = {config.owner_id}
         if config.link_allowed_user_ids:
             allowed_ids |= config.link_allowed_user_ids
 
@@ -164,7 +164,7 @@ class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ld:(?
     async def callback(self, interaction: discord.Interaction) -> None:
         # Check if user has permission
         config = get_config()
-        allowed_ids = {config.developer_id}
+        allowed_ids = {config.owner_id}
         if config.link_allowed_user_ids:
             allowed_ids |= config.link_allowed_user_ids
 
@@ -344,7 +344,7 @@ class LinkCog(commands.Cog):
         """Link a message to a member for auto-deletion on leave."""
         try:
             # Permission check - only specific user IDs can use this command
-            allowed_ids = {self.config.developer_id}
+            allowed_ids = {self.config.owner_id}
             if self.config.link_allowed_user_ids:
                 allowed_ids |= self.config.link_allowed_user_ids
             if interaction.user.id not in allowed_ids:

@@ -104,10 +104,10 @@ class AlertsLogsMixin:
 
         await self._send_log(LogCategory.ALERTS, embed)
 
-        if action == "lock" and self.config.developer_id:
+        if action == "lock" and self.config.owner_id:
             thread = self._threads.get(LogCategory.ALERTS)
             if thread:
-                await thread.send(f"<@{self.config.developer_id}> ⚠️ **Server lockdown initiated**")
+                await thread.send(f"<@{self.config.owner_id}> ⚠️ **Server lockdown initiated**")
 
     async def log_auto_lockdown(
         self: "LoggingService",
@@ -129,11 +129,11 @@ class AlertsLogsMixin:
 
         await self._send_log(LogCategory.ALERTS, embed)
 
-        if self.config.developer_id:
+        if self.config.owner_id:
             thread = self._threads.get(LogCategory.ALERTS)
             if thread:
                 await thread.send(
-                    f"<@{self.config.developer_id}> 🚨 **RAID DETECTED - AUTO-LOCKDOWN TRIGGERED!**\n"
+                    f"<@{self.config.owner_id}> 🚨 **RAID DETECTED - AUTO-LOCKDOWN TRIGGERED!**\n"
                     f"Detected {join_count} joins in {time_window}s. Auto-unlock in {auto_unlock_in}s."
                 )
 

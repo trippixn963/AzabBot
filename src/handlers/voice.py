@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
