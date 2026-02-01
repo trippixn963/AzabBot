@@ -500,11 +500,20 @@ class SpamHandlerMixin:
         else:
             duration_str = f"{duration // 60} minute(s)"
 
+        # Get bot as guild member (log_mute expects Member, not User)
+        bot_member = member.guild.get_member(bot.user.id)
+        if not bot_member:
+            logger.warning("Auto-Spam Case Failed", [
+                ("Reason", "Bot not found as guild member"),
+                ("Guild", member.guild.name),
+            ])
+            return None
+
         try:
             case_info = await asyncio.wait_for(
                 bot.case_log_service.log_mute(
                     user=member,
-                    moderator=bot.user,
+                    moderator=bot_member,
                     duration=duration_str,
                     reason=f"Auto-spam detection: {spam_type} (violation #{violation_count})",
                     is_extension=False,
