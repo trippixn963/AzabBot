@@ -330,7 +330,8 @@ def _parse_int_set(value: Optional[str]) -> Set[int]:
             try:
                 result.add(int(part))
             except ValueError:
-                pass  # Skip invalid entries silently
+                # Log warning for invalid entries instead of silent skip
+                print(f"[CONFIG WARNING] Invalid integer in comma-separated list: '{part}'")
     return result
 
 

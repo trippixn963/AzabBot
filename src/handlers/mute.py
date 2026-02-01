@@ -124,27 +124,31 @@ class MuteHandler:
                     reason = field.value.strip()
 
             # -----------------------------------------------------------------
-            # Store Mute Reason
+            # Store Mute Reason (with lock for thread safety)
             # -----------------------------------------------------------------
 
             if reason:
-                # LRU eviction if at limit
-                while len(self.prison.mute_reasons) >= self.prison._mute_reasons_limit:
-                    self.prison.mute_reasons.popitem(last=False)
+                async with self.prison._state_lock:
+                    # LRU eviction if at limit
+                    while len(self.prison.mute_reasons) >= self.prison._mute_reasons_limit:
+                        try:
+                            self.prison.mute_reasons.popitem(last=False)
+                        except KeyError:
+                            break
 
-                if user_id:
-                    self.prison.mute_reasons[user_id] = reason
-                    logger.tree("Mute Reason Captured", [
-                        ("User ID", str(user_id)),
-                        ("Reason", reason[:50] + "..." if len(reason) > 50 else reason),
-                    ], emoji="🔒")
+                    if user_id:
+                        self.prison.mute_reasons[user_id] = reason
+                        logger.tree("Mute Reason Captured", [
+                            ("User ID", str(user_id)),
+                            ("Reason", reason[:50] + "..." if len(reason) > 50 else reason),
+                        ], emoji="🔒")
 
-                if user_name:
-                    self.prison.mute_reasons[user_name.lower()] = reason
-                    logger.tree("Mute Reason Captured", [
-                        ("Username", user_name),
-                        ("Reason", reason[:50] + "..." if len(reason) > 50 else reason),
-                    ], emoji="🔒")
+                    if user_name:
+                        self.prison.mute_reasons[user_name.lower()] = reason
+                        logger.tree("Mute Reason Captured", [
+                            ("Username", user_name),
+                            ("Reason", reason[:50] + "..." if len(reason) > 50 else reason),
+                        ], emoji="🔒")
 
     # =========================================================================
     # Mute Status Check

@@ -86,6 +86,7 @@ class ModTrackerService(
 
         # Message cache: mod_id -> list of cached messages
         self._message_cache: Dict[int, List[CachedMessage]] = defaultdict(list)
+        self._message_cache_lock = asyncio.Lock()
 
         # Bulk action tracking: mod_id -> action_type -> list of timestamps
         self._action_history: Dict[int, Dict[str, List[datetime]]] = defaultdict(

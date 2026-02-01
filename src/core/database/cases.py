@@ -41,19 +41,17 @@ class CasesMixin:
             # Generate random 4-character code
             case_id = ''.join(secrets.choice(chars) for _ in range(4))
 
-            # Check if it already exists in legacy table
+            # Check both tables in a single query for efficiency
             row = self.fetchone(
-                "SELECT 1 FROM case_logs WHERE case_id = ?",
-                (case_id,)
+                """
+                SELECT 1 FROM case_logs WHERE case_id = ?
+                UNION ALL
+                SELECT 1 FROM cases WHERE case_id = ?
+                LIMIT 1
+                """,
+                (case_id, case_id)
             )
-            if row:
-                continue
 
-            # Check if it exists in new cases table
-            row = self.fetchone(
-                "SELECT 1 FROM cases WHERE case_id = ?",
-                (case_id,)
-            )
             if not row:
                 return case_id
 
@@ -131,7 +129,7 @@ class CasesMixin:
             edited_by: User ID of who edited the case.
 
         Returns:
-            True if updated successfully, False if case doesn't exist.
+            True if updated successfully, False if case doesn't exist or error occurred.
         """
         try:
             cursor = self.execute(
@@ -148,8 +146,18 @@ class CasesMixin:
                     ("Case ID", case_id),
                     ("Edited By", str(edited_by)),
                 ])
-            return cursor.rowcount > 0
-        except Exception:
+                return True
+            else:
+                logger.debug("Case Not Found for Update", [
+                    ("Case ID", case_id),
+                ])
+                return False
+        except Exception as e:
+            logger.error("Case Reason Update Failed", [
+                ("Case ID", case_id),
+                ("Error", str(e)[:100]),
+                ("Type", type(e).__name__),
+            ])
             return False
 
     def get_case_by_thread(self: "DatabaseManager", thread_id: int) -> Optional[Dict[str, Any]]:

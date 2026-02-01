@@ -181,6 +181,13 @@ class WarnCog(commands.Cog):
         # -----------------------------------------------------------------
 
         target_guild = get_target_guild(interaction, self.bot)
+        if not target_guild:
+            await interaction.followup.send(
+                "❌ Could not find target guild.",
+                ephemeral=True,
+            )
+            return
+
         cross_server = is_cross_server(interaction)
 
         # Try to get member from target guild for role checks

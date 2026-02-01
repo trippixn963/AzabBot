@@ -122,8 +122,8 @@ class AzabAPI(HandlersMixin, DataHelpersMixin):
                 await rate_limiter.cleanup()
             except asyncio.CancelledError:
                 break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Stats API cleanup error (non-critical): {e}")
 
 
 __all__ = ["AzabAPI"]

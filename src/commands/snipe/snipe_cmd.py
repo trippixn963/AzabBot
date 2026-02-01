@@ -239,7 +239,13 @@ class SnipeCmdMixin:
                 ("User ID", str(interaction.user.id)),
             ])
             try:
-                if not interaction.response.is_done():
+                response_done = False
+                try:
+                    response_done = interaction.response.is_done()
+                except discord.HTTPException:
+                    response_done = True  # Assume done if we can't check
+
+                if not response_done:
                     await interaction.response.send_message(
                         "An error occurred while sniping. Please try again.",
                         ephemeral=True,
@@ -249,6 +255,8 @@ class SnipeCmdMixin:
                         "An error occurred while sniping. Please try again.",
                         ephemeral=True,
                     )
+            except discord.HTTPException:
+                pass
             except Exception:
                 pass
 

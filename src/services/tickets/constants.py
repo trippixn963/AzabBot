@@ -101,7 +101,7 @@ STATUS_COLOR = {
 MAX_OPEN_TICKETS_PER_USER = 1
 INACTIVE_WARNING_DAYS = 3      # Warn after 3 days of inactivity
 INACTIVE_CLOSE_DAYS = 5        # Close after 5 days of inactivity
-DELETE_AFTER_CLOSE_DAYS = 7    # Delete thread 7 days after closing
+DELETE_AFTER_CLOSE_DAYS = 1    # Delete thread 24 hours after closing
 MAX_TRANSCRIPT_MESSAGES = 500  # Max messages to include in transcript
 MAX_TRANSCRIPT_USER_LOOKUPS = 15  # Max API calls for unresolved mentions
 

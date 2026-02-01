@@ -357,7 +357,13 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 ("User ID", str(interaction.user.id)),
             ])
             try:
-                if not interaction.response.is_done():
+                response_done = False
+                try:
+                    response_done = interaction.response.is_done()
+                except discord.HTTPException:
+                    response_done = True  # Assume done if we can't check
+
+                if not response_done:
                     await interaction.response.send_message(
                         "An error occurred.",
                         ephemeral=True,
@@ -367,6 +373,8 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                         "An error occurred.",
                         ephemeral=True,
                     )
+            except discord.HTTPException:
+                pass
             except Exception as e:
                 logger.debug(f"Error response failed: {e}")
 
@@ -538,7 +546,13 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 ("User ID", str(interaction.user.id)),
             ])
             try:
-                if not interaction.response.is_done():
+                response_done = False
+                try:
+                    response_done = interaction.response.is_done()
+                except discord.HTTPException:
+                    response_done = True  # Assume done if we can't check
+
+                if not response_done:
                     await interaction.response.send_message(
                         "An error occurred.",
                         ephemeral=True,
@@ -548,6 +562,8 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                         "An error occurred.",
                         ephemeral=True,
                     )
+            except discord.HTTPException:
+                pass
             except Exception as e:
                 logger.debug(f"Error response failed: {e}")
 

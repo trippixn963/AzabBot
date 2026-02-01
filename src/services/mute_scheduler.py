@@ -38,6 +38,7 @@ class MuteScheduler:
         Runs a loop every 30 seconds checking for expired mutes.
         Uses database as source of truth, syncs with Discord state.
         Gracefully handles errors without crashing the loop.
+        Implements exponential backoff on repeated errors.
 
     Attributes:
         bot: Reference to the main bot instance.
@@ -46,6 +47,11 @@ class MuteScheduler:
         task: Background task reference.
         running: Whether the scheduler is active.
     """
+
+    # Exponential backoff constants
+    MIN_BACKOFF = 30  # Start at 30 seconds
+    MAX_BACKOFF = 300  # Cap at 5 minutes
+    BACKOFF_MULTIPLIER = 2
 
     # =========================================================================
     # Initialization
@@ -63,6 +69,8 @@ class MuteScheduler:
         self.db = get_db()
         self.task: Optional[asyncio.Task] = None
         self.running: bool = False
+        self._consecutive_errors: int = 0
+        self._current_backoff: int = self.MIN_BACKOFF
 
     # =========================================================================
     # Lifecycle Management
@@ -124,26 +132,42 @@ class MuteScheduler:
         DESIGN:
             Runs every 30 seconds checking for expired mutes.
             Continues running even if individual unmutes fail.
+            Implements exponential backoff on repeated errors.
         """
         await self.bot.wait_until_ready()
 
         while self.running:
             try:
                 await self._process_expired_mutes()
+                # Reset backoff on success
+                self._consecutive_errors = 0
+                self._current_backoff = self.MIN_BACKOFF
                 await asyncio.sleep(self.config.mute_check_interval)
             except asyncio.CancelledError:
                 break
             except Exception as e:
+                self._consecutive_errors += 1
                 logger.error("Mute Scheduler Error", [
                     ("Error", str(e)[:100]),
+                    ("Consecutive Errors", str(self._consecutive_errors)),
+                    ("Backoff", f"{self._current_backoff}s"),
                 ])
-                # Send error alert to webhook
-                if self.bot.webhook_alert_service:
-                    await self.bot.webhook_alert_service.send_error_alert(
-                        "Mute Scheduler Error",
-                        str(e)[:500]
-                    )
-                await asyncio.sleep(self.config.mute_check_interval)
+                # Send error alert to webhook (with null check)
+                if self.bot.webhook_alert_service and self.bot.webhook_alert_service.enabled:
+                    try:
+                        await self.bot.webhook_alert_service.send_error_alert(
+                            "Mute Scheduler Error",
+                            f"Error #{self._consecutive_errors}: {str(e)[:500]}"
+                        )
+                    except Exception:
+                        pass  # Don't fail scheduler loop due to webhook issues
+
+                # Apply exponential backoff
+                await asyncio.sleep(self._current_backoff)
+                self._current_backoff = min(
+                    self._current_backoff * self.BACKOFF_MULTIPLIER,
+                    self.MAX_BACKOFF
+                )
 
     # =========================================================================
     # Mute Processing
@@ -533,6 +557,9 @@ class MuteScheduler:
         await self.bot.wait_until_ready()
         from datetime import timedelta
 
+        backoff = 3600  # Start at 1 hour
+        max_backoff = 14400  # Cap at 4 hours
+
         while self.running:
             try:
                 # Calculate time until midnight EST
@@ -551,14 +578,19 @@ class MuteScheduler:
                 # Run the scan
                 await self._scan_mute_role_overwrites()
 
+                # Reset backoff on success
+                backoff = 3600
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("Mute Midnight Scan Error", [
                     ("Error", str(e)[:100]),
+                    ("Retry In", f"{backoff // 3600}h"),
                 ])
-                # Wait an hour before retrying on error
-                await asyncio.sleep(3600)
+                # Apply exponential backoff
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)
 
     async def _scan_mute_role_overwrites(self) -> None:
         """

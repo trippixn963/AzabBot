@@ -25,6 +25,10 @@ from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
 from src.core.constants import GUILD_FETCH_TIMEOUT
 
+# Constants for cache limits
+PRISONER_TRACKING_LIMIT = 1000  # Max prisoner tracking entries
+MESSAGE_BUFFER_LIMIT = 50  # Max messages per prisoner buffer
+
 
 # =============================================================================
 # Guild Protection
@@ -114,23 +118,28 @@ class AzabBot(commands.Bot):
         # Shared HTTP session for all services
         self._http_session: Optional[aiohttp.ClientSession] = None
 
-        # Prisoner rate limiting
+        # Prisoner rate limiting (with async lock for thread safety)
+        self._prisoner_lock = asyncio.Lock()
         self.prisoner_cooldowns: Dict[int, datetime] = {}
         self.prisoner_message_buffer: Dict[int, List[str]] = {}
         self.prisoner_pending_response: Dict[int, bool] = {}
 
         # Message history tracking (LRU cache with limit)
+        self._last_messages_lock = asyncio.Lock()
         self.last_messages: OrderedDict[int, dict] = OrderedDict()
         self._last_messages_limit: int = 5000
 
-        # Invite cache
+        # Invite cache (with limit to prevent unbounded growth)
         self._invite_cache: Dict[str, int] = {}
+        self._invite_cache_limit: int = 1000
 
         # Message attachment cache (OrderedDict for O(1) LRU eviction)
+        self._attachment_cache_lock = asyncio.Lock()
         self._attachment_cache: OrderedDict[int, List[tuple]] = OrderedDict()
         self._attachment_cache_limit: int = 500
 
         # Message content cache (OrderedDict for O(1) LRU eviction)
+        self._message_cache_lock = asyncio.Lock()
         self._message_cache: OrderedDict[int, dict] = OrderedDict()
         self._message_cache_limit: int = 5000
 
@@ -139,6 +148,7 @@ class AzabBot(commands.Bot):
         self._snipe_limit: int = 10
 
         # Edit snipe cache (channel_id -> deque of last 10 edits)
+        self._editsnipe_cache_lock = asyncio.Lock()
         self._editsnipe_cache: OrderedDict[int, deque] = OrderedDict()
         self._editsnipe_limit: int = 10
         self._editsnipe_channel_limit: int = 500  # Max channels to track
@@ -669,7 +679,7 @@ class AzabBot(commands.Bot):
                 await self._scan_and_clean_poll_results()
 
                 # Clean up prisoner tracking for users no longer muted
-                self._cleanup_prisoner_tracking()
+                await self._cleanup_prisoner_tracking()
 
             except asyncio.CancelledError:
                 logger.tree("Polls Cleanup Scheduler Stopped", [
@@ -683,7 +693,7 @@ class AzabBot(commands.Bot):
                 ])
                 await asyncio.sleep(3600)  # Retry in 1 hour on error
 
-    def _cleanup_prisoner_tracking(self) -> int:
+    async def _cleanup_prisoner_tracking(self) -> int:
         """
         Clean up prisoner tracking for users no longer muted.
 
@@ -705,23 +715,34 @@ class AzabBot(commands.Bot):
 
         cleaned = 0
 
-        # Clean cooldowns
-        for user_id in list(self.prisoner_cooldowns.keys()):
-            if user_id not in muted_user_ids:
-                del self.prisoner_cooldowns[user_id]
-                cleaned += 1
+        # Use lock to prevent race conditions during cleanup
+        async with self._prisoner_lock:
+            # Clean cooldowns
+            for user_id in list(self.prisoner_cooldowns.keys()):
+                if user_id not in muted_user_ids:
+                    self.prisoner_cooldowns.pop(user_id, None)
+                    cleaned += 1
 
-        # Clean message buffers
-        for user_id in list(self.prisoner_message_buffer.keys()):
-            if user_id not in muted_user_ids:
-                del self.prisoner_message_buffer[user_id]
-                cleaned += 1
+            # Clean message buffers
+            for user_id in list(self.prisoner_message_buffer.keys()):
+                if user_id not in muted_user_ids:
+                    self.prisoner_message_buffer.pop(user_id, None)
+                    cleaned += 1
 
-        # Clean pending response flags
-        for user_id in list(self.prisoner_pending_response.keys()):
-            if user_id not in muted_user_ids:
-                del self.prisoner_pending_response[user_id]
-                cleaned += 1
+            # Clean pending response flags
+            for user_id in list(self.prisoner_pending_response.keys()):
+                if user_id not in muted_user_ids:
+                    self.prisoner_pending_response.pop(user_id, None)
+                    cleaned += 1
+
+            # Enforce max size limits (evict oldest entries if over limit)
+            while len(self.prisoner_cooldowns) > PRISONER_TRACKING_LIMIT:
+                try:
+                    oldest_key = next(iter(self.prisoner_cooldowns))
+                    self.prisoner_cooldowns.pop(oldest_key, None)
+                    cleaned += 1
+                except StopIteration:
+                    break
 
         if cleaned > 0:
             logger.debug(f"Prisoner tracking cleanup: {cleaned} stale entries removed")
@@ -731,10 +752,15 @@ class AzabBot(commands.Bot):
     async def _cache_invites(self) -> None:
         """Cache all server invites for tracking."""
         try:
+            # Clear old cache and rebuild to prevent stale entries
+            self._invite_cache.clear()
             for guild in self.guilds:
                 try:
                     invites = await asyncio.wait_for(guild.invites(), timeout=GUILD_FETCH_TIMEOUT)
                     for invite in invites:
+                        # Enforce cache limit
+                        if len(self._invite_cache) >= self._invite_cache_limit:
+                            break
                         self._invite_cache[invite.code] = invite.uses or 0
                     logger.info(f"Cached {len(invites)} invites for {guild.name}")
                 except discord.Forbidden:
@@ -799,14 +825,7 @@ class AzabBot(commands.Bot):
         if not message.attachments:
             return
 
-        # Evict oldest entries if at limit (O(1) with OrderedDict)
-        # Use try/except to handle race condition with concurrent evictions
-        while len(self._attachment_cache) >= self._attachment_cache_limit:
-            try:
-                self._attachment_cache.popitem(last=False)
-            except KeyError:
-                break  # Another task already evicted
-
+        # Download attachments first (outside lock to avoid blocking)
         attachments = []
         for att in message.attachments:
             if att.size and att.size < 8 * 1024 * 1024:
@@ -816,7 +835,18 @@ class AzabBot(commands.Bot):
                 except Exception:
                     pass
 
-        if attachments:
+        if not attachments:
+            return
+
+        # Use lock for cache modification to prevent race conditions
+        async with self._attachment_cache_lock:
+            # Evict oldest entries if at limit (O(1) with OrderedDict)
+            while len(self._attachment_cache) >= self._attachment_cache_limit:
+                try:
+                    self._attachment_cache.popitem(last=False)
+                except KeyError:
+                    break  # Cache was cleared by another task
+
             self._attachment_cache[message.id] = attachments
 
     async def _check_raid_detection(self, member: discord.Member) -> None:
@@ -936,6 +966,9 @@ class AzabBot(commands.Bot):
         # Close shared HTTP session
         if self._http_session and not self._http_session.closed:
             await self._http_session.close()
+
+        # Close logger webhook session
+        await logger.close_webhook_session()
 
         self.db.close()
         await super().close()

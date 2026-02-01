@@ -362,19 +362,21 @@ class DatabaseManager(
 
         new_expires = current_expires + additional_seconds
 
-        # Update the mute
-        self.execute(
-            "UPDATE active_mutes SET expires_at = ? WHERE id = ?",
-            (new_expires, row["id"])
-        )
+        # Use transaction for atomicity - both UPDATE and INSERT succeed or both fail
+        with self.transaction() as tx:
+            # Update the mute
+            tx.execute(
+                "UPDATE active_mutes SET expires_at = ? WHERE id = ?",
+                (new_expires, row["id"])
+            )
 
-        # Log to history
-        self.execute(
-            """INSERT INTO mute_history
-               (user_id, guild_id, moderator_id, action, reason, duration_seconds, timestamp)
-               VALUES (?, ?, ?, 'extend', ?, ?, ?)""",
-            (user_id, guild_id, moderator_id, reason, additional_seconds, now)
-        )
+            # Log to history
+            tx.execute(
+                """INSERT INTO mute_history
+                   (user_id, guild_id, moderator_id, action, reason, duration_seconds, timestamp)
+                   VALUES (?, ?, ?, 'extend', ?, ?, ?)""",
+                (user_id, guild_id, moderator_id, reason, additional_seconds, now)
+            )
 
         # Format duration for logging
         hours, remainder = divmod(additional_seconds, 3600)

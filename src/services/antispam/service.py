@@ -111,6 +111,7 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
 
         # Channel message tracking for auto-slowmode (channel_id -> list of timestamps)
         self._channel_messages: Dict[int, List[datetime]] = defaultdict(list)
+        self._slowmode_lock = asyncio.Lock()
 
         # Slowmode cooldowns (channel_id -> last slowmode time)
         self._slowmode_cooldowns: Dict[int, datetime] = {}
@@ -203,7 +204,7 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
         while True:
             await asyncio.sleep(MESSAGE_HISTORY_CLEANUP)
             try:
-                self._cleanup_old_records()
+                await self._cleanup_old_records()
                 decayed = self.db.decay_spam_violations(VIOLATION_DECAY_TIME)
                 if decayed > 0:
                     logger.debug(f"Decayed {decayed} spam violation records")
@@ -223,7 +224,7 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
                     ("Error", str(e)[:50]),
                 ])
 
-    def _cleanup_old_records(self) -> None:
+    async def _cleanup_old_records(self) -> None:
         """Remove old message records from memory."""
         now = datetime.now(NY_TZ)
         cutoff = now - timedelta(seconds=max(
@@ -236,7 +237,7 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
         ) * 2)
 
         # Clean user message states
-        for guild_id, guild_states in self._user_states.items():
+        for guild_id, guild_states in list(self._user_states.items()):
             for user_id, state in list(guild_states.items()):
                 state.messages = [
                     m for m in state.messages
@@ -263,7 +264,7 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
 
         # Clean image hashes
         image_cutoff = now - timedelta(seconds=IMAGE_DUPLICATE_TIME_WINDOW * 2)
-        for guild_hashes in self._image_hashes.values():
+        for guild_hashes in list(self._image_hashes.values()):
             for user_id, hashes in list(guild_hashes.items()):
                 valid_hashes = [
                     (h, t) for h, t in hashes if t > image_cutoff
@@ -278,7 +279,7 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
                     except KeyError:
                         pass  # Already removed
 
-        # Clean webhook states
+        # Clean webhook states with size limit
         webhook_cutoff = now - timedelta(seconds=WEBHOOK_TIME_WINDOW * 2)
         for webhook_id, state in list(self._webhook_states.items()):
             state.messages = [t for t in state.messages if t > webhook_cutoff]
@@ -288,8 +289,23 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
                 except KeyError:
                     pass
 
+        # Enforce max webhook states to prevent unbounded growth
+        MAX_WEBHOOK_STATES = 1000
+        if len(self._webhook_states) > MAX_WEBHOOK_STATES:
+            # Remove oldest webhook states
+            sorted_webhooks = sorted(
+                self._webhook_states.items(),
+                key=lambda x: x[1].messages[-1] if x[1].messages else datetime.min.replace(tzinfo=NY_TZ)
+            )
+            excess = len(self._webhook_states) - MAX_WEBHOOK_STATES
+            for webhook_id, _ in sorted_webhooks[:excess]:
+                try:
+                    del self._webhook_states[webhook_id]
+                except KeyError:
+                    pass
+
         # Clean raid records
-        self.cleanup_raid_records(now)
+        await self.cleanup_raid_records(now)
 
     # =========================================================================
     # Exemption Checks
@@ -488,17 +504,22 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
             if now < cooldown_end:
                 return
 
-        self._channel_messages[channel_id].append(now)
+        # Use lock to prevent race conditions when modifying _channel_messages
+        async with self._slowmode_lock:
+            self._channel_messages[channel_id].append(now)
 
-        cutoff = now - timedelta(seconds=SLOWMODE_TIME_WINDOW)
-        self._channel_messages[channel_id] = [
-            t for t in self._channel_messages[channel_id] if t > cutoff
-        ]
+            cutoff = now - timedelta(seconds=SLOWMODE_TIME_WINDOW)
+            self._channel_messages[channel_id] = [
+                t for t in self._channel_messages[channel_id] if t > cutoff
+            ]
 
-        if len(self._channel_messages[channel_id]) >= SLOWMODE_TRIGGER_MESSAGES:
+            should_slowmode = len(self._channel_messages[channel_id]) >= SLOWMODE_TRIGGER_MESSAGES
+            if should_slowmode:
+                self._slowmode_cooldowns[channel_id] = now
+                self._channel_messages[channel_id] = []
+
+        if should_slowmode:
             await self._apply_slowmode(message.channel)
-            self._slowmode_cooldowns[channel_id] = now
-            self._channel_messages[channel_id] = []
 
     async def _apply_slowmode(self, channel: discord.TextChannel) -> None:
         """Apply temporary slowmode to a channel."""

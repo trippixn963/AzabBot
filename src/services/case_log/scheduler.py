@@ -68,17 +68,23 @@ class CaseLogSchedulerMixin:
         """Background loop to check for expired pending reasons."""
         await self.bot.wait_until_ready()
 
+        backoff = REASON_CHECK_INTERVAL  # Start at normal interval
+        max_backoff = 3600  # Max 1 hour between retries
+
         while self._reason_check_running:
             try:
                 await self._process_expired_reasons()
-                await asyncio.sleep(REASON_CHECK_INTERVAL)
+                backoff = REASON_CHECK_INTERVAL  # Reset on success
+                await asyncio.sleep(backoff)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("Pending Reason Scheduler Error", [
                     ("Error", str(e)[:100]),
+                    ("Next Retry", f"{backoff}s"),
                 ])
-                await asyncio.sleep(REASON_CHECK_INTERVAL)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)  # Exponential backoff
 
     async def _process_expired_reasons(self: "CaseLogService") -> None:
         """Process expired pending reasons (cleanup only, no owner ping)."""

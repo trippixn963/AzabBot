@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
@@ -34,6 +35,8 @@ if TYPE_CHECKING:
 
 class CacheMixin:
     """Mixin for message caching and cleanup operations."""
+
+    _message_cache_lock: asyncio.Lock  # Initialized in service __init__
 
     def _cleanup_caches(self: "ModTrackerService") -> None:
         """
@@ -123,36 +126,38 @@ class CacheMixin:
             attachments=attachment_data,
         )
 
-        # Add to cache
-        mod_cache = self._message_cache[message.author.id]
-        mod_cache.append(cached)
+        # Add to cache with lock to prevent race conditions
+        async with self._message_cache_lock:
+            mod_cache = self._message_cache[message.author.id]
+            mod_cache.append(cached)
 
-        # Trim cache if too large
-        if len(mod_cache) > MESSAGE_CACHE_SIZE:
-            self._message_cache[message.author.id] = mod_cache[-MESSAGE_CACHE_SIZE:]
+            # Trim cache if too large
+            if len(mod_cache) > MESSAGE_CACHE_SIZE:
+                self._message_cache[message.author.id] = mod_cache[-MESSAGE_CACHE_SIZE:]
 
-        # Clean old messages
-        cutoff = datetime.now(NY_TZ) - timedelta(seconds=MESSAGE_CACHE_TTL)
-        self._message_cache[message.author.id] = [
-            m for m in self._message_cache[message.author.id]
-            if m.cached_at > cutoff
-        ]
+            # Clean old messages
+            cutoff = datetime.now(NY_TZ) - timedelta(seconds=MESSAGE_CACHE_TTL)
+            self._message_cache[message.author.id] = [
+                m for m in self._message_cache[message.author.id]
+                if m.cached_at > cutoff
+            ]
 
-        # Evict oldest mod's cache if we have too many mods cached (LRU)
-        if len(self._message_cache) > MESSAGE_CACHE_MAX_MODS:
-            oldest_mod = None
-            oldest_time = None
-            for mod_id, msgs in self._message_cache.items():
-                if msgs:
-                    msg_time = msgs[0].cached_at
-                    if oldest_time is None or msg_time < oldest_time:
-                        oldest_time = msg_time
-                        oldest_mod = mod_id
-            if oldest_mod and oldest_mod != message.author.id:
-                try:
-                    del self._message_cache[oldest_mod]
-                except KeyError:
-                    pass  # Already removed by another coroutine
+            # Evict least recently active mod's cache if we have too many mods cached (LRU)
+            if len(self._message_cache) > MESSAGE_CACHE_MAX_MODS:
+                oldest_mod = None
+                oldest_time = None
+                for mod_id, msgs in self._message_cache.items():
+                    if msgs:
+                        # Use last message time (most recent activity) for LRU eviction
+                        msg_time = msgs[-1].cached_at
+                        if oldest_time is None or msg_time < oldest_time:
+                            oldest_time = msg_time
+                            oldest_mod = mod_id
+                if oldest_mod and oldest_mod != message.author.id:
+                    try:
+                        del self._message_cache[oldest_mod]
+                    except KeyError:
+                        pass  # Already removed by another coroutine
 
     def get_cached_message(
         self: "ModTrackerService",

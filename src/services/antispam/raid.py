@@ -5,6 +5,7 @@ AzabBot - Anti-Spam Raid Detection
 Enhanced raid detection and handling.
 """
 
+import asyncio
 from collections import defaultdict
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
@@ -36,6 +37,7 @@ class RaidDetectionMixin:
     def _init_raid_detection(self) -> None:
         """Initialize raid detection structures."""
         self._recent_joins: Dict[int, List[JoinRecord]] = defaultdict(list)
+        self._raid_detection_lock = asyncio.Lock()
 
     async def check_raid(self, member: discord.Member) -> Tuple[bool, Optional[str]]:
         """
@@ -68,15 +70,17 @@ class RaidDetectionMixin:
             join_time=now,
         )
 
-        self._recent_joins[guild_id].append(record)
+        # Use lock to prevent race conditions when modifying _recent_joins
+        async with self._raid_detection_lock:
+            self._recent_joins[guild_id].append(record)
 
-        # Clean old joins
-        cutoff = now - timedelta(seconds=RAID_TIME_WINDOW)
-        self._recent_joins[guild_id] = [
-            j for j in self._recent_joins[guild_id] if j.join_time > cutoff
-        ]
+            # Clean old joins
+            cutoff = now - timedelta(seconds=RAID_TIME_WINDOW)
+            self._recent_joins[guild_id] = [
+                j for j in self._recent_joins[guild_id] if j.join_time > cutoff
+            ]
 
-        recent = self._recent_joins[guild_id]
+            recent = list(self._recent_joins[guild_id])  # Copy for analysis outside lock
 
         # Basic raid detection: too many new accounts joining
         new_accounts = [
@@ -202,16 +206,17 @@ class RaidDetectionMixin:
                     ("Error", str(e)[:50]),
                 ])
 
-    def cleanup_raid_records(self, now: datetime) -> None:
+    async def cleanup_raid_records(self, now: datetime) -> None:
         """Clean up old raid join records."""
         cutoff = now - timedelta(seconds=RAID_TIME_WINDOW * 2)
-        for guild_id in list(self._recent_joins.keys()):
-            self._recent_joins[guild_id] = [
-                j for j in self._recent_joins[guild_id]
-                if j.join_time > cutoff
-            ]
-            if not self._recent_joins[guild_id]:
-                try:
-                    del self._recent_joins[guild_id]
-                except KeyError:
-                    pass
+        async with self._raid_detection_lock:
+            for guild_id in list(self._recent_joins.keys()):
+                self._recent_joins[guild_id] = [
+                    j for j in self._recent_joins[guild_id]
+                    if j.join_time > cutoff
+                ]
+                if not self._recent_joins[guild_id]:
+                    try:
+                        del self._recent_joins[guild_id]
+                    except KeyError:
+                        pass

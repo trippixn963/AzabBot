@@ -345,9 +345,8 @@ class CaseLogService(
             names_str = ", ".join(f"`{name}`" for name in previous_names)
             user_embed.add_field(name="Previous Names", value=names_str, inline=False)
 
-        action_display = action_type.title()
         display_name = user.display_name if hasattr(user, 'display_name') else user.name
-        thread_name = f"[{case_id}] | {action_display} | {display_name}"
+        thread_name = f"[{case_id}] | {display_name} | {user.id}"
 
         # Get tags for this case
         case_tags = self.get_tags_for_case(action_type)
@@ -686,7 +685,7 @@ class CaseLogService(
             names_str = ", ".join(f"`{name}`" for name in previous_names)
             user_embed.add_field(name="Previous Names", value=names_str, inline=False)
 
-        thread_name = f"[{case_id}] | {user.display_name}"
+        thread_name = f"[{case_id}] | {user.display_name} | {user.id}"
 
         try:
             thread_with_msg = await forum.create_thread(

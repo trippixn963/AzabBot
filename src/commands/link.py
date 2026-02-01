@@ -371,9 +371,12 @@ class LinkCog(commands.Cog):
                 )
                 return
 
-            # Parse message ID
+            # Parse message ID with range validation
             try:
                 msg_id = int(message_id)
+                # Discord snowflake IDs must be positive and fit in int64
+                if msg_id <= 0 or msg_id > 9223372036854775807:
+                    raise ValueError("ID out of range")
             except ValueError:
                 logger.warning("Link Command Failed", [
                     ("User", str(interaction.user)),
@@ -381,14 +384,17 @@ class LinkCog(commands.Cog):
                     ("Reason", "Invalid message ID format"),
                 ])
                 await interaction.response.send_message(
-                    "Invalid message ID. Please provide a valid number.",
+                    "Invalid message ID. Please provide a valid Discord ID.",
                     ephemeral=True,
                 )
                 return
 
-            # Parse member ID
+            # Parse member ID with range validation
             try:
                 parsed_member_id = int(member_id)
+                # Discord snowflake IDs must be positive and fit in int64
+                if parsed_member_id <= 0 or parsed_member_id > 9223372036854775807:
+                    raise ValueError("ID out of range")
             except ValueError:
                 logger.warning("Link Command Failed", [
                     ("User", str(interaction.user)),
@@ -396,7 +402,7 @@ class LinkCog(commands.Cog):
                     ("Reason", "Invalid member ID format"),
                 ])
                 await interaction.response.send_message(
-                    "Invalid member ID. Please provide a valid number.",
+                    "Invalid member ID. Please provide a valid Discord ID.",
                     ephemeral=True,
                 )
                 return
@@ -557,16 +563,24 @@ class LinkCog(commands.Cog):
                 ("Error", str(e)[:100]),
             ])
             try:
-                if not interaction.response.is_done():
+                response_done = False
+                try:
+                    response_done = interaction.response.is_done()
+                except discord.HTTPException:
+                    response_done = True  # Assume done if we can't check
+
+                if not response_done:
                     await interaction.response.send_message(
-                        f"An error occurred: {e}",
+                        "An error occurred. Please try again.",
                         ephemeral=True,
                     )
                 else:
                     await interaction.followup.send(
-                        f"An error occurred: {e}",
+                        "An error occurred. Please try again.",
                         ephemeral=True,
                     )
+            except discord.HTTPException:
+                pass
             except Exception:
                 pass
 

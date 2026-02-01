@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+from collections import deque
 from typing import TYPE_CHECKING, Optional
 
 import discord
@@ -48,22 +49,25 @@ class ClearsnipeCmdMixin:
             else:
                 cleared_deleted = self.db.clear_snipes(channel_id)
 
-            # Clear edit snipes from memory
+            # Clear edit snipes from memory (with lock for thread safety)
             cleared_edits = 0
-            edit_cache = getattr(self.bot, "_editsnipe_cache", {})
-            if channel_id in edit_cache:
-                if target:
-                    # Filter out edits from specific user
-                    original_len = len(edit_cache[channel_id])
-                    edit_cache[channel_id] = type(edit_cache[channel_id])(
-                        e for e in edit_cache[channel_id]
-                        if e.get("author_id") != target.id
-                    )
-                    cleared_edits = original_len - len(edit_cache[channel_id])
-                else:
-                    # Clear all edits for this channel
-                    cleared_edits = len(edit_cache[channel_id])
-                    edit_cache[channel_id].clear()
+            async with self.bot._editsnipe_cache_lock:
+                if channel_id in self.bot._editsnipe_cache:
+                    if target:
+                        # Filter out edits from specific user
+                        original_len = len(self.bot._editsnipe_cache[channel_id])
+                        # Create new deque with same maxlen, filtering out target user
+                        new_deque = deque(
+                            (e for e in self.bot._editsnipe_cache[channel_id]
+                             if e.get("author_id") != target.id),
+                            maxlen=self.bot._editsnipe_limit
+                        )
+                        self.bot._editsnipe_cache[channel_id] = new_deque
+                        cleared_edits = original_len - len(new_deque)
+                    else:
+                        # Clear all edits for this channel
+                        cleared_edits = len(self.bot._editsnipe_cache[channel_id])
+                        self.bot._editsnipe_cache[channel_id].clear()
 
             total_cleared = cleared_deleted + cleared_edits
 
@@ -114,11 +118,24 @@ class ClearsnipeCmdMixin:
                 ("User ID", str(interaction.user.id)),
             ])
             try:
-                if not interaction.response.is_done():
+                response_done = False
+                try:
+                    response_done = interaction.response.is_done()
+                except discord.HTTPException:
+                    response_done = True  # Assume done if we can't check
+
+                if not response_done:
                     await interaction.response.send_message(
                         "An error occurred while clearing snipe cache.",
                         ephemeral=True,
                     )
+                else:
+                    await interaction.followup.send(
+                        "An error occurred while clearing snipe cache.",
+                        ephemeral=True,
+                    )
+            except discord.HTTPException:
+                pass
             except Exception:
                 pass
 

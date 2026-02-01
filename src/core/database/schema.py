@@ -163,6 +163,9 @@ class SchemaMixin:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_mute_history_user_time ON mute_history(user_id, guild_id, timestamp DESC)"
         )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mute_history_moderator ON mute_history(moderator_id, action)"
+        )
 
         # -----------------------------------------------------------------
         # Case Logs Table
@@ -448,6 +451,9 @@ class SchemaMixin:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_ban_history_user_time ON ban_history(user_id, guild_id, timestamp DESC)"
         )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ban_history_moderator ON ban_history(moderator_id, action)"
+        )
 
         # -----------------------------------------------------------------
         # Username History Table
@@ -491,6 +497,9 @@ class SchemaMixin:
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_warnings_user_time ON warnings(user_id, guild_id, created_at DESC)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_warnings_moderator ON warnings(moderator_id, guild_id)"
         )
 
         # -----------------------------------------------------------------

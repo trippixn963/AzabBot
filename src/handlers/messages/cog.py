@@ -104,10 +104,8 @@ class MessageEvents(HelpersMixin, commands.Cog):
             if message.type == discord.MessageType.poll_result:
                 try:
                     await message.delete()
-                    logger.tree("POLL RESULT DELETED", [
-                        ("Channel", message.channel.name),
-                        ("Content", (message.content[:50] + "...") if len(message.content) > 50 else (message.content or "(poll closed)")),
-                    ], emoji="🗑️")
+                    # Use debug logging to reduce noise in high-volume poll channels
+                    logger.debug(f"Poll result deleted in #{message.channel.name}")
                 except discord.Forbidden:
                     logger.warning("No permission to delete poll result message")
                 except discord.HTTPException as e:
@@ -118,11 +116,8 @@ class MessageEvents(HelpersMixin, commands.Cog):
             if getattr(message, 'poll', None) is None:
                 try:
                     await message.delete()
-                    logger.tree("NON-POLL DELETED", [
-                        ("Author", f"{message.author} ({message.author.id})"),
-                        ("Channel", message.channel.name),
-                        ("Content", (message.content[:50] + "...") if len(message.content) > 50 else (message.content or "(empty)")),
-                    ], emoji="🗑️")
+                    # Use debug logging to reduce noise in high-volume poll channels
+                    logger.debug(f"Non-poll deleted from {message.author} in #{message.channel.name}")
                 except discord.Forbidden:
                     logger.warning(f"No permission to delete non-poll by {message.author}")
             return
@@ -173,20 +168,25 @@ class MessageEvents(HelpersMixin, commands.Cog):
         # Cache message content for mod delete logging (OrderedDict LRU)
         # -----------------------------------------------------------------
         if not message.author.bot and message.guild:
-            # Evict oldest entries if at limit (O(1) with OrderedDict)
-            while len(self.bot._message_cache) >= self.bot._message_cache_limit:
-                self.bot._message_cache.popitem(last=False)  # Remove oldest
+            # Use lock for cache modification to prevent race conditions
+            async with self.bot._message_cache_lock:
+                # Evict oldest entries if at limit (O(1) with OrderedDict)
+                while len(self.bot._message_cache) >= self.bot._message_cache_limit:
+                    try:
+                        self.bot._message_cache.popitem(last=False)  # Remove oldest
+                    except KeyError:
+                        break  # Cache was cleared by another task
 
-            self.bot._message_cache[message.id] = {
-                "author": message.author,
-                "content": message.content,
-                "channel_id": message.channel.id,
-                "attachment_names": [a.filename for a in message.attachments] if message.attachments else [],
-                "sticker_names": [s.name for s in message.stickers] if message.stickers else [],
-                "has_embeds": len(message.embeds) > 0,
-                "embed_titles": [e.title for e in message.embeds if e.title] if message.embeds else [],
-                "reply_to": message.reference.message_id if message.reference else None,
-            }
+                self.bot._message_cache[message.id] = {
+                    "author": message.author,
+                    "content": message.content,
+                    "channel_id": message.channel.id,
+                    "attachment_names": [a.filename for a in message.attachments] if message.attachments else [],
+                    "sticker_names": [s.name for s in message.stickers] if message.stickers else [],
+                    "has_embeds": len(message.embeds) > 0,
+                    "embed_titles": [e.title for e in message.embeds if e.title] if message.embeds else [],
+                    "reply_to": message.reference.message_id if message.reference else None,
+                }
 
         # -----------------------------------------------------------------
         # Anti-Spam Check (early exit if spam detected)
@@ -356,19 +356,23 @@ class MessageEvents(HelpersMixin, commands.Cog):
             )
 
             # Track message history for context (OrderedDict LRU)
-            if message.author.id not in self.bot.last_messages:
-                # Evict oldest user if at limit
-                while len(self.bot.last_messages) >= self.bot._last_messages_limit:
-                    self.bot.last_messages.popitem(last=False)
-                self.bot.last_messages[message.author.id] = {
-                    "messages": deque(maxlen=self.config.message_history_size),
-                    "channel_id": message.channel.id,
-                }
-            else:
-                # Move to end (most recently used)
-                self.bot.last_messages.move_to_end(message.author.id)
-            self.bot.last_messages[message.author.id]["messages"].append(message.content)
-            self.bot.last_messages[message.author.id]["channel_id"] = message.channel.id
+            async with self.bot._last_messages_lock:
+                if message.author.id not in self.bot.last_messages:
+                    # Evict oldest user if at limit
+                    while len(self.bot.last_messages) >= self.bot._last_messages_limit:
+                        try:
+                            self.bot.last_messages.popitem(last=False)
+                        except KeyError:
+                            break  # Cache was cleared by another task
+                    self.bot.last_messages[message.author.id] = {
+                        "messages": deque(maxlen=self.config.message_history_size),
+                        "channel_id": message.channel.id,
+                    }
+                else:
+                    # Move to end (most recently used)
+                    self.bot.last_messages.move_to_end(message.author.id)
+                self.bot.last_messages[message.author.id]["messages"].append(message.content)
+                self.bot.last_messages[message.author.id]["channel_id"] = message.channel.id
 
             # Cache messages from tracked mods
             if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(message.author.id):
@@ -462,7 +466,9 @@ class MessageEvents(HelpersMixin, commands.Cog):
         # Logging Service: Message Delete
         # -----------------------------------------------------------------
         if self.bot.logging_service and self.bot.logging_service.enabled:
-            attachments = self.bot._attachment_cache.pop(message.id, None)
+            # Use lock for cache modification to prevent race conditions
+            async with self.bot._attachment_cache_lock:
+                attachments = self.bot._attachment_cache.pop(message.id, None)
             await self.bot.logging_service.log_message_delete(message, attachments)
 
         # -----------------------------------------------------------------
@@ -510,17 +516,7 @@ class MessageEvents(HelpersMixin, commands.Cog):
         # -----------------------------------------------------------------
         channel_id = before.channel.id
 
-        # Initialize deque if not exists, with LRU eviction
-        if channel_id not in self.bot._editsnipe_cache:
-            # Evict oldest channel if at limit
-            while len(self.bot._editsnipe_cache) >= self.bot._editsnipe_channel_limit:
-                self.bot._editsnipe_cache.popitem(last=False)
-            self.bot._editsnipe_cache[channel_id] = deque(maxlen=self.bot._editsnipe_limit)
-        else:
-            # Move to end (most recently used)
-            self.bot._editsnipe_cache.move_to_end(channel_id)
-
-        # Build before/after attachment data
+        # Build before/after attachment data (outside lock)
         before_attachments = []
         for att in before.attachments:
             before_attachments.append({
@@ -553,8 +549,23 @@ class MessageEvents(HelpersMixin, commands.Cog):
             "jump_url": after.jump_url,
         }
 
-        # Add to front of deque (most recent first)
-        self.bot._editsnipe_cache[channel_id].appendleft(edit_data)
+        # Use lock for cache modification to prevent race conditions
+        async with self.bot._editsnipe_cache_lock:
+            # Initialize deque if not exists, with LRU eviction
+            if channel_id not in self.bot._editsnipe_cache:
+                # Evict oldest channel if at limit
+                while len(self.bot._editsnipe_cache) >= self.bot._editsnipe_channel_limit:
+                    try:
+                        self.bot._editsnipe_cache.popitem(last=False)
+                    except KeyError:
+                        break  # Cache was cleared by another task
+                self.bot._editsnipe_cache[channel_id] = deque(maxlen=self.bot._editsnipe_limit)
+            else:
+                # Move to end (most recently used)
+                self.bot._editsnipe_cache.move_to_end(channel_id)
+
+            # Add to front of deque (most recent first)
+            self.bot._editsnipe_cache[channel_id].appendleft(edit_data)
 
         # Tree logging for message edits
         before_preview = (before.content[:30] + "...") if len(before.content) > 30 else (before.content or "(empty)")

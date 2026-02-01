@@ -208,6 +208,8 @@ class SpamHandlerMixin:
                 reason=f"Sticker spam (violation #{violation_count})",
             )
 
+            logger.debug(f"Sticker spam mute role added for {member.id}, proceeding with case creation")
+
             expires_at = now + timedelta(seconds=mute_duration)
             db.add_mute(
                 user_id=member.id,
@@ -302,6 +304,13 @@ class SpamHandlerMixin:
                 ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
                 ("User ID", str(member.id)),
                 ("Error", str(e)[:50]),
+            ])
+        except Exception as e:
+            logger.error("Sticker Spam Mute Exception", [
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("User ID", str(member.id)),
+                ("Error", str(e)[:100]),
+                ("Type", type(e).__name__),
             ])
 
     async def handle_webhook_spam(self, message: discord.Message) -> None:
@@ -480,6 +489,14 @@ class SpamHandlerMixin:
                 ("User ID", str(member.id)),
                 ("Type", spam_type),
                 ("Error", str(e)[:50]),
+            ])
+        except Exception as e:
+            logger.error("Auto-Mute Exception", [
+                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+                ("User ID", str(member.id)),
+                ("Type", spam_type),
+                ("Error", str(e)[:100]),
+                ("Type", type(e).__name__),
             ])
 
     async def _open_spam_case(
