@@ -20,6 +20,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.logger import logger
 from src.utils.async_utils import create_safe_task
 from src.utils.footer import set_footer
+from src.utils.snipe_blocker import block_from_snipe
 
 from .classifier import ContentClassifier, ClassificationResult
 from .constants import (
@@ -62,6 +63,7 @@ class ContentModerationService:
         - Auto-delete for high-confidence violations
         - Mod alerts for medium-confidence detections
         - Background cleanup task for memory management
+        - Snipe prevention for moderation-deleted messages
 
     Attributes:
         bot: The bot instance.
@@ -477,6 +479,14 @@ class ContentModerationService:
         channel_str = f"#{message.channel.name}" if hasattr(message.channel, "name") else str(message.channel.id)
 
         try:
+            # Block from snipe cache BEFORE deleting
+            await block_from_snipe(
+                message.id,
+                reason="Religion talk",
+                user_id=message.author.id,
+                channel_name=f"#{message.channel.name}" if hasattr(message.channel, "name") else None,
+            )
+
             # Delete the message
             await message.delete()
 

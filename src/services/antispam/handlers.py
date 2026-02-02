@@ -15,6 +15,7 @@ from src.core.config import EmbedColors, NY_TZ
 from src.core.constants import CASE_LOG_TIMEOUT
 from src.core.logger import logger
 from src.utils.footer import set_footer
+from src.utils.snipe_blocker import block_from_snipe
 from src.views import CASE_EMOJI
 
 from .constants import (
@@ -58,8 +59,14 @@ class SpamHandlerMixin:
         # Reduce reputation
         self.update_reputation(user_id, guild_id, -REP_LOSS_WARNING)  # type: ignore
 
-        # Delete the spam message
+        # Delete the spam message (block from snipe first)
         try:
+            await block_from_snipe(
+                message.id,
+                reason=f"Spam ({spam_type})",
+                user_id=message.author.id,
+                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
+            )
             await message.delete()
         except discord.HTTPException:
             logger.tree("Spam Message Delete Failed", [
@@ -114,8 +121,14 @@ class SpamHandlerMixin:
             if record.has_stickers and (now - record.timestamp).total_seconds() < STICKER_SPAM_TIME_WINDOW:
                 deleted_count += 1
 
-        # Delete the current message
+        # Delete the current message (block from snipe first)
         try:
+            await block_from_snipe(
+                message.id,
+                reason="Sticker spam",
+                user_id=message.author.id,
+                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
+            )
             await message.delete()
         except discord.HTTPException:
             logger.tree("Sticker Spam Message Delete Failed", [
@@ -317,7 +330,14 @@ class SpamHandlerMixin:
         """Handle spam from a webhook."""
         bot: "AzabBot" = self.bot  # type: ignore
 
+        # Block from snipe first
         try:
+            await block_from_snipe(
+                message.id,
+                reason="Webhook spam",
+                user_id=None,  # Webhook messages don't have a real user
+                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
+            )
             await message.delete()
         except discord.HTTPException:
             logger.tree("Webhook Spam Message Delete Failed", [

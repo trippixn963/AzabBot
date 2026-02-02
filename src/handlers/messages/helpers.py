@@ -20,6 +20,7 @@ from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
 from src.core.constants import CASE_LOG_TIMEOUT
 from src.utils.footer import set_footer
+from src.utils.snipe_blocker import block_from_snipe
 
 if TYPE_CHECKING:
     from .cog import MessageEvents
@@ -59,8 +60,14 @@ class HelpersMixin:
         user_id = message.author.id
         now = time.time()
 
-        # Always try to delete the message first
+        # Always try to delete the message first (block from snipe)
         try:
+            await block_from_snipe(
+                message.id,
+                reason="Prisoner ping violation",
+                user_id=message.author.id,
+                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
+            )
             await message.delete()
         except discord.Forbidden:
             logger.warning("Prisoner Ping Delete Failed", [
@@ -282,10 +289,16 @@ class HelpersMixin:
             return
 
         # -----------------------------------------------------------------
-        # 1. Delete the message
+        # 1. Delete the message (block from snipe first)
         # -----------------------------------------------------------------
         message_deleted = False
         try:
+            await block_from_snipe(
+                message.id,
+                reason="External invite link",
+                user_id=member.id,
+                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
+            )
             await message.delete()
             message_deleted = True
         except discord.Forbidden:

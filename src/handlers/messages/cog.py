@@ -20,6 +20,7 @@ from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
 from src.utils.async_utils import create_safe_task
+from src.utils.snipe_blocker import should_block_snipe
 
 from .helpers import HelpersMixin, INVITE_PATTERN
 
@@ -386,8 +387,53 @@ class MessageEvents(HelpersMixin, commands.Cog):
             return
 
         # -----------------------------------------------------------------
-        # Snipe Cache: Store deleted messages (database + memory)
+        # Check if message was auto-deleted by bot (skip snipe cache)
+        # This covers: content moderation, antispam, external invites, etc.
         # -----------------------------------------------------------------
+        skip_snipe, block_reason = await should_block_snipe(message.id)
+        if skip_snipe:
+            content_preview = "(empty)"
+            if message.content:
+                content_preview = (message.content[:40] + "...") if len(message.content) > 40 else message.content
+
+            logger.tree("MESSAGE DELETED (NO SNIPE)", [
+                ("Author", f"{message.author} ({message.author.id})"),
+                ("Channel", f"#{message.channel.name}" if hasattr(message.channel, 'name') else "DM"),
+                ("Content", content_preview),
+                ("Reason", block_reason or "Bot auto-delete"),
+            ], emoji="🗑️")
+
+            # Still run logging service and mod tracker
+            if self.bot.logging_service and self.bot.logging_service.enabled:
+                async with self.bot._attachment_cache_lock:
+                    attachments = self.bot._attachment_cache.pop(message.id, None)
+                await self.bot.logging_service.log_message_delete(message, attachments)
+
+            if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(message.author.id):
+                reply_to_user = None
+                reply_to_id = None
+                if message.reference and message.reference.message_id:
+                    try:
+                        ref_msg = message.reference.cached_message
+                        if not ref_msg:
+                            ref_msg = await message.channel.fetch_message(message.reference.message_id)
+                        if ref_msg:
+                            reply_to_user = ref_msg.author
+                            reply_to_id = ref_msg.author.id
+                    except Exception:
+                        pass
+
+                await self.bot.mod_tracker.log_message_delete(
+                    mod_id=message.author.id,
+                    channel=message.channel,
+                    content=message.content or "",
+                    attachments=message.attachments,
+                    message_id=message.id,
+                    reply_to_user=reply_to_user,
+                    reply_to_id=reply_to_id,
+                )
+            return  # Skip snipe cache
+
         channel_id = message.channel.id
         deleted_at = datetime.now(NY_TZ).timestamp()
         attachment_names = [a.filename for a in message.attachments] if message.attachments else []
