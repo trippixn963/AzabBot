@@ -26,7 +26,7 @@ class UserInfoSelect(discord.ui.DynamicItem[discord.ui.Select], template=r"user_
     Persistent dropdown for user info actions.
 
     Options: Info, Avatar, History
-    Used across case logs, appeals, modmail, and tickets.
+    Used across case logs, appeals, and tickets.
     """
 
     def __init__(self, user_id: int, guild_id: int):

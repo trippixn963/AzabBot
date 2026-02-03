@@ -137,7 +137,7 @@ class ThreadCache(TTLCache[int, Any]):
     """
     Specialized cache for Discord thread objects.
 
-    Commonly used across case_log, tickets, modmail, appeal services.
+    Commonly used across case_log, tickets, and appeal services.
     Default TTL is 5 minutes with max 50 threads cached.
     """
 

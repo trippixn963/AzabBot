@@ -611,8 +611,10 @@ class AntiNukeService:
                     ])
 
             self._quarantined_guilds.discard(guild.id)
-            if guild.id in self._quarantine_backup:
+            try:
                 del self._quarantine_backup[guild.id]
+            except KeyError:
+                pass  # Already removed
 
             await self._send_quarantine_alert(guild, "Manual lift", activated=False)
 

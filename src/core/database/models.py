@@ -41,19 +41,6 @@ class TrackedModRecord(TypedDict, total=False):
     added_at: float
 
 
-class AltLinkRecord(TypedDict, total=False):
-    """Type for alt link records."""
-    id: int
-    banned_user_id: int
-    potential_alt_id: int
-    guild_id: int
-    confidence: str
-    total_score: int
-    signals: str
-    detected_at: float
-    reviewed: int
-
-
 class JoinInfoRecord(TypedDict, total=False):
     """Type for user join info records."""
     user_id: int

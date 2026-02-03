@@ -124,12 +124,6 @@ class Config:
     case_transcripts_thread_id: Optional[int] = None  # Thread/post for logging case transcripts
 
     # -------------------------------------------------------------------------
-    # Optional: Modmail (for banned users)
-    # -------------------------------------------------------------------------
-
-    modmail_forum_id: Optional[int] = None  # Forum channel for modmail threads (mods server)
-
-    # -------------------------------------------------------------------------
     # Optional: Server Logs
     # -------------------------------------------------------------------------
 
@@ -233,7 +227,7 @@ class EmbedColors:
     RED = 0xDC3545      # #DC3545 - Negative actions (bans, kicks, deletes)
     BLUE = 0x3498DB     # #3498DB - Informational logs
     PURPLE = 0x9B59B6   # #9B59B6 - Appeals
-    TEAL = 0x1ABC9C     # #1ABC9C - Modmail
+    TEAL = 0x1ABC9C     # #1ABC9C - Teal
     ORANGE = 0xFF9800   # #FF9800 - High priority / warnings
     BLURPLE = 0x5865F2  # #5865F2 - Discord blurple / info
 
@@ -254,7 +248,6 @@ class EmbedColors:
     # Service-specific colors (for interaction logger)
     TICKET = BLUE       # 🎫 Ticket actions
     APPEAL = PURPLE     # 📨 Appeal actions
-    MODMAIL = TEAL      # 📬 Modmail actions
     PRIORITY_LOW = 0x95A5A6     # Gray
     PRIORITY_NORMAL = BLUE      # Blue
     PRIORITY_HIGH = ORANGE      # Orange
@@ -496,7 +489,6 @@ def load_config() -> Config:
     lockdown_exclude_ids = _parse_int_set(os.getenv("LOCKDOWN_EXCLUDE_IDS"))
     link_allowed_user_ids = _parse_int_set(os.getenv("LINK_ALLOWED_USER_IDS"))
     appeal_allowed_user_ids = _parse_int_set(os.getenv("APPEAL_ALLOWED_USER_IDS"))
-    modmail_forum_id = _parse_int_optional(os.getenv("MODMAIL_FORUM_ID"))
     whitelisted_webhook_ids = _parse_int_set(os.getenv("WHITELISTED_WEBHOOK_IDS"))
     mention_spam_exempt_channel_ids = _parse_int_set(os.getenv("MENTION_SPAM_EXEMPT_CHANNEL_IDS"))
 
@@ -564,7 +556,6 @@ def load_config() -> Config:
         lockdown_exclude_ids=lockdown_exclude_ids if lockdown_exclude_ids else None,
         link_allowed_user_ids=link_allowed_user_ids if link_allowed_user_ids else None,
         appeal_allowed_user_ids=appeal_allowed_user_ids if appeal_allowed_user_ids else None,
-        modmail_forum_id=modmail_forum_id,
         whitelisted_webhook_ids=whitelisted_webhook_ids if whitelisted_webhook_ids else None,
         mention_spam_exempt_channel_ids=mention_spam_exempt_channel_ids if mention_spam_exempt_channel_ids else None,
     )

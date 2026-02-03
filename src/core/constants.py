@@ -26,12 +26,11 @@ MS_PER_SECOND = 1000
 # Network Constants
 # =============================================================================
 
-# Health check server port (AzabBot uses 8081)
-# NOTE: OthmanBot=8080, AzabBot=8081, JawdatBot=8082, TahaBot=8083
-HEALTH_CHECK_PORT = 8081
+import os
 
-# Stats API port
-STATS_API_PORT = 8087
+# Unified API port (serves both /health and /api/azab/*)
+# NOTE: OthmanBot=8080, AzabBot=8081, JawdatBot=8082, TahaBot=8083, SyriaBot=8084, TrippixnBot=8085
+STATS_API_PORT = int(os.getenv("AZAB_API_PORT", "8081"))
 
 # =============================================================================
 # Interval Constants (in seconds)
@@ -308,7 +307,6 @@ EMOJI_KICK = "<:kick:1337255404907593759>"
 
 # Service emojis (string format)
 EMOJI_USERID = "<:userid:1452512424354643969>"
-EMOJI_MODMAIL = "<:modmail:1455197399621750876>"
 EMOJI_CLOSE = "<:close:1452963782208032768>"
 
 # =============================================================================
@@ -333,7 +331,6 @@ EMOJI_ID_UNLOCK = 1455200891866190040
 EMOJI_ID_TRANSCRIPT = 1455205892319481916
 EMOJI_ID_TRANSFER = 1456258089950117888
 EMOJI_ID_SAVE = 1455776703468273825
-EMOJI_ID_MODMAIL = 1455197399621750876
 
 # Ticket category emojis
 EMOJI_ID_TICKET = 1455177168098295983
@@ -393,7 +390,6 @@ __all__ = [
     "SECONDS_PER_WEEK",
     "MS_PER_SECOND",
     # Network
-    "HEALTH_CHECK_PORT",
     "STATS_API_PORT",
     # Intervals
     "MUTE_CHECK_INTERVAL",
@@ -553,7 +549,6 @@ __all__ = [
     "EMOJI_TIMEOUT",
     "EMOJI_KICK",
     "EMOJI_USERID",
-    "EMOJI_MODMAIL",
     "EMOJI_CLOSE",
     # Duration
     "MINUTES_PER_DAY",
@@ -574,7 +569,6 @@ __all__ = [
     "EMOJI_ID_TRANSCRIPT",
     "EMOJI_ID_TRANSFER",
     "EMOJI_ID_SAVE",
-    "EMOJI_ID_MODMAIL",
     "EMOJI_ID_TICKET",
     "EMOJI_ID_SUGGESTION",
     "EMOJI_ID_STAFF",

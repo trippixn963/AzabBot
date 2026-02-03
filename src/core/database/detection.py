@@ -12,130 +12,14 @@ import time
 from typing import Optional, List, Dict, Any, Set, TYPE_CHECKING
 
 from src.core.logger import logger
-from src.core.database.models import AltLinkRecord, JoinInfoRecord
+from src.core.database.models import JoinInfoRecord
 
 if TYPE_CHECKING:
     from src.core.database.manager import DatabaseManager
 
 
 class DetectionMixin:
-    """Mixin for alt detection and ban evasion database operations."""
-
-    # Alt Detection Operations
-    # =========================================================================
-
-    def save_alt_link(
-        self,
-        banned_user_id: int,
-        potential_alt_id: int,
-        guild_id: int,
-        confidence: str,
-        total_score: int,
-        signals: dict,
-    ) -> int:
-        """
-        Save a detected alt link to the database.
-
-        Args:
-            banned_user_id: The banned user's ID.
-            potential_alt_id: The potential alt account's ID.
-            guild_id: The guild ID.
-            confidence: Confidence level (LOW, MEDIUM, HIGH).
-            total_score: Total detection score.
-            signals: Dictionary of matched signals.
-
-        Returns:
-            The row ID of the inserted record.
-        """
-        import json
-        signals_json = json.dumps(signals)
-        cursor = self.execute(
-            """
-            INSERT OR REPLACE INTO alt_links
-            (banned_user_id, potential_alt_id, guild_id, confidence, total_score, signals, detected_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (banned_user_id, potential_alt_id, guild_id, confidence, total_score, signals_json, time.time())
-        )
-
-        logger.tree("Alt Link Saved", [
-            ("Banned User", str(banned_user_id)),
-            ("Potential Alt", str(potential_alt_id)),
-            ("Confidence", confidence),
-            ("Score", str(total_score)),
-        ], emoji="🔗")
-
-        return cursor.lastrowid
-
-    def get_alt_links_for_user(self: "DatabaseManager", user_id: int, guild_id: int) -> List[Dict]:
-        """
-        Get all potential alts linked to a user.
-
-        Args:
-            user_id: The banned user's ID.
-            guild_id: The guild ID.
-
-        Returns:
-            List of alt link records.
-        """
-        rows = self.fetchall(
-            "SELECT * FROM alt_links WHERE banned_user_id = ? AND guild_id = ?",
-            (user_id, guild_id)
-        )
-        results = []
-        for row in rows:
-            record = dict(row)
-            record['signals'] = _safe_json_loads(record['signals'], default=[])
-            results.append(record)
-        return results
-
-    def get_users_linked_to_alt(self: "DatabaseManager", alt_id: int, guild_id: int) -> List[Dict]:
-        """
-        Get all users that have this account flagged as an alt.
-
-        Args:
-            alt_id: The potential alt's ID.
-            guild_id: The guild ID.
-
-        Returns:
-            List of alt link records.
-        """
-        rows = self.fetchall(
-            "SELECT * FROM alt_links WHERE potential_alt_id = ? AND guild_id = ?",
-            (alt_id, guild_id)
-        )
-        results = []
-        for row in rows:
-            record = dict(row)
-            record['signals'] = _safe_json_loads(record['signals'], default=[])
-            results.append(record)
-        return results
-
-    def mark_alt_link_reviewed(
-        self,
-        link_id: int,
-        reviewer_id: int,
-        confirmed: bool
-    ) -> None:
-        """
-        Mark an alt link as reviewed.
-
-        Args:
-            link_id: The alt link record ID.
-            reviewer_id: The moderator who reviewed it.
-            confirmed: True if confirmed alt, False if false positive.
-        """
-        status = 1 if confirmed else 2  # 1 = confirmed, 2 = false positive
-        self.execute(
-            "UPDATE alt_links SET reviewed = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?",
-            (status, reviewer_id, time.time(), link_id)
-        )
-
-        logger.debug("Alt Link Reviewed", [
-            ("Link ID", str(link_id)),
-            ("Reviewer", str(reviewer_id)),
-            ("Confirmed", str(confirmed)),
-        ])
+    """Mixin for ban evasion detection database operations."""
 
     # =========================================================================
     # User Join Info Operations

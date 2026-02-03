@@ -358,32 +358,6 @@ class SchemaMixin:
         )
 
         # -----------------------------------------------------------------
-        # Alt Links Table
-        # -----------------------------------------------------------------
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS alt_links (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                banned_user_id INTEGER NOT NULL,
-                potential_alt_id INTEGER NOT NULL,
-                guild_id INTEGER NOT NULL,
-                confidence TEXT NOT NULL,
-                total_score INTEGER NOT NULL,
-                signals TEXT NOT NULL,
-                detected_at REAL NOT NULL,
-                reviewed INTEGER DEFAULT 0,
-                reviewed_by INTEGER,
-                reviewed_at REAL,
-                UNIQUE(banned_user_id, potential_alt_id, guild_id)
-            )
-        """)
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_alt_links_banned ON alt_links(banned_user_id)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_alt_links_alt ON alt_links(potential_alt_id)"
-        )
-
-        # -----------------------------------------------------------------
         # User Join Info Table
         # -----------------------------------------------------------------
         cursor.execute("""
@@ -618,8 +592,8 @@ class SchemaMixin:
         ]:
             try:
                 cursor.execute(f"ALTER TABLE snipe_cache ADD COLUMN {column} {col_type}")
-            except Exception:
-                pass
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
         # -----------------------------------------------------------------
         # Forbid History Table
@@ -643,8 +617,8 @@ class SchemaMixin:
         for col in ["expires_at REAL", "case_id TEXT"]:
             try:
                 cursor.execute(f"ALTER TABLE forbid_history ADD COLUMN {col}")
-            except Exception:
-                pass
+            except sqlite3.OperationalError:
+                pass  # Column already exists
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_forbid_user ON forbid_history(user_id, guild_id)"
         )
@@ -746,32 +720,6 @@ class SchemaMixin:
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_tickets_thread ON tickets(thread_id)"
-        )
-
-        # -----------------------------------------------------------------
-        # Modmail Table
-        # -----------------------------------------------------------------
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS modmail (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                guild_id INTEGER NOT NULL,
-                thread_id INTEGER NOT NULL,
-                status TEXT DEFAULT 'open',
-                created_at REAL NOT NULL,
-                closed_at REAL,
-                closed_by INTEGER,
-                UNIQUE(user_id, guild_id)
-            )
-        """)
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_modmail_user ON modmail(user_id, guild_id)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_modmail_thread ON modmail(thread_id)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_modmail_status ON modmail(status)"
         )
 
         # -----------------------------------------------------------------

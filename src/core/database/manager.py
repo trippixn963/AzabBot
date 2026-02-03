@@ -37,14 +37,12 @@ from src.core.database.voice import VoiceMixin
 from src.core.database.snipe import SnipeMixin
 from src.core.database.appeals import AppealsMixin
 from src.core.database.linked import LinkedMixin
-from src.core.database.modmail import ModmailMixin
 
 # Import type definitions from models module
 from src.core.database.models import (
     MuteRecord,
     CaseLogRecord,
     TrackedModRecord,
-    AltLinkRecord,
     JoinInfoRecord,
     ModNoteRecord,
     UsernameHistoryRecord,
@@ -64,7 +62,6 @@ __all_types__ = [
     "MuteRecord",
     "CaseLogRecord",
     "TrackedModRecord",
-    "AltLinkRecord",
     "JoinInfoRecord",
     "ModNoteRecord",
     "UsernameHistoryRecord",
@@ -106,7 +103,6 @@ class DatabaseManager(
     SnipeMixin,
     AppealsMixin,
     LinkedMixin,
-    ModmailMixin,
 ):
     """
     Centralized database manager with thread-safe operations.
@@ -231,7 +227,7 @@ class DatabaseManager(
         cursor = self.execute(query, params, commit=False)
         return cursor.fetchall()
 
-    # Alias for compatibility with modmail mixin
+    # Alias for compatibility
     def fetch_one(self, query: str, params: Tuple = ()) -> Optional[sqlite3.Row]:
         """Alias for fetchone (compatibility)."""
         return self.fetchone(query, params)

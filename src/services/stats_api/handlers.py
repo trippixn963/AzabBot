@@ -267,6 +267,19 @@ class HandlersMixin:
             active_warns = self._bot.db.get_active_warn_count(user_id, guild_id) if guild_id else 0
             is_muted = self._bot.db.is_user_muted(user_id, guild_id) if guild_id else False
 
+            # Get member activity (join/leave history)
+            activity = self._bot.db.get_member_activity(user_id, guild_id) if guild_id else None
+            join_count = activity["join_count"] if activity else 0
+            leave_count = activity["leave_count"] if activity else 0
+            first_joined_at = activity["first_joined_at"] if activity else None
+
+            # Get spam violations (method returns dict with defaults, never None)
+            spam_violations = self._bot.db.get_spam_violations(user_id, guild_id)["violation_count"] if guild_id else 0
+
+            # Get username/nickname history
+            previous_names = self._bot.db.get_previous_names(user_id, limit=5)
+            nickname_history = self._bot.db.get_all_nicknames(user_id, guild_id) if guild_id else []
+
             # Get user info from Discord
             name, avatar, _ = await self._fetch_user_data(user_id, f"User {user_id}")
 
@@ -291,6 +304,12 @@ class HandlersMixin:
                 "total_punishments": mute_count + ban_count + warn_count,
                 "active_warns": active_warns,
                 "currently_muted": is_muted,
+                "join_count": join_count,
+                "leave_count": leave_count,
+                "first_joined_at": first_joined_at,
+                "spam_violations": spam_violations,
+                "previous_names": previous_names,
+                "nickname_history": nickname_history,
                 "recent_punishments": recent_punishments,
                 "generated_at": datetime.now(NY_TZ).isoformat(),
                 "cached": False,

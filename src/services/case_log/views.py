@@ -284,7 +284,7 @@ def setup_case_log_views(bot) -> None:
     """Register persistent views for case log components.
 
     Note: UserInfoSelect is registered in utils/views.py setup_moderation_views()
-    to be shared across case logs, appeals, modmail, and tickets.
+    to be shared across case logs, appeals, and tickets.
     """
     bot.add_dynamic_items(EvidenceButton)
     logger.debug("Case Log Views Registered (EvidenceButton)")
