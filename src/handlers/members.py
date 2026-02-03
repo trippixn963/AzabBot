@@ -18,7 +18,7 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config
 from src.core.database import get_db
-from src.core.constants import CASE_LOG_TIMEOUT, QUERY_LIMIT_TINY
+from src.core.constants import CASE_LOG_TIMEOUT, QUERY_LIMIT_TINY, LOG_TRUNCATE_SHORT
 from src.utils.async_utils import create_safe_task
 
 # Verification role delay - another bot handles this, but we act as failsafe backup
@@ -706,63 +706,157 @@ class MemberEvents(commands.Cog):
             self.config.female_role_id,
             self.config.female_verified_role_id,
         ]):
+            logger.debug("Gender role conflict resolution skipped: roles not configured")
             return
 
-        # Define role conflict pairs: (verified_role_id, non_verified_role_id)
+        # Define role conflict pairs: (verified_role_id, non_verified_role_id, name)
         conflict_pairs = [
             (self.config.male_verified_role_id, self.config.male_role_id, "Male"),
             (self.config.female_verified_role_id, self.config.female_role_id, "Female"),
         ]
 
-        roles_to_remove = []
-
         for verified_id, non_verified_id, gender_name in conflict_pairs:
             has_verified = verified_id in after_role_ids
             has_non_verified = non_verified_id in after_role_ids
 
-            # If they have both, remove the non-verified one
-            if has_verified and has_non_verified:
-                # Check if the non-verified was just added (not already there before)
-                just_gained_non_verified = non_verified_id not in before_role_ids
-                just_gained_verified = verified_id not in before_role_ids
+            # Only act if both roles are present
+            if not (has_verified and has_non_verified):
+                continue
 
-                # Either scenario: remove the non-verified role
-                non_verified_role = after.guild.get_role(non_verified_id)
-                if non_verified_role:
-                    roles_to_remove.append((non_verified_role, gender_name, just_gained_verified))
+            # Determine what triggered this conflict
+            just_gained_verified = verified_id not in before_role_ids
+            just_gained_non_verified = non_verified_id not in before_role_ids
 
-        # Remove conflicting roles
-        for role, gender_name, was_verification in roles_to_remove:
+            # Get the role object to remove
+            non_verified_role = after.guild.get_role(non_verified_id)
+            verified_role = after.guild.get_role(verified_id)
+
+            if not non_verified_role:
+                logger.warning("Gender Role Not Found", [
+                    ("Role ID", str(non_verified_id)),
+                    ("Gender", gender_name),
+                    ("Type", "Non-verified"),
+                ])
+                continue
+
+            # Remove the non-verified role
             try:
                 await after.remove_roles(
-                    role,
+                    non_verified_role,
                     reason=f"Auto-removed: {gender_name} Verified role takes precedence"
                 )
 
-                if was_verification:
-                    action = "verified, non-verified removed"
+                # Determine action description for logging
+                if just_gained_verified:
+                    action = "Gained verified role, non-verified auto-removed"
+                elif just_gained_non_verified:
+                    action = "Tried to add non-verified while already verified"
                 else:
-                    action = "tried to add non-verified while verified"
+                    action = "Conflict detected, non-verified removed"
 
+                # Console tree logging
                 logger.tree("GENDER ROLE CONFLICT RESOLVED", [
-                    ("User", f"{after} ({after.id})"),
+                    ("User", f"{after.name} ({after.id})"),
                     ("Gender", gender_name),
                     ("Action", action),
-                    ("Removed", role.name),
+                    ("Removed", non_verified_role.name),
+                    ("Kept", verified_role.name if verified_role else "Unknown"),
                 ], emoji="🔄")
+
+                # Log to server logs (if enabled)
+                await self._log_gender_role_resolution(
+                    after, gender_name, non_verified_role, verified_role, action
+                )
 
             except discord.Forbidden:
                 logger.warning("Cannot Remove Gender Role", [
-                    ("User", f"{after} ({after.id})"),
-                    ("Role", role.name),
-                    ("Reason", "Missing permissions"),
+                    ("User", f"{after.name} ({after.id})"),
+                    ("Role", non_verified_role.name),
+                    ("Reason", "Missing permissions or role hierarchy"),
                 ])
             except discord.HTTPException as e:
                 logger.error("Gender Role Removal Failed", [
-                    ("User", f"{after} ({after.id})"),
-                    ("Role", role.name),
-                    ("Error", str(e)[:50]),
+                    ("User", f"{after.name} ({after.id})"),
+                    ("Role", non_verified_role.name),
+                    ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
                 ])
+
+    async def _log_gender_role_resolution(
+        self,
+        member: discord.Member,
+        gender_name: str,
+        removed_role: discord.Role,
+        kept_role: discord.Role,
+        action: str,
+    ) -> None:
+        """
+        Log gender role conflict resolution to server logs.
+
+        Args:
+            member: The member whose roles were adjusted.
+            gender_name: "Male" or "Female".
+            removed_role: The non-verified role that was removed.
+            kept_role: The verified role that was kept.
+            action: Description of what triggered the resolution.
+        """
+        if not self.bot.logging_service or not self.bot.logging_service.enabled:
+            return
+
+        try:
+            from src.core.config import EmbedColors, NY_TZ
+            from src.services.server_logs.categories import LogCategory
+            from datetime import datetime
+
+            embed = discord.Embed(
+                title="🔄 Gender Role Conflict Resolved",
+                color=EmbedColors.LOG_INFO,
+                timestamp=datetime.now(NY_TZ),
+            )
+            embed.add_field(
+                name="Member",
+                value=f"{member.mention}\n`{member.id}`",
+                inline=True,
+            )
+            embed.add_field(
+                name="Gender",
+                value=gender_name,
+                inline=True,
+            )
+            embed.add_field(
+                name="Action",
+                value=action,
+                inline=False,
+            )
+            embed.add_field(
+                name="Removed Role",
+                value=f"{removed_role.mention} (non-verified)",
+                inline=True,
+            )
+            embed.add_field(
+                name="Kept Role",
+                value=f"{kept_role.mention} (verified)" if kept_role else "Unknown",
+                inline=True,
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+
+            await self.bot.logging_service._send_log(
+                LogCategory.AUTOMOD,
+                embed,
+                user_id=member.id,
+            )
+            logger.debug(f"Gender role resolution logged for {member.id}")
+
+        except discord.HTTPException as e:
+            logger.warning("Failed to Log Gender Role Resolution", [
+                ("User", str(member.id)),
+                ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
+            ])
+        except Exception as e:
+            logger.error("Gender Role Log Failed", [
+                ("User", str(member.id)),
+                ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
+                ("Type", type(e).__name__),
+            ])
 
     @commands.Cog.listener()
     async def on_resumed(self) -> None:
