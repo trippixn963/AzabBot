@@ -3,7 +3,7 @@ AzabBot - Presence Handler
 ==========================
 
 Wrapper around unified presence system with AzabBot-specific stats.
-Includes prisoner event presence and midnight tasks.
+Includes prisoner event presence.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -43,7 +43,6 @@ class PresenceHandler(BasePresenceHandler):
 
     Additional features beyond base:
     - Prisoner arrived/released event presence
-    - Midnight tasks (banner refresh, guild protection)
     """
 
     def __init__(self, bot: "AzabBot") -> None:
@@ -53,7 +52,6 @@ class PresenceHandler(BasePresenceHandler):
             promo_duration_minutes=PROMO_DURATION_MINUTES,
         )
         self.config = get_config()
-        self._last_midnight_date: Optional[str] = None
 
     # =========================================================================
     # Required Implementations
@@ -171,64 +169,6 @@ class PresenceHandler(BasePresenceHandler):
                 count += len(muted_role.members)
         return count
 
-    # =========================================================================
-    # Override Rotation Loop for Midnight Tasks
-    # =========================================================================
-
-    async def _rotation_loop(self) -> None:
-        """Background task that updates presence periodically and handles midnight tasks."""
-        await self.bot.wait_until_ready()
-
-        self.on_rotation_start()
-
-        while self._running:
-            try:
-                await asyncio.sleep(self.update_interval)
-
-                # Skip if promo is active
-                if self._is_promo_active:
-                    continue
-
-                await self._update_rotating_presence()
-                await self._check_midnight_tasks()
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.on_error("Rotation Loop", e)
-                await asyncio.sleep(self.update_interval)
-
-    # =========================================================================
-    # Midnight Tasks
-    # =========================================================================
-
-    async def _check_midnight_tasks(self) -> None:
-        """Run daily tasks at midnight EST."""
-        try:
-            now = datetime.now(NY_TZ)
-            today = now.strftime("%Y-%m-%d")
-
-            # Check if it's a new day and within first hour
-            if self._last_midnight_date != today and now.hour == 0:
-                self._last_midnight_date = today
-
-                # Guild protection check
-                try:
-                    await self.bot._leave_unauthorized_guilds()
-                except Exception as e:
-                    logger.warning("Guild Protection Check Failed", [
-                        ("Error", str(e)[:50]),
-                    ])
-
-                logger.tree("Midnight Tasks Complete", [
-                    ("Date", today),
-                    ("Tasks", "Guild check"),
-                ], emoji="🌙")
-
-        except Exception as e:
-            logger.error("Midnight Tasks Failed", [
-                ("Error", str(e)[:50]),
-            ])
 
     # =========================================================================
     # Event-Triggered Presence (AzabBot specific)

@@ -60,6 +60,7 @@ GUILD_FETCH_TIMEOUT = 5.0             # Guild/channel fetch timeout
 DB_CONNECTION_TIMEOUT = 30.0          # SQLite connection timeout
 AUDIT_LOG_WAIT = 0.5                  # Wait for audit log availability
 RATE_LIMIT_DELAY = 0.5                # Delay for Discord rate limit protection
+MAINTENANCE_RATE_LIMIT_DELAY = 0.1    # Delay between member checks in maintenance tasks
 
 # =============================================================================
 # Delete After Constants (seconds before auto-delete messages)
@@ -250,6 +251,9 @@ MAX_AUTOCOMPLETE_RESULTS = 25         # Discord autocomplete limit
 # =============================================================================
 
 LOG_RETENTION_DAYS = 30               # Auto-delete logs older than this
+HISTORY_RETENTION_DAYS = 365          # Username/nickname history retention
+JOIN_INFO_RETENTION_DAYS = 180        # Join info for users who left
+STALE_MUTE_RETENTION_DAYS = 90        # Mute records for users who left
 PENDING_REASON_MAX_AGE = SECONDS_PER_HOUR  # 1 hour - pending reason expiry
 PENDING_REASON_CLEANUP_AGE = SECONDS_PER_DAY  # 24 hours - cleanup age
 VOICE_ACTIVITY_MAX_AGE = SECONDS_PER_DAY  # 24 hours - voice activity
@@ -408,6 +412,7 @@ __all__ = [
     "DB_CONNECTION_TIMEOUT",
     "AUDIT_LOG_WAIT",
     "RATE_LIMIT_DELAY",
+    "MAINTENANCE_RATE_LIMIT_DELAY",
     # Delete after
     "DELETE_AFTER_SHORT",
     "DELETE_AFTER_MEDIUM",
@@ -514,6 +519,9 @@ __all__ = [
     "MAX_AUTOCOMPLETE_RESULTS",
     # Retention
     "LOG_RETENTION_DAYS",
+    "HISTORY_RETENTION_DAYS",
+    "JOIN_INFO_RETENTION_DAYS",
+    "STALE_MUTE_RETENTION_DAYS",
     "PENDING_REASON_MAX_AGE",
     "PENDING_REASON_CLEANUP_AGE",
     "VOICE_ACTIVITY_MAX_AGE",

@@ -2,13 +2,14 @@
 AzabBot - Scheduler Mixin
 =========================
 
-Background tasks: nightly scan, startup scan, expiry scheduler.
+Background tasks: startup scan, expiry scheduler.
+Note: Nightly scan is now handled by MaintenanceService.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import asyncio
@@ -19,7 +20,7 @@ from src.core.config import EmbedColors, NY_TZ
 from src.utils.footer import set_footer
 from src.utils.dm_helpers import safe_send_dm
 from src.utils.rate_limiter import rate_limit
-from src.core.constants import FORBID_STARTUP_DELAY, SECONDS_PER_HOUR, FORBID_CHECK_INTERVAL
+from src.core.constants import FORBID_STARTUP_DELAY, FORBID_CHECK_INTERVAL
 
 from .constants import RESTRICTIONS
 
@@ -69,40 +70,8 @@ class SchedulerMixin:
             ])
 
     # =========================================================================
-    # Nightly Scan Task
+    # Forbid Scan (called by MaintenanceService)
     # =========================================================================
-
-    async def _start_nightly_scan(self: "ForbidCog") -> None:
-        """Start the nightly scan loop."""
-        await self.bot.wait_until_ready()
-
-        while not self.bot.is_closed():
-            try:
-                # Calculate time until midnight (00:00) EST
-                now = datetime.now(NY_TZ)
-                target = now.replace(hour=0, minute=0, second=0, microsecond=0)
-
-                # If it's past midnight today, schedule for tomorrow
-                if now >= target:
-                    target = target + timedelta(days=1)
-
-                seconds_until = (target - now).total_seconds()
-
-                # Wait until midnight
-                await asyncio.sleep(seconds_until)
-
-                # Run the scan
-                await self._run_forbid_scan()
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("Forbid Nightly Scan Error", [
-                    ("Error", str(e)[:100]),
-                    ("Type", type(e).__name__),
-                ])
-                # Wait an hour before retrying on error
-                await asyncio.sleep(SECONDS_PER_HOUR)
 
     async def _run_forbid_scan(self: "ForbidCog") -> None:
         """Scan all guilds and ensure forbid roles have correct overwrites."""

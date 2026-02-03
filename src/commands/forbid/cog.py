@@ -48,7 +48,6 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
         self._roles_cache: Dict[int, Tuple[Dict[str, discord.Role], datetime]] = {}
 
         # Start background tasks (using create_safe_task for error logging)
-        self._scan_task = create_safe_task(self._start_nightly_scan(), "Forbid Nightly Scan")
         self._expiry_task = create_safe_task(self._start_expiry_scheduler(), "Forbid Expiry Scheduler")
         self._startup_scan_task = create_safe_task(self._run_startup_scan(), "Forbid Startup Scan")
 
@@ -56,7 +55,6 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             ("Commands", "/forbid, /unforbid"),
             ("Restrictions", str(len(RESTRICTIONS))),
             ("Startup Scan", "30s after ready"),
-            ("Nightly Scan", "12:00 AM EST"),
         ], emoji="🚫")
 
     # =========================================================================

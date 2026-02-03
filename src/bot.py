@@ -114,6 +114,7 @@ class AzabBot(commands.Bot):
         self.modmail_service = None
         self.stats_api = None
         self.content_moderation = None
+        self.maintenance = None
 
         # Shared HTTP session for all services
         self._http_session: Optional[aiohttp.ClientSession] = None
@@ -294,6 +295,9 @@ class AzabBot(commands.Bot):
         if self.presence:
             create_safe_task(self.presence.start(), "Presence Handler")
 
+        if self.maintenance:
+            self.maintenance.start()
+
         await self._cleanup_polls_channel()
         await self._cache_invites()
         await self._check_lockdown_state()
@@ -389,6 +393,9 @@ class AzabBot(commands.Bot):
             self.presence = PresenceHandler(self)
             logger.info("Presence Handler Initialized")
 
+            from src.services.maintenance import MaintenanceService
+            self.maintenance = MaintenanceService(self)
+
             if not self.health_server:
                 from src.core.health import HealthCheckServer
                 self.health_server = HealthCheckServer(self)
@@ -463,8 +470,6 @@ class AzabBot(commands.Bot):
                     ("Role ID", str(self.config.moderation_role_id)),
                 ], emoji="👁️")
                 await self.mod_tracker.auto_scan_mods()
-                await self.mod_tracker.start_title_update_scheduler()
-                await self.mod_tracker.start_inactivity_checker()
             else:
                 logger.info("Mod Tracker Service Disabled (no config)")
 
@@ -475,8 +480,6 @@ class AzabBot(commands.Bot):
                     ("Forum ID", str(self.config.server_logs_forum_id)),
                     ("Threads", "15 categories"),
                 ], emoji="📋")
-                # Start log retention cleanup
-                await self.logging_service.start_retention_cleanup()
             else:
                 logger.info("Logging Service Disabled (no forum configured)")
 
@@ -559,9 +562,6 @@ class AzabBot(commands.Bot):
     async def _cleanup_polls_channel(self) -> None:
         """Clean up poll result messages from polls channels on startup."""
         await self._scan_and_clean_poll_results()
-
-        # Start midnight cleanup scheduler
-        create_safe_task(self._polls_cleanup_scheduler(), "Polls Cleanup Scheduler")
 
     async def _scan_and_clean_poll_results(self) -> None:
         """Scan polls channels and delete poll result messages ('X's poll has closed')."""
@@ -647,51 +647,6 @@ class AzabBot(commands.Bot):
                 ("Messages Checked", str(total_checked)),
                 ("Result", "No poll results to delete"),
             ], emoji="✅")
-
-    async def _polls_cleanup_scheduler(self) -> None:
-        """Run polls cleanup at midnight daily."""
-        logger.tree("Polls Cleanup Scheduler Started", [
-            ("Schedule", "Daily at midnight"),
-            ("Channels", "polls_only + permanent_polls"),
-        ], emoji="📅")
-
-        while True:
-            try:
-                # Calculate time until next midnight
-                now = datetime.now(NY_TZ)
-                next_midnight = (now + timedelta(days=1)).replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                )
-                sleep_seconds = (next_midnight - now).total_seconds()
-
-                logger.tree("Polls Cleanup Scheduled", [
-                    ("Next Run", next_midnight.strftime("%Y-%m-%d %I:%M %p")),
-                    ("Sleep", f"{sleep_seconds/3600:.1f} hours"),
-                ], emoji="⏰")
-
-                await asyncio.sleep(sleep_seconds)
-
-                # Run cleanup
-                logger.tree("Midnight Cleanup Starting", [
-                    ("Time", datetime.now(NY_TZ).strftime("%I:%M %p %Z")),
-                ], emoji="🌙")
-
-                await self._scan_and_clean_poll_results()
-
-                # Clean up prisoner tracking for users no longer muted
-                await self._cleanup_prisoner_tracking()
-
-            except asyncio.CancelledError:
-                logger.tree("Polls Cleanup Scheduler Stopped", [
-                    ("Reason", "Task cancelled"),
-                ], emoji="🛑")
-                break
-            except Exception as e:
-                logger.error("Polls Cleanup Scheduler Error", [
-                    ("Error", str(e)),
-                    ("Retry", "1 hour"),
-                ])
-                await asyncio.sleep(SECONDS_PER_HOUR)  # Retry in 1 hour on error
 
     async def _cleanup_prisoner_tracking(self) -> int:
         """

@@ -77,7 +77,6 @@ class ModTrackerService(
         self.db = get_db()
         self._forum: Optional[discord.ForumChannel] = None
         self._forum_cached_at: Optional[datetime] = None
-        self._scheduler_healthy: bool = False
         self._last_scan_time: Optional[datetime] = None
         self._consecutive_failures: int = 0
 
@@ -139,7 +138,6 @@ class ModTrackerService(
             Dict with health status info including:
             - enabled: Whether service is configured
             - forum_accessible: Whether forum channel is reachable
-            - scheduler_healthy: Whether scheduler is running
             - last_scan_time: When last scan ran
             - consecutive_failures: Number of consecutive failures
             - tracked_mods_count: Number of tracked moderators
@@ -147,7 +145,6 @@ class ModTrackerService(
         health = {
             "enabled": self.enabled,
             "forum_accessible": False,
-            "scheduler_healthy": self._scheduler_healthy,
             "last_scan_time": self._last_scan_time.isoformat() if self._last_scan_time else None,
             "consecutive_failures": self._consecutive_failures,
             "tracked_mods_count": 0,

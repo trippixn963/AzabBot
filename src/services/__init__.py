@@ -38,6 +38,7 @@ from .case_log import CaseLogService
 from .mod_tracker import ModTrackerService
 from .server_logs import LoggingService
 from .status_webhook import StatusWebhookService, get_status_service
+from .maintenance import MaintenanceService
 # Compatibility aliases
 from .status_webhook import WebhookAlertService, get_alert_service
 
@@ -53,6 +54,7 @@ __all__ = [
     "LoggingService",
     "StatusWebhookService",
     "get_status_service",
+    "MaintenanceService",
     # Compatibility aliases
     "WebhookAlertService",
     "get_alert_service",

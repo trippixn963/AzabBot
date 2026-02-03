@@ -2,22 +2,20 @@
 AzabBot - Scheduler Mixin
 =========================
 
-Scheduled tasks: inactivity checker, title updates, auto-scan.
+Methods for scheduled tasks called by MaintenanceService.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
-import asyncio
 
 import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
 from src.utils.rate_limiter import rate_limit
-from src.utils.async_utils import create_safe_task
 
 from .constants import INACTIVITY_DAYS, MAX_RETRIES
 
@@ -26,49 +24,11 @@ if TYPE_CHECKING:
 
 
 class SchedulerMixin:
-    """Mixin for scheduled tasks."""
+    """Mixin for scheduled tasks (called by MaintenanceService)."""
 
     # =========================================================================
-    # Inactivity Checker
+    # Inactivity Check (called by MaintenanceService)
     # =========================================================================
-
-    async def start_inactivity_checker(self: "ModTrackerService") -> None:
-        """Start the scheduled task to check for inactive mods."""
-        if not self.enabled:
-            return
-
-        create_safe_task(self._inactivity_check_loop(), "Mod Tracker Inactivity Checker")
-        logger.tree("Mod Tracker: Inactivity Checker Started", [
-            ("Check Time", "Daily at 12:00 PM EST"),
-            ("Tracked Mods", str(len(self.db.get_all_tracked_mods()))),
-        ], emoji="⏰")
-
-    async def _inactivity_check_loop(self: "ModTrackerService") -> None:
-        """Loop that checks for inactive mods daily at noon EST."""
-        try:
-            while True:
-                try:
-                    # Calculate time until next noon EST
-                    now = datetime.now(NY_TZ)
-                    next_check = now.replace(hour=12, minute=0, second=0, microsecond=0)
-                    if next_check <= now:
-                        next_check += timedelta(days=1)
-
-                    seconds_until_check = (next_check - now).total_seconds()
-                    await asyncio.sleep(seconds_until_check)
-
-                    # Run inactivity check
-                    await self._check_inactive_mods()
-
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.error("Mod Tracker: Inactivity Check Error", [
-                        ("Error", str(e)[:100]),
-                    ])
-                    await asyncio.sleep(self.config.hourly_task_interval)
-        finally:
-            logger.info("Mod Tracker: Inactivity Checker Stopped")
 
     async def _check_inactive_mods(self: "ModTrackerService") -> None:
         """Check all tracked mods for inactivity and send alerts."""
@@ -118,58 +78,8 @@ class SchedulerMixin:
             ], emoji="⏰")
 
     # =========================================================================
-    # Scheduled Title Updates
+    # Comprehensive Scan (called by MaintenanceService)
     # =========================================================================
-
-    async def start_title_update_scheduler(self: "ModTrackerService") -> None:
-        """
-        Start the scheduled task to update thread titles at midnight EST.
-        """
-        if not self.enabled:
-            return
-
-        self._scheduler_healthy = True
-        create_safe_task(self._title_update_loop(), "Mod Tracker Title Update")
-        logger.tree("Mod Tracker: Title Update Scheduler Started", [
-            ("Update Time", "Daily at 12:00 AM EST"),
-            ("Status", "Healthy"),
-        ], emoji="📅")
-
-    async def _title_update_loop(self: "ModTrackerService") -> None:
-        """
-        Loop that updates thread titles at 00:00 EST daily.
-        """
-        try:
-            while True:
-                try:
-                    # Calculate time until next midnight EST
-                    now = datetime.now(NY_TZ)
-                    midnight = datetime.combine(
-                        now.date() + timedelta(days=1),
-                        time(0, 0),
-                        tzinfo=NY_TZ,
-                    )
-                    seconds_until_midnight = (midnight - now).total_seconds()
-
-                    logger.debug(f"Mod Tracker: Next scan in {seconds_until_midnight / 3600:.1f} hours")
-
-                    # Wait until midnight
-                    await asyncio.sleep(seconds_until_midnight)
-
-                    # Run comprehensive scan
-                    await self._run_comprehensive_scan()
-
-                except asyncio.CancelledError:
-                    raise  # Re-raise to exit the loop
-                except Exception as e:
-                    logger.error("Mod Tracker: Title Update Loop Error", [
-                        ("Error", str(e)[:100]),
-                    ])
-                    # Wait an hour before retrying on error
-                    await asyncio.sleep(self.config.hourly_task_interval)
-        finally:
-            self._scheduler_healthy = False
-            logger.info("Mod Tracker: Scheduler stopped")
 
     async def _run_comprehensive_scan(self: "ModTrackerService") -> None:
         """

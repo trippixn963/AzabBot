@@ -671,43 +671,8 @@ class LoggingService(
         return html_output
 
     # =========================================================================
-    # Log Retention / Cleanup
+    # Log Retention / Cleanup (called by MaintenanceService)
     # =========================================================================
-
-    async def start_retention_cleanup(self) -> None:
-        """Start the scheduled log retention cleanup task."""
-        if not self.enabled or self.config.log_retention_days <= 0:
-            logger.debug("Log retention cleanup disabled")
-            return
-
-        create_safe_task(self._retention_cleanup_loop(), "Log Retention Cleanup")
-        logger.tree("Log Retention Started", [
-            ("Retention", f"{self.config.log_retention_days} days"),
-            ("Schedule", "Daily at midnight EST"),
-        ], emoji="🗑️")
-
-    async def _retention_cleanup_loop(self) -> None:
-        """Loop that runs maintenance tasks daily at midnight (00:00) EST."""
-        from datetime import timedelta
-
-        while True:
-            try:
-                now = datetime.now(NY_TZ)
-                target = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                if now >= target:
-                    target = target + timedelta(days=1)
-
-                wait_seconds = (target - now).total_seconds()
-                await asyncio.sleep(wait_seconds)
-
-                await self._cleanup_old_logs()
-                await self._validate_utility_threads()
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("Log Retention Loop Error", [("Error", str(e))])
-                await asyncio.sleep(SECONDS_PER_HOUR)
 
     async def _cleanup_old_logs(self) -> None:
         """Delete log messages older than retention period."""

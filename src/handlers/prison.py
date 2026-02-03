@@ -72,9 +72,6 @@ class PrisonHandler:
         # =================================================================
         self._state_lock = asyncio.Lock()
 
-        # Start daily cleanup task
-        create_safe_task(self._daily_cleanup_loop(), "Prison Daily Cleanup")
-
         logger.tree("Prison Handler Loaded", [
             ("Features", "Welcome, release, VC kick"),
             ("VC Timeout", "1st warn, 2nd 5m, 3rd+ 30m"),
@@ -399,75 +396,6 @@ class PrisonHandler:
                 ("Error", str(e)[:50]),
             ])
 
-    # =========================================================================
-    # Cleanup Tasks
-    # =========================================================================
-
-    async def _daily_cleanup_loop(self) -> None:
-        """Background task for daily prison channel cleanup at midnight."""
-        try:
-            await self.bot.wait_until_ready()
-            logger.info("Daily Cleanup Loop Started")
-
-            while not self.bot.is_closed():
-                try:
-                    # Calculate time until next midnight
-                    now = datetime.now(NY_TZ)
-                    next_cleanup = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                    if next_cleanup <= now:
-                        next_cleanup += timedelta(days=1)
-
-                    sleep_seconds = (next_cleanup - now).total_seconds()
-                    logger.debug(f"Next cleanup scheduled in {sleep_seconds/3600:.1f} hours")
-
-                    await asyncio.sleep(sleep_seconds)
-
-                    # Execute cleanup
-                    prison_channel = None
-                    if self.config.prison_channel_ids:
-                        prison_channel = self.bot.get_channel(
-                            next(iter(self.config.prison_channel_ids))
-                        )
-
-                    if prison_channel:
-                        deleted_count = 0
-                        two_weeks_ago = datetime.now(timezone.utc) - timedelta(days=14)
-
-                        while True:
-                            messages_to_delete = []
-                            async for message in prison_channel.history(limit=QUERY_LIMIT_XXL):
-                                if message.created_at > two_weeks_ago:
-                                    messages_to_delete.append(message)
-
-                            if not messages_to_delete:
-                                break
-
-                            try:
-                                for i in range(0, len(messages_to_delete), 100):
-                                    batch = messages_to_delete[i:i + 100]
-                                    await prison_channel.delete_messages(batch)
-                                    deleted_count += len(batch)
-                                    await rate_limit("bulk_operation")
-                            except discord.HTTPException:
-                                break
-
-                            await rate_limit("bulk_operation")
-
-                        logger.tree("Daily Cleanup Complete", [
-                            ("Channel", f"#{prison_channel.name}"),
-                            ("Deleted", str(deleted_count)),
-                        ], emoji="🧹")
-
-                except Exception as e:
-                    logger.error("Cleanup Loop Error", [
-                        ("Error", str(e)),
-                    ])
-                    await asyncio.sleep(self.config.hourly_task_interval)
-
-        except Exception as e:
-            logger.error("Cleanup Loop Setup Error", [
-                ("Error", str(e)),
-            ])
 
 
 # =============================================================================

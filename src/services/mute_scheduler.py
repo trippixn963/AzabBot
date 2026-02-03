@@ -101,13 +101,9 @@ class MuteScheduler:
         # Start mute role overwrites scan (delayed)
         create_safe_task(self._run_startup_overwrites_scan(), "Mute Overwrites Scan")
 
-        # Start midnight scan loop
-        create_safe_task(self._midnight_scan_loop(), "Mute Midnight Scan")
-
         logger.tree("Mute Scheduler Started", [
             ("Check Interval", "30 seconds"),
             ("Startup Scan", "30s after ready"),
-            ("Midnight Scan", "12:00 AM EST"),
             ("Status", "Running"),
         ], emoji="⏰")
 
@@ -556,46 +552,6 @@ class MuteScheduler:
             logger.error("Mute Overwrites Scan Error", [
                 ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
-
-    async def _midnight_scan_loop(self) -> None:
-        """Run muted role overwrites scan at midnight EST daily."""
-        await self.bot.wait_until_ready()
-        from datetime import timedelta
-
-        backoff = STARTUP_SYNC_BACKOFF_MIN
-        max_backoff = STARTUP_SYNC_BACKOFF_MAX
-
-        while self.running:
-            try:
-                # Calculate time until midnight EST
-                now = datetime.now(NY_TZ)
-                target = now.replace(hour=0, minute=0, second=0, microsecond=0)
-
-                # If past midnight, schedule for tomorrow
-                if now >= target:
-                    target = target + timedelta(days=1)
-
-                seconds_until = (target - now).total_seconds()
-
-                # Wait until midnight
-                await asyncio.sleep(seconds_until)
-
-                # Run the scan
-                await self._scan_mute_role_overwrites()
-
-                # Reset backoff on success
-                backoff = STARTUP_SYNC_BACKOFF_MIN
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("Mute Midnight Scan Error", [
-                    ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
-                    ("Retry In", f"{backoff // SECONDS_PER_HOUR}h"),
-                ])
-                # Apply exponential backoff
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, max_backoff)
 
     async def _scan_mute_role_overwrites(self) -> None:
         """
