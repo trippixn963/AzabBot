@@ -495,7 +495,7 @@ def build_ticket_claimed_dm(
 def build_panel_embed() -> discord.Embed:
     """Build the ticket creation panel embed."""
     embed = discord.Embed(
-        title="🎫 Support Tickets",
+        title="SUPPORT TICKETS",
         description=(
             "Open a ticket to get in touch with our staff team.\n"
             "Select a category below that best fits your inquiry.\n\n"
