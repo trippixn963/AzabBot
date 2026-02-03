@@ -17,7 +17,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
-from src.core.constants import EMOJI_MODMAIL, EMOJI_CLOSE
+from src.core.constants import EMOJI_MODMAIL, EMOJI_CLOSE, DELETE_AFTER_MEDIUM, THREAD_NAME_MAX_LENGTH
 from src.utils.footer import set_footer
 from src.utils.retry import safe_fetch_channel, safe_send
 from src.views import UserInfoSelect
@@ -191,7 +191,7 @@ class ModmailService:
         # Build thread name
         thread_name = f"Modmail | {user.name}"
         if len(thread_name) > 100:
-            thread_name = thread_name[:97] + "..."
+            thread_name = thread_name[:THREAD_NAME_MAX_LENGTH] + "..."
 
         # Build initial embed
         embed = discord.Embed(
@@ -336,7 +336,7 @@ class ModmailService:
         except discord.Forbidden:
             await message.channel.send(
                 f"Could not DM user - they may have DMs disabled.",
-                delete_after=10
+                delete_after=DELETE_AFTER_MEDIUM
             )
             return False
         except discord.HTTPException as e:
@@ -444,7 +444,7 @@ class ModmailService:
             except discord.HTTPException:
                 await message.channel.send(
                     "Could not find user to relay message.",
-                    delete_after=10
+                    delete_after=DELETE_AFTER_MEDIUM
                 )
                 return True
 

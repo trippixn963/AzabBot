@@ -18,7 +18,16 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
-from src.core.constants import CASE_LOG_TIMEOUT
+from src.core.constants import (
+    CASE_LOG_TIMEOUT,
+    DELETE_AFTER_SHORT,
+    DELETE_AFTER_MEDIUM,
+    LOG_TRUNCATE_SHORT,
+    PARTNERSHIP_COOLDOWN,
+    PRISONER_PING_WINDOW,
+    PRISONER_PING_MAX,
+    PRISONER_WARNING_COOLDOWN,
+)
 from src.utils.footer import set_footer
 from src.utils.snipe_blocker import block_from_snipe
 
@@ -34,14 +43,8 @@ INVITE_PATTERN = re.compile(
     re.IGNORECASE
 )
 
-# =============================================================================
-# Prisoner Ping Rate Limiting Constants
-# =============================================================================
-
-PRISONER_PING_WINDOW = 60  # Time window in seconds for tracking pings
-PRISONER_PING_MAX = 3  # Max pings allowed in the window before timeout
-PRISONER_PING_TIMEOUT = timedelta(hours=1)  # Discord timeout duration
-PRISONER_WARNING_COOLDOWN = 30  # Seconds between warning messages per user
+# Prisoner timeout duration (1 hour) - kept here as it's specific to this handler
+PRISONER_PING_TIMEOUT = timedelta(hours=1)
 
 
 class HelpersMixin:
@@ -80,7 +83,7 @@ class HelpersMixin:
             logger.warning("Prisoner Ping Delete Failed", [
                 ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
                 ("ID", str(message.author.id)),
-                ("Error", str(e)[:50]),
+                ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
             ])
             return
 
@@ -120,7 +123,7 @@ class HelpersMixin:
                     try:
                         await message.channel.send(
                             f"🔇 {message.author.mention} has been timed out for 1 hour for ping spam.",
-                            delete_after=10.0,
+                            delete_after=DELETE_AFTER_MEDIUM,
                         )
                     except discord.HTTPException:
                         pass
@@ -139,7 +142,7 @@ class HelpersMixin:
                 logger.warning("Prisoner Timeout Failed", [
                     ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
                     ("ID", str(message.author.id)),
-                    ("Error", str(e)[:50]),
+                    ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
                 ])
             return
 
@@ -157,7 +160,7 @@ class HelpersMixin:
                 await message.channel.send(
                     f"{message.author.mention} Prisoners cannot ping others. "
                     f"({remaining} more = 1h timeout)",
-                    delete_after=5.0,
+                    delete_after=DELETE_AFTER_SHORT,
                 )
             except discord.HTTPException:
                 pass
@@ -207,7 +210,7 @@ class HelpersMixin:
         cooldown_key = f"partnership_response:{message.channel.id}"
         if hasattr(self, '_partnership_cooldowns'):
             last_response = self._partnership_cooldowns.get(cooldown_key, 0)
-            if datetime.now(NY_TZ).timestamp() - last_response < 300:  # 5 min cooldown per channel
+            if datetime.now(NY_TZ).timestamp() - last_response < PARTNERSHIP_COOLDOWN:
                 return
         else:
             self._partnership_cooldowns = {}
@@ -313,7 +316,7 @@ class HelpersMixin:
                 ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
                 ("ID", str(member.id)),
                 ("Channel", f"#{message.channel.name}"),
-                ("Error", str(e)[:50]),
+                ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
             ], emoji="❌")
 
         # -----------------------------------------------------------------
@@ -344,7 +347,7 @@ class HelpersMixin:
             logger.tree("INVITE MUTE FAILED", [
                 ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
                 ("ID", str(member.id)),
-                ("Error", str(e)[:50]),
+                ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
             ], emoji="❌")
             return
 
@@ -433,7 +436,7 @@ class HelpersMixin:
                 logger.tree("PRISON NOTIFICATION FAILED", [
                     ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
                     ("ID", str(member.id)),
-                    ("Error", str(e)[:50]),
+                    ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
                 ], emoji="❌")
         else:
             logger.tree("PRISON NOTIFICATION SKIPPED", [
@@ -481,7 +484,7 @@ class HelpersMixin:
                     ("Action", "Auto-Mute (Invite Link)"),
                     ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
                     ("ID", str(member.id)),
-                    ("Error", str(e)[:100]),
+                    ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
                 ])
         else:
             logger.tree("CASE LOG SKIPPED", [

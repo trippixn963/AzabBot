@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from src.core.logger import logger
+from src.core.constants import MODAL_FIELD_SHORT, MODAL_FIELD_MEDIUM, MODAL_FIELD_LONG
 from .constants import TICKET_CATEGORIES
 
 if TYPE_CHECKING:
@@ -39,7 +40,7 @@ class TicketCreateModal(discord.ui.Modal, title="Create Ticket"):
             placeholder=f"Brief summary of your {cat_info['label'].lower()} request...",
             required=True,
             min_length=1,
-            max_length=100,
+            max_length=MODAL_FIELD_SHORT,
         )
         self.add_item(self.subject)
 
@@ -49,7 +50,7 @@ class TicketCreateModal(discord.ui.Modal, title="Create Ticket"):
             placeholder="Describe your issue or request in detail...",
             required=True,
             min_length=1,
-            max_length=1000,
+            max_length=MODAL_FIELD_LONG,
         )
         self.add_item(self.description)
 
@@ -155,7 +156,7 @@ class TicketCloseModal(discord.ui.Modal, title="Close Ticket"):
             style=discord.TextStyle.paragraph,
             placeholder="Why is this ticket being closed? (optional)",
             required=False,
-            max_length=500,
+            max_length=MODAL_FIELD_MEDIUM,
         )
         self.add_item(self.reason)
 
@@ -210,7 +211,7 @@ class TicketAddUserModal(discord.ui.Modal, title="Add User to Ticket"):
             placeholder="Enter user ID (e.g., 123456789) or @mention",
             required=True,
             min_length=1,
-            max_length=100,
+            max_length=MODAL_FIELD_SHORT,
         )
         self.add_item(self.user_input)
 

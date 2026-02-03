@@ -177,7 +177,7 @@ class QueueMixin:
                 logger.error("Mod Tracker: Queue processor error", [
                     ("Error", str(e)[:100]),
                 ])
-                await asyncio.sleep(1)
+                await asyncio.sleep(QUEUE_PROCESS_INTERVAL)
 
     async def _send_queued_item(self: "ModTrackerService", item: "QueueItem") -> bool:
         """Send a single queued item to Discord."""

@@ -18,6 +18,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config
+from src.core.constants import AUDIT_LOG_WAIT
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -45,7 +46,7 @@ class ChannelEvents(commands.Cog):
     ) -> Optional[discord.Member]:
         """Get the moderator from the most recent audit log entry for an action."""
         try:
-            await asyncio.sleep(0.5)  # Wait for audit log to be available
+            await asyncio.sleep(AUDIT_LOG_WAIT)  # Wait for audit log to be available
             async for entry in guild.audit_logs(action=action, limit=1):
                 if entry.user and isinstance(entry.user, discord.Member):
                     return entry.user

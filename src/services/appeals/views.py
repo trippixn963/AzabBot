@@ -18,7 +18,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.views import CASE_EMOJI, APPROVE_EMOJI, APPEAL_EMOJI, DENY_EMOJI, InfoButton, HistoryButton, UserInfoSelect
-from src.core.constants import EMOJI_ID_MODMAIL, EMOJI_ID_TRANSCRIPT
+from src.core.constants import EMOJI_ID_MODMAIL, EMOJI_ID_TRANSCRIPT, MODAL_FIELD_MEDIUM, MODAL_FIELD_LONG
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -512,7 +512,7 @@ class AppealReasonModal(discord.ui.Modal):
             style=discord.TextStyle.paragraph,
             placeholder="Enter a reason for this decision...",
             required=False,
-            max_length=500,
+            max_length=MODAL_FIELD_MEDIUM,
         )
         self.add_item(self.reason)
 
@@ -654,7 +654,7 @@ class SubmitAppealModal(discord.ui.Modal, title="Submit Appeal"):
             placeholder="Explain why you believe your ban/mute should be reversed...",
             required=True,
             min_length=20,
-            max_length=1000,
+            max_length=MODAL_FIELD_LONG,
         )
         self.add_item(self.reason)
 

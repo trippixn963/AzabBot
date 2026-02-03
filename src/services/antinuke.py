@@ -31,6 +31,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
+from src.core.constants import RATE_LIMIT_DELAY
 from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
@@ -532,7 +533,7 @@ class AntiNukeService:
                             ("Role", f"{role.name} ({role.id})"),
                             ("Guild", guild.name),
                         ])
-                        await asyncio.sleep(0.5)  # Rate limit protection
+                        await asyncio.sleep(RATE_LIMIT_DELAY)  # Rate limit protection
                     except discord.Forbidden:
                         logger.warning("Role Quarantine Failed (Forbidden)", [
                             ("Role", f"{role.name} ({role.id})"),
@@ -590,7 +591,7 @@ class AntiNukeService:
                             ("Role", f"{role.name} ({role.id})"),
                             ("Guild", guild.name),
                         ])
-                        await asyncio.sleep(0.5)  # Rate limit protection
+                        await asyncio.sleep(RATE_LIMIT_DELAY)  # Rate limit protection
                     except discord.Forbidden:
                         logger.warning("Role Restore Failed (Forbidden)", [
                             ("Role", f"{role.name} ({role.id})"),

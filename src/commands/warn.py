@@ -29,7 +29,7 @@ from src.utils.footer import set_footer
 from src.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
 from src.utils.dm_helpers import send_moderation_dm
-from src.core.constants import CASE_LOG_TIMEOUT, MODERATION_REASONS
+from src.core.constants import CASE_LOG_TIMEOUT, MODERATION_REASONS, MODAL_FIELD_MEDIUM
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -46,7 +46,7 @@ class WarnModal(discord.ui.Modal, title="Warn User"):
         label="Reason",
         placeholder="Reason for the warning",
         required=False,
-        max_length=500,
+        max_length=MODAL_FIELD_MEDIUM,
         style=discord.TextStyle.paragraph,
     )
 

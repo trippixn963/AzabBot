@@ -17,7 +17,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
-from src.core.constants import PRESENCE_UPDATE_INTERVAL, PROMO_DURATION_MINUTES
+from src.core.constants import PRESENCE_UPDATE_INTERVAL, PROMO_DURATION_MINUTES, PRESENCE_RETRY_DELAY
 
 # Import from shared unified presence system
 from shared.services.presence import BasePresenceHandler
@@ -273,7 +273,7 @@ class PresenceHandler(BasePresenceHandler):
             ], emoji="🔴")
 
             # Revert after delay
-            await asyncio.sleep(5)
+            await asyncio.sleep(PRESENCE_RETRY_DELAY)
             await self._update_rotating_presence()
 
         except Exception as e:
@@ -325,7 +325,7 @@ class PresenceHandler(BasePresenceHandler):
             ], emoji="🟢")
 
             # Revert after delay
-            await asyncio.sleep(5)
+            await asyncio.sleep(PRESENCE_RETRY_DELAY)
             await self._update_rotating_presence()
 
         except Exception as e:

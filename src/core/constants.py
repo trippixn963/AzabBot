@@ -59,6 +59,27 @@ CASE_LOG_TIMEOUT = 10.0               # Case logging timeout
 GUILD_FETCH_TIMEOUT = 5.0             # Guild/channel fetch timeout
 DB_CONNECTION_TIMEOUT = 30.0          # SQLite connection timeout
 AUDIT_LOG_WAIT = 0.5                  # Wait for audit log availability
+RATE_LIMIT_DELAY = 0.5                # Delay for Discord rate limit protection
+
+# =============================================================================
+# Delete After Constants (seconds before auto-delete messages)
+# =============================================================================
+
+DELETE_AFTER_SHORT = 5                # Brief warnings, quick confirmations
+DELETE_AFTER_MEDIUM = 10              # Standard confirmations, status updates
+DELETE_AFTER_LONG = 15                # Alerts, spam warnings
+DELETE_AFTER_EXTENDED = 30            # Important notifications, raid alerts
+
+# =============================================================================
+# Backoff & Retry Constants
+# =============================================================================
+
+BACKOFF_MIN = 30                      # Minimum backoff delay
+BACKOFF_MAX = 300                     # Maximum backoff delay (5 minutes)
+BACKOFF_MULTIPLIER = 2                # Exponential backoff multiplier
+STARTUP_SYNC_BACKOFF_MIN = SECONDS_PER_HOUR  # Startup sync min backoff
+STARTUP_SYNC_BACKOFF_MAX = 14400      # Startup sync max backoff (4 hours)
+CASE_LOG_BACKOFF_MAX = SECONDS_PER_HOUR  # Case log retry max backoff
 
 # =============================================================================
 # Cooldown Constants (in seconds)
@@ -69,6 +90,19 @@ PRISONER_COOLDOWN = 30                # Prisoner response cooldown
 TICKET_CREATION_COOLDOWN = 300        # 5 minutes - ticket creation
 CLOSE_REQUEST_COOLDOWN = 300          # 5 minutes - close request
 APPEAL_COOLDOWN = SECONDS_PER_DAY     # 24 hours - appeal cooldown
+PARTNERSHIP_COOLDOWN = 300            # 5 minutes - partnership response cooldown
+PRISONER_WARNING_COOLDOWN = 30        # Prisoner warning rate limit
+
+# =============================================================================
+# Background Task Intervals (in seconds)
+# =============================================================================
+
+QUEUE_PROCESS_INTERVAL = 1            # Queue processing loop interval
+PRESENCE_RETRY_DELAY = 5              # Delay between presence update attempts
+FORBID_STARTUP_DELAY = 30             # Delay before forbid scan on startup
+FORBID_CHECK_INTERVAL = 60            # Forbid expiry check interval
+CASE_ARCHIVE_CHECK_INTERVAL = 60      # Case archive check interval
+LOG_ARCHIVE_CHECK_INTERVAL = SECONDS_PER_HOUR  # Log archive check interval
 
 # =============================================================================
 # Raid & Security Constants
@@ -92,6 +126,17 @@ BAN_HISTORY_TTL = SECONDS_PER_DAY     # 24 hours - ban history
 MASS_PERMISSION_WINDOW = 300          # 5 minutes - mass permission changes
 TARGET_HARASSMENT_WINDOW = 300        # 5 minutes - target harassment
 TARGET_HARASSMENT_TTL = SECONDS_PER_HOUR  # 1 hour - harassment history
+
+# =============================================================================
+# Content Moderation Constants
+# =============================================================================
+
+# Auto-mute for repeated religion talk violations
+RELIGION_OFFENSE_WINDOW = SECONDS_PER_HOUR  # 1 hour window for counting offenses
+RELIGION_OFFENSE_THRESHOLD = 3              # Offenses before auto-mute
+RELIGION_AUTO_MUTE_MINUTES = 10             # Auto-mute duration in minutes
+RELIGION_WARNING_DELETE_AFTER = 3           # Seconds before warning deletes
+RELIGION_MUTE_MSG_DELETE_AFTER = 10         # Seconds before mute msg deletes
 
 # =============================================================================
 # Moderation Constants
@@ -131,6 +176,8 @@ THREAD_DELETE_DELAY = SECONDS_PER_HOUR  # 1 hour - delay before deleting thread
 PRISON_MESSAGE_SCAN_LIMIT = 500       # Messages to scan for context
 MESSAGE_HISTORY_SIZE = 10             # Conversation history size
 DEFAULT_TIMEOUT_MINUTES = 30          # Default timeout for prisoners
+PRISONER_PING_WINDOW = 60             # Window for tracking ping violations
+PRISONER_PING_MAX = 3                 # Max pings before timeout
 
 # =============================================================================
 # Cache & Limit Constants
@@ -154,18 +201,40 @@ QUEUE_MAX_SIZE = 500                  # Max queue size
 POLLS_CLEANUP_LIMIT = 100             # Polls to check for cleanup
 
 # =============================================================================
+# Query & Fetch Limits
+# =============================================================================
+
+QUERY_LIMIT_SMALL = 10                # Small queries (history, recent actions)
+QUERY_LIMIT_MEDIUM = 50               # Medium queries (leaderboards, lists)
+QUERY_LIMIT_LARGE = 100               # Large queries (bulk fetches)
+QUERY_LIMIT_XL = 200                  # Extra large queries (forum threads)
+QUERY_LIMIT_XXL = 500                 # Maximum queries (full scans)
+
+# =============================================================================
 # Text Length Limits
 # =============================================================================
 
 MUTE_REASON_MAX_LENGTH = 100          # Max mute reason length
 MESSAGE_CONTENT_MAX_LENGTH = 500      # Max message content for logs
-LOG_TRUNCATE_LENGTH = 50              # Truncate length for logs
+LOG_TRUNCATE_SHORT = 50               # Short truncation for logs
+LOG_TRUNCATE_MEDIUM = 100             # Medium truncation for logs
+LOG_TRUNCATE_LONG = 200               # Long truncation for logs
+LOG_TRUNCATE_LENGTH = 50              # Alias for LOG_TRUNCATE_SHORT (backwards compat)
 MAX_CONTENT_LENGTH = 1000             # Max content for embeds
 MAX_CHANGES_LENGTH = 1000             # Max changes text
+THREAD_NAME_MAX_LENGTH = 97           # Discord thread name limit (100 - 3 for "...")
 
 # Discord embed limits
 EMBED_DESCRIPTION_LIMIT = 4096
 EMBED_FIELD_VALUE_LIMIT = 1024
+
+# =============================================================================
+# Modal Field Limits
+# =============================================================================
+
+MODAL_FIELD_SHORT = 100               # Short input fields (titles, names)
+MODAL_FIELD_MEDIUM = 500              # Medium input fields (reasons, descriptions)
+MODAL_FIELD_LONG = 1000               # Long input fields (detailed text)
 
 # =============================================================================
 # Discord Limits
@@ -336,12 +405,34 @@ __all__ = [
     "GUILD_FETCH_TIMEOUT",
     "DB_CONNECTION_TIMEOUT",
     "AUDIT_LOG_WAIT",
+    "RATE_LIMIT_DELAY",
+    # Delete after
+    "DELETE_AFTER_SHORT",
+    "DELETE_AFTER_MEDIUM",
+    "DELETE_AFTER_LONG",
+    "DELETE_AFTER_EXTENDED",
+    # Backoff & Retry
+    "BACKOFF_MIN",
+    "BACKOFF_MAX",
+    "BACKOFF_MULTIPLIER",
+    "STARTUP_SYNC_BACKOFF_MIN",
+    "STARTUP_SYNC_BACKOFF_MAX",
+    "CASE_LOG_BACKOFF_MAX",
     # Cooldowns
     "COMMAND_COOLDOWN",
     "PRISONER_COOLDOWN",
     "TICKET_CREATION_COOLDOWN",
     "CLOSE_REQUEST_COOLDOWN",
     "APPEAL_COOLDOWN",
+    "PARTNERSHIP_COOLDOWN",
+    "PRISONER_WARNING_COOLDOWN",
+    # Background task intervals
+    "QUEUE_PROCESS_INTERVAL",
+    "PRESENCE_RETRY_DELAY",
+    "FORBID_STARTUP_DELAY",
+    "FORBID_CHECK_INTERVAL",
+    "CASE_ARCHIVE_CHECK_INTERVAL",
+    "LOG_ARCHIVE_CHECK_INTERVAL",
     # Raid & Security
     "RAID_THRESHOLD",
     "RAID_WINDOW",
@@ -354,6 +445,12 @@ __all__ = [
     "MASS_PERMISSION_WINDOW",
     "TARGET_HARASSMENT_WINDOW",
     "TARGET_HARASSMENT_TTL",
+    # Content Moderation
+    "RELIGION_OFFENSE_WINDOW",
+    "RELIGION_OFFENSE_THRESHOLD",
+    "RELIGION_AUTO_MUTE_MINUTES",
+    "RELIGION_WARNING_DELETE_AFTER",
+    "RELIGION_MUTE_MSG_DELETE_AFTER",
     # Moderation
     "WARNING_DECAY_DAYS",
     "SNIPE_MAX_AGE",
@@ -374,6 +471,14 @@ __all__ = [
     "PRISON_MESSAGE_SCAN_LIMIT",
     "MESSAGE_HISTORY_SIZE",
     "DEFAULT_TIMEOUT_MINUTES",
+    "PRISONER_PING_WINDOW",
+    "PRISONER_PING_MAX",
+    # Query limits
+    "QUERY_LIMIT_SMALL",
+    "QUERY_LIMIT_MEDIUM",
+    "QUERY_LIMIT_LARGE",
+    "QUERY_LIMIT_XL",
+    "QUERY_LIMIT_XXL",
     # Caches
     "LAST_MESSAGES_LIMIT",
     "ATTACHMENT_CACHE_LIMIT",
@@ -387,11 +492,19 @@ __all__ = [
     # Text limits
     "MUTE_REASON_MAX_LENGTH",
     "MESSAGE_CONTENT_MAX_LENGTH",
+    "LOG_TRUNCATE_SHORT",
+    "LOG_TRUNCATE_MEDIUM",
+    "LOG_TRUNCATE_LONG",
     "LOG_TRUNCATE_LENGTH",
     "MAX_CONTENT_LENGTH",
     "MAX_CHANGES_LENGTH",
+    "THREAD_NAME_MAX_LENGTH",
     "EMBED_DESCRIPTION_LIMIT",
     "EMBED_FIELD_VALUE_LIMIT",
+    # Modal field limits
+    "MODAL_FIELD_SHORT",
+    "MODAL_FIELD_MEDIUM",
+    "MODAL_FIELD_LONG",
     # Discord limits
     "MAX_EMBEDS_PER_REQUEST",
     "MAX_AUTOCOMPLETE_RESULTS",

@@ -16,6 +16,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors
+from src.core.constants import QUERY_LIMIT_LARGE
 from src.utils.footer import set_footer
 from src.views import build_history_embed, build_history_view
 from ..constants import INFO_EMOJI
@@ -253,7 +254,7 @@ class InfoSelectView(discord.ui.View):
 
         # Mod Stats Summary (use cache if available)
         if self._cases_cache is None:
-            self._cases_cache = bot.ticket_service.db.get_user_cases(self.user_id, self.guild_id, limit=100) or []
+            self._cases_cache = bot.ticket_service.db.get_user_cases(self.user_id, self.guild_id, limit=QUERY_LIMIT_LARGE) or []
         cases = self._cases_cache
         if cases:
             warns = sum(1 for c in cases if c.get("action_type") == "warn")
@@ -282,7 +283,7 @@ class InfoSelectView(discord.ui.View):
         """
         # Get all cases (use cache if available)
         if self._cases_cache is None:
-            self._cases_cache = bot.ticket_service.db.get_user_cases(self.user_id, self.guild_id, limit=100) or []
+            self._cases_cache = bot.ticket_service.db.get_user_cases(self.user_id, self.guild_id, limit=QUERY_LIMIT_LARGE) or []
         cases = self._cases_cache[:10]  # Show 10 in criminal history
 
         # Use the shared history embed builder for unified format

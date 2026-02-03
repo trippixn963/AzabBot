@@ -26,6 +26,13 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
+from src.core.constants import (
+    AUTO_UNLOCK_DURATION,
+    LOCKDOWN_COOLDOWN,
+    DELETE_AFTER_EXTENDED,
+    LOG_TRUNCATE_SHORT,
+    LOG_TRUNCATE_MEDIUM,
+)
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.async_utils import create_safe_task
@@ -39,12 +46,6 @@ if TYPE_CHECKING:
 # =============================================================================
 # Constants
 # =============================================================================
-
-# Auto-unlock duration (seconds)
-AUTO_UNLOCK_DURATION: int = 300  # 5 minutes
-
-# Cooldown between auto-lockdowns (prevent spam)
-LOCKDOWN_COOLDOWN: int = 600  # 10 minutes
 
 # Maximum concurrent channel operations
 MAX_CONCURRENT_OPS: int = 10
@@ -167,15 +168,15 @@ class RaidLockdownService:
             error_msg = f"#{channel.name}: {e.text[:50] if e.text else 'HTTP error'}"
             logger.warning("Auto-Lock Channel Failed", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False, error_msg
 
         except Exception as e:
-            error_msg = f"#{channel.name}: {str(e)[:50]}"
+            error_msg = f"#{channel.name}: {str(e)[:LOG_TRUNCATE_SHORT]}"
             logger.error("Auto-Lock Channel Error", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
                 ("Type", type(e).__name__),
             ])
             return False, error_msg
@@ -249,15 +250,15 @@ class RaidLockdownService:
             error_msg = f"🔊{channel.name}: {e.text[:50] if e.text else 'HTTP error'}"
             logger.warning("Auto-Lock Channel Failed", [
                 ("Channel", f"🔊{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False, error_msg
 
         except Exception as e:
-            error_msg = f"🔊{channel.name}: {str(e)[:50]}"
+            error_msg = f"🔊{channel.name}: {str(e)[:LOG_TRUNCATE_SHORT]}"
             logger.error("Auto-Lock Channel Error", [
                 ("Channel", f"🔊{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
                 ("Type", type(e).__name__),
             ])
             return False, error_msg
@@ -333,17 +334,17 @@ class RaidLockdownService:
         except discord.HTTPException as e:
             logger.warning("Auto-Unlock Channel Failed", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False, f"#{channel.name}: HTTP error"
 
         except Exception as e:
             logger.error("Auto-Unlock Channel Error", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
                 ("Type", type(e).__name__),
             ])
-            return False, f"#{channel.name}: {str(e)[:50]}"
+            return False, f"#{channel.name}: {str(e)[:LOG_TRUNCATE_SHORT]}"
 
     async def _unlock_voice_channel(
         self,
@@ -409,17 +410,17 @@ class RaidLockdownService:
         except discord.HTTPException as e:
             logger.warning("Auto-Unlock Channel Failed", [
                 ("Channel", f"🔊{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False, f"🔊{channel.name}: HTTP error"
 
         except Exception as e:
             logger.error("Auto-Unlock Channel Error", [
                 ("Channel", f"🔊{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
                 ("Type", type(e).__name__),
             ])
-            return False, f"🔊{channel.name}: {str(e)[:50]}"
+            return False, f"🔊{channel.name}: {str(e)[:LOG_TRUNCATE_SHORT]}"
 
     async def _lock_all_channels(
         self,
@@ -640,7 +641,7 @@ class RaidLockdownService:
                     )
                 except Exception as e:
                     logger.warning("Auto-Lockdown Server Log Failed", [
-                        ("Error", str(e)[:100]),
+                        ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
                     ])
 
             # Send public announcement
@@ -663,7 +664,7 @@ class RaidLockdownService:
         except Exception as e:
             logger.error("Raid Auto-Lockdown Failed", [
                 ("Guild", f"{guild.name} ({guild.id})"),
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
                 ("Type", type(e).__name__),
             ])
             self.db.clear_lockdown_permissions(guild.id)
@@ -726,7 +727,7 @@ class RaidLockdownService:
                     await self.bot.logging_service.log_auto_unlock()
                 except Exception as e:
                     logger.warning("Auto-Unlock Server Log Failed", [
-                        ("Error", str(e)[:100]),
+                        ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
                     ])
 
         except asyncio.CancelledError:
@@ -738,7 +739,7 @@ class RaidLockdownService:
         except Exception as e:
             logger.error("Auto-Unlock Failed", [
                 ("Guild", f"{guild.name} ({guild.id})"),
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
                 ("Type", type(e).__name__),
             ])
 
@@ -817,7 +818,7 @@ class RaidLockdownService:
         except discord.HTTPException as e:
             logger.warning("Lockdown Announcement Failed", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False
 
@@ -869,7 +870,7 @@ class RaidLockdownService:
         except discord.HTTPException as e:
             logger.warning("Unlock Announcement Failed", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False
 
@@ -941,13 +942,13 @@ class RaidLockdownService:
 
         except discord.HTTPException as e:
             logger.warning("Mod Alert Failed", [
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False
 
         except Exception as e:
             logger.error("Mod Alert Error", [
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
                 ("Type", type(e).__name__),
             ])
             return False

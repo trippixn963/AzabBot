@@ -12,7 +12,11 @@ from typing import Optional, TYPE_CHECKING
 import discord
 
 from src.core.config import EmbedColors, NY_TZ
-from src.core.constants import CASE_LOG_TIMEOUT
+from src.core.constants import (
+    CASE_LOG_TIMEOUT,
+    DELETE_AFTER_MEDIUM,
+    DELETE_AFTER_LONG,
+)
 from src.core.logger import logger
 from src.utils.footer import set_footer
 from src.utils.snipe_blocker import block_from_snipe
@@ -254,7 +258,7 @@ class SpamHandlerMixin:
                     emoji=CASE_EMOJI,
                 ))
 
-            await message.channel.send(embed=embed, view=view, delete_after=15)
+            await message.channel.send(embed=embed, view=view, delete_after=DELETE_AFTER_LONG)
 
             # DM the user about the mute
             dm_sent = False
@@ -392,7 +396,7 @@ class SpamHandlerMixin:
             embed.add_field(name="Action", value="Warning", inline=True)
             set_footer(embed)
 
-            await channel.send(embed=embed, delete_after=10)
+            await channel.send(embed=embed, delete_after=DELETE_AFTER_MEDIUM)
 
             logger.tree("SPAM WARNING SENT", [
                 ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
@@ -468,7 +472,7 @@ class SpamHandlerMixin:
                     emoji=CASE_EMOJI,
                 ))
 
-            await channel.send(embed=embed, view=view, delete_after=15)
+            await channel.send(embed=embed, view=view, delete_after=DELETE_AFTER_LONG)
 
             # DM the user about the mute
             dm_sent = False

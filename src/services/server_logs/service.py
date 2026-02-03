@@ -17,6 +17,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
+from src.core.constants import SECONDS_PER_HOUR, QUERY_LIMIT_MEDIUM
 from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
 
@@ -205,7 +206,7 @@ class LoggingService(
         for thread in self._forum.threads:
             existing_threads[thread.name] = thread
 
-        async for thread in self._forum.archived_threads(limit=50):
+        async for thread in self._forum.archived_threads(limit=QUERY_LIMIT_MEDIUM):
             existing_threads[thread.name] = thread
 
         for category in LogCategory:
@@ -252,7 +253,7 @@ class LoggingService(
         forum_threads = list(self._forum.threads)
 
         try:
-            async for thread in self._forum.archived_threads(limit=50):
+            async for thread in self._forum.archived_threads(limit=QUERY_LIMIT_MEDIUM):
                 forum_threads.append(thread)
         except Exception:
             pass
@@ -706,7 +707,7 @@ class LoggingService(
                 break
             except Exception as e:
                 logger.error("Log Retention Loop Error", [("Error", str(e))])
-                await asyncio.sleep(3600)
+                await asyncio.sleep(SECONDS_PER_HOUR)
 
     async def _cleanup_old_logs(self) -> None:
         """Delete log messages older than retention period."""
@@ -729,7 +730,7 @@ class LoggingService(
             for thread in self._forum.threads:
                 threads.append(thread)
 
-            async for thread in self._forum.archived_threads(limit=50):
+            async for thread in self._forum.archived_threads(limit=QUERY_LIMIT_MEDIUM):
                 threads.append(thread)
 
             for thread in threads:

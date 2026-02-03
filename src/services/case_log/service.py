@@ -26,6 +26,7 @@ from src.utils.retry import (
     safe_delete,
 )
 from src.utils.async_utils import create_safe_task
+from src.core.constants import DELETE_AFTER_MEDIUM, DELETE_AFTER_EXTENDED, QUERY_LIMIT_SMALL
 
 from .constants import (
     THREAD_CACHE_TTL,
@@ -527,7 +528,7 @@ class CaseLogService(
             try:
                 await message.reply(
                     "⚠️ Please provide an **image or video** as evidence.",
-                    delete_after=10,
+                    delete_after=DELETE_AFTER_MEDIUM,
                 )
             except Exception:
                 pass
@@ -577,7 +578,7 @@ class CaseLogService(
                 # Send confirmation
                 await message.reply(
                     f"✅ Evidence captured for case `#{case['case_id']}` ({len(evidence_urls)} file(s)).",
-                    delete_after=30,
+                    delete_after=DELETE_AFTER_EXTENDED,
                 )
 
                 # Delete the evidence request message
@@ -748,7 +749,7 @@ class CaseLogService(
                 try:
                     await message.channel.send(
                         f"{message.author.mention} An attachment (screenshot/video) is required, or reply with `voice chat` if this happened in VC.",
-                        delete_after=10,
+                        delete_after=DELETE_AFTER_MEDIUM,
                     )
                 except discord.HTTPException as e:
                     logger.debug(f"Evidence requirement message failed: {message.channel.id} - {e.code}")
@@ -777,7 +778,7 @@ class CaseLogService(
                 vc_activity = self.db.get_recent_voice_activity(
                     pending["target_user_id"],
                     self.config.logging_guild_id,
-                    limit=10,
+                    limit=QUERY_LIMIT_SMALL,
                     max_age_seconds=3600,
                 )
                 if vc_activity:
@@ -822,7 +823,7 @@ class CaseLogService(
             except Exception:
                 pass
 
-            await safe_send(thread, f"✅ Reason updated by {message.author.mention}", delete_after=10)
+            await safe_send(thread, f"✅ Reason updated by {message.author.mention}", delete_after=DELETE_AFTER_MEDIUM)
 
             self.db.delete_pending_reason(pending["id"])
 

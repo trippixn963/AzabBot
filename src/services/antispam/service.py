@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 import discord
 
 from src.core.config import get_config, EmbedColors, NY_TZ
+from src.core.constants import DELETE_AFTER_EXTENDED
 from src.core.database import get_db
 from src.core.logger import logger
 from src.utils.async_utils import create_safe_task
@@ -536,7 +537,7 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
             embed.add_field(name="Reason", value="Spam wave detected", inline=True)
             set_footer(embed)
 
-            await channel.send(embed=embed, delete_after=30)
+            await channel.send(embed=embed, delete_after=DELETE_AFTER_EXTENDED)
 
             logger.tree("AUTO-SLOWMODE ENABLED", [
                 ("Channel", f"#{channel.name}"),

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.logger import logger
+from src.core.constants import MODAL_FIELD_MEDIUM
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -26,7 +27,7 @@ class BanModal(discord.ui.Modal, title="Ban User"):
         placeholder="Enter ban reason...",
         style=discord.TextStyle.paragraph,
         required=False,
-        max_length=500,
+        max_length=MODAL_FIELD_MEDIUM,
     )
 
     def __init__(self, target: discord.Member, cog, evidence: Optional[str] = None) -> None:

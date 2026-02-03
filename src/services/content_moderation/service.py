@@ -17,6 +17,13 @@ from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 import discord
 
 from src.core.config import get_config, EmbedColors, NY_TZ
+from src.core.constants import (
+    RELIGION_OFFENSE_WINDOW,
+    RELIGION_RELIGION_OFFENSE_THRESHOLD,
+    RELIGION_AUTO_MUTE_MINUTES,
+    RELIGION_WARNING_DELETE_AFTER,
+    RELIGION_MUTE_MSG_DELETE_AFTER,
+)
 from src.core.logger import logger
 from src.utils.async_utils import create_safe_task
 from src.utils.footer import set_footer
@@ -94,6 +101,10 @@ class ContentModerationService:
         # Classification cache (content_hash -> (result, timestamp))
         self._cache: OrderedDict[str, Tuple[ClassificationResult, datetime]] = OrderedDict()
         self._cache_lock = asyncio.Lock()
+
+        # Offense tracking for auto-mute (user_id -> list of offense timestamps)
+        self._offense_history: Dict[int, List[datetime]] = {}
+        self._offense_lock = asyncio.Lock()
 
         # Exempt channels and roles
         self._exempt_channels: Set[int] = set()
@@ -209,8 +220,26 @@ class ContentModerationService:
             api_cutoff = now - timedelta(minutes=2)
             self._api_calls = [t for t in self._api_calls if t > api_cutoff]
 
-        if cleaned_cooldowns > 0 or cleaned_cache > 0:
-            logger.debug(f"Content moderation cleanup: {cleaned_cooldowns} cooldowns, {cleaned_cache} cache entries")
+        # Clean old offense history
+        cleaned_offenses = 0
+        async with self._offense_lock:
+            offense_cutoff = now - timedelta(seconds=RELIGION_OFFENSE_WINDOW)
+            users_to_remove = []
+            for user_id, timestamps in self._offense_history.items():
+                # Remove old timestamps
+                self._offense_history[user_id] = [t for t in timestamps if t > offense_cutoff]
+                # Mark for removal if no recent offenses
+                if not self._offense_history[user_id]:
+                    users_to_remove.append(user_id)
+            for user_id in users_to_remove:
+                try:
+                    del self._offense_history[user_id]
+                    cleaned_offenses += 1
+                except KeyError:
+                    pass
+
+        if cleaned_cooldowns > 0 or cleaned_cache > 0 or cleaned_offenses > 0:
+            logger.debug(f"Content moderation cleanup: {cleaned_cooldowns} cooldowns, {cleaned_cache} cache, {cleaned_offenses} offense records")
 
     # =========================================================================
     # Exemption Checks
@@ -490,32 +519,36 @@ class ContentModerationService:
             # Delete the message
             await message.delete()
 
+            # Track offense and check for auto-mute
+            user_id = message.author.id
+            now = datetime.now(NY_TZ)
+            offense_count = await self._record_offense(user_id, now)
+
             logger.tree("RELIGION TALK DELETED", [
                 ("User", user_str),
                 ("Channel", channel_str),
                 ("Confidence", f"{result.confidence:.0%}"),
-                ("Reason", result.reason[:50]),
+                ("Offense Count", f"{offense_count} in last hour"),
                 ("Content", message.content[:50] + "..." if len(message.content) > 50 else message.content),
             ], emoji=VIOLATION_EMOJI)
 
-            # Send warning embed to channel
-            try:
-                embed = discord.Embed(
-                    title=f"{VIOLATION_EMOJI} Message Removed: No Religion Talk",
-                    description=f"{message.author.mention}, discussing religion is not allowed in this server.",
-                    color=EmbedColors.WARNING,
-                )
-                embed.add_field(name="Rule", value="No religion talk", inline=True)
-                embed.add_field(name="Confidence", value=f"{result.confidence:.0%}", inline=True)
-                set_footer(embed)
-
-                await message.channel.send(embed=embed, delete_after=15)
-                logger.debug(f"Warning embed sent to {channel_str}")
-            except discord.HTTPException as e:
-                logger.warning("Failed to send warning embed", [
-                    ("Channel", channel_str),
-                    ("Error", str(e)[:50]),
-                ])
+            # Check if auto-mute threshold reached
+            if offense_count >= RELIGION_OFFENSE_THRESHOLD:
+                await self._auto_mute_user(message, offense_count)
+            else:
+                # Send simple warning to channel
+                try:
+                    warning_msg = (
+                        f"{VIOLATION_EMOJI} {message.author.mention}, no religion talk.\n"
+                        f"-# Repeated offenses will cause an auto mute"
+                    )
+                    await message.channel.send(warning_msg, delete_after=RELIGION_WARNING_DELETE_AFTER)
+                    logger.debug(f"Warning sent to {channel_str}")
+                except discord.HTTPException as e:
+                    logger.warning("Failed to send warning", [
+                        ("Channel", channel_str),
+                        ("Error", str(e)[:50]),
+                    ])
 
             # Try to DM the user
             await self._send_violation_dm(message, result)
@@ -561,6 +594,150 @@ class ContentModerationService:
 
         # Alert mods for review
         await self._send_mod_alert(message, result, deleted=False)
+
+    async def _record_offense(self, user_id: int, timestamp: datetime) -> int:
+        """
+        Record an offense and return count of recent offenses.
+
+        Args:
+            user_id: The user's ID.
+            timestamp: When the offense occurred.
+
+        Returns:
+            Number of offenses within the offense window.
+        """
+        async with self._offense_lock:
+            # Initialize if first offense
+            if user_id not in self._offense_history:
+                self._offense_history[user_id] = []
+
+            # Add new offense
+            self._offense_history[user_id].append(timestamp)
+
+            # Clean up old offenses (outside the window)
+            cutoff = timestamp - timedelta(seconds=RELIGION_OFFENSE_WINDOW)
+            self._offense_history[user_id] = [
+                ts for ts in self._offense_history[user_id] if ts > cutoff
+            ]
+
+            count = len(self._offense_history[user_id])
+            logger.debug(f"Offense recorded for user {user_id}: {count}/{RELIGION_OFFENSE_THRESHOLD} in window")
+            return count
+
+    async def _auto_mute_user(self, message: discord.Message, offense_count: int) -> None:
+        """
+        Auto-mute a user for repeated religion talk violations.
+
+        Args:
+            message: The violating message.
+            offense_count: Number of offenses in the window.
+        """
+        user_str = f"{message.author} ({message.author.id})"
+        channel_str = f"#{message.channel.name}" if hasattr(message.channel, "name") else str(message.channel.id)
+        duration_mins = RELIGION_AUTO_MUTE_MINUTES
+        window_mins = RELIGION_OFFENSE_WINDOW // 60
+
+        try:
+            # Timeout the user
+            await message.author.timeout(
+                timedelta(minutes=RELIGION_AUTO_MUTE_MINUTES),
+                reason=f"Auto-mute: {offense_count} religion talk violations in {window_mins} minutes"
+            )
+
+            logger.tree("AUTO-MUTE APPLIED", [
+                ("User", user_str),
+                ("Channel", channel_str),
+                ("Offenses", f"{offense_count} in last {window_mins}m"),
+                ("Duration", f"{duration_mins} minutes"),
+            ], emoji="🔇")
+
+            # Send mute notification to channel
+            try:
+                mute_msg = (
+                    f"🔇 {message.author.mention} has been muted for {duration_mins} minutes.\n"
+                    f"-# {offense_count} religion talk violations in the last hour"
+                )
+                await message.channel.send(mute_msg, delete_after=RELIGION_MUTE_MSG_DELETE_AFTER)
+            except discord.HTTPException as e:
+                logger.warning("Failed to Send Mute Notification", [
+                    ("Channel", channel_str),
+                    ("Error", str(e)[:50]),
+                ])
+
+            # Send mod alert for the auto-mute
+            await self._send_auto_mute_alert(message, offense_count)
+
+            # Clear their offense history after mute
+            async with self._offense_lock:
+                self._offense_history[message.author.id] = []
+
+        except discord.Forbidden:
+            logger.warning("Cannot Mute User", [
+                ("User", user_str),
+                ("Channel", channel_str),
+                ("Reason", "Missing permissions or user has higher role"),
+            ])
+        except discord.HTTPException as e:
+            logger.error("Auto-Mute Failed", [
+                ("User", user_str),
+                ("Channel", channel_str),
+                ("Error", str(e)[:50]),
+            ])
+
+    async def _send_auto_mute_alert(self, message: discord.Message, offense_count: int) -> None:
+        """
+        Send alert to automod log thread for an auto-mute action.
+
+        Args:
+            message: The violating message.
+            offense_count: Number of offenses that triggered the mute.
+        """
+        if not self.bot.logging_service or not self.bot.logging_service.enabled:
+            logger.debug("Logging service not available for auto-mute alert")
+            return
+
+        duration_mins = RELIGION_AUTO_MUTE_MINUTES
+        window_mins = RELIGION_OFFENSE_WINDOW // 60
+
+        embed = discord.Embed(
+            title="🔇 Auto-Mute: Repeated Religion Talk",
+            color=EmbedColors.LOG_NEGATIVE,
+            timestamp=datetime.now(NY_TZ),
+        )
+        embed.add_field(name="User", value=f"{message.author.mention}\n{message.author.id}", inline=True)
+        embed.add_field(name="Channel", value=f"<#{message.channel.id}>", inline=True)
+        embed.add_field(name="Duration", value=f"{duration_mins} minutes", inline=True)
+        embed.add_field(
+            name="Reason",
+            value=f"{offense_count} religion talk violations in {window_mins} minutes",
+            inline=False,
+        )
+        embed.add_field(
+            name="Last Message",
+            value=f"```{message.content[:500]}```" if message.content else "(no text)",
+            inline=False,
+        )
+        set_footer(embed)
+
+        try:
+            from src.services.server_logs.categories import LogCategory
+            await self.bot.logging_service._send_log(
+                LogCategory.AUTOMOD,
+                embed,
+                user_id=message.author.id,
+            )
+            logger.debug(f"Auto-mute alert sent for user {message.author.id}")
+        except discord.HTTPException as e:
+            logger.warning("Failed to Send Auto-Mute Alert", [
+                ("User", f"{message.author.id}"),
+                ("Error", str(e)[:50]),
+            ])
+        except Exception as e:
+            logger.error("Auto-Mute Alert Failed", [
+                ("User", f"{message.author.id}"),
+                ("Error", str(e)[:50]),
+                ("Type", type(e).__name__),
+            ])
 
     async def _send_violation_dm(
         self,

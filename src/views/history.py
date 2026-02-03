@@ -17,7 +17,7 @@ import discord
 from src.core.config import get_config, EmbedColors
 from src.core.database import get_db
 from src.core.logger import logger
-from src.core.constants import WARNING_DECAY_DAYS, SECONDS_PER_DAY, SECONDS_PER_HOUR
+from src.core.constants import WARNING_DECAY_DAYS, SECONDS_PER_DAY, SECONDS_PER_HOUR, QUERY_LIMIT_SMALL
 
 from .constants import HISTORY_EMOJI
 
@@ -257,7 +257,7 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
         db = get_db()
 
         # Try to get per-action cases first (new system)
-        cases = db.get_user_cases(self.user_id, self.guild_id, limit=10, include_resolved=True)
+        cases = db.get_user_cases(self.user_id, self.guild_id, limit=QUERY_LIMIT_SMALL, include_resolved=True)
 
         if cases:
             # Show per-action cases with links to threads (using shared function)

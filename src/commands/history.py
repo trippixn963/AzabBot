@@ -24,6 +24,7 @@ from src.core.constants import (
     EMOJI_WARN,
     EMOJI_TIMEOUT,
     EMOJI_KICK,
+    QUERY_LIMIT_SMALL,
 )
 from src.utils.footer import set_footer
 from src.views import CASE_EMOJI, InfoButton, DownloadButton, build_history_embed, build_history_view
@@ -125,7 +126,7 @@ class HistoryCog(commands.Cog):
             active_warns, total_warns = self.db.get_warn_counts(user.id, guild_id)
 
             # Get recent cases
-            cases = self.db.get_user_cases(user.id, guild_id, limit=10) or []
+            cases = self.db.get_user_cases(user.id, guild_id, limit=QUERY_LIMIT_SMALL) or []
 
             # Get recent warnings
             warnings = self.db.get_user_warnings(user.id, guild_id, limit=5)

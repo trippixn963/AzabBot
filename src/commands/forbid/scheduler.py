@@ -19,6 +19,7 @@ from src.core.config import EmbedColors, NY_TZ
 from src.utils.footer import set_footer
 from src.utils.dm_helpers import safe_send_dm
 from src.utils.rate_limiter import rate_limit
+from src.core.constants import FORBID_STARTUP_DELAY, SECONDS_PER_HOUR, FORBID_CHECK_INTERVAL
 
 from .constants import RESTRICTIONS
 
@@ -37,8 +38,8 @@ class SchedulerMixin:
         """Run forbid permission scan on bot startup (delayed to not slow startup)."""
         await self.bot.wait_until_ready()
 
-        # Wait 30 seconds after ready to not slow down startup
-        await asyncio.sleep(30)
+        # Wait after ready to not slow down startup
+        await asyncio.sleep(FORBID_STARTUP_DELAY)
 
         try:
             logger.tree("Forbid Startup Scan Started", [], emoji="🔍")
@@ -101,7 +102,7 @@ class SchedulerMixin:
                     ("Type", type(e).__name__),
                 ])
                 # Wait an hour before retrying on error
-                await asyncio.sleep(3600)
+                await asyncio.sleep(SECONDS_PER_HOUR)
 
     async def _run_forbid_scan(self: "ForbidCog") -> None:
         """Scan all guilds and ensure forbid roles have correct overwrites."""
@@ -219,8 +220,8 @@ class SchedulerMixin:
         while not self.bot.is_closed():
             try:
                 await self._process_expired_forbids()
-                # Check every 60 seconds
-                await asyncio.sleep(60)
+                # Check at regular interval
+                await asyncio.sleep(FORBID_CHECK_INTERVAL)
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -228,7 +229,7 @@ class SchedulerMixin:
                     ("Error", str(e)[:100]),
                     ("Type", type(e).__name__),
                 ])
-                await asyncio.sleep(60)
+                await asyncio.sleep(FORBID_CHECK_INTERVAL)
 
     async def _process_expired_forbids(self: "ForbidCog") -> None:
         """Process all expired forbids and remove them."""

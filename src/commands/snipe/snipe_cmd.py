@@ -18,7 +18,7 @@ from discord import app_commands
 
 from src.core.logger import logger
 from src.core.config import NY_TZ
-from src.core.constants import SNIPE_MAX_AGE
+from src.core.constants import SNIPE_MAX_AGE, QUERY_LIMIT_SMALL, QUERY_LIMIT_MEDIUM
 
 if TYPE_CHECKING:
     from .cog import SnipeCog
@@ -50,7 +50,7 @@ class SnipeCmdMixin:
             channel_id = interaction.channel.id
 
             # Get snipes from database (fetch more if filtering by user)
-            fetch_limit = 50 if user else 10
+            fetch_limit = QUERY_LIMIT_MEDIUM if user else QUERY_LIMIT_SMALL
             snipes = self.db.get_snipes(channel_id, limit=fetch_limit)
 
             if not snipes:

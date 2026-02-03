@@ -16,6 +16,7 @@ from aiohttp import web
 
 from src.core.config import NY_TZ
 from src.core.logger import logger
+from src.core.constants import QUERY_LIMIT_SMALL, QUERY_LIMIT_MEDIUM, QUERY_LIMIT_LARGE
 
 from .middleware import get_client_ip
 
@@ -181,7 +182,7 @@ class HandlersMixin:
         try:
             # Get moderator leaderboard from database (exclude bot)
             bot_user_id = self._bot.user.id if self._bot.user else None
-            mods_raw = self._bot.db.get_moderator_leaderboard(limit=50, exclude_user_id=bot_user_id)
+            mods_raw = self._bot.db.get_moderator_leaderboard(limit=QUERY_LIMIT_MEDIUM, exclude_user_id=bot_user_id)
 
             # Build enriched leaderboard
             leaderboard = []
@@ -270,14 +271,14 @@ class HandlersMixin:
             name, avatar, _ = await self._fetch_user_data(user_id, f"User {user_id}")
 
             # Get rank among offenders
-            top_offenders = self._bot.db.get_top_offenders(limit=100, guild_id=guild_id)
+            top_offenders = self._bot.db.get_top_offenders(limit=QUERY_LIMIT_LARGE, guild_id=guild_id)
             rank = next(
                 (i + 1 for i, o in enumerate(top_offenders) if o["user_id"] == user_id),
                 None
             )
 
             # Get recent punishments for this user
-            recent_punishments = await self._get_user_recent_punishments(user_id, guild_id, limit=10)
+            recent_punishments = await self._get_user_recent_punishments(user_id, guild_id, limit=QUERY_LIMIT_SMALL)
 
             response = {
                 "user_id": str(user_id),
@@ -344,14 +345,14 @@ class HandlersMixin:
             name, avatar, _ = await self._fetch_user_data(user_id, f"Mod {user_id}")
 
             # Get rank among moderators
-            mod_leaderboard = self._bot.db.get_moderator_leaderboard(limit=100)
+            mod_leaderboard = self._bot.db.get_moderator_leaderboard(limit=QUERY_LIMIT_LARGE)
             rank = next(
                 (i + 1 for i, m in enumerate(mod_leaderboard) if m["moderator_id"] == user_id),
                 None
             )
 
             # Get recent actions by this moderator
-            recent_actions = await self._get_moderator_recent_actions(user_id, guild_id, limit=10)
+            recent_actions = await self._get_moderator_recent_actions(user_id, guild_id, limit=QUERY_LIMIT_SMALL)
 
             response = {
                 "user_id": str(user_id),

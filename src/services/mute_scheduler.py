@@ -20,7 +20,17 @@ from src.utils.footer import set_footer
 from src.views import CASE_EMOJI
 from src.utils.async_utils import create_safe_task
 from src.utils.rate_limiter import rate_limit
-from src.core.constants import CASE_LOG_TIMEOUT
+from src.core.constants import (
+    CASE_LOG_TIMEOUT,
+    MUTE_CHECK_INTERVAL,
+    BACKOFF_MIN,
+    BACKOFF_MAX,
+    BACKOFF_MULTIPLIER,
+    STARTUP_SYNC_BACKOFF_MIN,
+    STARTUP_SYNC_BACKOFF_MAX,
+    LOG_TRUNCATE_MEDIUM,
+    SECONDS_PER_HOUR,
+)
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -35,7 +45,7 @@ class MuteScheduler:
     Background service for automatic mute expiration.
 
     DESIGN:
-        Runs a loop every 30 seconds checking for expired mutes.
+        Runs a loop every MUTE_CHECK_INTERVAL seconds checking for expired mutes.
         Uses database as source of truth, syncs with Discord state.
         Gracefully handles errors without crashing the loop.
         Implements exponential backoff on repeated errors.
@@ -47,11 +57,6 @@ class MuteScheduler:
         task: Background task reference.
         running: Whether the scheduler is active.
     """
-
-    # Exponential backoff constants
-    MIN_BACKOFF = 30  # Start at 30 seconds
-    MAX_BACKOFF = 300  # Cap at 5 minutes
-    BACKOFF_MULTIPLIER = 2
 
     # =========================================================================
     # Initialization
@@ -70,7 +75,7 @@ class MuteScheduler:
         self.task: Optional[asyncio.Task] = None
         self.running: bool = False
         self._consecutive_errors: int = 0
-        self._current_backoff: int = self.MIN_BACKOFF
+        self._current_backoff: int = BACKOFF_MIN
 
     # =========================================================================
     # Lifecycle Management
@@ -141,7 +146,7 @@ class MuteScheduler:
                 await self._process_expired_mutes()
                 # Reset backoff on success
                 self._consecutive_errors = 0
-                self._current_backoff = self.MIN_BACKOFF
+                self._current_backoff = BACKOFF_MIN
                 await asyncio.sleep(self.config.mute_check_interval)
             except asyncio.CancelledError:
                 break
@@ -165,8 +170,8 @@ class MuteScheduler:
                 # Apply exponential backoff
                 await asyncio.sleep(self._current_backoff)
                 self._current_backoff = min(
-                    self._current_backoff * self.BACKOFF_MULTIPLIER,
-                    self.MAX_BACKOFF
+                    self._current_backoff * BACKOFF_MULTIPLIER,
+                    BACKOFF_MAX
                 )
 
     # =========================================================================
@@ -540,8 +545,8 @@ class MuteScheduler:
         """Run muted role overwrites scan on startup (delayed)."""
         await self.bot.wait_until_ready()
 
-        # Wait 30 seconds to not slow down startup
-        await asyncio.sleep(30)
+        # Wait before scanning to not slow down startup
+        await asyncio.sleep(BACKOFF_MIN)
 
         try:
             await self._scan_mute_role_overwrites()
@@ -549,7 +554,7 @@ class MuteScheduler:
             pass
         except Exception as e:
             logger.error("Mute Overwrites Scan Error", [
-                ("Error", str(e)[:100]),
+                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
 
     async def _midnight_scan_loop(self) -> None:
@@ -557,8 +562,8 @@ class MuteScheduler:
         await self.bot.wait_until_ready()
         from datetime import timedelta
 
-        backoff = 3600  # Start at 1 hour
-        max_backoff = 14400  # Cap at 4 hours
+        backoff = STARTUP_SYNC_BACKOFF_MIN
+        max_backoff = STARTUP_SYNC_BACKOFF_MAX
 
         while self.running:
             try:
@@ -579,14 +584,14 @@ class MuteScheduler:
                 await self._scan_mute_role_overwrites()
 
                 # Reset backoff on success
-                backoff = 3600
+                backoff = STARTUP_SYNC_BACKOFF_MIN
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("Mute Midnight Scan Error", [
-                    ("Error", str(e)[:100]),
-                    ("Retry In", f"{backoff // 3600}h"),
+                    ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
+                    ("Retry In", f"{backoff // SECONDS_PER_HOUR}h"),
                 ])
                 # Apply exponential backoff
                 await asyncio.sleep(backoff)
