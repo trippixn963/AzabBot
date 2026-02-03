@@ -186,14 +186,29 @@ def build_welcome_embed(
     """Build welcome message for new ticket."""
     cat_info = TICKET_CATEGORIES.get(category, TICKET_CATEGORIES["support"])
 
-    embed = discord.Embed(
-        description=(
+    # Custom instructions for verification tickets
+    if category == "verification":
+        description = (
+            f"Welcome {user.mention}!\n\n"
+            f"{assigned_text}\n\n"
+            f"**Verification Steps:**\n"
+            f"1️⃣ A staff member will invite you to a voice channel\n"
+            f"2️⃣ You'll need to speak briefly so we can verify\n"
+            f"3️⃣ Once verified, you'll receive the appropriate role\n\n"
+            f"*If voice verification isn't possible, staff may ask for a selfie holding a paper with your username and today's date.*"
+            f"{wait_time_text}"
+        )
+    else:
+        description = (
             f"Welcome {user.mention}!\n\n"
             f"{assigned_text}\n"
             f"Please describe your issue in detail.\n\n"
             f"**Subject:** {subject}"
             f"{wait_time_text}"
-        ),
+        )
+
+    embed = discord.Embed(
+        description=description,
         color=cat_info["color"],
     )
     set_footer(embed)
