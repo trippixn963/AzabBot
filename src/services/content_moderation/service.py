@@ -19,7 +19,7 @@ import discord
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.constants import (
     RELIGION_OFFENSE_WINDOW,
-    RELIGION_RELIGION_OFFENSE_THRESHOLD,
+    RELIGION_OFFENSE_THRESHOLD,
     RELIGION_AUTO_MUTE_MINUTES,
     RELIGION_WARNING_DELETE_AFTER,
     RELIGION_MUTE_MSG_DELETE_AFTER,

@@ -36,6 +36,7 @@ class HelpersMixin:
     async def _get_channel(self: "TicketService") -> Optional[discord.TextChannel]:
         """Get the ticket panel channel with caching."""
         if not self.config.ticket_channel_id:
+            logger.debug("Ticket channel ID not configured")
             return None
 
         # Check cache
@@ -44,12 +45,16 @@ class HelpersMixin:
                 return self._channel
 
         # Fetch channel
+        logger.debug(f"Fetching ticket channel: {self.config.ticket_channel_id}")
         channel = await safe_fetch_channel(self.bot, self.config.ticket_channel_id)
+        logger.debug(f"Fetched channel: {channel}, type: {type(channel)}")
+
         if channel and isinstance(channel, discord.TextChannel):
             self._channel = channel
             self._channel_cache_time = datetime.now()
             return channel
 
+        logger.warning(f"Ticket channel is not a TextChannel: {type(channel)}")
         return None
 
     async def _get_ticket_category(
@@ -323,11 +328,15 @@ class HelpersMixin:
         channel: discord.TextChannel,
     ) -> Optional[discord.Message]:
         """Send the ticket creation panel to a channel and store its info."""
+        logger.debug(f"send_panel called for channel: {channel.name} ({channel.id})")
+
         embed = build_panel_embed()
         view = TicketPanelView()
 
         try:
+            logger.debug("Sending ticket panel embed...")
             message = await channel.send(embed=embed, view=view)
+            logger.debug(f"Panel message sent: {message.id}")
 
             # Store panel info in bot_state for recovery
             self.db.set_bot_state("ticket_panel", {
@@ -342,17 +351,34 @@ class HelpersMixin:
             ], emoji="🎫")
             return message
         except discord.HTTPException as e:
-            logger.error("Failed to send ticket panel", [("Error", str(e))])
+            logger.error("Failed to send ticket panel", [
+                ("Channel", f"{channel.name} ({channel.id})"),
+                ("Error", str(e)),
+            ])
+            return None
+        except Exception as e:
+            logger.error("Unexpected error sending ticket panel", [
+                ("Channel", f"{channel.name} ({channel.id})"),
+                ("Error", str(e)),
+            ])
             return None
 
     async def verify_panel(self: "TicketService") -> None:
         """Verify the ticket panel exists, resend if missing."""
         panel_info = self.db.get_bot_state("ticket_panel")
+        logger.debug(f"Ticket panel info from DB: {panel_info}")
+
         if not panel_info:
             # No panel stored, send a new one
+            logger.tree("Ticket Panel Not Found - Sending New", [
+                ("Reason", "No panel info in database"),
+            ], emoji="🎫")
             channel = await self._get_channel()
+            logger.debug(f"Got channel for panel: {channel}")
             if channel:
                 await self.send_panel(channel)
+            else:
+                logger.error("Failed to get ticket channel for panel")
             return
 
         channel_id = panel_info.get("channel_id")
