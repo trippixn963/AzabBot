@@ -195,7 +195,7 @@ def build_welcome_embed(
             f"1️⃣ A staff member will invite you to a voice channel\n"
             f"2️⃣ You'll need to speak briefly so we can verify\n"
             f"3️⃣ Once verified, you'll receive the appropriate role\n\n"
-            f"*If voice verification isn't possible, staff may ask for a selfie holding a paper with your username and today's date.*"
+            f"*If voice verification isn't possible, staff may ask for a selfie with your username and today's date, or a link to your social media.*"
             f"{wait_time_text}"
         )
     else:
