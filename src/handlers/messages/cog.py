@@ -657,4 +657,16 @@ class MessageEvents(HelpersMixin, commands.Cog):
                 reply_to_id=reply_to_id,
             )
 
+    @commands.Cog.listener()
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
+        """
+        Handle raw message deletions.
+
+        Used for detecting ticket panel deletion (message may not be cached).
+        """
+        # Check if this is the ticket panel being deleted
+        if self.bot.ticket_service and self.bot.ticket_service.enabled:
+            await self.bot.ticket_service.handle_panel_deletion(payload.message_id)
+
+
 __all__ = ["MessageEvents"]

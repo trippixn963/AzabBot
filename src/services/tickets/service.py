@@ -97,6 +97,10 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         self._auto_close_task = create_safe_task(
             self._auto_close_loop(), "Ticket Auto-Close Loop"
         )
+
+        # Verify ticket panel exists (resend if deleted)
+        await self.verify_panel()
+
         logger.tree("Ticket Service Started", [
             ("Auto-close", f"Enabled (warn: {INACTIVE_WARNING_DAYS}d, close: {INACTIVE_CLOSE_DAYS}d)"),
             ("Auto-delete", f"Enabled ({DELETE_AFTER_CLOSE_DAYS}d after close)"),

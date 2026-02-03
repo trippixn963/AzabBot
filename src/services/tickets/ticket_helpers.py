@@ -322,19 +322,96 @@ class HelpersMixin:
         self: "TicketService",
         channel: discord.TextChannel,
     ) -> Optional[discord.Message]:
-        """Send the ticket creation panel to a channel."""
+        """Send the ticket creation panel to a channel and store its info."""
         embed = build_panel_embed()
         view = TicketPanelView()
 
         try:
             message = await channel.send(embed=embed, view=view)
+
+            # Store panel info in bot_state for recovery
+            self.db.set_bot_state("ticket_panel", {
+                "message_id": message.id,
+                "channel_id": channel.id,
+                "guild_id": channel.guild.id,
+            })
+
             logger.tree("Ticket Panel Sent", [
                 ("Channel", f"{channel.name} ({channel.id})"),
+                ("Message ID", str(message.id)),
             ], emoji="🎫")
             return message
         except discord.HTTPException as e:
             logger.error("Failed to send ticket panel", [("Error", str(e))])
             return None
+
+    async def verify_panel(self: "TicketService") -> None:
+        """Verify the ticket panel exists, resend if missing."""
+        panel_info = self.db.get_bot_state("ticket_panel")
+        if not panel_info:
+            # No panel stored, send a new one
+            channel = await self._get_channel()
+            if channel:
+                await self.send_panel(channel)
+            return
+
+        channel_id = panel_info.get("channel_id")
+        message_id = panel_info.get("message_id")
+
+        if not channel_id or not message_id:
+            # Invalid panel info, send a new one
+            channel = await self._get_channel()
+            if channel:
+                await self.send_panel(channel)
+            return
+
+        # Try to fetch the panel message
+        try:
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                channel = await self.bot.fetch_channel(channel_id)
+
+            if channel and isinstance(channel, discord.TextChannel):
+                try:
+                    await channel.fetch_message(message_id)
+                    logger.debug("Ticket panel verified", [
+                        ("Channel", f"{channel.name} ({channel.id})"),
+                        ("Message ID", str(message_id)),
+                    ])
+                except discord.NotFound:
+                    # Panel was deleted, resend
+                    logger.tree("Ticket Panel Missing - Resending", [
+                        ("Channel", f"{channel.name} ({channel.id})"),
+                    ], emoji="🎫")
+                    await self.send_panel(channel)
+        except discord.HTTPException as e:
+            logger.error("Failed to verify ticket panel", [("Error", str(e))])
+
+    async def handle_panel_deletion(self: "TicketService", message_id: int) -> None:
+        """Handle ticket panel deletion - resend automatically."""
+        panel_info = self.db.get_bot_state("ticket_panel")
+        if not panel_info:
+            return
+
+        if panel_info.get("message_id") != message_id:
+            return  # Not the panel message
+
+        channel_id = panel_info.get("channel_id")
+        if not channel_id:
+            return
+
+        try:
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                channel = await self.bot.fetch_channel(channel_id)
+
+            if channel and isinstance(channel, discord.TextChannel):
+                logger.tree("Ticket Panel Deleted - Auto-Resending", [
+                    ("Channel", f"{channel.name} ({channel.id})"),
+                ], emoji="🎫")
+                await self.send_panel(channel)
+        except discord.HTTPException as e:
+            logger.error("Failed to resend ticket panel", [("Error", str(e))])
 
     # =========================================================================
     # Channel Deletion
