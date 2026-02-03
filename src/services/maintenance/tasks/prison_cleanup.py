@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Dict
 
@@ -15,8 +16,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import get_config
-from src.core.constants import LOG_TRUNCATE_SHORT, QUERY_LIMIT_XXL
-from src.utils.discord_rate_limit import rate_limit
+from src.core.constants import LOG_TRUNCATE_SHORT, QUERY_LIMIT_XXL, MAINTENANCE_RATE_LIMIT_DELAY
 from ..base import MaintenanceTask
 
 if TYPE_CHECKING:
@@ -92,11 +92,11 @@ class PrisonCleanupTask(MaintenanceTask):
                     batch = messages_to_delete[i:i + 100]
                     await channel.delete_messages(batch)
                     deleted_count += len(batch)
-                    await rate_limit("bulk_operation")
+                    await asyncio.sleep(MAINTENANCE_RATE_LIMIT_DELAY)
             except discord.HTTPException:
                 break
 
-            await rate_limit("bulk_operation")
+            await asyncio.sleep(MAINTENANCE_RATE_LIMIT_DELAY)
 
         return deleted_count
 
