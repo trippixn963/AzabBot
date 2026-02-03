@@ -241,10 +241,25 @@ class MessageEvents(HelpersMixin, commands.Cog):
                     self.config.links_allowed_channel_id
                     and message.channel.id == self.config.links_allowed_channel_id
                 )
+                # Check if in ticket channel (allow invites for partnership tickets)
+                is_ticket_channel = (
+                    self.config.ticket_category_id
+                    and hasattr(message.channel, 'category_id')
+                    and message.channel.category_id == self.config.ticket_category_id
+                )
                 # Check if user is owner (always exempt)
                 is_owner = message.author.id == self.config.owner_id
 
-                if is_owner:
+                if is_ticket_channel:
+                    logger.tree("INVITE LINK ALLOWED", [
+                        ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                        ("ID", str(message.author.id)),
+                        ("Channel", f"#{message.channel.name}"),
+                        ("Reason", "Ticket channel"),
+                        ("Invite(s)", ", ".join(invite_matches)),
+                    ], emoji="✅")
+                    # Don't return - continue processing message
+                elif is_owner:
                     logger.tree("INVITE LINK ALLOWED", [
                         ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
                         ("ID", str(message.author.id)),
