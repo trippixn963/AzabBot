@@ -134,10 +134,10 @@ class HistoryCog(commands.Cog):
 
             # Get active forbids and forbid history
             active_forbids = self.db.get_user_forbids(user.id, guild_id)
-            forbid_history = self.db.get_forbid_history(user.id, guild_id, limit=10)
+            forbid_history = self.db.get_forbid_history(user.id, guild_id, limit=QUERY_LIMIT_SMALL)
 
             # Get mod notes
-            mod_notes = self.db.get_mod_notes(user.id, guild_id, limit=5)
+            mod_notes = self.db.get_mod_notes(user.id, guild_id, limit=QUERY_LIMIT_TINY)
             note_count = self.db.get_note_count(user.id, guild_id)
 
             # Tree logging
