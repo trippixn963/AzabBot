@@ -17,6 +17,7 @@ import discord
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.core.logger import logger
+from src.core.constants import MODAL_FIELD_LONG
 from src.utils.footer import set_footer
 
 from .constants import CASE_EMOJI, MESSAGE_EMOJI, NOTE_EMOJI
@@ -81,7 +82,7 @@ class EditCaseModal(discord.ui.Modal):
             placeholder="Enter the updated reason for this case...",
             default=current_reason or "",
             required=False,
-            max_length=1000,
+            max_length=MODAL_FIELD_LONG,
         )
         self.add_item(self.reason_input)
 

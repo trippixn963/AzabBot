@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Optional
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
+from src.core.constants import CASE_ARCHIVE_CHECK_INTERVAL, QUERY_LIMIT_LARGE
 from src.utils.async_utils import create_safe_task
 from src.services.case_log.transcript import TranscriptBuilder
 
@@ -146,7 +147,7 @@ class CaseArchiveScheduler:
             asset_thread_names = {"📁 Assets", "Assets", "Transcript Assets"}
 
             # Check if thread already exists by name
-            async for thread in forum.archived_threads(limit=100):
+            async for thread in forum.archived_threads(limit=QUERY_LIMIT_LARGE):
                 if thread.name in asset_thread_names:
                     self.assets_thread_id = thread.id
                     # Rename to current standard if using old name
@@ -239,7 +240,7 @@ class CaseArchiveScheduler:
         await self.bot.wait_until_ready()
 
         # Wait a bit on startup to let other services initialize
-        await asyncio.sleep(60)
+        await asyncio.sleep(CASE_ARCHIVE_CHECK_INTERVAL)
 
         while self.running:
             try:

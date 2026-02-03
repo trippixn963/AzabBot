@@ -23,7 +23,7 @@ from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
 from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
-from src.core.constants import GUILD_FETCH_TIMEOUT
+from src.core.constants import GUILD_FETCH_TIMEOUT, SECONDS_PER_HOUR, QUERY_LIMIT_LARGE
 
 # Constants for cache limits
 PRISONER_TRACKING_LIMIT = 1000  # Max prisoner tracking entries
@@ -580,7 +580,7 @@ class AzabBot(commands.Bot):
 
         logger.tree("Scanning Polls Channels", [
             ("Channels", str(len(channel_ids))),
-            ("Limit", "100 messages each"),
+            ("Limit", f"{QUERY_LIMIT_LARGE} messages each"),
         ], emoji="🔍")
 
         total_deleted = 0
@@ -597,7 +597,7 @@ class AzabBot(commands.Bot):
             try:
                 deleted = 0
                 checked = 0
-                async for message in channel.history(limit=100):
+                async for message in channel.history(limit=QUERY_LIMIT_LARGE):
                     checked += 1
                     # Delete poll result messages ("X's poll has closed")
                     if message.type == discord.MessageType.poll_result:
@@ -691,7 +691,7 @@ class AzabBot(commands.Bot):
                     ("Error", str(e)),
                     ("Retry", "1 hour"),
                 ])
-                await asyncio.sleep(3600)  # Retry in 1 hour on error
+                await asyncio.sleep(SECONDS_PER_HOUR)  # Retry in 1 hour on error
 
     async def _cleanup_prisoner_tracking(self) -> int:
         """

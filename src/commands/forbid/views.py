@@ -15,6 +15,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
+from src.core.constants import MODAL_FIELD_LONG
 from src.views import APPEAL_EMOJI
 from src.utils.footer import set_footer
 
@@ -80,7 +81,7 @@ class ForbidAppealModal(discord.ui.Modal):
             style=discord.TextStyle.paragraph,
             placeholder="Explain why you believe the restriction was unfair or provide context...",
             required=True,
-            max_length=1000,
+            max_length=MODAL_FIELD_LONG,
         )
         self.add_item(self.reason)
 

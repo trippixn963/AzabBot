@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.logger import logger
+from src.core.constants import LOG_TRUNCATE_SHORT, MODAL_FIELD_MEDIUM
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -25,14 +26,14 @@ class MuteModal(discord.ui.Modal, title="Mute User"):
         label="Duration",
         placeholder="e.g., 10m, 1h, 1d, permanent",
         required=False,
-        max_length=50,
+        max_length=LOG_TRUNCATE_SHORT,
     )
 
     reason_input = discord.ui.TextInput(
         label="Reason",
         placeholder="Reason for the mute",
         required=False,
-        max_length=500,
+        max_length=MODAL_FIELD_MEDIUM,
         style=discord.TextStyle.paragraph,
     )
 

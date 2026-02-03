@@ -16,6 +16,7 @@ from collections import OrderedDict
 
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ, EmbedColors
+from src.core.constants import QUERY_LIMIT_MEDIUM, QUERY_LIMIT_XXL
 from src.utils.footer import set_footer
 from src.utils.rate_limiter import rate_limit
 from src.utils.duration import format_duration_from_minutes as format_duration
@@ -386,7 +387,7 @@ class PrisonHandler:
             return
 
         try:
-            async for message in logs_channel.history(limit=50):
+            async for message in logs_channel.history(limit=QUERY_LIMIT_MEDIUM):
                 if message.embeds:
                     await self.bot.mute.process_mute_embed(message)
                     if member.id in self.mute_reasons or member.name.lower() in self.mute_reasons:
@@ -434,7 +435,7 @@ class PrisonHandler:
 
                         while True:
                             messages_to_delete = []
-                            async for message in prison_channel.history(limit=500):
+                            async for message in prison_channel.history(limit=QUERY_LIMIT_XXL):
                                 if message.created_at > two_weeks_ago:
                                     messages_to_delete.append(message)
 

@@ -16,7 +16,7 @@ from aiohttp import web
 
 from src.core.config import get_config, NY_TZ
 from src.core.logger import logger
-from src.core.constants import STATS_API_PORT
+from src.core.constants import STATS_API_PORT, CACHE_TTL
 from src.utils.async_utils import create_safe_task
 
 from .middleware import (
@@ -118,7 +118,7 @@ class AzabAPI(HandlersMixin, DataHelpersMixin):
         """Periodically clean up rate limiter entries."""
         while True:
             try:
-                await asyncio.sleep(300)  # Every 5 minutes
+                await asyncio.sleep(CACHE_TTL)  # Every 5 minutes
                 await rate_limiter.cleanup()
             except asyncio.CancelledError:
                 break

@@ -17,7 +17,7 @@ import discord
 from src.core.config import get_config, EmbedColors
 from src.core.database import get_db
 from src.core.logger import logger
-from src.core.constants import WARNING_DECAY_DAYS, SECONDS_PER_DAY, SECONDS_PER_HOUR, QUERY_LIMIT_SMALL
+from src.core.constants import WARNING_DECAY_DAYS, SECONDS_PER_DAY, SECONDS_PER_HOUR, QUERY_LIMIT_SMALL, QUERY_LIMIT_TINY
 
 from .constants import HISTORY_EMOJI
 
@@ -268,7 +268,7 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
 
         # Fall back to legacy history if no per-action cases
         total_count = db.get_history_count(self.user_id, self.guild_id)
-        history = db.get_combined_history(self.user_id, self.guild_id, limit=5, offset=0)
+        history = db.get_combined_history(self.user_id, self.guild_id, limit=QUERY_LIMIT_TINY, offset=0)
 
         if not history:
             await interaction.response.send_message(
@@ -281,7 +281,7 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
         embed = await self._build_history_embed(interaction.client, history, 0, total_count)
 
         # Create pagination view if needed
-        if total_count > 5:
+        if total_count > QUERY_LIMIT_TINY:
             view = HistoryPaginationView(self.user_id, self.guild_id, 0, total_count)
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         else:
@@ -370,7 +370,7 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
             )
 
         # Footer with pagination info
-        total_pages = (total + 4) // 5  # Ceiling division
+        total_pages = (total + QUERY_LIMIT_TINY - 1) // QUERY_LIMIT_TINY  # Ceiling division
         embed.set_footer(text=f"Page {page + 1}/{total_pages} • {total} total records")
 
         return embed
@@ -380,7 +380,7 @@ class PaginationPrevButton(discord.ui.DynamicItem[discord.ui.Button], template=r
     """Persistent Previous button for pagination."""
 
     def __init__(self, user_id: int, guild_id: int, page: int, total: int):
-        total_pages = (total + 4) // 5
+        total_pages = (total + QUERY_LIMIT_TINY - 1) // QUERY_LIMIT_TINY
         super().__init__(
             discord.ui.Button(
                 label="Previous",
@@ -416,7 +416,7 @@ class PaginationNextButton(discord.ui.DynamicItem[discord.ui.Button], template=r
     """Persistent Next button for pagination."""
 
     def __init__(self, user_id: int, guild_id: int, page: int, total: int):
-        total_pages = (total + 4) // 5
+        total_pages = (total + QUERY_LIMIT_TINY - 1) // QUERY_LIMIT_TINY
         super().__init__(
             discord.ui.Button(
                 label="Next",
@@ -457,7 +457,7 @@ class HistoryPaginationView(discord.ui.View):
         self.guild_id = guild_id
         self.page = page
         self.total = total
-        self.total_pages = (total + 4) // 5
+        self.total_pages = (total + QUERY_LIMIT_TINY - 1) // QUERY_LIMIT_TINY
 
         # Add persistent pagination buttons
         self.add_item(PaginationPrevButton(user_id, guild_id, page, total))
@@ -465,7 +465,7 @@ class HistoryPaginationView(discord.ui.View):
 
     async def _build_embed(self, client) -> discord.Embed:
         db = get_db()
-        history = db.get_combined_history(self.user_id, self.guild_id, limit=5, offset=self.page * 5)
+        history = db.get_combined_history(self.user_id, self.guild_id, limit=QUERY_LIMIT_TINY, offset=self.page * QUERY_LIMIT_TINY)
 
         embed = discord.Embed(
             title="Moderation History",

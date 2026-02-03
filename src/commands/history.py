@@ -25,6 +25,7 @@ from src.core.constants import (
     EMOJI_TIMEOUT,
     EMOJI_KICK,
     QUERY_LIMIT_SMALL,
+    QUERY_LIMIT_TINY,
 )
 from src.utils.footer import set_footer
 from src.views import CASE_EMOJI, InfoButton, DownloadButton, build_history_embed, build_history_view
@@ -129,7 +130,7 @@ class HistoryCog(commands.Cog):
             cases = self.db.get_user_cases(user.id, guild_id, limit=QUERY_LIMIT_SMALL) or []
 
             # Get recent warnings
-            warnings = self.db.get_user_warnings(user.id, guild_id, limit=5)
+            warnings = self.db.get_user_warnings(user.id, guild_id, limit=QUERY_LIMIT_TINY)
 
             # Get active forbids and forbid history
             active_forbids = self.db.get_user_forbids(user.id, guild_id)

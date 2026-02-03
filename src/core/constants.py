@@ -204,6 +204,7 @@ POLLS_CLEANUP_LIMIT = 100             # Polls to check for cleanup
 # Query & Fetch Limits
 # =============================================================================
 
+QUERY_LIMIT_TINY = 5                  # Tiny queries (history pagination)
 QUERY_LIMIT_SMALL = 10                # Small queries (history, recent actions)
 QUERY_LIMIT_MEDIUM = 50               # Medium queries (leaderboards, lists)
 QUERY_LIMIT_LARGE = 100               # Large queries (bulk fetches)
@@ -474,6 +475,7 @@ __all__ = [
     "PRISONER_PING_WINDOW",
     "PRISONER_PING_MAX",
     # Query limits
+    "QUERY_LIMIT_TINY",
     "QUERY_LIMIT_SMALL",
     "QUERY_LIMIT_MEDIUM",
     "QUERY_LIMIT_LARGE",

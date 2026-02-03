@@ -15,6 +15,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
+from src.core.constants import QUERY_LIMIT_XL
 
 from .constants import CACHE_TTL
 from .helpers import strip_emojis
@@ -397,7 +398,7 @@ class ThreadsMixin:
         # Collect threads
         all_threads = list(forum.threads)
         try:
-            async for thread in forum.archived_threads(limit=200):
+            async for thread in forum.archived_threads(limit=QUERY_LIMIT_XL):
                 all_threads.append(thread)
         except Exception as e:
             logger.warning("Mod Tracker: Failed to fetch archived threads", [

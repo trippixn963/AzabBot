@@ -17,7 +17,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
-from src.core.constants import SECONDS_PER_HOUR, QUERY_LIMIT_MEDIUM
+from src.core.constants import SECONDS_PER_HOUR, QUERY_LIMIT_MEDIUM, QUERY_LIMIT_XXL
 from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
 
@@ -737,7 +737,7 @@ class LoggingService(
                 try:
                     deleted_in_thread = 0
 
-                    async for message in thread.history(limit=500, before=cutoff, oldest_first=True):
+                    async for message in thread.history(limit=QUERY_LIMIT_XXL, before=cutoff, oldest_first=True):
                         if message.pinned:
                             continue
 

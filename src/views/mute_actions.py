@@ -17,7 +17,7 @@ import discord
 from src.core.config import get_config, EmbedColors
 from src.core.database import get_db
 from src.core.logger import logger
-from src.core.constants import CASE_LOG_TIMEOUT
+from src.core.constants import CASE_LOG_TIMEOUT, LOG_TRUNCATE_LONG
 from src.utils.footer import set_footer
 from src.utils.duration import parse_duration
 
@@ -45,7 +45,7 @@ class ExtendModal(discord.ui.Modal, title="Extend Mute"):
         label="Reason (optional)",
         placeholder="Why are you extending this mute?",
         required=False,
-        max_length=200,
+        max_length=LOG_TRUNCATE_LONG,
         style=discord.TextStyle.paragraph,
     )
 
@@ -209,7 +209,7 @@ class UnmuteModal(discord.ui.Modal, title="Unmute User"):
         label="Reason (optional)",
         placeholder="Why are you unmuting this user?",
         required=False,
-        max_length=200,
+        max_length=LOG_TRUNCATE_LONG,
         style=discord.TextStyle.paragraph,
     )
 
