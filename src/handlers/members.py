@@ -80,6 +80,13 @@ class MemberEvents(commands.Cog):
                 self.bot.prisoner_pending_response.pop(after.id, None)
 
         # -----------------------------------------------------------------
+        # Gender Role Conflict Resolution
+        # -----------------------------------------------------------------
+        # If someone has a verified gender role and picks the non-verified one,
+        # automatically remove the non-verified role to prevent duplicates.
+        await self._resolve_gender_role_conflicts(before, after, before_role_ids, after_role_ids)
+
+        # -----------------------------------------------------------------
         # Mod Tracker: Auto-track on role add/remove
         # -----------------------------------------------------------------
         if self.bot.mod_tracker and self.bot.mod_tracker.enabled and self.config.moderation_role_id:
@@ -667,6 +674,95 @@ class MemberEvents(commands.Cog):
         db = get_db()
         moderator_id = moderator.id if moderator else self.bot.user.id
         db.remove_mute(user.id, guild.id, moderator_id, "User unbanned")
+
+    # =========================================================================
+    # Gender Role Conflict Resolution
+    # =========================================================================
+
+    async def _resolve_gender_role_conflicts(
+        self,
+        before: discord.Member,
+        after: discord.Member,
+        before_role_ids: set,
+        after_role_ids: set,
+    ) -> None:
+        """
+        Resolve conflicts between verified and non-verified gender roles.
+
+        If a member has a verified gender role and gains the non-verified version,
+        automatically remove the non-verified role. Verified roles can only be
+        removed manually by moderators.
+
+        Args:
+            before: Member state before update.
+            after: Member state after update.
+            before_role_ids: Set of role IDs before update.
+            after_role_ids: Set of role IDs after update.
+        """
+        # Skip if gender roles aren't configured
+        if not all([
+            self.config.male_role_id,
+            self.config.male_verified_role_id,
+            self.config.female_role_id,
+            self.config.female_verified_role_id,
+        ]):
+            return
+
+        # Define role conflict pairs: (verified_role_id, non_verified_role_id)
+        conflict_pairs = [
+            (self.config.male_verified_role_id, self.config.male_role_id, "Male"),
+            (self.config.female_verified_role_id, self.config.female_role_id, "Female"),
+        ]
+
+        roles_to_remove = []
+
+        for verified_id, non_verified_id, gender_name in conflict_pairs:
+            has_verified = verified_id in after_role_ids
+            has_non_verified = non_verified_id in after_role_ids
+
+            # If they have both, remove the non-verified one
+            if has_verified and has_non_verified:
+                # Check if the non-verified was just added (not already there before)
+                just_gained_non_verified = non_verified_id not in before_role_ids
+                just_gained_verified = verified_id not in before_role_ids
+
+                # Either scenario: remove the non-verified role
+                non_verified_role = after.guild.get_role(non_verified_id)
+                if non_verified_role:
+                    roles_to_remove.append((non_verified_role, gender_name, just_gained_verified))
+
+        # Remove conflicting roles
+        for role, gender_name, was_verification in roles_to_remove:
+            try:
+                await after.remove_roles(
+                    role,
+                    reason=f"Auto-removed: {gender_name} Verified role takes precedence"
+                )
+
+                if was_verification:
+                    action = "verified, non-verified removed"
+                else:
+                    action = "tried to add non-verified while verified"
+
+                logger.tree("GENDER ROLE CONFLICT RESOLVED", [
+                    ("User", f"{after} ({after.id})"),
+                    ("Gender", gender_name),
+                    ("Action", action),
+                    ("Removed", role.name),
+                ], emoji="🔄")
+
+            except discord.Forbidden:
+                logger.warning("Cannot Remove Gender Role", [
+                    ("User", f"{after} ({after.id})"),
+                    ("Role", role.name),
+                    ("Reason", "Missing permissions"),
+                ])
+            except discord.HTTPException as e:
+                logger.error("Gender Role Removal Failed", [
+                    ("User", f"{after} ({after.id})"),
+                    ("Role", role.name),
+                    ("Error", str(e)[:50]),
+                ])
 
     @commands.Cog.listener()
     async def on_resumed(self) -> None:

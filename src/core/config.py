@@ -89,6 +89,12 @@ class Config:
 
     moderation_role_id: Optional[int] = None
 
+    # Gender role conflict pairs (verified role removes non-verified)
+    male_role_id: Optional[int] = None
+    male_verified_role_id: Optional[int] = None
+    female_role_id: Optional[int] = None
+    female_verified_role_id: Optional[int] = None
+
     # -------------------------------------------------------------------------
     # Optional: Mod Tracker
     # -------------------------------------------------------------------------
@@ -466,6 +472,10 @@ def load_config() -> Config:
     alliances_channel_id = _parse_int_optional(os.getenv("ALLIANCES_CHANNEL_ID"))
     verification_role_id = _parse_int_optional(os.getenv("VERIFICATION_ROLE_ID"))
     moderation_role_id = _parse_int_optional(os.getenv("MODERATION_ROLE_ID"))
+    male_role_id = _parse_int_optional(os.getenv("MALE_ROLE_ID"))
+    male_verified_role_id = _parse_int_optional(os.getenv("MALE_VERIFIED_ROLE_ID"))
+    female_role_id = _parse_int_optional(os.getenv("FEMALE_ROLE_ID"))
+    female_verified_role_id = _parse_int_optional(os.getenv("FEMALE_VERIFIED_ROLE_ID"))
     mod_server_id = _parse_int_optional(os.getenv("MODS_GUILD_ID"))
     alert_channel_id = _parse_int_optional(os.getenv("ALERT_CHANNEL_ID"))
     appeal_forum_id = _parse_int_optional(os.getenv("APPEAL_FORUM_ID"))
@@ -507,6 +517,10 @@ def load_config() -> Config:
         alliances_channel_id=alliances_channel_id,
         verification_role_id=verification_role_id,
         moderation_role_id=moderation_role_id,
+        male_role_id=male_role_id,
+        male_verified_role_id=male_verified_role_id,
+        female_role_id=female_role_id,
+        female_verified_role_id=female_verified_role_id,
         mod_server_id=mod_server_id,
         alert_channel_id=alert_channel_id,
         appeal_forum_id=appeal_forum_id,
