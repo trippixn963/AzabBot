@@ -17,6 +17,7 @@ import discord
 from src.core.config import EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.core.logger import logger
+from src.core.constants import QUERY_LIMIT_TINY
 from src.utils.footer import set_footer
 
 from .constants import INFO_EMOJI, DOWNLOAD_EMOJI
@@ -186,7 +187,7 @@ class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_info:
                 inline=False,
             )
 
-        username_history = db.get_username_history(self.user_id, limit=5)
+        username_history = db.get_username_history(self.user_id, limit=QUERY_LIMIT_TINY)
         if username_history:
             history_lines = []
             for record in username_history:

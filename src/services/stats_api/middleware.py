@@ -75,7 +75,7 @@ class RateLimiter:
 
 
 # Global rate limiter
-rate_limiter = RateLimiter(requests_per_minute=60, burst_limit=10)
+rate_limiter = RateLimiter(requests_per_minute=RATE_LIMIT_REQUESTS, burst_limit=RATE_LIMIT_BURST)
 
 
 # =============================================================================

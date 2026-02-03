@@ -16,6 +16,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
+from src.core.constants import PREVIOUS_NAMES_LIMIT
 from src.utils.retry import safe_fetch_message, safe_edit
 from src.utils.async_utils import create_safe_task
 
@@ -152,7 +153,7 @@ class CaseLogUpdatesMixin:
                     inline=False,
                 )
 
-            previous_names = self.db.get_previous_names(user_id, limit=3)
+            previous_names = self.db.get_previous_names(user_id, limit=PREVIOUS_NAMES_LIMIT)
             if previous_names:
                 names_str = ", ".join(f"`{name}`" for name in previous_names)
                 embed.add_field(name="Previous Names", value=names_str, inline=False)

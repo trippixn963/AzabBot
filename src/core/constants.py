@@ -210,6 +210,7 @@ QUERY_LIMIT_MEDIUM = 50               # Medium queries (leaderboards, lists)
 QUERY_LIMIT_LARGE = 100               # Large queries (bulk fetches)
 QUERY_LIMIT_XL = 200                  # Extra large queries (forum threads)
 QUERY_LIMIT_XXL = 500                 # Maximum queries (full scans)
+PREVIOUS_NAMES_LIMIT = 3              # Previous names to show in profiles
 
 # =============================================================================
 # Text Length Limits
@@ -481,6 +482,7 @@ __all__ = [
     "QUERY_LIMIT_LARGE",
     "QUERY_LIMIT_XL",
     "QUERY_LIMIT_XXL",
+    "PREVIOUS_NAMES_LIMIT",
     # Caches
     "LAST_MESSAGES_LIMIT",
     "ATTACHMENT_CACHE_LIMIT",

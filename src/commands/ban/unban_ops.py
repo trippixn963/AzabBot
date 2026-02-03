@@ -28,7 +28,7 @@ from src.utils.footer import set_footer
 from src.views import CaseButtonView
 from src.utils.duration import format_duration
 from src.utils.dm_helpers import safe_send_dm
-from src.core.constants import CASE_LOG_TIMEOUT, GUILD_FETCH_TIMEOUT
+from src.core.constants import CASE_LOG_TIMEOUT, GUILD_FETCH_TIMEOUT, QUERY_LIMIT_TINY
 
 from .autocomplete import banned_user_autocomplete, removal_reason_autocomplete
 
@@ -229,7 +229,7 @@ class UnbanOpsMixin:
 
         # Get ban duration from history
         ban_duration = None
-        ban_history = db.get_ban_history(target_user.id, target_guild.id, limit=5)
+        ban_history = db.get_ban_history(target_user.id, target_guild.id, limit=QUERY_LIMIT_TINY)
         for record in ban_history:
             if record.get("action") == "ban":
                 banned_seconds = int(time.time() - record["timestamp"])

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Optional, Union
 import discord
 
 from src.core.logger import logger
-from src.core.constants import THREAD_DELETE_DELAY
+from src.core.constants import THREAD_DELETE_DELAY, QUERY_LIMIT_TINY
 from src.utils.retry import safe_fetch_channel
 from src.utils.async_utils import create_safe_task
 
@@ -305,7 +305,7 @@ class HelpersMixin:
 
         # Fallback: find first embed message
         try:
-            async for message in channel.history(limit=5, oldest_first=True):
+            async for message in channel.history(limit=QUERY_LIMIT_TINY, oldest_first=True):
                 if message.embeds and "Control Panel" in str(message.embeds[0].title):
                     await message.edit(embed=new_embed, view=new_view)
                     # Update stored message ID

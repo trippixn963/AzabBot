@@ -14,7 +14,7 @@ import discord
 from discord import app_commands
 
 from src.core.config import get_config
-from src.core.constants import MODERATION_REASONS, MODERATION_REMOVAL_REASONS
+from src.core.constants import MODERATION_REASONS, MODERATION_REMOVAL_REASONS, MAX_AUTOCOMPLETE_RESULTS
 
 
 async def reason_autocomplete(
@@ -72,7 +72,7 @@ async def banned_user_autocomplete(
             if main_guild:
                 target_guild = main_guild
 
-        bans = [entry async for entry in target_guild.bans(limit=25)]
+        bans = [entry async for entry in target_guild.bans(limit=MAX_AUTOCOMPLETE_RESULTS)]
         choices = []
         for ban_entry in bans:
             user = ban_entry.user

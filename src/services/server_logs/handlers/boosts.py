@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.config import EmbedColors
+from src.core.constants import QUERY_LIMIT_SMALL
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -55,7 +56,7 @@ class BoostsLogsMixin:
         main_guild = self.bot.get_guild(self.config.main_guild_id) if self.config.main_guild_id else member.guild
         if main_guild and main_guild.system_channel:
             try:
-                async for msg in main_guild.system_channel.history(limit=10):
+                async for msg in main_guild.system_channel.history(limit=QUERY_LIMIT_SMALL):
                     if msg.type == discord.MessageType.premium_guild_subscription and msg.author.id == member.id:
                         view = discord.ui.View(timeout=None)
                         view.add_item(discord.ui.Button(

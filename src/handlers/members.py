@@ -18,7 +18,7 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config
 from src.core.database import get_db
-from src.core.constants import CASE_LOG_TIMEOUT
+from src.core.constants import CASE_LOG_TIMEOUT, QUERY_LIMIT_TINY
 from src.utils.async_utils import create_safe_task
 
 # Verification role delay - another bot handles this, but we act as failsafe backup
@@ -125,7 +125,7 @@ class MemberEvents(commands.Cog):
                 try:
                     async for entry in after.guild.audit_logs(
                         action=discord.AuditLogAction.member_role_update,
-                        limit=5,
+                        limit=QUERY_LIMIT_TINY,
                     ):
                         if entry.target and entry.target.id == after.id:
                             changed_by_id = entry.user.id if entry.user else None
@@ -378,7 +378,7 @@ class MemberEvents(commands.Cog):
         # Check if this was a ban (check recent audit log)
         was_banned = False
         try:
-            async for entry in member.guild.audit_logs(action=discord.AuditLogAction.ban, limit=5):
+            async for entry in member.guild.audit_logs(action=discord.AuditLogAction.ban, limit=QUERY_LIMIT_TINY):
                 if entry.target and entry.target.id == member.id:
                     # Ban happened within last 5 seconds = this removal was a ban
                     if (discord.utils.utcnow() - entry.created_at).total_seconds() < 5:
@@ -602,7 +602,7 @@ class MemberEvents(commands.Cog):
         try:
             async for entry in guild.audit_logs(
                 action=discord.AuditLogAction.ban,
-                limit=5,
+                limit=QUERY_LIMIT_TINY,
             ):
                 if entry.target and entry.target.id == user.id:
                     moderator = entry.user
@@ -644,7 +644,7 @@ class MemberEvents(commands.Cog):
         try:
             async for entry in guild.audit_logs(
                 action=discord.AuditLogAction.unban,
-                limit=5,
+                limit=QUERY_LIMIT_TINY,
             ):
                 if entry.target and entry.target.id == user.id:
                     moderator = entry.user

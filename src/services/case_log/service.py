@@ -26,7 +26,7 @@ from src.utils.retry import (
     safe_delete,
 )
 from src.utils.async_utils import create_safe_task
-from src.core.constants import DELETE_AFTER_MEDIUM, DELETE_AFTER_EXTENDED, QUERY_LIMIT_SMALL
+from src.core.constants import DELETE_AFTER_MEDIUM, DELETE_AFTER_EXTENDED, QUERY_LIMIT_SMALL, PREVIOUS_NAMES_LIMIT
 
 from .constants import (
     THREAD_CACHE_TTL,
@@ -341,7 +341,7 @@ class CaseLogService(
         account_age = format_age(created_at, now)
         user_embed.add_field(name="Account Age", value=account_age, inline=True)
 
-        previous_names = self.db.get_previous_names(user.id, limit=3)
+        previous_names = self.db.get_previous_names(user.id, limit=PREVIOUS_NAMES_LIMIT)
         if previous_names:
             names_str = ", ".join(f"`{name}`" for name in previous_names)
             user_embed.add_field(name="Previous Names", value=names_str, inline=False)
@@ -681,7 +681,7 @@ class CaseLogService(
         account_age = format_age(created_at, now)
         user_embed.add_field(name="Account Age", value=account_age, inline=True)
 
-        previous_names = self.db.get_previous_names(user.id, limit=3)
+        previous_names = self.db.get_previous_names(user.id, limit=PREVIOUS_NAMES_LIMIT)
         if previous_names:
             names_str = ", ".join(f"`{name}`" for name in previous_names)
             user_embed.add_field(name="Previous Names", value=names_str, inline=False)

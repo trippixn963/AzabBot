@@ -18,7 +18,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config
-from src.core.constants import AUDIT_LOG_WAIT
+from src.core.constants import AUDIT_LOG_WAIT, QUERY_LIMIT_TINY
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -242,7 +242,7 @@ class ChannelEvents(commands.Cog):
             try:
                 async for entry in thread.guild.audit_logs(
                     action=discord.AuditLogAction.thread_member_add,
-                    limit=5,
+                    limit=QUERY_LIMIT_TINY,
                 ):
                     if entry.target and entry.target.id == member.id:
                         added_by = entry.user
@@ -298,7 +298,7 @@ class ChannelEvents(commands.Cog):
             try:
                 async for entry in thread.guild.audit_logs(
                     action=discord.AuditLogAction.thread_member_remove,
-                    limit=5,
+                    limit=QUERY_LIMIT_TINY,
                 ):
                     if entry.target and entry.target.id == member.id:
                         removed_by = entry.user
