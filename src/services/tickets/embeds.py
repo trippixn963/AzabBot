@@ -186,7 +186,7 @@ def build_welcome_embed(
     """Build welcome message for new ticket."""
     cat_info = TICKET_CATEGORIES.get(category, TICKET_CATEGORIES["support"])
 
-    # Custom instructions for verification tickets
+    # Custom instructions based on category
     if category == "verification":
         description = (
             f"Welcome {user.mention}!\n\n"
@@ -198,11 +198,37 @@ def build_welcome_embed(
             f"*If voice verification isn't possible, staff may ask for a selfie with your username and today's date, or a link to your social media.*"
             f"{wait_time_text}"
         )
-    else:
+    elif category == "partnership":
         description = (
             f"Welcome {user.mention}!\n\n"
-            f"{assigned_text}\n"
-            f"Please describe your issue in detail.\n\n"
+            f"{assigned_text}\n\n"
+            f"**Please provide the following:**\n"
+            f"1️⃣ Your server name and invite link\n"
+            f"2️⃣ Your server's member count\n"
+            f"3️⃣ A brief description of your server\n"
+            f"4️⃣ What type of partnership you're looking for\n\n"
+            f"*We'll review your request and get back to you shortly.*"
+            f"{wait_time_text}"
+        )
+    elif category == "suggestion":
+        description = (
+            f"Welcome {user.mention}!\n\n"
+            f"{assigned_text}\n\n"
+            f"**Please include:**\n"
+            f"1️⃣ A clear description of your suggestion\n"
+            f"2️⃣ Why you think this would benefit the server\n"
+            f"3️⃣ Any examples or references if applicable\n\n"
+            f"*We appreciate your feedback and will review your suggestion!*"
+            f"{wait_time_text}"
+        )
+    else:  # support
+        description = (
+            f"Welcome {user.mention}!\n\n"
+            f"{assigned_text}\n\n"
+            f"**To help us assist you faster:**\n"
+            f"1️⃣ Describe your issue in detail\n"
+            f"2️⃣ Include any relevant screenshots if needed\n"
+            f"3️⃣ Let us know what you've already tried\n\n"
             f"**Subject:** {subject}"
             f"{wait_time_text}"
         )
