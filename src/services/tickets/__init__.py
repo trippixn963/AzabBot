@@ -15,7 +15,7 @@ from .views import (
     TicketPanelView,
     TicketControlPanelView,
     CloseRequestView,
-    TicketPanelButton,
+    TicketPanelSelect,
 )
 from .buttons import setup_ticket_buttons
 from .modals import TicketCreateModal, TicketCloseModal, TicketAddUserModal
@@ -32,12 +32,12 @@ if TYPE_CHECKING:
 
 
 def setup_ticket_views(bot: "AzabBot") -> None:
-    """Register all ticket views and dynamic buttons."""
+    """Register all ticket views and dynamic items."""
     # Register persistent views
     bot.add_view(TicketPanelView())
 
-    # Register dynamic items (buttons that persist across restarts)
-    bot.add_dynamic_items(TicketPanelButton)
+    # Register dynamic items (select menus and buttons that persist across restarts)
+    bot.add_dynamic_items(TicketPanelSelect)
     setup_ticket_buttons(bot)
 
 
@@ -50,7 +50,7 @@ __all__ = [
     "TicketPanelView",
     "TicketControlPanelView",
     "CloseRequestView",
-    "TicketPanelButton",
+    "TicketPanelSelect",
     # Buttons
     "setup_ticket_buttons",
     # Modals

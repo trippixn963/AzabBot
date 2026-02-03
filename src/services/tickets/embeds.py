@@ -497,8 +497,8 @@ def build_panel_embed() -> discord.Embed:
     embed = discord.Embed(
         title="🎫 Support Tickets",
         description=(
-            "Need help? Click a button below to create a ticket.\n\n"
-            "**Categories:**\n"
+            "Open a ticket to get in touch with our staff team.\n"
+            "Select a category below that best fits your inquiry.\n\n"
         ),
         color=EmbedColors.GREEN,
     )

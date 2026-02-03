@@ -37,49 +37,65 @@ if TYPE_CHECKING:
 # Ticket Panel View (Category Selection)
 # =============================================================================
 
+class TicketCategorySelect(discord.ui.Select):
+    """Dropdown select menu for ticket category selection."""
+
+    def __init__(self):
+        options = [
+            discord.SelectOption(
+                label=info["label"],
+                value=key,
+                description=info["description"],
+                emoji=info["emoji"],
+            )
+            for key, info in TICKET_CATEGORIES.items()
+        ]
+
+        super().__init__(
+            placeholder="Select a category...",
+            options=options,
+            custom_id="tkt_select",
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        category = self.values[0]
+        logger.tree("Ticket Category Selected", [
+            ("User", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Category", category),
+        ], emoji="🎫")
+        await interaction.response.send_modal(TicketCreateModal(category))
+
+
 class TicketPanelView(discord.ui.View):
     """
     View for the ticket creation panel.
-    Displays category buttons for creating new tickets.
+    Displays a dropdown menu for selecting ticket category.
     """
 
     def __init__(self):
         super().__init__(timeout=None)
+        self.add_item(TicketCategorySelect())
 
-        # Add a button for each category
-        for key, info in TICKET_CATEGORIES.items():
-            button = discord.ui.Button(
+
+class TicketPanelSelect(discord.ui.DynamicItem[discord.ui.Select], template=r"tkt_select"):
+    """Dynamic item for ticket panel select menu (persistence)."""
+
+    def __init__(self):
+        options = [
+            discord.SelectOption(
                 label=info["label"],
-                style=discord.ButtonStyle.secondary,
-                custom_id=f"tkt_cat:{key}",
+                value=key,
+                description=info["description"],
                 emoji=info["emoji"],
             )
-            button.callback = self._make_callback(key)
-            self.add_item(button)
+            for key, info in TICKET_CATEGORIES.items()
+        ]
 
-    def _make_callback(self, category: str):
-        """Create a callback for a category button."""
-        async def callback(interaction: discord.Interaction) -> None:
-            logger.tree("Ticket Category Button Clicked", [
-                ("User", f"{interaction.user.name} ({interaction.user.id})"),
-                ("Category", category),
-            ], emoji="🎫")
-            await interaction.response.send_modal(TicketCreateModal(category))
-        return callback
-
-
-class TicketPanelButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_cat:(?P<category>\w+)"):
-    """Dynamic item for ticket panel category buttons (persistence)."""
-
-    def __init__(self, category: str):
-        self.category = category
-        info = TICKET_CATEGORIES.get(category, TICKET_CATEGORIES["support"])
         super().__init__(
-            discord.ui.Button(
-                label=info["label"],
-                style=discord.ButtonStyle.secondary,
-                custom_id=f"tkt_cat:{category}",
-                emoji=info["emoji"],
+            discord.ui.Select(
+                placeholder="Select a category...",
+                options=options,
+                custom_id="tkt_select",
             )
         )
 
@@ -87,17 +103,18 @@ class TicketPanelButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tk
     async def from_custom_id(
         cls,
         interaction: discord.Interaction,
-        item: discord.ui.Button,
+        item: discord.ui.Select,
         match,
-    ) -> "TicketPanelButton":
-        return cls(match.group("category"))
+    ) -> "TicketPanelSelect":
+        return cls()
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        logger.tree("Ticket Panel Button Clicked", [
+        category = self.item.values[0]
+        logger.tree("Ticket Category Selected", [
             ("User", f"{interaction.user.name} ({interaction.user.id})"),
-            ("Category", self.category),
+            ("Category", category),
         ], emoji="🎫")
-        await interaction.response.send_modal(TicketCreateModal(self.category))
+        await interaction.response.send_modal(TicketCreateModal(category))
 
 
 # =============================================================================

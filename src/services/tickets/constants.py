@@ -55,24 +55,32 @@ TRANSFER_EMOJI = discord.PartialEmoji(name="transfer", id=EMOJI_ID_TRANSFER)
 # Categories
 # =============================================================================
 
+VERIFICATION_EMOJI = discord.PartialEmoji(name="approve", id=EMOJI_ID_APPROVE)
+
 TICKET_CATEGORIES = {
     "support": {
         "label": "Support",
         "emoji": TICKET_EMOJI,
-        "description": "General support requests",
+        "description": "Questions, issues, or general help",
         "color": EmbedColors.GREEN,
     },
     "partnership": {
         "label": "Partnership",
         "emoji": PARTNERSHIP_EMOJI,
-        "description": "Partnership inquiries",
+        "description": "Business inquiries & collaborations",
         "color": EmbedColors.GREEN,
     },
     "suggestion": {
         "label": "Suggestion",
         "emoji": SUGGESTION_EMOJI,
-        "description": "Server suggestions",
+        "description": "Ideas & feedback for the server",
         "color": EmbedColors.GOLD,
+    },
+    "verification": {
+        "label": "Verification",
+        "emoji": VERIFICATION_EMOJI,
+        "description": "Request the Verified role",
+        "color": EmbedColors.GREEN,
     },
 }
 
@@ -115,6 +123,7 @@ __all__ = [
     "TICKET_EMOJI",
     "PARTNERSHIP_EMOJI",
     "SUGGESTION_EMOJI",
+    "VERIFICATION_EMOJI",
     "STAFF_EMOJI",
     "TRANSCRIPT_EMOJI",
     "APPROVE_EMOJI",
