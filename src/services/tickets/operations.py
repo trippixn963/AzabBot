@@ -56,9 +56,17 @@ class OperationsMixin:
         category: str,
         subject: str,
         description: str,
+        case_id: Optional[str] = None,
     ) -> Tuple[bool, str, Optional[str]]:
         """
         Create a new support ticket.
+
+        Args:
+            user: The user creating the ticket.
+            category: Ticket category.
+            subject: Ticket subject.
+            description: Ticket description.
+            case_id: Optional case ID (for appeal tickets).
 
         Returns:
             Tuple of (success, message, ticket_id).
@@ -157,6 +165,7 @@ class OperationsMixin:
                 thread_id=ticket_channel.id,
                 category=category,
                 subject=subject,
+                case_id=case_id,
             )
 
             # Build and send control panel

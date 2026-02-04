@@ -8,13 +8,14 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import discord
 
 from src.core.config import get_config
 from src.core.logger import logger
 from src.views import UserInfoSelect
+from src.views.constants import CASE_EMOJI
 
 from .buttons import (
     ClaimButton,
@@ -213,6 +214,7 @@ class MuteAppealButton(
                 category="appeal",
                 subject=subject,
                 description=description,
+                case_id=self.case_id,
             )
 
             if success:
@@ -263,11 +265,12 @@ class TicketControlPanelView(discord.ui.View):
     Layout:
         Row 0: User Info dropdown (Info, Avatar, History for ticket owner)
         Row 1: Action buttons based on status
+        Row 1 (appeal): Case button linking to the case thread
 
     Button visibility is based on ticket status:
-    - open: Claim, Close, AddUser, Info
-    - claimed: Close, Transfer, AddUser, Info
-    - closed: Reopen, Transcript, Info
+    - open: Claim, Close, AddUser, [Case for appeals]
+    - claimed: Close, Transfer, AddUser, [Case for appeals]
+    - closed: Reopen, Transcript, [Case for appeals]
     """
 
     def __init__(
@@ -276,6 +279,8 @@ class TicketControlPanelView(discord.ui.View):
         status: str,
         user_id: int,
         guild_id: int,
+        category: str = "support",
+        case_id: Optional[str] = None,
     ):
         super().__init__(timeout=None)
 
@@ -283,6 +288,8 @@ class TicketControlPanelView(discord.ui.View):
         self.status = status
         self.user_id = user_id
         self.guild_id = guild_id
+        self.category = category
+        self.case_id = case_id
 
         self._add_components()
 
@@ -343,6 +350,30 @@ class TicketControlPanelView(discord.ui.View):
                     row=1,
                 ))
 
+        # =================================================================
+        # Row 2: Case button for appeal tickets (links to case thread)
+        # =================================================================
+        if self.category == "appeal" and self.case_id:
+            config = get_config()
+            # Get case thread URL from mod logs forum
+            case_data = None
+            try:
+                from src.core.database import get_db
+                db = get_db()
+                case_data = db.get_case(self.case_id)
+            except Exception:
+                pass
+
+            if case_data and case_data.get("thread_id") and config.logging_guild_id:
+                case_url = f"https://discord.com/channels/{config.logging_guild_id}/{case_data['thread_id']}"
+                self.add_item(discord.ui.Button(
+                    label="Case",
+                    style=discord.ButtonStyle.link,
+                    url=case_url,
+                    emoji=CASE_EMOJI,
+                    row=2,
+                ))
+
     @classmethod
     def from_ticket(cls, ticket: dict) -> "TicketControlPanelView":
         """Create view from ticket database record."""
@@ -351,6 +382,8 @@ class TicketControlPanelView(discord.ui.View):
             status=ticket.get("status", "open"),
             user_id=ticket["user_id"],
             guild_id=ticket.get("guild_id", 0),
+            category=ticket.get("category", "support"),
+            case_id=ticket.get("case_id"),
         )
 
 

@@ -114,21 +114,18 @@ class EligibilityMixin:
         if not case:
             return (False, "Case not found", None)
 
-        # Check action type
+        # Check action type - only mutes can be appealed
         action_type = case.get("action_type", "")
-        if action_type not in ("ban", "mute"):
-            return (False, f"Cannot appeal {action_type} actions", None)
+        if action_type != "mute":
+            return (False, f"Only mutes can be appealed (this is a {action_type})", None)
 
-        # For mutes, check duration (must be >= 6 hours)
-        if action_type == "mute":
-            duration = case.get("duration_seconds")
-            if duration is None:
-                # Permanent mute - can appeal
-                pass
-            elif duration < MIN_APPEALABLE_MUTE_DURATION:
-                hours = duration // 3600
-                minutes = (duration % 3600) // 60
-                return (False, f"Mutes under 6 hours cannot be appealed (this mute: {hours}h {minutes}m)", None)
+        # Check duration (must be >= 1 hour or permanent)
+        duration = case.get("duration_seconds")
+        if duration is not None and duration < MIN_APPEALABLE_MUTE_DURATION:
+            hours = duration // 3600
+            minutes = (duration % 3600) // 60
+            min_hours = MIN_APPEALABLE_MUTE_DURATION // 3600
+            return (False, f"Mutes under {min_hours} hour(s) cannot be appealed (this mute: {hours}h {minutes}m)", None)
 
         # Check if already appealed
         can_appeal_db, reason = self.db.can_appeal_case(case_id)

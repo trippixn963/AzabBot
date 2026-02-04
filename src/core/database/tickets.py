@@ -47,20 +47,32 @@ class TicketsMixin:
         thread_id: int,
         category: str,
         subject: str,
+        case_id: Optional[str] = None,
     ) -> None:
-        """Create a new support ticket."""
+        """Create a new support ticket.
+
+        Args:
+            ticket_id: Unique ticket ID.
+            user_id: User who created the ticket.
+            guild_id: Guild ID.
+            thread_id: Channel/thread ID.
+            category: Ticket category.
+            subject: Ticket subject.
+            case_id: Optional case ID (for appeal tickets).
+        """
         now = time.time()
         self.execute(
             """INSERT INTO tickets (
                 ticket_id, user_id, guild_id, thread_id,
-                category, subject, status, priority, created_at, last_activity_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 'open', 'normal', ?, ?)""",
-            (ticket_id, user_id, guild_id, thread_id, category, subject, now, now)
+                category, subject, status, priority, created_at, last_activity_at, case_id
+            ) VALUES (?, ?, ?, ?, ?, ?, 'open', 'normal', ?, ?, ?)""",
+            (ticket_id, user_id, guild_id, thread_id, category, subject, now, now, case_id)
         )
         logger.tree("Ticket Created", [
             ("Ticket ID", ticket_id),
             ("Category", category),
             ("User ID", str(user_id)),
+            ("Case ID", case_id or "None"),
         ], emoji="🎫")
 
     def get_ticket(self: "DatabaseManager", ticket_id: str) -> Optional[TicketRecord]:

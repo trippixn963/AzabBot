@@ -35,10 +35,7 @@ class ResolveMixin:
         reason: Optional[str] = None,
     ) -> tuple[bool, str]:
         """
-        Approve an appeal and take action.
-
-        For bans: Unban the user.
-        For mutes: Unmute the user.
+        Approve a mute appeal and unmute the user.
 
         Args:
             appeal_id: Appeal ID to approve.
@@ -73,53 +70,34 @@ class ResolveMixin:
                 return (False, "Guild not found")
 
             user_id = appeal["user_id"]
-            action_type = appeal["action_type"]
             case_id = appeal["case_id"]
 
-            # Fetch user ONCE (reused throughout)
-            appeal_user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
+            # Remove muted role
+            member = guild.get_member(user_id)
+            if member:
+                muted_role = guild.get_role(self.config.muted_role_id)
+                if muted_role and muted_role in member.roles:
+                    try:
+                        await member.remove_roles(
+                            muted_role,
+                            reason=f"Appeal {appeal_id} approved by {moderator}"
+                        )
+                    except discord.HTTPException as e:
+                        logger.warning("Appeal Unmute Failed", [
+                            ("User ID", str(user_id)),
+                            ("Appeal ID", appeal_id),
+                            ("Error", str(e)[:50]),
+                        ])
 
-            # Take action based on type
-            if action_type == "ban":
-                # Unban user
-                try:
-                    await guild.unban(appeal_user, reason=f"Appeal {appeal_id} approved by {moderator}")
-                except discord.NotFound:
-                    pass  # User not banned or doesn't exist
-                except discord.HTTPException as e:
-                    logger.warning("Appeal Unban Failed", [
-                        ("User ID", str(user_id)),
-                        ("Appeal ID", appeal_id),
-                        ("Error", str(e)[:50]),
-                    ])
+                # Remove timeout if any
+                if member.is_timed_out():
+                    try:
+                        await member.timeout(None, reason=f"Appeal {appeal_id} approved")
+                    except discord.HTTPException:
+                        pass
 
-            elif action_type == "mute":
-                # Remove muted role
-                member = guild.get_member(user_id)
-                if member:
-                    muted_role = guild.get_role(self.config.muted_role_id)
-                    if muted_role and muted_role in member.roles:
-                        try:
-                            await member.remove_roles(
-                                muted_role,
-                                reason=f"Appeal {appeal_id} approved by {moderator}"
-                            )
-                        except discord.HTTPException as e:
-                            logger.warning("Appeal Unmute Failed", [
-                                ("User ID", str(user_id)),
-                                ("Appeal ID", appeal_id),
-                                ("Error", str(e)[:50]),
-                            ])
-
-                    # Remove timeout if any
-                    if member.is_timed_out():
-                        try:
-                            await member.timeout(None, reason=f"Appeal {appeal_id} approved")
-                        except discord.HTTPException:
-                            pass
-
-                # Clear mute from database
-                self.db.remove_mute(user_id, guild.id, moderator.id, "Appeal approved")
+            # Clear mute from database
+            self.db.remove_mute(user_id, guild.id, moderator.id, "Appeal approved")
 
             # Resolve the original case
             case = self.db.get_case(case_id)
@@ -143,8 +121,7 @@ class ResolveMixin:
                 if reason:
                     embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
 
-                action_taken = "User has been unbanned" if action_type == "ban" else "User has been unmuted"
-                embed.add_field(name="Action Taken", value=action_taken, inline=False)
+                embed.add_field(name="Action Taken", value="User has been unmuted", inline=False)
 
                 set_footer(embed)
                 approved_view = AppealApprovedView(user_id, guild.id)
@@ -162,7 +139,6 @@ class ResolveMixin:
                 ("Case ID", case_id),
                 ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
                 ("Mod ID", str(moderator.id)),
-                ("Action", action_type.title()),
             ], emoji="✅")
 
             # Log to server logs
@@ -175,7 +151,7 @@ class ResolveMixin:
                 reason=reason,
             )
 
-            return (True, f"Appeal approved. User has been {'unbanned' if action_type == 'ban' else 'unmuted'}.")
+            return (True, "Appeal approved. User has been unmuted.")
 
         except Exception as e:
             logger.error("Appeal Approval Failed", [

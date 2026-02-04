@@ -704,6 +704,7 @@ class SchemaMixin:
             "transcript_html TEXT",
             "control_panel_message_id INTEGER",
             "transcript TEXT",
+            "case_id TEXT",  # For appeal tickets - links to the case being appealed
         ]:
             try:
                 cursor.execute(f"ALTER TABLE tickets ADD COLUMN {col}")
