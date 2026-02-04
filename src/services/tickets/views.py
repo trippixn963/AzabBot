@@ -264,8 +264,7 @@ class TicketControlPanelView(discord.ui.View):
 
     Layout:
         Row 0: User Info dropdown (Info, Avatar, History for ticket owner)
-        Row 1: Action buttons based on status
-        Row 1 (appeal): Case button linking to the case thread
+        Row 1: Action buttons based on status + Case button for appeals
 
     Button visibility is based on ticket status:
     - open: Claim, Close, AddUser, [Case for appeals]
@@ -279,8 +278,7 @@ class TicketControlPanelView(discord.ui.View):
         status: str,
         user_id: int,
         guild_id: int,
-        category: str = "support",
-        case_id: Optional[str] = None,
+        case_url: Optional[str] = None,
     ):
         super().__init__(timeout=None)
 
@@ -288,8 +286,7 @@ class TicketControlPanelView(discord.ui.View):
         self.status = status
         self.user_id = user_id
         self.guild_id = guild_id
-        self.category = category
-        self.case_id = case_id
+        self.case_url = case_url  # Pre-computed URL for appeal tickets
 
         self._add_components()
 
@@ -351,39 +348,40 @@ class TicketControlPanelView(discord.ui.View):
                 ))
 
         # =================================================================
-        # Row 2: Case button for appeal tickets (links to case thread)
+        # Case button for appeal tickets (same row as action buttons)
         # =================================================================
-        if self.category == "appeal" and self.case_id:
-            config = get_config()
-            # Get case thread URL from mod logs forum
-            case_data = None
-            try:
-                from src.core.database import get_db
-                db = get_db()
-                case_data = db.get_case(self.case_id)
-            except Exception:
-                pass
-
-            if case_data and case_data.get("thread_id") and config.logging_guild_id:
-                case_url = f"https://discord.com/channels/{config.logging_guild_id}/{case_data['thread_id']}"
-                self.add_item(discord.ui.Button(
-                    label="Case",
-                    style=discord.ButtonStyle.link,
-                    url=case_url,
-                    emoji=CASE_EMOJI,
-                    row=2,
-                ))
+        if self.case_url:
+            self.add_item(discord.ui.Button(
+                label="Case",
+                style=discord.ButtonStyle.link,
+                url=self.case_url,
+                emoji=CASE_EMOJI,
+                row=1,
+            ))
 
     @classmethod
     def from_ticket(cls, ticket: dict) -> "TicketControlPanelView":
         """Create view from ticket database record."""
+        # Build case URL for appeal tickets (DB lookup here, not in constructor)
+        case_url = None
+        case_id = ticket.get("case_id")
+        if ticket.get("category") == "appeal" and case_id:
+            try:
+                from src.core.database import get_db
+                config = get_config()
+                db = get_db()
+                case_data = db.get_case(case_id)
+                if case_data and case_data.get("thread_id") and config.logging_guild_id:
+                    case_url = f"https://discord.com/channels/{config.logging_guild_id}/{case_data['thread_id']}"
+            except Exception:
+                pass
+
         return cls(
             ticket_id=ticket["ticket_id"],
             status=ticket.get("status", "open"),
             user_id=ticket["user_id"],
             guild_id=ticket.get("guild_id", 0),
-            category=ticket.get("category", "support"),
-            case_id=ticket.get("case_id"),
+            case_url=case_url,
         )
 
 
