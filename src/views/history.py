@@ -254,66 +254,95 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
             ("Guild ID", str(self.guild_id)),
         ], emoji="📜")
 
-        db = get_db()
-        config = get_config()
-
-        # Get cases for this user
-        cases = db.get_user_cases(self.user_id, self.guild_id, limit=QUERY_LIMIT_SMALL, include_resolved=True)
-
-        if not cases:
-            await interaction.response.send_message(
-                "No moderation history found for this user.",
-                ephemeral=True,
-            )
-            return
-
-        # Build simple list with links
-        lines = []
-        action_emoji = {
-            "mute": "🔇", "ban": "🔨", "warn": "⚠️", "forbid": "🚫",
-            "timeout": "⏰", "unmute": "🔊", "unban": "✅", "unforbid": "✅",
-        }
-
-        for case in cases:
-            case_id = case.get("case_id", "????")
-            action_type = case.get("action_type", "?")
-            thread_id = case.get("thread_id")
-            status = case.get("status", "open")
-            emoji = action_emoji.get(action_type, "📋")
-            status_indicator = "🟢" if status == "open" else "⚫"
-
-            # Build links
-            links = []
-
-            # Discord link - only show if NOT archived (thread still exists)
-            if thread_id and config.logging_guild_id and status != "archived":
-                discord_url = f"https://discord.com/channels/{config.logging_guild_id}/{thread_id}"
-                links.append(f"[Discord]({discord_url})")
-
-            # Website link - only show for archived cases (transcript saved after thread deleted)
-            if status == "archived" and config.case_transcript_base_url:
-                website_url = f"{config.case_transcript_base_url}/{case_id}"
-                links.append(f"[Website]({website_url})")
-
-            link_str = " • ".join(links) if links else "No links"
-            lines.append(f"{status_indicator} {emoji} `{case_id}` — {link_str}")
-
-        # Get username for title
-        username = "Unknown"
         try:
-            user = await interaction.client.fetch_user(self.user_id)
-            username = user.name
-        except Exception:
-            pass
+            db = get_db()
+            config = get_config()
 
-        embed = discord.Embed(
-            title=f"Case History — {username}",
-            description="\n".join(lines),
-            color=EmbedColors.INFO,
-        )
-        embed.set_footer(text=f"{len(cases)} cases")
+            # Get cases for this user
+            cases = db.get_user_cases(self.user_id, self.guild_id, limit=QUERY_LIMIT_SMALL, include_resolved=True)
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+            if not cases:
+                await interaction.response.send_message(
+                    "No moderation history found for this user.",
+                    ephemeral=True,
+                )
+                return
+
+            # Build simple list with links
+            lines = []
+            action_emoji = {
+                "mute": "🔇", "ban": "🔨", "warn": "⚠️", "forbid": "🚫",
+                "timeout": "⏰", "unmute": "🔊", "unban": "✅", "unforbid": "✅",
+            }
+
+            for case in cases:
+                case_id = case.get("case_id", "????")
+                action_type = case.get("action_type", "?")
+                thread_id = case.get("thread_id")
+                status = case.get("status", "open")
+                emoji = action_emoji.get(action_type, "📋")
+                status_indicator = "🟢" if status == "open" else "⚫"
+
+                # Build links
+                links = []
+
+                # Discord link - only show if NOT archived (thread still exists)
+                if thread_id and config.logging_guild_id and status != "archived":
+                    discord_url = f"https://discord.com/channels/{config.logging_guild_id}/{thread_id}"
+                    links.append(f"[Discord]({discord_url})")
+
+                # Website link - only show for archived cases (transcript saved after thread deleted)
+                if status == "archived" and config.case_transcript_base_url:
+                    website_url = f"{config.case_transcript_base_url}/{case_id}"
+                    links.append(f"[Website]({website_url})")
+
+                link_str = " • ".join(links) if links else "No links"
+                lines.append(f"{status_indicator} {emoji} `{case_id}` — {link_str}")
+
+            # Get username for title
+            username = "Unknown"
+            try:
+                user = await interaction.client.fetch_user(self.user_id)
+                username = user.name
+            except discord.NotFound:
+                pass
+            except discord.HTTPException:
+                pass
+
+            embed = discord.Embed(
+                title=f"Case History — {username}",
+                description="\n".join(lines),
+                color=EmbedColors.INFO,
+            )
+            embed.set_footer(text=f"{len(cases)} cases")
+
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        except discord.HTTPException as e:
+            logger.error("History Button Failed (HTTP)", [
+                ("User ID", str(self.user_id)),
+                ("Error", str(e)[:100]),
+            ])
+            try:
+                await interaction.response.send_message(
+                    "Failed to fetch history. Please try again.",
+                    ephemeral=True,
+                )
+            except discord.HTTPException:
+                pass
+        except Exception as e:
+            logger.error("History Button Failed", [
+                ("User ID", str(self.user_id)),
+                ("Error", str(e)[:100]),
+                ("Type", type(e).__name__),
+            ])
+            try:
+                await interaction.response.send_message(
+                    "An error occurred while fetching history.",
+                    ephemeral=True,
+                )
+            except discord.HTTPException:
+                pass
 
     async def _build_history_embed(
         self,

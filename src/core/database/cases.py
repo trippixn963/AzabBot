@@ -480,7 +480,7 @@ class CasesMixin:
         }
 
     def get_old_cases_for_deletion(
-        self,
+        self: "DatabaseManager",
         ban_cutoff: float,
         default_cutoff: float,
     ) -> List[Dict[str, Any]]:
