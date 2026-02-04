@@ -30,7 +30,6 @@ from .config import (
     NY_TZ,
     get_config,
     is_owner,
-    is_moderator,
 )
 
 from .database import Database, get_db
@@ -46,7 +45,6 @@ from .constants import (
     SECONDS_PER_DAY,
     SECONDS_PER_WEEK,
     # Network
-    HEALTH_CHECK_PORT,
     STATS_API_PORT,
     # Intervals
     MUTE_CHECK_INTERVAL,
@@ -80,7 +78,6 @@ __all__ = [
     "NY_TZ",
     "get_config",
     "is_owner",
-    "is_moderator",
     # Database
     "Database",
     "get_db",
@@ -95,7 +92,6 @@ __all__ = [
     "SECONDS_PER_HOUR",
     "SECONDS_PER_DAY",
     "SECONDS_PER_WEEK",
-    "HEALTH_CHECK_PORT",
     "STATS_API_PORT",
     "MUTE_CHECK_INTERVAL",
     "PRESENCE_UPDATE_INTERVAL",

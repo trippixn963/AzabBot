@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Optional
 
 import discord
 
-from src.core.config import EmbedColors
+from src.core.config import EmbedColors, has_mod_role
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -32,7 +32,7 @@ class VoiceLogsMixin:
 
         from ..categories import LogCategory
 
-        if self.config.moderator_ids and member.id in self.config.moderator_ids:
+        if has_mod_role(member):
             return
 
         embed = self._create_embed("🟢 Voice Join", EmbedColors.SUCCESS, category="Voice Join", user_id=member.id)
@@ -53,7 +53,7 @@ class VoiceLogsMixin:
 
         from ..categories import LogCategory
 
-        if self.config.moderator_ids and member.id in self.config.moderator_ids:
+        if has_mod_role(member):
             return
 
         embed = self._create_embed("🔴 Voice Leave", EmbedColors.LOG_NEGATIVE, category="Voice Leave", user_id=member.id)
@@ -75,7 +75,7 @@ class VoiceLogsMixin:
 
         from ..categories import LogCategory
 
-        if self.config.moderator_ids and member.id in self.config.moderator_ids:
+        if has_mod_role(member):
             return
 
         embed = self._create_embed("🔀 Voice Move", EmbedColors.BLUE, category="Voice Move", user_id=member.id)
@@ -145,7 +145,7 @@ class VoiceLogsMixin:
 
         from ..categories import LogCategory
 
-        if self.config.moderator_ids and member.id in self.config.moderator_ids:
+        if has_mod_role(member):
             return
 
         if muted:
@@ -170,7 +170,7 @@ class VoiceLogsMixin:
 
         from ..categories import LogCategory
 
-        if self.config.moderator_ids and member.id in self.config.moderator_ids:
+        if has_mod_role(member):
             return
 
         if deafened:

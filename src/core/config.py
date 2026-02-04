@@ -179,11 +179,6 @@ class Config:
     developer_name: str = "حَـــــنَّـــــا"
     server_name: str = "discord.gg/syria"
 
-    # -------------------------------------------------------------------------
-    # Optional: Permissions
-    # -------------------------------------------------------------------------
-
-    moderator_ids: Set[int] = None
 
     # -------------------------------------------------------------------------
     # Optional: Webhooks
@@ -412,9 +407,9 @@ def load_config() -> Config:
     # Collect Required Variables
     # -------------------------------------------------------------------------
 
-    discord_token = os.getenv("DISCORD_TOKEN")
+    discord_token = os.getenv("AZAB_TOKEN")
     if not discord_token:
-        missing.append("DISCORD_TOKEN")
+        missing.append("AZAB_TOKEN")
 
     owner_id_str = os.getenv("OWNER_ID")
     if not owner_id_str:
@@ -484,7 +479,6 @@ def load_config() -> Config:
     case_transcripts_thread_id = _parse_int_optional(os.getenv("CASE_TRANSCRIPTS_THREAD_ID"))
     server_logs_forum_id = _parse_int_optional(os.getenv("SERVER_LOGS_FORUM_ID"))
     logging_guild_id = _parse_int_optional(os.getenv("GUILD_ID"))
-    moderator_ids = _parse_int_set(os.getenv("MODERATOR_IDS"))
     ignored_bot_ids = _parse_int_set(os.getenv("IGNORED_BOT_IDS"))
     lockdown_exclude_ids = _parse_int_set(os.getenv("LOCKDOWN_EXCLUDE_IDS"))
     link_allowed_user_ids = _parse_int_set(os.getenv("LINK_ALLOWED_USER_IDS"))
@@ -548,7 +542,6 @@ def load_config() -> Config:
         ),
         developer_name=os.getenv("DEVELOPER_NAME", "حَـــــنَّـــــا"),
         server_name=os.getenv("SERVER_NAME", "discord.gg/syria"),
-        moderator_ids=moderator_ids if moderator_ids else None,
         status_webhook_url=_validate_url(os.getenv("STATUS_WEBHOOK_URL"), "STATUS_WEBHOOK_URL"),
         error_webhook_url=_validate_url(os.getenv("ERROR_WEBHOOK_URL"), "ERROR_WEBHOOK_URL"),
         live_logs_webhook_url=_validate_url(os.getenv("LIVE_LOGS_WEBHOOK_URL"), "LIVE_LOGS_WEBHOOK_URL"),
@@ -653,22 +646,6 @@ def is_owner(user_id: int) -> bool:
     return user_id == get_config().owner_id
 
 
-def is_moderator(user_id: int) -> bool:
-    """
-    Check if user is a moderator.
-
-    Args:
-        user_id: Discord user ID to check.
-
-    Returns:
-        True if user is in the moderator list.
-    """
-    config = get_config()
-    if config.moderator_ids:
-        return user_id in config.moderator_ids
-    return False
-
-
 def has_mod_role(member) -> bool:
     """
     Check if a member has the moderation role.
@@ -684,10 +661,6 @@ def has_mod_role(member) -> bool:
 
     # Owner always has access
     if is_owner(member.id):
-        return True
-
-    # Check moderator IDs list
-    if is_moderator(member.id):
         return True
 
     # Check for administrator permission
@@ -740,7 +713,6 @@ __all__ = [
     "validate_and_log_config",
     # Permission helpers
     "is_owner",
-    "is_moderator",
     "has_mod_role",
     "check_mod_permission",
 ]
