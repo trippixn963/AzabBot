@@ -479,45 +479,19 @@ class CasesMixin:
             "warn_count": row["warn_count"] or 0 if row else 0,
         }
 
-    def get_old_cases(self: "DatabaseManager", cutoff_timestamp: float) -> List[Dict[str, Any]]:
-        """
-        Get approved cases where approved_at is older than the cutoff timestamp.
-
-        Only approved cases are eligible for deletion. The 7-day timer
-        starts at approval time, not creation time.
-
-        Args:
-            cutoff_timestamp: Unix timestamp cutoff (cases approved before this).
-
-        Returns:
-            List of case dicts.
-        """
-        rows = self.fetchall(
-            """SELECT * FROM cases
-               WHERE approved_at IS NOT NULL
-               AND approved_at < ?
-               AND status != 'archived'
-               ORDER BY approved_at ASC""",
-            (cutoff_timestamp,)
-        )
-        return [dict(row) for row in rows]
-
-    def get_old_cases_by_action_type(
+    def get_old_cases_for_deletion(
         self,
         ban_cutoff: float,
-        mute_cutoff: float,
         default_cutoff: float,
     ) -> List[Dict[str, Any]]:
         """
-        Get approved cases using action-type-based retention.
+        Get cases ready for auto-deletion based on creation time.
 
-        Ban cases: 30 days after approval
-        Mute/Timeout cases: 14 days after approval
-        Other cases: 7 days after approval
+        Ban cases: 14 days after creation
+        Other cases: 7 days after creation
 
         Args:
             ban_cutoff: Cutoff timestamp for ban cases.
-            mute_cutoff: Cutoff timestamp for mute/timeout cases.
             default_cutoff: Cutoff timestamp for other cases.
 
         Returns:
@@ -525,15 +499,13 @@ class CasesMixin:
         """
         rows = self.fetchall(
             """SELECT * FROM cases
-               WHERE approved_at IS NOT NULL
-               AND status != 'archived'
+               WHERE status != 'archived'
                AND (
-                   (action_type = 'ban' AND approved_at < ?)
-                   OR (action_type IN ('mute', 'timeout') AND approved_at < ?)
-                   OR (action_type NOT IN ('ban', 'mute', 'timeout') AND approved_at < ?)
+                   (action_type = 'ban' AND created_at < ?)
+                   OR (action_type != 'ban' AND created_at < ?)
                )
-               ORDER BY approved_at ASC""",
-            (ban_cutoff, mute_cutoff, default_cutoff)
+               ORDER BY created_at ASC""",
+            (ban_cutoff, default_cutoff)
         )
         return [dict(row) for row in rows]
 
@@ -556,32 +528,6 @@ class CasesMixin:
             logger.debug("Case Archived", [
                 ("Case ID", case_id),
             ])
-
-        return cursor.rowcount > 0
-
-    def approve_case(self: "DatabaseManager", case_id: str, approved_by: int) -> bool:
-        """
-        Mark a case as approved. Starts the 7-day deletion timer.
-
-        Args:
-            case_id: The case ID to approve.
-            approved_by: User ID of who approved the case.
-
-        Returns:
-            True if case was approved, False if not found.
-        """
-        cursor = self.execute(
-            """UPDATE cases
-               SET approved_at = ?, approved_by = ?, status = 'approved'
-               WHERE case_id = ?""",
-            (time.time(), approved_by, case_id)
-        )
-
-        if cursor.rowcount > 0:
-            logger.tree("Case Approved", [
-                ("Case ID", case_id),
-                ("Approved By", str(approved_by)),
-            ], emoji="✅")
 
         return cursor.rowcount > 0
 

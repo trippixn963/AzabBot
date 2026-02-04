@@ -247,7 +247,7 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
         return cls(user_id, guild_id)
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        """Show paginated history embed with per-action cases."""
+        """Show simple case list with Discord and website links."""
         logger.tree("History Button Clicked", [
             ("Clicked By", f"{interaction.user} ({interaction.user.id})"),
             ("Target User ID", str(self.user_id)),
@@ -255,37 +255,65 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
         ], emoji="📜")
 
         db = get_db()
+        config = get_config()
 
-        # Try to get per-action cases first (new system)
+        # Get cases for this user
         cases = db.get_user_cases(self.user_id, self.guild_id, limit=QUERY_LIMIT_SMALL, include_resolved=True)
 
-        if cases:
-            # Show per-action cases with links to threads (using shared function)
-            embed = await build_history_embed(interaction.client, self.user_id, self.guild_id, cases)
-            view = build_history_view(cases, self.guild_id)
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-            return
-
-        # Fall back to legacy history if no per-action cases
-        total_count = db.get_history_count(self.user_id, self.guild_id)
-        history = db.get_combined_history(self.user_id, self.guild_id, limit=QUERY_LIMIT_TINY, offset=0)
-
-        if not history:
+        if not cases:
             await interaction.response.send_message(
                 "No moderation history found for this user.",
                 ephemeral=True,
             )
             return
 
-        # Build legacy history embed
-        embed = await self._build_history_embed(interaction.client, history, 0, total_count)
+        # Build simple list with links
+        lines = []
+        action_emoji = {
+            "mute": "🔇", "ban": "🔨", "warn": "⚠️", "forbid": "🚫",
+            "timeout": "⏰", "unmute": "🔊", "unban": "✅", "unforbid": "✅",
+        }
 
-        # Create pagination view if needed
-        if total_count > QUERY_LIMIT_TINY:
-            view = HistoryPaginationView(self.user_id, self.guild_id, 0, total_count)
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-        else:
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+        for case in cases:
+            case_id = case.get("case_id", "????")
+            action_type = case.get("action_type", "?")
+            thread_id = case.get("thread_id")
+            status = case.get("status", "open")
+            emoji = action_emoji.get(action_type, "📋")
+            status_indicator = "🟢" if status == "open" else "⚫"
+
+            # Build links
+            links = []
+
+            # Discord link - only show if NOT archived (thread still exists)
+            if thread_id and config.logging_guild_id and status != "archived":
+                discord_url = f"https://discord.com/channels/{config.logging_guild_id}/{thread_id}"
+                links.append(f"[Discord]({discord_url})")
+
+            # Website link - only show for archived cases (transcript saved after thread deleted)
+            if status == "archived" and config.case_transcript_base_url:
+                website_url = f"{config.case_transcript_base_url}/{case_id}"
+                links.append(f"[Website]({website_url})")
+
+            link_str = " • ".join(links) if links else "No links"
+            lines.append(f"{status_indicator} {emoji} `{case_id}` — {link_str}")
+
+        # Get username for title
+        username = "Unknown"
+        try:
+            user = await interaction.client.fetch_user(self.user_id)
+            username = user.name
+        except Exception:
+            pass
+
+        embed = discord.Embed(
+            title=f"Case History — {username}",
+            description="\n".join(lines),
+            color=EmbedColors.INFO,
+        )
+        embed.set_footer(text=f"{len(cases)} cases")
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def _build_history_embed(
         self,

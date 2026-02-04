@@ -367,6 +367,9 @@ class OperationsMixin:
             # Update control panel embed with closed_by for thumbnail
             await self._update_control_panel(ticket_id, channel, closed_by, ticket_user=ticket_user)
 
+            # Revoke send_messages for ticket opener and any added users
+            await self._lock_ticket_on_close(channel, ticket, closed_by.guild)
+
             # Get staff stats (after close, so count includes this ticket)
             staff_stats = self.db.get_staff_ticket_stats(closed_by.id, closed_by.guild.id)
 

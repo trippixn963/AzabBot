@@ -21,7 +21,6 @@ from .buttons import (
     CloseButton,
     AddUserButton,
     ReopenButton,
-    InfoButton,
     TransferButton,
     CloseApproveButton,
     CloseDenyButton,
@@ -49,6 +48,7 @@ class TicketCategorySelect(discord.ui.Select):
                 emoji=info["emoji"],
             )
             for key, info in TICKET_CATEGORIES.items()
+            if not info.get("hidden", False)  # Skip hidden categories like "appeal"
         ]
 
         super().__init__(
@@ -89,6 +89,7 @@ class TicketPanelSelect(discord.ui.DynamicItem[discord.ui.Select], template=r"tk
                 emoji=info["emoji"],
             )
             for key, info in TICKET_CATEGORIES.items()
+            if not info.get("hidden", False)  # Skip hidden categories like "appeal"
         ]
 
         super().__init__(
@@ -115,6 +116,137 @@ class TicketPanelSelect(discord.ui.DynamicItem[discord.ui.Select], template=r"tk
             ("Category", category),
         ], emoji="🎫")
         await interaction.response.send_modal(TicketCreateModal(category))
+
+
+# =============================================================================
+# Mute Appeal Button (for prison intro embed)
+# =============================================================================
+
+class MuteAppealButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=r"mute_appeal:(?P<case_id>[A-Z0-9]+):(?P<user_id>\d+)"
+):
+    """
+    Persistent button on prison intro embed to open an appeal ticket.
+
+    Only the muted user can use this button.
+    Creates a ticket with category "appeal" and pre-filled mute information.
+    """
+
+    def __init__(self, case_id: str, user_id: int) -> None:
+        super().__init__(
+            discord.ui.Button(
+                label="Appeal Mute",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"mute_appeal:{case_id}:{user_id}",
+                emoji=TICKET_CATEGORIES["appeal"]["emoji"],
+            )
+        )
+        self.case_id = case_id
+        self.user_id = user_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match,
+    ) -> "MuteAppealButton":
+        case_id = match.group("case_id")
+        user_id = int(match.group("user_id"))
+        return cls(case_id, user_id)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle appeal button click - creates an appeal ticket."""
+        logger.tree("Mute Appeal Button Clicked", [
+            ("User", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Case ID", self.case_id),
+            ("Expected User", str(self.user_id)),
+        ], emoji="📝")
+
+        # Only the muted user can appeal
+        if interaction.user.id != self.user_id:
+            logger.warning("Mute Appeal Button Wrong User", [
+                ("Clicked By", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Expected User", str(self.user_id)),
+                ("Case ID", self.case_id),
+            ])
+            await interaction.response.send_message(
+                "You can only appeal your own mutes.",
+                ephemeral=True,
+            )
+            return
+
+        # Check if ticket service is available
+        bot = interaction.client
+        if not hasattr(bot, "ticket_service") or not bot.ticket_service:
+            logger.warning("Ticket Service Unavailable", [
+                ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Case ID", self.case_id),
+            ])
+            await interaction.response.send_message(
+                "Ticket system is not available. Please contact staff directly.",
+                ephemeral=True,
+            )
+            return
+
+        # Ensure we have a Member object
+        if not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message(
+                "This button can only be used in the server.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        # Create the appeal ticket
+        subject = f"Mute Appeal - Case #{self.case_id}"
+        description = (
+            f"This ticket was created to appeal mute case `{self.case_id}`.\n\n"
+            f"Please explain why you believe your mute should be removed or reduced."
+        )
+
+        try:
+            success, message, ticket_id = await bot.ticket_service.create_ticket(
+                user=interaction.user,
+                category="appeal",
+                subject=subject,
+                description=description,
+            )
+
+            if success:
+                logger.tree("Mute Appeal Ticket Created", [
+                    ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                    ("Case ID", self.case_id),
+                    ("Ticket ID", ticket_id or "Unknown"),
+                ], emoji="✅")
+
+                await interaction.followup.send(
+                    f"✅ Your appeal ticket has been created! Check the ticket channel to discuss your case with staff.",
+                    ephemeral=True,
+                )
+            else:
+                logger.warning("Mute Appeal Ticket Failed", [
+                    ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                    ("Case ID", self.case_id),
+                    ("Reason", message[:100]),
+                ])
+                await interaction.followup.send(
+                    f"❌ Could not create appeal ticket: {message}",
+                    ephemeral=True,
+                )
+
+        except Exception as e:
+            logger.error("Mute Appeal Ticket Error", [
+                ("User", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Case ID", self.case_id),
+                ("Error", str(e)[:100]),
+            ])
+            await interaction.followup.send(
+                "❌ An error occurred while creating your appeal ticket. Please try again or contact staff directly.",
+                ephemeral=True,
+            )
 
 
 # =============================================================================
@@ -167,7 +299,7 @@ class TicketControlPanelView(discord.ui.View):
         # =================================================================
 
         if self.status == "open":
-            # Open tickets: Claim, Close, AddUser, Info
+            # Open tickets: Claim, Close, AddUser
             claim_btn = ClaimButton(self.ticket_id)
             claim_btn.row = 1
             self.add_item(claim_btn)
@@ -180,12 +312,8 @@ class TicketControlPanelView(discord.ui.View):
             add_user_btn.row = 1
             self.add_item(add_user_btn)
 
-            info_btn = InfoButton(self.ticket_id)
-            info_btn.row = 1
-            self.add_item(info_btn)
-
         elif self.status == "claimed":
-            # Claimed tickets: Close, Transfer, AddUser, Info
+            # Claimed tickets: Close, Transfer, AddUser
             close_btn = CloseButton(self.ticket_id)
             close_btn.row = 1
             self.add_item(close_btn)
@@ -198,12 +326,8 @@ class TicketControlPanelView(discord.ui.View):
             add_user_btn.row = 1
             self.add_item(add_user_btn)
 
-            info_btn = InfoButton(self.ticket_id)
-            info_btn.row = 1
-            self.add_item(info_btn)
-
         elif self.status == "closed":
-            # Closed tickets: Reopen, Transcript (direct link), Info
+            # Closed tickets: Reopen, Transcript (direct link)
             reopen_btn = ReopenButton(self.ticket_id)
             reopen_btn.row = 1
             self.add_item(reopen_btn)
@@ -218,10 +342,6 @@ class TicketControlPanelView(discord.ui.View):
                     emoji=TRANSCRIPT_EMOJI,
                     row=1,
                 ))
-
-            info_btn = InfoButton(self.ticket_id)
-            info_btn.row = 1
-            self.add_item(info_btn)
 
     @classmethod
     def from_ticket(cls, ticket: dict) -> "TicketControlPanelView":

@@ -101,10 +101,14 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         # Verify ticket panel exists (resend if deleted)
         await self.verify_panel()
 
+        # Recover pending deletions from before restart
+        recovered = await self._recover_pending_deletions()
+
         logger.tree("Ticket Service Started", [
             ("Auto-close", f"Enabled (warn: {INACTIVE_WARNING_DAYS}d, close: {INACTIVE_CLOSE_DAYS}d)"),
             ("Auto-delete", f"Enabled ({DELETE_AFTER_CLOSE_DAYS}d after close)"),
             ("Check interval", f"{AUTO_CLOSE_CHECK_INTERVAL}s"),
+            ("Recovered deletions", str(recovered)),
         ], emoji="🎫")
 
     async def stop(self) -> None:
@@ -125,6 +129,51 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
             self._pending_deletions.clear()
 
         logger.debug("Ticket Service Stopped")
+
+    async def _recover_pending_deletions(self) -> int:
+        """
+        Recover pending ticket deletions after bot restart.
+
+        Checks for closed tickets that should have been deleted (closed_at + delay < now)
+        and deletes their channels immediately.
+
+        Returns:
+            Number of tickets recovered (channels deleted).
+        """
+        import time
+
+        if not self.config.logging_guild_id:
+            return 0
+
+        now = time.time()
+        # Tickets closed before this threshold should have been deleted already
+        deletion_threshold = now - THREAD_DELETE_DELAY
+        recovered = 0
+
+        # Get closed tickets that were closed before the threshold
+        # (reuse existing method that filters by closed_at)
+        closed_tickets = self.db.get_closed_tickets_ready_to_delete(
+            self.config.logging_guild_id, deletion_threshold
+        )
+
+        for ticket in closed_tickets:
+            ticket_id = ticket["ticket_id"]
+            channel_id = ticket["thread_id"]
+
+            # Check if channel still exists and delete it
+            try:
+                channel = await self._get_ticket_channel(channel_id)
+                if channel:
+                    await channel.delete()
+                    logger.debug(f"Recovered deletion for ticket {ticket_id}")
+                    recovered += 1
+            except Exception as e:
+                logger.warning("Failed to recover ticket deletion", [
+                    ("Ticket ID", ticket_id),
+                    ("Error", str(e)),
+                ])
+
+        return recovered
 
     # =========================================================================
     # Activity Tracking

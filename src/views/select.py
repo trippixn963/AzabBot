@@ -31,7 +31,7 @@ class UserInfoSelect(discord.ui.DynamicItem[discord.ui.Select], template=r"user_
 
     def __init__(self, user_id: int, guild_id: int):
         select = discord.ui.Select(
-            placeholder="👤 User Info",
+            placeholder="More Info",
             options=[
                 discord.SelectOption(
                     label="Info",

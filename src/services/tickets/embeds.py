@@ -35,138 +35,55 @@ def build_control_panel_embed(
     """
     Build the main control panel embed for a ticket.
 
-    This embed is sent once when the ticket is created and
-    updated in place as the ticket state changes.
-
-    Args:
-        ticket: Ticket data from database
-        user: The ticket creator (optional, for mention and stats)
-        closed_by: The staff who closed the ticket (optional, for thumbnail)
-        user_ticket_count: Total ticket count for the user (optional)
-
-    Returns:
-        Discord embed with ticket status and info
+    Clean, mobile-friendly design using description instead of many fields.
     """
     status = ticket.get("status", "open")
     category = ticket.get("category", "support")
     cat_info = TICKET_CATEGORIES.get(category, TICKET_CATEGORIES["support"])
+    ticket_id = ticket.get("ticket_id", "???")
+
+    # Build description with key info
+    lines = []
+
+    # User line
+    if user:
+        lines.append(f"👤 {user.mention} (`{user.name}`)")
+    else:
+        lines.append(f"👤 <@{ticket['user_id']}>")
+
+    # Category and created time on same line
+    created_at = ticket.get("created_at")
+    if created_at:
+        lines.append(f"{cat_info['emoji']} {cat_info['label']} • Created <t:{int(created_at)}:R>")
+    else:
+        lines.append(f"{cat_info['emoji']} {cat_info['label']}")
+
+    # Claimed by (if claimed)
+    if ticket.get("claimed_by"):
+        lines.append(f"✋ Claimed by <@{ticket['claimed_by']}>")
+
+    # Subject
+    if ticket.get("subject"):
+        subject = ticket["subject"]
+        if len(subject) > 100:
+            subject = subject[:97] + "..."
+        lines.append(f"\n**Subject:** `{subject}`")
+
+    # Close reason (if closed)
+    if status == "closed" and ticket.get("close_reason"):
+        lines.append(f"\n**Close Reason:** {ticket['close_reason'][:150]}")
 
     embed = discord.Embed(
-        title="🎫 Ticket Control Panel",
+        title=f"🎫 Ticket #{ticket_id}",
+        description="\n".join(lines),
         color=STATUS_COLOR.get(status, EmbedColors.GREEN),
     )
 
-    # Add user avatar thumbnail (or mod avatar when closed)
+    # Thumbnail: closed_by avatar if closed, else user avatar
     if status == "closed" and closed_by:
         embed.set_thumbnail(url=closed_by.display_avatar.url)
     elif user:
         embed.set_thumbnail(url=user.display_avatar.url)
-
-    # Row 1: Ticket ID, Category
-    embed.add_field(
-        name="Ticket",
-        value=f"`#{ticket['ticket_id']}`",
-        inline=True,
-    )
-    embed.add_field(
-        name="Category",
-        value=f"{cat_info['emoji']} {cat_info['label']}",
-        inline=True,
-    )
-
-    # Row 2: User info with stats
-    if user:
-        # Build user info with account age
-        account_age_days = (datetime.now() - user.created_at.replace(tzinfo=None)).days if user.created_at else 0
-        user_info = f"{user.mention}\n`{user.name}`"
-        embed.add_field(
-            name="User",
-            value=user_info,
-            inline=True,
-        )
-
-        # Account age
-        embed.add_field(
-            name="Account Age",
-            value=f"`{account_age_days}` days",
-            inline=True,
-        )
-    else:
-        embed.add_field(
-            name="User",
-            value=f"<@{ticket['user_id']}>",
-            inline=True,
-        )
-        embed.add_field(
-            name="Account Age",
-            value="—",
-            inline=True,
-        )
-
-    # Row 3: Joined server (for Member) and Total tickets
-    if user and hasattr(user, 'joined_at') and user.joined_at:
-        embed.add_field(
-            name="Joined Server",
-            value=f"<t:{int(user.joined_at.timestamp())}:R>",
-            inline=True,
-        )
-    else:
-        embed.add_field(
-            name="Joined Server",
-            value="—",
-            inline=True,
-        )
-
-    # Total tickets (will be populated by caller if available)
-    if user_ticket_count is not None:
-        embed.add_field(
-            name="Total Tickets",
-            value=f"`{user_ticket_count}`",
-            inline=True,
-        )
-
-    # Row 4: Claimed by
-    if ticket.get("claimed_by"):
-        embed.add_field(
-            name="Claimed by",
-            value=f"<@{ticket['claimed_by']}>",
-            inline=True,
-        )
-    else:
-        embed.add_field(
-            name="Claimed by",
-            value="—",
-            inline=True,
-        )
-
-    # Row 5: Created
-    created_at = ticket.get("created_at")
-    if created_at:
-        embed.add_field(
-            name="Created",
-            value=f"<t:{int(created_at)}:R>",
-            inline=True,
-        )
-
-    # Subject (full width)
-    if ticket.get("subject"):
-        # Truncate subject if too long
-        subject = ticket["subject"]
-        if len(subject) > 100:
-            subject = subject[:97] + "..."
-        embed.add_field(
-            name="Subject",
-            value=subject,
-            inline=False,
-        )
-
-    # Add close reason if closed
-    if status == "closed" and ticket.get("close_reason"):
-        embed.add_field(
-            name="Close Reason",
-            value=ticket["close_reason"][:200],
-            inline=False,
-        )
 
     set_footer(embed)
     return embed
@@ -219,6 +136,18 @@ def build_welcome_embed(
             f"2️⃣ Why you think this would benefit the server\n"
             f"3️⃣ Any examples or references if applicable\n\n"
             f"*We appreciate your feedback and will review your suggestion!*"
+            f"{wait_time_text}"
+        )
+    elif category == "appeal":
+        description = (
+            f"Welcome {user.mention}!\n\n"
+            f"{assigned_text}\n\n"
+            f"**Mute Appeal Process:**\n"
+            f"1️⃣ Explain why you were muted and what happened\n"
+            f"2️⃣ Acknowledge if you broke any rules\n"
+            f"3️⃣ Explain why you believe the mute should be removed or reduced\n\n"
+            f"⚠️ **Note:** Being rude or dishonest will result in your appeal being denied.\n\n"
+            f"**Subject:** {subject}"
             f"{wait_time_text}"
         )
     else:  # support
@@ -286,10 +215,10 @@ def build_close_notification(
 ) -> discord.Embed:
     """Build notification when ticket is closed."""
     import time
-    from .constants import DELETE_AFTER_CLOSE_DAYS
+    from src.core.constants import THREAD_DELETE_DELAY
 
-    # Calculate deletion timestamp (7 days from now)
-    deletion_timestamp = int(time.time()) + (DELETE_AFTER_CLOSE_DAYS * 86400)
+    # Calculate deletion timestamp (1 hour from now)
+    deletion_timestamp = int(time.time()) + THREAD_DELETE_DELAY
 
     description = f"🔒 This ticket has been closed by {closed_by.mention}."
     if reason:

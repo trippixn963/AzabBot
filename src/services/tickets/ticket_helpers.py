@@ -253,6 +253,58 @@ class HelpersMixin:
         if restored_count > 0:
             logger.debug(f"Restored {restored_count} staff access to ticket {ticket_id}")
 
+    async def _lock_ticket_on_close(
+        self: "TicketService",
+        channel: Union[discord.TextChannel, discord.Thread],
+        ticket: dict,
+        guild: discord.Guild,
+    ) -> None:
+        """Revoke send_messages for ticket opener and any added users when closing.
+
+        Uses a single channel.edit() call to update all permissions at once,
+        rather than multiple set_permissions() calls.
+        """
+        bot_id = self.bot.user.id if self.bot.user else None
+        new_overwrites = {}
+        locked_count = 0
+
+        # Build new overwrites dict with users locked out
+        for target, overwrite in channel.overwrites.items():
+            if isinstance(target, discord.Member):
+                # Skip the bot itself
+                if bot_id and target.id == bot_id:
+                    new_overwrites[target] = overwrite
+                    continue
+
+                # Skip staff members (they keep full access)
+                if self.has_staff_permission(target):
+                    new_overwrites[target] = overwrite
+                    continue
+
+                # Lock out this user (can view but not send)
+                new_overwrites[target] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=False,
+                    attach_files=False,
+                    embed_links=False,
+                    read_message_history=True,
+                )
+                locked_count += 1
+            else:
+                # Keep role overwrites unchanged
+                new_overwrites[target] = overwrite
+
+        # Apply all permission changes in a single API call
+        if locked_count > 0:
+            try:
+                await channel.edit(overwrites=new_overwrites)
+                logger.debug(f"Locked {locked_count} user(s) from sending messages on ticket close")
+            except discord.HTTPException as e:
+                logger.warning("Failed to lock ticket on close", [
+                    ("Ticket ID", ticket.get("ticket_id", "unknown")),
+                    ("Error", str(e)),
+                ])
+
     # =========================================================================
     # Control Panel Management
     # =========================================================================

@@ -33,9 +33,8 @@ if TYPE_CHECKING:
 # Constants
 # =============================================================================
 
-# Action-type-based retention (days after approval)
-RETENTION_DAYS_BAN = 30
-RETENTION_DAYS_MUTE = 14
+# Action-type-based retention (days after creation)
+RETENTION_DAYS_BAN = 14
 RETENTION_DAYS_DEFAULT = 7
 
 CHECK_INTERVAL_HOURS = 1
@@ -104,7 +103,6 @@ class CaseArchiveScheduler:
 
         logger.tree("Case Archive Scheduler Started", [
             ("Retention (Ban)", f"{RETENTION_DAYS_BAN} days"),
-            ("Retention (Mute)", f"{RETENTION_DAYS_MUTE} days"),
             ("Retention (Other)", f"{RETENTION_DAYS_DEFAULT} days"),
             ("Check Interval", f"{CHECK_INTERVAL_HOURS} hour(s)"),
             ("Assets Thread", str(self.assets_thread_id) if self.assets_thread_id else "None"),
@@ -266,13 +264,12 @@ class CaseArchiveScheduler:
 
     async def _process_old_cases(self) -> None:
         """
-        Process all old approved cases and delete their threads.
+        Process old cases and delete their threads.
 
         DESIGN:
-            Gets approved cases based on action-type retention:
-            - Ban: 30 days after approval
-            - Mute/Timeout: 14 days after approval
-            - Other: 7 days after approval
+            Auto-deletes cases based on creation time:
+            - Ban: 14 days after creation
+            - Other (mute, warn, etc.): 7 days after creation
             Builds and saves transcript before deletion.
             Marks the case as archived in the database.
         """
@@ -280,12 +277,10 @@ class CaseArchiveScheduler:
 
         # Get old cases for each retention category
         ban_cutoff = (now - timedelta(days=RETENTION_DAYS_BAN)).timestamp()
-        mute_cutoff = (now - timedelta(days=RETENTION_DAYS_MUTE)).timestamp()
         default_cutoff = (now - timedelta(days=RETENTION_DAYS_DEFAULT)).timestamp()
 
-        old_cases = self.db.get_old_cases_by_action_type(
+        old_cases = self.db.get_old_cases_for_deletion(
             ban_cutoff=ban_cutoff,
-            mute_cutoff=mute_cutoff,
             default_cutoff=default_cutoff,
         )
 
@@ -458,13 +453,8 @@ class CaseArchiveScheduler:
 
             if thread:
                 action_type = case.get("action_type", "unknown")
-                if action_type == "ban":
-                    retention = RETENTION_DAYS_BAN
-                elif action_type in ("mute", "timeout"):
-                    retention = RETENTION_DAYS_MUTE
-                else:
-                    retention = RETENTION_DAYS_DEFAULT
-                await thread.delete(reason=f"Case archive: {retention} days after approval ({action_type})")
+                retention = RETENTION_DAYS_BAN if action_type == "ban" else RETENTION_DAYS_DEFAULT
+                await thread.delete(reason=f"Case archive: {retention} days after creation ({action_type})")
                 return True
 
         except discord.NotFound:
