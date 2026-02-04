@@ -175,33 +175,6 @@ class ResolveMixin:
                 reason=reason,
             )
 
-            # DM the user
-            try:
-                dm_embed = discord.Embed(
-                    title="✅ Your Appeal Was Approved",
-                    description=f"Your appeal for case `{case_id}` has been approved.",
-                    color=EmbedColors.SUCCESS,
-                    timestamp=datetime.now(NY_TZ),
-                )
-                if action_type == "ban":
-                    dm_embed.add_field(
-                        name="Action",
-                        value="You have been unbanned from the server.",
-                        inline=False,
-                    )
-                else:
-                    dm_embed.add_field(
-                        name="Action",
-                        value="Your mute has been removed.",
-                        inline=False,
-                    )
-                if reason:
-                    dm_embed.add_field(name="Note", value=reason, inline=False)
-                set_footer(dm_embed)
-                await appeal_user.send(embed=dm_embed)
-            except (discord.HTTPException, discord.Forbidden):
-                pass  # Can't DM user
-
             return (True, f"Appeal approved. User has been {'unbanned' if action_type == 'ban' else 'unmuted'}.")
 
         except Exception as e:
@@ -303,22 +276,6 @@ class ResolveMixin:
                 resolution="denied",
                 reason=reason,
             )
-
-            # DM the user
-            try:
-                denied_user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
-                dm_embed = discord.Embed(
-                    title="❌ Your Appeal Was Denied",
-                    description=f"Your appeal for case `{case_id}` has been denied.",
-                    color=EmbedColors.ERROR,
-                    timestamp=datetime.now(NY_TZ),
-                )
-                if reason:
-                    dm_embed.add_field(name="Reason", value=reason, inline=False)
-                set_footer(dm_embed)
-                await denied_user.send(embed=dm_embed)
-            except (discord.HTTPException, discord.Forbidden):
-                pass
 
             return (True, "Appeal denied.")
 
