@@ -320,6 +320,11 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
         if message.channel.id in self._exempt_channels:
             return True
 
+        # Exempt ticket category channels
+        if hasattr(message.channel, "category_id") and message.channel.category_id:
+            if self.config.ticket_category_id and message.channel.category_id == self.config.ticket_category_id:
+                return True
+
         if isinstance(message.author, discord.Member):
             for role in message.author.roles:
                 if role.id in self._exempt_roles:

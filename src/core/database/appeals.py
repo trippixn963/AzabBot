@@ -270,7 +270,7 @@ class AppealsMixin:
             Case record or None.
         """
         row = self.fetchone(
-            """SELECT case_id, user_id, guild_id, action_type,
+            """SELECT case_id, user_id, guild_id, action_type, moderator_id, reason,
                       duration_seconds, created_at, status, thread_id
                FROM cases
                WHERE case_id = ?""",

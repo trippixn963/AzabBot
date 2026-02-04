@@ -113,6 +113,10 @@ class AzabAPI(HandlersMixin, DataHelpersMixin):
         self.app.router.add_get("/api/azab/moderator/{user_id}", self.handle_moderator)
         self.app.router.add_get("/api/azab/transcripts/{ticket_id}", self.handle_transcript)
         self.app.router.add_get("/health", self.handle_health)
+        # Appeal endpoints
+        self.app.router.add_get("/api/azab/appeal/{token}", self.handle_appeal_get)
+        self.app.router.add_post("/api/azab/appeal/{token}", self.handle_appeal_post)
+        self.app.router.add_options("/api/azab/appeal/{token}", self.handle_appeal_options)
 
     async def _cleanup_loop(self) -> None:
         """Periodically clean up rate limiter entries."""

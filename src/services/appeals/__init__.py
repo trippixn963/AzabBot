@@ -22,6 +22,11 @@ from .constants import (
     MAX_APPEALS_PER_WEEK,
     APPEAL_RATE_LIMIT_SECONDS,
 )
+from .tokens import (
+    generate_appeal_token,
+    validate_appeal_token,
+    TOKEN_EXPIRY,
+)
 
 __all__ = [
     "AppealService",
@@ -34,4 +39,7 @@ __all__ = [
     "APPEAL_COOLDOWN_SECONDS",
     "MAX_APPEALS_PER_WEEK",
     "APPEAL_RATE_LIMIT_SECONDS",
+    "generate_appeal_token",
+    "validate_appeal_token",
+    "TOKEN_EXPIRY",
 ]

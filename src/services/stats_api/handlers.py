@@ -105,10 +105,13 @@ class HandlersMixin:
             moderation = await self._get_moderation_stats(today_start, today_end, week_start, guild_id)
             appeals = self._bot.db.get_appeal_stats(guild_id) if guild_id else {"pending": 0, "approved": 0, "denied": 0}
             tickets_raw = self._bot.db.get_ticket_stats(guild_id) if guild_id else {"open": 0, "claimed": 0, "closed": 0}
+            # Get permanent counter for total closed (survives ticket deletion)
+            total_tickets_closed = self._bot.db.get_total_tickets_closed(guild_id) if guild_id else 0
             # Combine open + claimed as "open" for dashboard (both are active tickets)
+            # Use permanent counter for closed if it's higher than current DB count
             tickets = {
                 "open": tickets_raw.get("open", 0) + tickets_raw.get("claimed", 0),
-                "closed": tickets_raw.get("closed", 0),
+                "closed": max(tickets_raw.get("closed", 0), total_tickets_closed),
             }
             top_offenders = await self._get_top_offenders(guild_id)
             mod_leaderboard = await self._get_moderator_leaderboard()
@@ -398,6 +401,284 @@ class HandlersMixin:
                 {"error": "Internal server error"},
                 status=500
             )
+
+    # =========================================================================
+    # Appeal Web Endpoints
+    # =========================================================================
+
+    async def handle_appeal_get(self: "AzabAPI", request: web.Request) -> web.Response:
+        """
+        GET /api/azab/appeal/{token}
+
+        Validate token and return case info for the appeal form.
+        """
+        token = request.match_info.get("token", "")
+        client_ip = get_client_ip(request)
+
+        if not token:
+            return web.json_response(
+                {"error": "Missing appeal token"},
+                status=400,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        # Validate token
+        from src.services.appeals.tokens import validate_appeal_token
+        is_valid, payload, error = validate_appeal_token(token)
+
+        if not is_valid:
+            logger.warning("Appeal Token Validation Failed", [
+                ("Client IP", client_ip),
+                ("Error", error or "Unknown"),
+            ])
+            return web.json_response(
+                {"error": error or "Invalid appeal link"},
+                status=401,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        case_id = payload["case_id"]
+        user_id = payload["user_id"]
+
+        logger.info("Appeal Page Requested", [
+            ("Case ID", case_id),
+            ("User ID", str(user_id)),
+            ("Client IP", client_ip),
+        ])
+
+        # Get case info
+        case = self._bot.db.get_appealable_case(case_id)
+        if not case:
+            return web.json_response(
+                {"error": "Case not found"},
+                status=404,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        # Verify user matches case
+        if case["user_id"] != user_id:
+            logger.warning("Appeal User Mismatch", [
+                ("Case ID", case_id),
+                ("Token User ID", str(user_id)),
+                ("Case User ID", str(case["user_id"])),
+            ])
+            return web.json_response(
+                {"error": "Invalid appeal link"},
+                status=403,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        # Check if already appealed (get existing appeal status)
+        existing_appeal = self._bot.db.get_appeal_by_case(case_id)
+        appeal_status = None
+        if existing_appeal:
+            appeal_status = {
+                "appeal_id": existing_appeal.get("appeal_id"),
+                "status": existing_appeal.get("status", "pending"),
+                "submitted_at": existing_appeal.get("created_at"),
+                "resolved_at": existing_appeal.get("resolved_at"),
+                "resolution": existing_appeal.get("resolution"),
+                "resolution_reason": existing_appeal.get("resolution_reason"),
+            }
+
+        # Check eligibility
+        if self._bot.appeal_service:
+            can_appeal, reason, _ = self._bot.appeal_service.can_appeal(case_id)
+        else:
+            can_appeal = False
+            reason = "Appeal system is not available"
+
+        # Format moderator name
+        mod_id = case.get("moderator_id")
+        mod_name = "Unknown Moderator"
+        if mod_id:
+            try:
+                mod = await self._bot.fetch_user(mod_id)
+                mod_name = mod.display_name if mod else f"User {mod_id}"
+            except Exception:
+                mod_name = f"User {mod_id}"
+
+        # Build response
+        response = {
+            "case_id": case_id,
+            "user_id": str(user_id),
+            "action_type": case.get("action_type", "unknown"),
+            "reason": case.get("reason", "No reason provided"),
+            "moderator": mod_name,
+            "created_at": case.get("created_at"),
+            "duration_seconds": case.get("duration_seconds"),
+            "can_appeal": can_appeal,
+            "appeal_blocked_reason": reason if not can_appeal else None,
+            "existing_appeal": appeal_status,
+        }
+
+        return web.json_response(
+            response,
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+
+    async def handle_appeal_post(self: "AzabAPI", request: web.Request) -> web.Response:
+        """
+        POST /api/azab/appeal/{token}
+
+        Submit an appeal for a ban/mute case.
+        """
+        token = request.match_info.get("token", "")
+        client_ip = get_client_ip(request)
+
+        if not token:
+            return web.json_response(
+                {"error": "Missing appeal token"},
+                status=400,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        # Validate token
+        from src.services.appeals.tokens import validate_appeal_token
+        is_valid, payload, error = validate_appeal_token(token)
+
+        if not is_valid:
+            logger.warning("Appeal Submit Token Invalid", [
+                ("Client IP", client_ip),
+                ("Error", error or "Unknown"),
+            ])
+            return web.json_response(
+                {"error": error or "Invalid appeal link"},
+                status=401,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        case_id = payload["case_id"]
+        user_id = payload["user_id"]
+
+        # Parse request body
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response(
+                {"error": "Invalid request body"},
+                status=400,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        appeal_reason = body.get("reason", "").strip()
+
+        # Validate appeal reason
+        if not appeal_reason:
+            return web.json_response(
+                {"error": "Appeal reason is required"},
+                status=400,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        if len(appeal_reason) < 20:
+            return web.json_response(
+                {"error": "Appeal reason must be at least 20 characters"},
+                status=400,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        if len(appeal_reason) > 1000:
+            return web.json_response(
+                {"error": "Appeal reason must be under 1000 characters"},
+                status=400,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        logger.info("Appeal Submission", [
+            ("Case ID", case_id),
+            ("User ID", str(user_id)),
+            ("Client IP", client_ip),
+            ("Reason Length", str(len(appeal_reason))),
+        ])
+
+        # Check appeal service
+        if not self._bot.appeal_service:
+            return web.json_response(
+                {"error": "Appeal system is not available"},
+                status=503,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        # Get case to verify user
+        case = self._bot.db.get_appealable_case(case_id)
+        if not case:
+            return web.json_response(
+                {"error": "Case not found"},
+                status=404,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        if case["user_id"] != user_id:
+            return web.json_response(
+                {"error": "Invalid appeal link"},
+                status=403,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        # Fetch user from Discord
+        try:
+            user = await self._bot.fetch_user(user_id)
+        except Exception as e:
+            logger.error("Failed to fetch user for appeal", [
+                ("User ID", str(user_id)),
+                ("Error", str(e)[:100]),
+            ])
+            return web.json_response(
+                {"error": "Failed to verify user"},
+                status=500,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        # Submit appeal
+        success, message, appeal_id = await self._bot.appeal_service.create_appeal(
+            case_id=case_id,
+            user=user,
+            reason=appeal_reason,
+        )
+
+        if success:
+            logger.success("Web Appeal Submitted", [
+                ("Case ID", case_id),
+                ("Appeal ID", appeal_id),
+                ("User ID", str(user_id)),
+                ("Client IP", client_ip),
+            ])
+            return web.json_response(
+                {
+                    "success": True,
+                    "message": "Your appeal has been submitted successfully.",
+                    "appeal_id": appeal_id,
+                },
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        else:
+            logger.warning("Web Appeal Failed", [
+                ("Case ID", case_id),
+                ("User ID", str(user_id)),
+                ("Reason", message),
+            ])
+            return web.json_response(
+                {"error": message},
+                status=400,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+    async def handle_appeal_options(self: "AzabAPI", request: web.Request) -> web.Response:
+        """
+        OPTIONS /api/azab/appeal/{token}
+
+        Handle CORS preflight requests.
+        """
+        return web.Response(
+            status=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Max-Age": "86400",
+            }
+        )
 
 
 __all__ = ["HandlersMixin"]

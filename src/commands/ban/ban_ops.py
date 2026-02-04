@@ -23,7 +23,7 @@ from src.core.moderation_validation import (
     send_management_blocked_embed,
 )
 from src.utils.footer import set_footer
-from src.views import CaseButtonView
+from src.views import CaseButtonView, APPEAL_EMOJI
 from src.utils.async_utils import create_safe_task
 from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
 from src.core.constants import CASE_LOG_TIMEOUT, GUILD_FETCH_TIMEOUT
@@ -137,7 +137,7 @@ class BanOpsMixin:
                     )
 
         # -----------------------------------------------------------------
-        # DM User Before Ban (with appeal button if case was logged)
+        # DM User Before Ban (with appeal URL link if case was logged)
         # -----------------------------------------------------------------
 
         dm_sent = False
@@ -151,13 +151,21 @@ class BanOpsMixin:
                 thumbnail_url=user.display_avatar.url,
             )
 
-            # Include appeal button in same DM if case was logged
+            # Include appeal URL link button if case was logged
             dm_view = None
             if case_info:
-                from src.services.appeals import SubmitAppealButton
-                dm_view = discord.ui.View(timeout=None)
-                appeal_btn = SubmitAppealButton(case_info["case_id"], user.id)
-                dm_view.add_item(appeal_btn)
+                from src.services.appeals.tokens import generate_appeal_token
+                token = generate_appeal_token(case_info["case_id"], user.id)
+                if token:
+                    appeal_url = f"https://trippixn.com/azab/appeal/{token}"
+                    dm_view = discord.ui.View(timeout=None)
+                    appeal_btn = discord.ui.Button(
+                        label="Appeal",
+                        style=discord.ButtonStyle.link,
+                        url=appeal_url,
+                        emoji=APPEAL_EMOJI,
+                    )
+                    dm_view.add_item(appeal_btn)
 
             dm_sent = await safe_send_dm(user, embed=dm_embed, view=dm_view, context="Ban DM")
 
@@ -165,7 +173,7 @@ class BanOpsMixin:
                 ("User", user.name),
                 ("ID", str(user.id)),
                 ("Case", case_info["case_id"] if case_info else "N/A"),
-                ("Appeal Button", "Yes" if dm_view else "No"),
+                ("Appeal Link", "Yes" if dm_view else "No"),
                 ("Delivered", "Yes" if dm_sent else "No (DMs disabled)"),
             ], emoji="📨")
 

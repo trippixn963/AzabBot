@@ -35,21 +35,10 @@ class HelpersMixin:
         case_info: Optional[dict],
         is_extension: bool = False,
     ) -> None:
-        """Send DM notification to muted user with appeal button included."""
+        """Send DM notification to muted user (appeal via tickets, not button)."""
         dm_title = "Your mute has been extended" if is_extension else "You have been muted"
 
-        # Build appeal view if eligible (>= 6 hours or permanent)
-        MIN_APPEAL_SECONDS = 6 * 60 * 60  # 6 hours
-        dm_view = None
-        if case_info and (duration_seconds is None or duration_seconds >= MIN_APPEAL_SECONDS):
-            try:
-                from src.services.appeals import SubmitAppealButton
-                dm_view = discord.ui.View(timeout=None)
-                appeal_btn = SubmitAppealButton(case_info["case_id"], target.id)
-                dm_view.add_item(appeal_btn)
-            except Exception as e:
-                logger.debug(f"Appeal button creation failed: {e}")
-
+        # Note: Mute appeals are handled through server tickets, not appeal button
         sent = await send_moderation_dm(
             user=target,
             title=dm_title,
@@ -60,7 +49,7 @@ class HelpersMixin:
             evidence=evidence,
             thumbnail_url=target.display_avatar.url,
             fields=[("Duration", f"`{duration_display}`", True)],
-            view=dm_view,
+            view=None,
             context="Mute DM",
         )
 
@@ -69,7 +58,6 @@ class HelpersMixin:
                 ("User", target.name),
                 ("ID", str(target.id)),
                 ("Case", case_info["case_id"]),
-                ("Appeal Button", "Yes" if dm_view else "No (< 6h)"),
                 ("Delivered", "Yes" if sent else "No (DMs disabled)"),
             ], emoji="📨")
 

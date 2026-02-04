@@ -107,6 +107,7 @@ class Config:
     # -------------------------------------------------------------------------
 
     appeal_forum_id: Optional[int] = None  # Forum channel for ban/mute appeals
+    appeal_token_secret: Optional[str] = None  # JWT secret for web appeal links
 
     # -------------------------------------------------------------------------
     # Optional: Tickets
@@ -179,6 +180,11 @@ class Config:
     developer_name: str = "حَـــــنَّـــــا"
     server_name: str = "discord.gg/syria"
 
+    # -------------------------------------------------------------------------
+    # Optional: Permissions
+    # -------------------------------------------------------------------------
+
+    moderator_ids: Set[int] = None
 
     # -------------------------------------------------------------------------
     # Optional: Webhooks
@@ -467,6 +473,7 @@ def load_config() -> Config:
     mod_server_id = _parse_int_optional(os.getenv("MODS_GUILD_ID"))
     alert_channel_id = _parse_int_optional(os.getenv("ALERT_CHANNEL_ID"))
     appeal_forum_id = _parse_int_optional(os.getenv("APPEAL_FORUM_ID"))
+    appeal_token_secret = os.getenv("APPEAL_TOKEN_SECRET") or None
     ticket_channel_id = _parse_int_optional(os.getenv("TICKET_CHANNEL_ID"))
     ticket_category_id = _parse_int_optional(os.getenv("TICKET_CATEGORY_ID"))
     ticket_staff_role_id = _parse_int_optional(os.getenv("TICKET_STAFF_ROLE_ID"))
@@ -479,6 +486,7 @@ def load_config() -> Config:
     case_transcripts_thread_id = _parse_int_optional(os.getenv("CASE_TRANSCRIPTS_THREAD_ID"))
     server_logs_forum_id = _parse_int_optional(os.getenv("SERVER_LOGS_FORUM_ID"))
     logging_guild_id = _parse_int_optional(os.getenv("GUILD_ID"))
+    moderator_ids = _parse_int_set(os.getenv("MODERATOR_IDS"))
     ignored_bot_ids = _parse_int_set(os.getenv("IGNORED_BOT_IDS"))
     lockdown_exclude_ids = _parse_int_set(os.getenv("LOCKDOWN_EXCLUDE_IDS"))
     link_allowed_user_ids = _parse_int_set(os.getenv("LINK_ALLOWED_USER_IDS"))
@@ -510,6 +518,7 @@ def load_config() -> Config:
         mod_server_id=mod_server_id,
         alert_channel_id=alert_channel_id,
         appeal_forum_id=appeal_forum_id,
+        appeal_token_secret=appeal_token_secret,
         ticket_channel_id=ticket_channel_id,
         ticket_category_id=ticket_category_id,
         ticket_staff_role_id=ticket_staff_role_id,
@@ -542,6 +551,7 @@ def load_config() -> Config:
         ),
         developer_name=os.getenv("DEVELOPER_NAME", "حَـــــنَّـــــا"),
         server_name=os.getenv("SERVER_NAME", "discord.gg/syria"),
+        moderator_ids=moderator_ids if moderator_ids else None,
         status_webhook_url=_validate_url(os.getenv("STATUS_WEBHOOK_URL"), "STATUS_WEBHOOK_URL"),
         error_webhook_url=_validate_url(os.getenv("ERROR_WEBHOOK_URL"), "ERROR_WEBHOOK_URL"),
         live_logs_webhook_url=_validate_url(os.getenv("LIVE_LOGS_WEBHOOK_URL"), "LIVE_LOGS_WEBHOOK_URL"),
@@ -646,6 +656,22 @@ def is_owner(user_id: int) -> bool:
     return user_id == get_config().owner_id
 
 
+def is_moderator(user_id: int) -> bool:
+    """
+    Check if user is a moderator.
+
+    Args:
+        user_id: Discord user ID to check.
+
+    Returns:
+        True if user is in the moderator list.
+    """
+    config = get_config()
+    if config.moderator_ids:
+        return user_id in config.moderator_ids
+    return False
+
+
 def has_mod_role(member) -> bool:
     """
     Check if a member has the moderation role.
@@ -661,6 +687,10 @@ def has_mod_role(member) -> bool:
 
     # Owner always has access
     if is_owner(member.id):
+        return True
+
+    # Check moderator IDs list
+    if is_moderator(member.id):
         return True
 
     # Check for administrator permission
@@ -713,6 +743,7 @@ __all__ = [
     "validate_and_log_config",
     # Permission helpers
     "is_owner",
+    "is_moderator",
     "has_mod_role",
     "check_mod_permission",
 ]
