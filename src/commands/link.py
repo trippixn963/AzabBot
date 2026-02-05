@@ -20,6 +20,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.core.constants import EMOJI_ID_APPROVE, EMOJI_ID_DENY
 from src.utils.footer import set_footer
+from src.utils.interaction import safe_respond
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -562,33 +563,11 @@ class LinkCog(commands.Cog):
                 ("User", str(interaction.user)),
                 ("Error", str(e)[:100]),
             ])
-            try:
-                response_done = False
-                try:
-                    response_done = interaction.response.is_done()
-                except discord.HTTPException:
-                    response_done = True  # Assume done if we can't check
-
-                if not response_done:
-                    await interaction.response.send_message(
-                        "An error occurred. Please try again.",
-                        ephemeral=True,
-                    )
-                else:
-                    await interaction.followup.send(
-                        "An error occurred. Please try again.",
-                        ephemeral=True,
-                    )
-            except discord.HTTPException as http_err:
-                logger.debug("Link Error Response Failed (HTTP)", [
-                    ("Original Error", str(e)[:50]),
-                    ("HTTP Error", str(http_err)[:50]),
-                ])
-            except Exception as response_err:
-                logger.debug("Link Error Response Failed", [
-                    ("Original Error", str(e)[:50]),
-                    ("Response Error", str(response_err)[:50]),
-                ])
+            await safe_respond(
+                interaction,
+                "An error occurred. Please try again.",
+                ephemeral=True,
+            )
 
 
 # =============================================================================

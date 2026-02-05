@@ -15,6 +15,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.constants import MODAL_FIELD_SHORT, MODAL_FIELD_MEDIUM, MODAL_FIELD_LONG
+from src.utils.interaction import safe_respond
 from .constants import TICKET_CATEGORIES
 
 if TYPE_CHECKING:
@@ -117,27 +118,11 @@ class TicketCreateModal(discord.ui.Modal, title="Create Ticket"):
                 ("ID", str(interaction.user.id)),
             ("Error", str(error)),
         ])
-        try:
-            response_done = False
-            try:
-                response_done = interaction.response.is_done()
-            except discord.HTTPException:
-                response_done = True  # Assume done if we can't check
-
-            if not response_done:
-                await interaction.response.send_message(
-                    f"❌ An error occurred: {str(error)[:100]}",
-                    ephemeral=True,
-                )
-            else:
-                await interaction.followup.send(
-                    f"❌ An error occurred: {str(error)[:100]}",
-                    ephemeral=True,
-                )
-        except discord.HTTPException:
-            pass
-        except Exception:
-            pass
+        await safe_respond(
+            interaction,
+            f"❌ An error occurred: {str(error)[:100]}",
+            ephemeral=True,
+        )
 
 
 # =============================================================================

@@ -15,6 +15,7 @@ import discord
 from discord import app_commands
 
 from src.core.logger import logger
+from src.utils.interaction import safe_respond
 
 if TYPE_CHECKING:
     from .cog import SnipeCog
@@ -117,27 +118,11 @@ class ClearsnipeCmdMixin:
                 ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
                 ("User ID", str(interaction.user.id)),
             ])
-            try:
-                response_done = False
-                try:
-                    response_done = interaction.response.is_done()
-                except discord.HTTPException:
-                    response_done = True  # Assume done if we can't check
-
-                if not response_done:
-                    await interaction.response.send_message(
-                        "An error occurred while clearing snipe cache.",
-                        ephemeral=True,
-                    )
-                else:
-                    await interaction.followup.send(
-                        "An error occurred while clearing snipe cache.",
-                        ephemeral=True,
-                    )
-            except discord.HTTPException:
-                pass
-            except Exception:
-                pass
+            await safe_respond(
+                interaction,
+                "An error occurred while clearing snipe cache.",
+                ephemeral=True,
+            )
 
 
 __all__ = ["ClearsnipeCmdMixin"]

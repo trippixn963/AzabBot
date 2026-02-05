@@ -24,6 +24,7 @@ from src.utils.footer import set_footer
 from src.views import CaseButtonView
 from src.utils.duration import parse_duration, format_duration_short as format_duration
 from src.utils.async_utils import create_safe_task
+from src.utils.interaction import safe_respond
 from src.core.constants import CASE_LOG_TIMEOUT, MODERATION_REASONS, MODERATION_REMOVAL_REASONS
 
 # Import from local package
@@ -354,27 +355,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
                 ("User ID", str(interaction.user.id)),
             ])
-            try:
-                response_done = False
-                try:
-                    response_done = interaction.response.is_done()
-                except discord.HTTPException:
-                    response_done = True  # Assume done if we can't check
-
-                if not response_done:
-                    await interaction.response.send_message(
-                        "An error occurred.",
-                        ephemeral=True,
-                    )
-                else:
-                    await interaction.followup.send(
-                        "An error occurred.",
-                        ephemeral=True,
-                    )
-            except discord.HTTPException:
-                pass
-            except Exception as e:
-                logger.debug(f"Error response failed: {e}")
+            await safe_respond(interaction, "An error occurred.", ephemeral=True)
 
     # =========================================================================
     # Unforbid Command
@@ -543,27 +524,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
                 ("User ID", str(interaction.user.id)),
             ])
-            try:
-                response_done = False
-                try:
-                    response_done = interaction.response.is_done()
-                except discord.HTTPException:
-                    response_done = True  # Assume done if we can't check
-
-                if not response_done:
-                    await interaction.response.send_message(
-                        "An error occurred.",
-                        ephemeral=True,
-                    )
-                else:
-                    await interaction.followup.send(
-                        "An error occurred.",
-                        ephemeral=True,
-                    )
-            except discord.HTTPException:
-                pass
-            except Exception as e:
-                logger.debug(f"Error response failed: {e}")
+            await safe_respond(interaction, "An error occurred.", ephemeral=True)
 
     # =========================================================================
     # Server Logs Integration

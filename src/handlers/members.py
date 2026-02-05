@@ -73,11 +73,9 @@ class MemberEvents(commands.Cog):
             if self.bot.prison:
                 await self.bot.prison.handle_prisoner_release(after)
 
-            # Clean up rate limiting state (with lock for thread safety)
-            async with self.bot._prisoner_lock:
-                self.bot.prisoner_cooldowns.pop(after.id, None)
-                self.bot.prisoner_message_buffer.pop(after.id, None)
-                self.bot.prisoner_pending_response.pop(after.id, None)
+            # Clean up prisoner tracking state
+            if self.bot.prisoner_service:
+                await self.bot.prisoner_service.cleanup_for_user(after.id)
 
         # -----------------------------------------------------------------
         # Gender Role Conflict Resolution
@@ -359,11 +357,9 @@ class MemberEvents(commands.Cog):
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
         """Log member leaves, track muted users leaving, delete linked messages."""
-        # Clean up prisoner buffers (with lock for thread safety)
-        async with self.bot._prisoner_lock:
-            self.bot.prisoner_cooldowns.pop(member.id, None)
-            self.bot.prisoner_message_buffer.pop(member.id, None)
-            self.bot.prisoner_pending_response.pop(member.id, None)
+        # Clean up prisoner tracking state
+        if self.bot.prisoner_service:
+            await self.bot.prisoner_service.cleanup_for_user(member.id)
 
         # Delete linked messages (alliance channel posts)
         await self._delete_linked_messages(member)

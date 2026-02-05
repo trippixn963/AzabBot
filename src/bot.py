@@ -30,10 +30,6 @@ from src.core.constants import (
     EDITSNIPE_CACHE_TTL,
 )
 
-# Constants for cache limits
-PRISONER_TRACKING_LIMIT = 1000  # Max prisoner tracking entries
-MESSAGE_BUFFER_LIMIT = 50  # Max messages per prisoner buffer
-
 
 # =============================================================================
 # Guild Protection
@@ -118,16 +114,10 @@ class AzabBot(commands.Bot):
         self.stats_api = None
         self.content_moderation = None
         self.maintenance = None
+        self.prisoner_service = None
 
         # Shared HTTP session for all services
         self._http_session: Optional[aiohttp.ClientSession] = None
-
-        # Prisoner rate limiting (with async lock for thread safety)
-        # IMPORTANT: All three dicts below MUST be accessed within `async with self._prisoner_lock:`
-        self._prisoner_lock = asyncio.Lock()
-        self.prisoner_cooldowns: Dict[int, datetime] = {}  # Protected by _prisoner_lock
-        self.prisoner_message_buffer: Dict[int, List[str]] = {}  # Protected by _prisoner_lock
-        self.prisoner_pending_response: Dict[int, bool] = {}  # Protected by _prisoner_lock
 
         # Message history tracking (LRU cache with limit)
         self._last_messages_lock = asyncio.Lock()
@@ -383,6 +373,9 @@ class AzabBot(commands.Bot):
         await self._leave_unauthorized_guilds()
 
         try:
+            from src.services.prisoner import PrisonerService
+            self.prisoner_service = PrisonerService(self)
+
             from src.handlers.prison import PrisonHandler
             self.prison = PrisonHandler(self)
             logger.info("Prison Handler Initialized")
@@ -606,57 +599,14 @@ class AzabBot(commands.Bot):
         """
         Clean up prisoner tracking for users no longer muted.
 
-        Removes entries from prisoner_cooldowns, prisoner_message_buffer,
-        and prisoner_pending_response for users not currently muted.
+        Delegates to PrisonerService.cleanup_stale_entries().
 
         Returns:
             Number of entries cleaned up.
         """
-        if not self.config.muted_role_id:
-            return 0
-
-        # Get all currently muted user IDs across all guilds
-        muted_user_ids: set = set()
-        for guild in self.guilds:
-            for member in guild.members:
-                if any(r.id == self.config.muted_role_id for r in member.roles):
-                    muted_user_ids.add(member.id)
-
-        cleaned = 0
-
-        # Use lock to prevent race conditions during cleanup
-        async with self._prisoner_lock:
-            # Clean cooldowns
-            for user_id in list(self.prisoner_cooldowns.keys()):
-                if user_id not in muted_user_ids:
-                    self.prisoner_cooldowns.pop(user_id, None)
-                    cleaned += 1
-
-            # Clean message buffers
-            for user_id in list(self.prisoner_message_buffer.keys()):
-                if user_id not in muted_user_ids:
-                    self.prisoner_message_buffer.pop(user_id, None)
-                    cleaned += 1
-
-            # Clean pending response flags
-            for user_id in list(self.prisoner_pending_response.keys()):
-                if user_id not in muted_user_ids:
-                    self.prisoner_pending_response.pop(user_id, None)
-                    cleaned += 1
-
-            # Enforce max size limits (evict oldest entries if over limit)
-            while len(self.prisoner_cooldowns) > PRISONER_TRACKING_LIMIT:
-                try:
-                    oldest_key = next(iter(self.prisoner_cooldowns))
-                    self.prisoner_cooldowns.pop(oldest_key, None)
-                    cleaned += 1
-                except StopIteration:
-                    break
-
-        if cleaned > 0:
-            logger.debug(f"Prisoner tracking cleanup: {cleaned} stale entries removed")
-
-        return cleaned
+        if self.prisoner_service:
+            return await self.prisoner_service.cleanup_stale_entries()
+        return 0
 
     async def _cleanup_editsnipe_cache(self) -> int:
         """

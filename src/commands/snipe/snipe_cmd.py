@@ -19,6 +19,7 @@ from discord import app_commands
 from src.core.logger import logger
 from src.core.config import NY_TZ
 from src.core.constants import SNIPE_MAX_AGE, QUERY_LIMIT_SMALL, QUERY_LIMIT_MEDIUM
+from src.utils.interaction import safe_respond
 
 if TYPE_CHECKING:
     from .cog import SnipeCog
@@ -241,33 +242,11 @@ class SnipeCmdMixin:
                 ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
                 ("User ID", str(interaction.user.id)),
             ])
-            try:
-                response_done = False
-                try:
-                    response_done = interaction.response.is_done()
-                except discord.HTTPException:
-                    response_done = True  # Assume done if we can't check
-
-                if not response_done:
-                    await interaction.response.send_message(
-                        "An error occurred while sniping. Please try again.",
-                        ephemeral=True,
-                    )
-                else:
-                    await interaction.followup.send(
-                        "An error occurred while sniping. Please try again.",
-                        ephemeral=True,
-                    )
-            except discord.HTTPException as http_err:
-                logger.debug("Snipe Error Response Failed (HTTP)", [
-                    ("Original Error", str(e)[:50]),
-                    ("HTTP Error", str(http_err)[:50]),
-                ])
-            except Exception as response_err:
-                logger.debug("Snipe Error Response Failed", [
-                    ("Original Error", str(e)[:50]),
-                    ("Response Error", str(response_err)[:50]),
-                ])
+            await safe_respond(
+                interaction,
+                "An error occurred while sniping. Please try again.",
+                ephemeral=True,
+            )
 
 
 __all__ = ["SnipeCmdMixin"]

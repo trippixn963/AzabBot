@@ -25,6 +25,7 @@ Server: discord.gg/syria
 
 from .cache import ForumCache, ThreadCache, TTLCache
 from .footer import FOOTER_TEXT, init_footer, refresh_avatar, set_footer
+from .interaction import safe_defer, safe_edit, safe_respond
 from .metrics import (
     MetricsCollector,
     MetricSample,
@@ -53,6 +54,10 @@ __all__ = [
     "init_footer",
     "refresh_avatar",
     "set_footer",
+    # Interaction
+    "safe_respond",
+    "safe_defer",
+    "safe_edit",
     # Metrics
     "MetricsCollector",
     "MetricSample",
