@@ -111,6 +111,12 @@ class Config:
     server_invite_url: Optional[str] = None  # Invite URL sent to users when ban appeal is approved
 
     # -------------------------------------------------------------------------
+    # Optional: AI Integration
+    # -------------------------------------------------------------------------
+
+    openai_api_key: Optional[str] = None  # OpenAI API key for AI-powered features
+
+    # -------------------------------------------------------------------------
     # Optional: Tickets
     # -------------------------------------------------------------------------
 
@@ -476,6 +482,7 @@ def load_config() -> Config:
     appeal_forum_id = _parse_int_optional(os.getenv("APPEAL_FORUM_ID"))
     appeal_token_secret = os.getenv("APPEAL_TOKEN_SECRET") or None
     server_invite_url = os.getenv("SERVER_INVITE_URL") or None
+    openai_api_key = os.getenv("OPENAI_API_KEY") or None
     ticket_channel_id = _parse_int_optional(os.getenv("TICKET_CHANNEL_ID"))
     ticket_category_id = _parse_int_optional(os.getenv("TICKET_CATEGORY_ID"))
     ticket_staff_role_id = _parse_int_optional(os.getenv("TICKET_STAFF_ROLE_ID"))
@@ -522,6 +529,7 @@ def load_config() -> Config:
         appeal_forum_id=appeal_forum_id,
         appeal_token_secret=appeal_token_secret,
         server_invite_url=server_invite_url,
+        openai_api_key=openai_api_key,
         ticket_channel_id=ticket_channel_id,
         ticket_category_id=ticket_category_id,
         ticket_staff_role_id=ticket_staff_role_id,

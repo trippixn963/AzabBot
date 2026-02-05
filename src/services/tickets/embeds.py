@@ -184,15 +184,9 @@ def build_claim_notification(
     # Add staff stats if provided
     if stats:
         claimed = stats.get("claimed", 0)
-        closed = stats.get("closed", 0)
         embed.add_field(
             name="Tickets Claimed",
             value=f"`{claimed}`",
-            inline=True,
-        )
-        embed.add_field(
-            name="Tickets Closed",
-            value=f"`{closed}`",
             inline=True,
         )
 
@@ -238,11 +232,6 @@ def build_close_notification(
             value=f"`{stats.get('claimed', 0)}`",
             inline=True,
         )
-        embed.add_field(
-            name="Tickets Closed",
-            value=f"`{stats.get('closed', 0)}`",
-            inline=True,
-        )
 
     # Add join date
     if closed_by.joined_at:
@@ -272,11 +261,6 @@ def build_reopen_notification(
         embed.add_field(
             name="Tickets Claimed",
             value=f"`{stats.get('claimed', 0)}`",
-            inline=True,
-        )
-        embed.add_field(
-            name="Tickets Closed",
-            value=f"`{stats.get('closed', 0)}`",
             inline=True,
         )
 
@@ -347,11 +331,6 @@ def build_transfer_notification(
         embed.add_field(
             name="Tickets Claimed",
             value=f"`{stats.get('claimed', 0)}`",
-            inline=True,
-        )
-        embed.add_field(
-            name="Tickets Closed",
-            value=f"`{stats.get('closed', 0)}`",
             inline=True,
         )
 

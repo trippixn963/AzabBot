@@ -277,19 +277,37 @@ class OperationsMixin:
             # Get estimated wait time
             wait_time_text = self._get_estimated_wait_time(user.guild.id, ticket_id)
 
-            # Send welcome message
-            welcome_embed = build_welcome_embed(
-                user=user,
-                category=category,
-                subject=subject,
-                assigned_text=assigned_text,
-                wait_time_text=wait_time_text,
-            )
+            # Try AI-powered greeting first
+            ai_greeting = None
+            if hasattr(self.bot, "ai_service") and self.bot.ai_service and self.bot.ai_service.enabled:
+                ai_greeting = await self.bot.ai_service.generate_ticket_greeting(
+                    ticket_id=ticket_id,
+                    category=category,
+                    subject=subject,
+                    description=description,
+                )
 
-            if ping_content:
-                await ticket_channel.send(content=ping_content, embed=welcome_embed)
+            if ai_greeting:
+                # Send AI greeting as regular message with user mention
+                greeting_content = f"{user.mention}\n\n{ai_greeting}"
+                if ping_content:
+                    # Include staff ping if applicable
+                    greeting_content = f"{ping_content}\n\n{greeting_content}"
+                await ticket_channel.send(content=greeting_content)
             else:
-                await ticket_channel.send(embed=welcome_embed)
+                # Fallback to static welcome embed
+                welcome_embed = build_welcome_embed(
+                    user=user,
+                    category=category,
+                    subject=subject,
+                    assigned_text=assigned_text,
+                    wait_time_text=wait_time_text,
+                )
+
+                if ping_content:
+                    await ticket_channel.send(content=ping_content, embed=welcome_embed)
+                else:
+                    await ticket_channel.send(embed=welcome_embed)
 
             logger.tree("Ticket Created", [
                 ("Ticket ID", ticket_id),
@@ -343,6 +361,13 @@ class OperationsMixin:
         # Close in database
         if not self.db.close_ticket(ticket_id, closed_by.id, reason):
             return (False, "Failed to close ticket.")
+
+        # Clear claim reminder cooldowns (no longer needed)
+        await self.clear_claim_reminder_cooldowns(ticket_id)
+
+        # End AI conversation (ticket is closing)
+        if hasattr(self.bot, "ai_service") and self.bot.ai_service:
+            await self.bot.ai_service.end_conversation(ticket_id)
 
         # Fetch ticket user
         try:
@@ -579,6 +604,13 @@ class OperationsMixin:
         # Claim in database
         if not self.db.claim_ticket(ticket_id, staff.id):
             return (False, "Failed to claim ticket.")
+
+        # Clear claim reminder cooldowns (no longer needed)
+        await self.clear_claim_reminder_cooldowns(ticket_id)
+
+        # End AI conversation (staff is taking over)
+        if hasattr(self.bot, "ai_service") and self.bot.ai_service:
+            await self.bot.ai_service.end_conversation(ticket_id)
 
         # Get ticket user for notification and control panel
         try:

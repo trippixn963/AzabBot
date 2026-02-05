@@ -111,6 +111,7 @@ class AzabBot(commands.Bot):
         self.raid_lockdown_service = None
         self.appeal_service = None
         self.ticket_service = None
+        self.ai_service = None
         self.stats_api = None
         self.content_moderation = None
         self.maintenance = None
@@ -467,6 +468,9 @@ class AzabBot(commands.Bot):
             else:
                 logger.info("Appeal Service Disabled (no forum configured)")
 
+            from src.services.ai import AIService
+            self.ai_service = AIService(self)
+
             from src.services.tickets import TicketService
             self.ticket_service = TicketService(self)
             await self.ticket_service.start()
@@ -474,6 +478,7 @@ class AzabBot(commands.Bot):
                 logger.tree("Ticket Service Initialized", [
                     ("Channel ID", str(self.config.ticket_channel_id)),
                     ("Auto-close", "Enabled"),
+                    ("AI Greeting", "Enabled" if self.ai_service.enabled else "Disabled"),
                 ], emoji="🎫")
             else:
                 logger.info("Ticket Service Disabled (no channel configured)")
@@ -487,6 +492,7 @@ class AzabBot(commands.Bot):
                 ("Server Logs", "✓ Enabled" if self.logging_service.enabled else "✗ Disabled"),
                 ("Appeals", "✓ Enabled" if self.appeal_service.enabled else "✗ Disabled"),
                 ("Tickets", "✓ Enabled" if self.ticket_service.enabled else "✗ Disabled"),
+                ("AI Service", "✓ Enabled" if self.ai_service.enabled else "✗ Disabled"),
                 ("Interaction Logger", "✓ Ready"),
                 ("Voice Handler", "✓ Ready"),
                 ("Anti-Spam", "✓ Ready"),

@@ -119,6 +119,7 @@ INACTIVE_CLOSE_DAYS = 5        # Close after 5 days of inactivity
 DELETE_AFTER_CLOSE_DAYS = 1    # Delete thread 24 hours after closing
 MAX_TRANSCRIPT_MESSAGES = 500  # Max messages to include in transcript
 MAX_TRANSCRIPT_USER_LOOKUPS = 15  # Max API calls for unresolved mentions
+CLAIM_REMINDER_COOLDOWN = 300  # 5 minutes between claim reminders per staff per ticket
 
 
 # =============================================================================
@@ -153,6 +154,7 @@ __all__ = [
     "DELETE_AFTER_CLOSE_DAYS",
     "MAX_TRANSCRIPT_MESSAGES",
     "MAX_TRANSCRIPT_USER_LOOKUPS",
+    "CLAIM_REMINDER_COOLDOWN",
     # Timeouts (from core)
     "TICKET_CATEGORY_COOLDOWN",
     "AUTO_CLOSE_CHECK_INTERVAL",
