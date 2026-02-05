@@ -2,24 +2,23 @@
 Moderation Dashboard Authentication
 ====================================
 
-Simple token-based authentication for the moderation dashboard.
-
-Features:
-- Password validation against environment variable
-- Random token generation with 24-hour expiry
-- Maximum 10 active sessions (FIFO eviction)
-- In-memory token storage
+Per-user authentication for the moderation dashboard.
+Users must have the moderator role to register/login.
 
 Author: John Hamwi
 """
 
+import hashlib
 import secrets
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from src.core.config import get_config
+from src.core.database import get_db
 from src.core.logger import logger
+
+if TYPE_CHECKING:
+    from src.bot import AzabBot
 
 
 # =============================================================================
@@ -27,8 +26,29 @@ from src.core.logger import logger
 # =============================================================================
 
 TOKEN_EXPIRY_SECONDS = 86400  # 24 hours
-MAX_ACTIVE_SESSIONS = 10
+MAX_ACTIVE_SESSIONS = 50
 TOKEN_LENGTH = 32
+
+
+# =============================================================================
+# Password Hashing
+# =============================================================================
+
+def hash_password(password: str) -> str:
+    """Hash a password using SHA-256 with salt."""
+    salt = secrets.token_hex(16)
+    hashed = hashlib.sha256((salt + password).encode()).hexdigest()
+    return f"{salt}:{hashed}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    """Verify a password against a stored hash."""
+    try:
+        salt, hashed = stored_hash.split(":")
+        check_hash = hashlib.sha256((salt + password).encode()).hexdigest()
+        return secrets.compare_digest(hashed, check_hash)
+    except ValueError:
+        return False
 
 
 # =============================================================================
@@ -39,6 +59,7 @@ TOKEN_LENGTH = 32
 class TokenData:
     """Data associated with an authentication token."""
     token: str
+    discord_id: int
     created_at: float
     expires_at: float
 
@@ -49,41 +70,122 @@ class TokenData:
 
 class ModAuthManager:
     """
-    Manages authentication tokens for the moderation dashboard.
+    Manages authentication for the moderation dashboard.
 
-    Tokens are stored in memory with automatic expiration.
-    Maximum 10 active sessions - oldest tokens are evicted when limit is reached.
+    - Users register with Discord ID + password
+    - Backend verifies they have moderator role before allowing registration
+    - Tokens stored in memory with 24h expiry
     """
 
     def __init__(self):
         self._tokens: dict[str, TokenData] = {}
 
-    def verify_password(self, password: str) -> bool:
+    async def check_is_moderator(self, bot: "AzabBot", discord_id: int) -> bool:
         """
-        Verify the provided password against the configured password.
+        Check if a user has the moderator role in the Syrian server.
 
         Args:
-            password: Password to verify.
+            bot: The Discord bot instance.
+            discord_id: The user's Discord ID.
 
         Returns:
-            True if password matches, False otherwise.
+            True if user has moderator role, False otherwise.
         """
+        from src.core.config import get_config
         config = get_config()
-        if not config.mod_dashboard_password:
-            logger.warning("Mod dashboard password not configured")
+
+        # Get the main guild
+        guild_id = config.logging_guild_id
+        if not guild_id:
+            logger.warning("No logging_guild_id configured for mod dashboard auth")
             return False
 
-        # Use secrets.compare_digest for timing-safe comparison
-        return secrets.compare_digest(
-            password.encode('utf-8'),
-            config.mod_dashboard_password.encode('utf-8')
+        guild = bot.get_guild(guild_id)
+        if not guild:
+            logger.warning(f"Could not find guild {guild_id} for mod dashboard auth")
+            return False
+
+        # Get the member
+        try:
+            member = guild.get_member(discord_id)
+            if not member:
+                member = await guild.fetch_member(discord_id)
+        except Exception as e:
+            logger.debug(f"Could not fetch member {discord_id}: {e}")
+            return False
+
+        if not member:
+            return False
+
+        # Check if they have mod role or are admin/owner
+        from src.core.config import has_mod_role
+        return has_mod_role(member)
+
+    def user_exists(self, discord_id: int) -> bool:
+        """Check if a user has registered."""
+        db = get_db()
+        row = db.fetchone(
+            "SELECT 1 FROM mod_dashboard_users WHERE discord_id = ?",
+            (discord_id,)
+        )
+        return row is not None
+
+    def register_user(self, discord_id: int, password: str) -> bool:
+        """
+        Register a new user.
+
+        Args:
+            discord_id: The user's Discord ID.
+            password: The password to set.
+
+        Returns:
+            True if registered, False if already exists.
+        """
+        if self.user_exists(discord_id):
+            return False
+
+        db = get_db()
+        password_hash = hash_password(password)
+
+        db.execute(
+            "INSERT INTO mod_dashboard_users (discord_id, password_hash, created_at) VALUES (?, ?, ?)",
+            (discord_id, password_hash, time.time())
         )
 
-    def create_token(self) -> str:
-        """
-        Create a new authentication token.
+        logger.tree("Mod Dashboard User Registered", [
+            ("Discord ID", str(discord_id)),
+        ], emoji="🔐")
 
-        Handles session limit by evicting oldest token if necessary.
+        return True
+
+    def verify_user(self, discord_id: int, password: str) -> bool:
+        """
+        Verify a user's password.
+
+        Args:
+            discord_id: The user's Discord ID.
+            password: The password to verify.
+
+        Returns:
+            True if password is correct, False otherwise.
+        """
+        db = get_db()
+        row = db.fetchone(
+            "SELECT password_hash FROM mod_dashboard_users WHERE discord_id = ?",
+            (discord_id,)
+        )
+
+        if not row:
+            return False
+
+        return verify_password(password, row["password_hash"])
+
+    def create_token(self, discord_id: int) -> str:
+        """
+        Create a new authentication token for a user.
+
+        Args:
+            discord_id: The user's Discord ID.
 
         Returns:
             The generated token string.
@@ -98,7 +200,6 @@ class ModAuthManager:
                 key=lambda t: self._tokens[t].created_at
             )
             del self._tokens[oldest_token]
-            logger.info(f"Evicted oldest mod dashboard session (limit: {MAX_ACTIVE_SESSIONS})")
 
         # Generate new token
         token = secrets.token_urlsafe(TOKEN_LENGTH)
@@ -106,19 +207,20 @@ class ModAuthManager:
 
         self._tokens[token] = TokenData(
             token=token,
+            discord_id=discord_id,
             created_at=now,
             expires_at=now + TOKEN_EXPIRY_SECONDS
         )
 
         logger.tree("Mod Dashboard Login", [
+            ("Discord ID", str(discord_id)),
             ("Token", f"{token[:8]}..."),
             ("Expires", f"{TOKEN_EXPIRY_SECONDS // 3600}h"),
-            ("Active Sessions", str(len(self._tokens))),
         ], emoji="🔐")
 
         return token
 
-    def validate_token(self, token: str) -> bool:
+    def validate_token(self, token: str) -> Optional[int]:
         """
         Validate an authentication token.
 
@@ -126,53 +228,28 @@ class ModAuthManager:
             token: Token to validate.
 
         Returns:
-            True if token is valid and not expired, False otherwise.
+            Discord ID if valid, None otherwise.
         """
         if not token:
-            return False
+            return None
 
         token_data = self._tokens.get(token)
         if not token_data:
-            return False
+            return None
 
         # Check expiration
         if time.time() > token_data.expires_at:
             del self._tokens[token]
-            return False
+            return None
 
-        return True
+        return token_data.discord_id
 
     def revoke_token(self, token: str) -> bool:
-        """
-        Revoke an authentication token (logout).
-
-        Args:
-            token: Token to revoke.
-
-        Returns:
-            True if token was revoked, False if it didn't exist.
-        """
+        """Revoke an authentication token (logout)."""
         if token in self._tokens:
             del self._tokens[token]
-            logger.info("Mod dashboard session revoked")
             return True
         return False
-
-    def extend_token(self, token: str) -> bool:
-        """
-        Extend a token's expiration time (refresh on activity).
-
-        Args:
-            token: Token to extend.
-
-        Returns:
-            True if token was extended, False if invalid.
-        """
-        if not self.validate_token(token):
-            return False
-
-        self._tokens[token].expires_at = time.time() + TOKEN_EXPIRY_SECONDS
-        return True
 
     def _cleanup_expired(self) -> None:
         """Remove all expired tokens from storage."""
@@ -183,14 +260,6 @@ class ModAuthManager:
         ]
         for token in expired:
             del self._tokens[token]
-
-        if expired:
-            logger.info(f"Cleaned up {len(expired)} expired mod dashboard sessions")
-
-    def get_active_session_count(self) -> int:
-        """Get the number of active sessions."""
-        self._cleanup_expired()
-        return len(self._tokens)
 
 
 # =============================================================================
@@ -213,15 +282,7 @@ def get_auth_manager() -> ModAuthManager:
 # =============================================================================
 
 def extract_bearer_token(authorization_header: Optional[str]) -> Optional[str]:
-    """
-    Extract token from Authorization header.
-
-    Args:
-        authorization_header: The Authorization header value (e.g., "Bearer token123").
-
-    Returns:
-        The extracted token, or None if header is invalid.
-    """
+    """Extract token from Authorization header."""
     if not authorization_header:
         return None
 
@@ -232,14 +293,8 @@ def extract_bearer_token(authorization_header: Optional[str]) -> Optional[str]:
     return parts[1]
 
 
-# =============================================================================
-# Module Export
-# =============================================================================
-
 __all__ = [
     "ModAuthManager",
     "get_auth_manager",
     "extract_bearer_token",
-    "TOKEN_EXPIRY_SECONDS",
-    "MAX_ACTIVE_SESSIONS",
 ]

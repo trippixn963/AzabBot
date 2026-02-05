@@ -121,8 +121,9 @@ class AzabAPI(HandlersMixin, DataHelpersMixin, ModHandlersMixin):
         # Search endpoint
         self.app.router.add_get("/api/azab/search", self.handle_search)
         # Moderation dashboard endpoints
-        self.app.router.add_post("/api/azab/mod/auth", self.handle_mod_auth)
-        self.app.router.add_options("/api/azab/mod/auth", self.handle_mod_auth_options)
+        self.app.router.add_post("/api/azab/mod/check", self.handle_mod_check)
+        self.app.router.add_post("/api/azab/mod/register", self.handle_mod_register)
+        self.app.router.add_post("/api/azab/mod/login", self.handle_mod_login)
         self.app.router.add_post("/api/azab/mod/logout", self.handle_mod_logout)
         self.app.router.add_get("/api/azab/mod/stats", self.handle_mod_stats)
         self.app.router.add_get("/api/azab/mod/cases", self.handle_mod_cases)

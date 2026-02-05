@@ -7,7 +7,7 @@ Protected API endpoints for the moderation dashboard.
 Author: John Hamwi
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from aiohttp import web
 
@@ -33,33 +33,22 @@ MAX_PAGE_SIZE = 100
 # Helper Functions
 # =============================================================================
 
-def _require_auth(request: web.Request) -> bool:
+def _require_auth(request: web.Request) -> Optional[int]:
     """
     Check if request has valid authentication.
 
-    Args:
-        request: The incoming request.
-
     Returns:
-        True if authenticated, False otherwise.
+        Discord ID if authenticated, None otherwise.
     """
     auth_header = request.headers.get("Authorization")
     token = extract_bearer_token(auth_header)
     if not token:
-        return False
+        return None
     return get_auth_manager().validate_token(token)
 
 
 def _get_pagination(request: web.Request) -> tuple[int, int]:
-    """
-    Extract pagination parameters from request.
-
-    Args:
-        request: The incoming request.
-
-    Returns:
-        Tuple of (page, limit).
-    """
+    """Extract pagination parameters from request."""
     try:
         page = max(1, int(request.query.get("page", 1)))
     except ValueError:
@@ -83,16 +72,7 @@ def _cors_headers() -> dict:
 
 
 async def _get_user_info(bot, user_id: int) -> dict:
-    """
-    Get user info from Discord.
-
-    Args:
-        bot: The Discord bot instance.
-        user_id: Discord user ID.
-
-    Returns:
-        Dict with username and avatar_url.
-    """
+    """Get user info from Discord."""
     try:
         user = await bot.fetch_user(user_id)
         return {
@@ -113,12 +93,20 @@ async def _get_user_info(bot, user_id: int) -> dict:
 class ModHandlersMixin:
     """Mixin for moderation dashboard HTTP endpoints."""
 
-    async def handle_mod_auth(self: "AzabAPI", request: web.Request) -> web.Response:
-        """
-        Authenticate a moderator and return a session token.
+    # =========================================================================
+    # Auth Endpoints
+    # =========================================================================
 
-        POST /api/azab/mod/auth
-        Body: {"password": "..."}
+    async def handle_mod_check(self: "AzabAPI", request: web.Request) -> web.Response:
+        """
+        Check if a Discord ID exists and is a moderator.
+
+        POST /api/azab/mod/check
+        Body: {"discord_id": "123456789"}
+
+        Returns:
+            - exists: whether user has registered
+            - is_moderator: whether user has mod role
         """
         try:
             data = await request.json()
@@ -129,7 +117,129 @@ class ModHandlersMixin:
                 headers=_cors_headers()
             )
 
+        discord_id_str = data.get("discord_id", "")
+        try:
+            discord_id = int(discord_id_str)
+        except (ValueError, TypeError):
+            return web.json_response(
+                {"success": False, "error": "Invalid Discord ID"},
+                status=400,
+                headers=_cors_headers()
+            )
+
+        auth_manager = get_auth_manager()
+
+        # Check if user is a moderator
+        is_moderator = await auth_manager.check_is_moderator(self._bot, discord_id)
+        if not is_moderator:
+            return web.json_response({
+                "success": True,
+                "exists": False,
+                "is_moderator": False,
+            }, headers=_cors_headers())
+
+        # Check if user has registered
+        exists = auth_manager.user_exists(discord_id)
+
+        return web.json_response({
+            "success": True,
+            "exists": exists,
+            "is_moderator": True,
+        }, headers=_cors_headers())
+
+    async def handle_mod_register(self: "AzabAPI", request: web.Request) -> web.Response:
+        """
+        Register a new moderator account.
+
+        POST /api/azab/mod/register
+        Body: {"discord_id": "123456789", "password": "..."}
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response(
+                {"success": False, "error": "Invalid JSON"},
+                status=400,
+                headers=_cors_headers()
+            )
+
+        discord_id_str = data.get("discord_id", "")
         password = data.get("password", "")
+
+        try:
+            discord_id = int(discord_id_str)
+        except (ValueError, TypeError):
+            return web.json_response(
+                {"success": False, "error": "Invalid Discord ID"},
+                status=400,
+                headers=_cors_headers()
+            )
+
+        if not password or len(password) < 4:
+            return web.json_response(
+                {"success": False, "error": "Password must be at least 4 characters"},
+                status=400,
+                headers=_cors_headers()
+            )
+
+        auth_manager = get_auth_manager()
+
+        # Verify user is a moderator
+        is_moderator = await auth_manager.check_is_moderator(self._bot, discord_id)
+        if not is_moderator:
+            return web.json_response(
+                {"success": False, "error": "You must be a moderator to register"},
+                status=403,
+                headers=_cors_headers()
+            )
+
+        # Check if already registered
+        if auth_manager.user_exists(discord_id):
+            return web.json_response(
+                {"success": False, "error": "Account already exists. Please login."},
+                status=400,
+                headers=_cors_headers()
+            )
+
+        # Register user
+        auth_manager.register_user(discord_id, password)
+
+        # Create token and login
+        token = auth_manager.create_token(discord_id)
+
+        return web.json_response({
+            "success": True,
+            "token": token,
+        }, headers=_cors_headers())
+
+    async def handle_mod_login(self: "AzabAPI", request: web.Request) -> web.Response:
+        """
+        Login with Discord ID and password.
+
+        POST /api/azab/mod/login
+        Body: {"discord_id": "123456789", "password": "..."}
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response(
+                {"success": False, "error": "Invalid JSON"},
+                status=400,
+                headers=_cors_headers()
+            )
+
+        discord_id_str = data.get("discord_id", "")
+        password = data.get("password", "")
+
+        try:
+            discord_id = int(discord_id_str)
+        except (ValueError, TypeError):
+            return web.json_response(
+                {"success": False, "error": "Invalid Discord ID"},
+                status=400,
+                headers=_cors_headers()
+            )
+
         if not password:
             return web.json_response(
                 {"success": False, "error": "Password required"},
@@ -138,30 +248,35 @@ class ModHandlersMixin:
             )
 
         auth_manager = get_auth_manager()
-        if not auth_manager.verify_password(password):
-            logger.warning("Mod Dashboard: Failed login attempt")
+
+        # Verify they're still a moderator
+        is_moderator = await auth_manager.check_is_moderator(self._bot, discord_id)
+        if not is_moderator:
+            return web.json_response(
+                {"success": False, "error": "You are no longer a moderator"},
+                status=403,
+                headers=_cors_headers()
+            )
+
+        # Verify password
+        if not auth_manager.verify_user(discord_id, password):
+            logger.warning(f"Mod Dashboard: Failed login for {discord_id}")
             return web.json_response(
                 {"success": False, "error": "Invalid password"},
                 status=401,
                 headers=_cors_headers()
             )
 
-        token = auth_manager.create_token()
-        return web.json_response(
-            {"success": True, "token": token},
-            headers=_cors_headers()
-        )
+        # Create token
+        token = auth_manager.create_token(discord_id)
 
-    async def handle_mod_auth_options(self: "AzabAPI", request: web.Request) -> web.Response:
-        """Handle CORS preflight for auth endpoint."""
-        return web.Response(status=204, headers=_cors_headers())
+        return web.json_response({
+            "success": True,
+            "token": token,
+        }, headers=_cors_headers())
 
     async def handle_mod_logout(self: "AzabAPI", request: web.Request) -> web.Response:
-        """
-        Logout and revoke session token.
-
-        POST /api/azab/mod/logout
-        """
+        """Logout and revoke session token."""
         auth_header = request.headers.get("Authorization")
         token = extract_bearer_token(auth_header)
 
@@ -173,13 +288,16 @@ class ModHandlersMixin:
             headers=_cors_headers()
         )
 
-    async def handle_mod_cases(self: "AzabAPI", request: web.Request) -> web.Response:
-        """
-        List all cases with pagination.
+    async def handle_mod_auth_options(self: "AzabAPI", request: web.Request) -> web.Response:
+        """Handle CORS preflight for auth endpoints."""
+        return web.Response(status=204, headers=_cors_headers())
 
-        GET /api/azab/mod/cases
-        Query: ?page=1&limit=50&status=open|closed|all
-        """
+    # =========================================================================
+    # Data Endpoints
+    # =========================================================================
+
+    async def handle_mod_cases(self: "AzabAPI", request: web.Request) -> web.Response:
+        """List all cases with pagination."""
         if not _require_auth(request):
             return web.json_response(
                 {"error": "Unauthorized"},
@@ -225,11 +343,7 @@ class ModHandlersMixin:
         cases = []
         for row in rows:
             case = dict(row)
-
-            # Get user info
             user_info = await _get_user_info(self._bot, case["user_id"])
-
-            # Get moderator info
             mod_info = await _get_user_info(self._bot, case["moderator_id"])
 
             cases.append({
@@ -247,12 +361,6 @@ class ModHandlersMixin:
 
         pages = (total + limit - 1) // limit if limit > 0 else 1
 
-        logger.tree("Mod Dashboard: Cases List", [
-            ("Page", f"{page}/{pages}"),
-            ("Filter", status_filter),
-            ("Results", str(len(cases))),
-        ], emoji="📋")
-
         return web.json_response({
             "cases": cases,
             "total": total,
@@ -261,11 +369,7 @@ class ModHandlersMixin:
         }, headers=_cors_headers())
 
     async def handle_mod_case_detail(self: "AzabAPI", request: web.Request) -> web.Response:
-        """
-        Get details for a single case.
-
-        GET /api/azab/mod/cases/{case_id}
-        """
+        """Get details for a single case."""
         if not _require_auth(request):
             return web.json_response(
                 {"error": "Unauthorized"},
@@ -291,16 +395,10 @@ class ModHandlersMixin:
                 headers=_cors_headers()
             )
 
-        # Get user info
         user_info = await _get_user_info(self._bot, case["user_id"])
-
-        # Get moderator info
         mod_info = await _get_user_info(self._bot, case["moderator_id"])
-
-        # Get evidence
         evidence_urls = db.get_case_evidence(case_id)
 
-        # Build thread URL
         config = get_config()
         guild_id = config.logging_guild_id or case.get("guild_id", 0)
         thread_url = f"https://discord.com/channels/{guild_id}/{case['thread_id']}" if case.get("thread_id") else None
@@ -325,20 +423,10 @@ class ModHandlersMixin:
             "duration_seconds": case.get("duration_seconds"),
         }
 
-        logger.tree("Mod Dashboard: Case Detail", [
-            ("Case ID", case_id),
-            ("Status", case["status"]),
-        ], emoji="📋")
-
         return web.json_response(result, headers=_cors_headers())
 
     async def handle_mod_tickets(self: "AzabAPI", request: web.Request) -> web.Response:
-        """
-        List all tickets with pagination.
-
-        GET /api/azab/mod/tickets
-        Query: ?page=1&limit=50&status=open|closed|all
-        """
+        """List all tickets with pagination."""
         if not _require_auth(request):
             return web.json_response(
                 {"error": "Unauthorized"},
@@ -354,7 +442,6 @@ class ModHandlersMixin:
         config = get_config()
         guild_id = config.logging_guild_id
 
-        # Build query based on status filter
         if status_filter == "open":
             where_clause = "WHERE status IN ('open', 'claimed')"
             if guild_id:
@@ -368,11 +455,9 @@ class ModHandlersMixin:
             if guild_id:
                 where_clause += f" AND guild_id = {guild_id}"
 
-        # Get total count
         count_row = db.fetchone(f"SELECT COUNT(*) as count FROM tickets {where_clause}")
         total = count_row["count"] if count_row else 0
 
-        # Get tickets
         rows = db.fetchall(
             f"""SELECT * FROM tickets
                 {where_clause}
@@ -384,17 +469,13 @@ class ModHandlersMixin:
         tickets = []
         for row in rows:
             ticket = dict(row)
-
-            # Get user info
             user_info = await _get_user_info(self._bot, ticket["user_id"])
 
-            # Get claimer info if claimed
             claimed_by_name = None
             if ticket.get("claimed_by"):
                 claimer_info = await _get_user_info(self._bot, ticket["claimed_by"])
                 claimed_by_name = claimer_info["username"]
 
-            # Get message count
             message_count = db.get_ticket_message_count(ticket["ticket_id"])
 
             tickets.append({
@@ -411,12 +492,6 @@ class ModHandlersMixin:
 
         pages = (total + limit - 1) // limit if limit > 0 else 1
 
-        logger.tree("Mod Dashboard: Tickets List", [
-            ("Page", f"{page}/{pages}"),
-            ("Filter", status_filter),
-            ("Results", str(len(tickets))),
-        ], emoji="🎫")
-
         return web.json_response({
             "tickets": tickets,
             "total": total,
@@ -425,11 +500,7 @@ class ModHandlersMixin:
         }, headers=_cors_headers())
 
     async def handle_mod_ticket_detail(self: "AzabAPI", request: web.Request) -> web.Response:
-        """
-        Get details for a single ticket.
-
-        GET /api/azab/mod/tickets/{ticket_id}
-        """
+        """Get details for a single ticket."""
         if not _require_auth(request):
             return web.json_response(
                 {"error": "Unauthorized"},
@@ -455,19 +526,15 @@ class ModHandlersMixin:
                 headers=_cors_headers()
             )
 
-        # Get user info
         user_info = await _get_user_info(self._bot, ticket["user_id"])
 
-        # Get claimer info if claimed
         claimed_by_name = None
         if ticket.get("claimed_by"):
             claimer_info = await _get_user_info(self._bot, ticket["claimed_by"])
             claimed_by_name = claimer_info["username"]
 
-        # Get message count
         message_count = db.get_ticket_message_count(ticket_id)
 
-        # Build transcript URL
         config = get_config()
         transcript_url = None
         if config.transcript_base_url:
@@ -492,19 +559,10 @@ class ModHandlersMixin:
             "transcript_url": transcript_url,
         }
 
-        logger.tree("Mod Dashboard: Ticket Detail", [
-            ("Ticket ID", ticket_id),
-            ("Status", ticket["status"]),
-        ], emoji="🎫")
-
         return web.json_response(result, headers=_cors_headers())
 
     async def handle_mod_user(self: "AzabAPI", request: web.Request) -> web.Response:
-        """
-        Lookup a user's moderation history.
-
-        GET /api/azab/mod/users/{user_id}
-        """
+        """Lookup a user's moderation history."""
         if not _require_auth(request):
             return web.json_response(
                 {"error": "Unauthorized"},
@@ -526,7 +584,6 @@ class ModHandlersMixin:
         config = get_config()
         guild_id = config.logging_guild_id
 
-        # Get user info from Discord
         user_info = await _get_user_info(self._bot, user_id)
 
         # Get punishment counts
@@ -611,20 +668,10 @@ class ModHandlersMixin:
             "recent_tickets": recent_tickets,
         }
 
-        logger.tree("Mod Dashboard: User Lookup", [
-            ("User ID", str(user_id)),
-            ("Username", user_info["username"]),
-            ("Total Punishments", str(sum(punishment_summary.values()))),
-        ], emoji="👤")
-
         return web.json_response(result, headers=_cors_headers())
 
     async def handle_mod_stats(self: "AzabAPI", request: web.Request) -> web.Response:
-        """
-        Get overview statistics for the dashboard.
-
-        GET /api/azab/mod/stats
-        """
+        """Get overview statistics for the dashboard."""
         if not _require_auth(request):
             return web.json_response(
                 {"error": "Unauthorized"},
@@ -636,25 +683,21 @@ class ModHandlersMixin:
         config = get_config()
         guild_id = config.logging_guild_id
 
-        # Get counts
         open_cases = db.get_open_cases_count(guild_id)
         total_cases = db.get_total_cases(guild_id)
 
-        # Get open tickets count
         open_tickets_row = db.fetchone(
             "SELECT COUNT(*) as c FROM tickets WHERE status IN ('open', 'claimed')" +
             (f" AND guild_id = {guild_id}" if guild_id else "")
         )
         open_tickets = open_tickets_row["c"] if open_tickets_row else 0
 
-        # Get total tickets count
         total_tickets_row = db.fetchone(
             "SELECT COUNT(*) as c FROM tickets" +
             (f" WHERE guild_id = {guild_id}" if guild_id else "")
         )
         total_tickets = total_tickets_row["c"] if total_tickets_row else 0
 
-        # Get active prisoners
         active_prisoners = db.get_active_prisoners_count(guild_id)
 
         result = {

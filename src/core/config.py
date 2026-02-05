@@ -188,12 +188,6 @@ class Config:
     moderator_ids: Set[int] = None
 
     # -------------------------------------------------------------------------
-    # Optional: Moderation Dashboard
-    # -------------------------------------------------------------------------
-
-    mod_dashboard_password: Optional[str] = None  # Password for web moderation dashboard
-
-    # -------------------------------------------------------------------------
     # Optional: Webhooks
     # -------------------------------------------------------------------------
 
@@ -501,7 +495,6 @@ def load_config() -> Config:
     appeal_allowed_user_ids = _parse_int_set(os.getenv("APPEAL_ALLOWED_USER_IDS"))
     whitelisted_webhook_ids = _parse_int_set(os.getenv("WHITELISTED_WEBHOOK_IDS"))
     mention_spam_exempt_channel_ids = _parse_int_set(os.getenv("MENTION_SPAM_EXEMPT_CHANNEL_IDS"))
-    mod_dashboard_password = os.getenv("MOD_DASHBOARD_PASSWORD") or None
 
     # -------------------------------------------------------------------------
     # Build Config Object
@@ -571,7 +564,6 @@ def load_config() -> Config:
         appeal_allowed_user_ids=appeal_allowed_user_ids if appeal_allowed_user_ids else None,
         whitelisted_webhook_ids=whitelisted_webhook_ids if whitelisted_webhook_ids else None,
         mention_spam_exempt_channel_ids=mention_spam_exempt_channel_ids if mention_spam_exempt_channel_ids else None,
-        mod_dashboard_password=mod_dashboard_password,
     )
 
 
