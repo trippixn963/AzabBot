@@ -770,6 +770,17 @@ class SchemaMixin:
         )
 
         # -----------------------------------------------------------------
+        # AI Conversations Table (for ticket AI assistant persistence)
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_conversations (
+                ticket_id TEXT PRIMARY KEY,
+                conversation_data TEXT NOT NULL,
+                updated_at REAL NOT NULL
+            )
+        """)
+
+        # -----------------------------------------------------------------
         # Message Samples Table (for alt detection writing style)
         # -----------------------------------------------------------------
         cursor.execute("""

@@ -599,3 +599,49 @@ class TicketsMixin:
                 ("Count", str(cursor.rowcount)),
             ])
         return cursor.rowcount
+
+    # =========================================================================
+    # AI Conversation Persistence
+    # =========================================================================
+
+    def save_ai_conversation(self: "DatabaseManager", ticket_id: str, data: str) -> None:
+        """
+        Save or update AI conversation data for a ticket.
+
+        Args:
+            ticket_id: The ticket ID.
+            data: JSON-serialized conversation data.
+        """
+        self.execute(
+            """INSERT OR REPLACE INTO ai_conversations (ticket_id, conversation_data, updated_at)
+               VALUES (?, ?, ?)""",
+            (ticket_id, data, time.time())
+        )
+
+    def get_ai_conversation(self: "DatabaseManager", ticket_id: str) -> Optional[str]:
+        """
+        Get AI conversation data for a ticket.
+
+        Args:
+            ticket_id: The ticket ID.
+
+        Returns:
+            JSON-serialized conversation data, or None if not found.
+        """
+        row = self.fetchone(
+            "SELECT conversation_data FROM ai_conversations WHERE ticket_id = ?",
+            (ticket_id,)
+        )
+        return row["conversation_data"] if row else None
+
+    def delete_ai_conversation(self: "DatabaseManager", ticket_id: str) -> None:
+        """
+        Delete AI conversation data for a ticket.
+
+        Args:
+            ticket_id: The ticket ID.
+        """
+        self.execute(
+            "DELETE FROM ai_conversations WHERE ticket_id = ?",
+            (ticket_id,)
+        )

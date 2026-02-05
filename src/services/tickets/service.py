@@ -444,7 +444,21 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         if not self.bot.ai_service.enabled:
             return
 
-        # Skip empty messages (attachments only, etc.)
+        # Handle attachment-only messages
+        if (not message.content or not message.content.strip()) and message.attachments:
+            # Acknowledge attachments
+            ack_message = self.bot.ai_service.get_attachment_acknowledgment(len(message.attachments))
+            try:
+                await message.reply(ack_message, mention_author=False)
+                logger.tree("AI Attachment Acknowledged", [
+                    ("Ticket ID", ticket["ticket_id"]),
+                    ("Attachments", str(len(message.attachments))),
+                ], emoji="🤖")
+            except discord.HTTPException:
+                pass
+            return
+
+        # Skip empty messages with no attachments
         if not message.content or not message.content.strip():
             return
 

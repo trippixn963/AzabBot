@@ -109,10 +109,59 @@ Generate a helpful follow-up response. Reference what they've told you and ask a
 FINAL_RESPONSE_NOTE = "This is your FINAL response. Summarize what you've learned, thank the user for the information, and reassure them that staff will review their ticket soon. Do NOT ask more questions."
 
 
+# =============================================================================
+# Summary Generation (for staff when claiming)
+# =============================================================================
+
+TICKET_SUMMARY_SYSTEM = """You are a support assistant summarizing a ticket conversation for staff.
+
+Your job is to create a brief, actionable summary of what the user needs help with based on the conversation so far.
+
+GUIDELINES:
+1. Keep it to 2-3 sentences maximum
+2. Focus on the key issue and any important details the user provided
+3. Use bullet points if there are multiple distinct pieces of information
+4. Be factual and concise - staff need to quickly understand the situation
+5. Do NOT include greetings or fluff - just the facts"""
+
+
+TICKET_SUMMARY_TEMPLATE = """Summarize this ticket conversation for a staff member who is about to help.
+
+**Ticket Category:** {category}
+**Original Subject:** {subject}
+
+**Conversation:**
+{conversation_history}
+
+Generate a brief 2-3 sentence summary of what the user needs and any key details they've provided."""
+
+
+# =============================================================================
+# Attachment Acknowledgment
+# =============================================================================
+
+ATTACHMENT_ACKNOWLEDGMENT = """I see you've uploaded {file_count} file(s). Staff will review {file_text} when they claim your ticket.
+
+Is there anything else you'd like to add about your issue while you wait?"""
+
+
+# =============================================================================
+# Fallback Messages
+# =============================================================================
+
+FALLBACK_GREETING = """Welcome! Thank you for opening a ticket.
+
+A staff member will be with you shortly to assist with your inquiry. In the meantime, feel free to provide any additional details that might help us understand your situation better."""
+
+
 __all__ = [
     "TICKET_ASSISTANT_SYSTEM",
     "TICKET_GREETING_TEMPLATE",
     "TICKET_FOLLOWUP_SYSTEM",
     "TICKET_FOLLOWUP_TEMPLATE",
     "FINAL_RESPONSE_NOTE",
+    "TICKET_SUMMARY_SYSTEM",
+    "TICKET_SUMMARY_TEMPLATE",
+    "ATTACHMENT_ACKNOWLEDGMENT",
+    "FALLBACK_GREETING",
 ]

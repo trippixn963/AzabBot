@@ -608,8 +608,11 @@ class OperationsMixin:
         # Clear claim reminder cooldowns (no longer needed)
         await self.clear_claim_reminder_cooldowns(ticket_id)
 
-        # End AI conversation (staff is taking over)
-        if hasattr(self.bot, "ai_service") and self.bot.ai_service:
+        # Generate AI summary before ending conversation (for staff)
+        ai_summary = None
+        if hasattr(self.bot, "ai_service") and self.bot.ai_service and self.bot.ai_service.enabled:
+            ai_summary = await self.bot.ai_service.generate_ticket_summary(ticket_id)
+            # End AI conversation (staff is taking over)
             await self.bot.ai_service.end_conversation(ticket_id)
 
         # Get ticket user for notification and control panel
@@ -654,6 +657,19 @@ class OperationsMixin:
                 await safe_send(channel, content=ticket_user.mention, embed=claim_embed)
             else:
                 await safe_send(channel, embed=claim_embed)
+
+            # Send AI summary for staff (if available)
+            if ai_summary:
+                summary_embed = discord.Embed(
+                    title="🤖 AI Summary",
+                    description=ai_summary,
+                    color=0x5865F2,  # Discord blurple
+                )
+                await safe_send(channel, embed=summary_embed)
+                logger.tree("AI Summary Displayed", [
+                    ("Ticket ID", ticket_id),
+                    ("Staff", f"{staff.name} ({staff.id})"),
+                ], emoji="🤖")
 
             # DM user
             if ticket_user:
