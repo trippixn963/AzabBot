@@ -108,6 +108,7 @@ class Config:
 
     appeal_forum_id: Optional[int] = None  # Forum channel for ban/mute appeals
     appeal_token_secret: Optional[str] = None  # JWT secret for web appeal links
+    server_invite_url: Optional[str] = None  # Invite URL sent to users when ban appeal is approved
 
     # -------------------------------------------------------------------------
     # Optional: Tickets
@@ -185,6 +186,12 @@ class Config:
     # -------------------------------------------------------------------------
 
     moderator_ids: Set[int] = None
+
+    # -------------------------------------------------------------------------
+    # Optional: Moderation Dashboard
+    # -------------------------------------------------------------------------
+
+    mod_dashboard_password: Optional[str] = None  # Password for web moderation dashboard
 
     # -------------------------------------------------------------------------
     # Optional: Webhooks
@@ -474,6 +481,7 @@ def load_config() -> Config:
     alert_channel_id = _parse_int_optional(os.getenv("ALERT_CHANNEL_ID"))
     appeal_forum_id = _parse_int_optional(os.getenv("APPEAL_FORUM_ID"))
     appeal_token_secret = os.getenv("APPEAL_TOKEN_SECRET") or None
+    server_invite_url = os.getenv("SERVER_INVITE_URL") or None
     ticket_channel_id = _parse_int_optional(os.getenv("TICKET_CHANNEL_ID"))
     ticket_category_id = _parse_int_optional(os.getenv("TICKET_CATEGORY_ID"))
     ticket_staff_role_id = _parse_int_optional(os.getenv("TICKET_STAFF_ROLE_ID"))
@@ -493,6 +501,7 @@ def load_config() -> Config:
     appeal_allowed_user_ids = _parse_int_set(os.getenv("APPEAL_ALLOWED_USER_IDS"))
     whitelisted_webhook_ids = _parse_int_set(os.getenv("WHITELISTED_WEBHOOK_IDS"))
     mention_spam_exempt_channel_ids = _parse_int_set(os.getenv("MENTION_SPAM_EXEMPT_CHANNEL_IDS"))
+    mod_dashboard_password = os.getenv("MOD_DASHBOARD_PASSWORD") or None
 
     # -------------------------------------------------------------------------
     # Build Config Object
@@ -519,6 +528,7 @@ def load_config() -> Config:
         alert_channel_id=alert_channel_id,
         appeal_forum_id=appeal_forum_id,
         appeal_token_secret=appeal_token_secret,
+        server_invite_url=server_invite_url,
         ticket_channel_id=ticket_channel_id,
         ticket_category_id=ticket_category_id,
         ticket_staff_role_id=ticket_staff_role_id,
@@ -561,6 +571,7 @@ def load_config() -> Config:
         appeal_allowed_user_ids=appeal_allowed_user_ids if appeal_allowed_user_ids else None,
         whitelisted_webhook_ids=whitelisted_webhook_ids if whitelisted_webhook_ids else None,
         mention_spam_exempt_channel_ids=mention_spam_exempt_channel_ids if mention_spam_exempt_channel_ids else None,
+        mod_dashboard_password=mod_dashboard_password,
     )
 
 

@@ -27,6 +27,7 @@ from .middleware import (
 )
 from .handlers import HandlersMixin
 from .data_helpers import DataHelpersMixin
+from .mod_handlers import ModHandlersMixin
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -43,7 +44,7 @@ STATS_API_HOST = "0.0.0.0"
 # AzabAPI Class
 # =============================================================================
 
-class AzabAPI(HandlersMixin, DataHelpersMixin):
+class AzabAPI(HandlersMixin, DataHelpersMixin, ModHandlersMixin):
     """HTTP API server for Azab moderation stats."""
 
     def __init__(self, bot: "AzabBot") -> None:
@@ -117,6 +118,19 @@ class AzabAPI(HandlersMixin, DataHelpersMixin):
         self.app.router.add_get("/api/azab/appeal/{token}", self.handle_appeal_get)
         self.app.router.add_post("/api/azab/appeal/{token}", self.handle_appeal_post)
         self.app.router.add_options("/api/azab/appeal/{token}", self.handle_appeal_options)
+        # Search endpoint
+        self.app.router.add_get("/api/azab/search", self.handle_search)
+        # Moderation dashboard endpoints
+        self.app.router.add_post("/api/azab/mod/auth", self.handle_mod_auth)
+        self.app.router.add_options("/api/azab/mod/auth", self.handle_mod_auth_options)
+        self.app.router.add_post("/api/azab/mod/logout", self.handle_mod_logout)
+        self.app.router.add_get("/api/azab/mod/stats", self.handle_mod_stats)
+        self.app.router.add_get("/api/azab/mod/cases", self.handle_mod_cases)
+        self.app.router.add_get("/api/azab/mod/cases/{case_id}", self.handle_mod_case_detail)
+        self.app.router.add_get("/api/azab/mod/tickets", self.handle_mod_tickets)
+        self.app.router.add_get("/api/azab/mod/tickets/{ticket_id}", self.handle_mod_ticket_detail)
+        self.app.router.add_get("/api/azab/mod/users/{user_id}", self.handle_mod_user)
+        self.app.router.add_options("/api/azab/mod/{path:.*}", self.handle_mod_options)
 
     async def _cleanup_loop(self) -> None:
         """Periodically clean up rate limiter entries."""
