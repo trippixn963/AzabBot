@@ -10,7 +10,7 @@ Server: discord.gg/syria
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Optional, Dict
+from typing import TYPE_CHECKING, Optional, Dict, List, Any
 
 import discord
 
@@ -18,12 +18,10 @@ from src.core.logger import logger
 from src.core.config import get_config
 from src.core.database import get_db
 from src.core.constants import (
-    TICKET_CREATION_COOLDOWN,
     AUTO_CLOSE_CHECK_INTERVAL,
     THREAD_DELETE_DELAY,
     CLOSE_REQUEST_COOLDOWN,
 )
-from src.utils.async_utils import create_safe_task
 
 from .constants import (
     INACTIVE_WARNING_DAYS,
@@ -176,11 +174,15 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         return recovered
 
     # =========================================================================
-    # Activity Tracking
+    # Activity Tracking & Message Storage
     # =========================================================================
 
     async def track_ticket_activity(self, thread_id: int) -> None:
-        """Track activity in a ticket thread."""
+        """
+        Track activity in a ticket thread (legacy method for compatibility).
+
+        Use handle_ticket_message() for full message storage.
+        """
         ticket = self.db.get_ticket_by_thread(thread_id)
         if not ticket:
             return
@@ -193,3 +195,109 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         # Clear warning flag if ticket becomes active again
         if ticket.get("warned"):
             self.db.clear_ticket_warning(ticket["ticket_id"])
+
+    async def handle_ticket_message(self, message: discord.Message) -> None:
+        """
+        Handle a new message in a ticket channel.
+
+        DESIGN: Incremental storage approach for real-time transcripts.
+        - Stores each message individually (fast INSERT)
+        - Transcript is generated on-demand when viewed
+        - No regeneration overhead on every message
+
+        Args:
+            message: The Discord message sent in the ticket channel
+        """
+        # Get ticket from channel ID
+        ticket = self.db.get_ticket_by_thread(message.channel.id)
+        if not ticket:
+            return
+
+        if ticket["status"] == "closed":
+            return
+
+        # Update activity timestamp
+        self.db.update_ticket_activity(ticket["ticket_id"])
+
+        # Clear warning flag if ticket becomes active again
+        if ticket.get("warned"):
+            self.db.clear_ticket_warning(ticket["ticket_id"])
+
+        # Store message incrementally
+        self._store_message(ticket["ticket_id"], message)
+
+    def _store_message(self, ticket_id: str, message: discord.Message) -> None:
+        """
+        Store a single message for incremental transcript building.
+
+        Args:
+            ticket_id: The ticket ID
+            message: The Discord message to store
+        """
+        # Build attachments list
+        attachments = []
+        for att in message.attachments:
+            attachments.append({
+                "filename": att.filename,
+                "url": att.url,
+                "content_type": att.content_type,
+                "size": att.size,
+            })
+
+        # Build embeds list
+        embeds = []
+        for embed in message.embeds:
+            embed_data = {
+                "title": embed.title,
+                "description": embed.description,
+                "url": embed.url,
+                "color": embed.color.value if embed.color else None,
+                "timestamp": embed.timestamp.isoformat() if embed.timestamp else None,
+            }
+            # Author
+            if embed.author:
+                embed_data["author"] = {
+                    "name": embed.author.name,
+                    "url": embed.author.url,
+                    "icon_url": embed.author.icon_url,
+                }
+            # Footer
+            if embed.footer:
+                embed_data["footer"] = {
+                    "text": embed.footer.text,
+                    "icon_url": embed.footer.icon_url,
+                }
+            # Image
+            if embed.image:
+                embed_data["image"] = {"url": embed.image.url}
+            # Thumbnail
+            if embed.thumbnail:
+                embed_data["thumbnail"] = {"url": embed.thumbnail.url}
+            # Fields
+            if embed.fields:
+                embed_data["fields"] = [
+                    {"name": f.name, "value": f.value, "inline": f.inline}
+                    for f in embed.fields
+                ]
+            embeds.append(embed_data)
+
+        # Check if author is staff (has manage_messages permission)
+        is_staff = False
+        if hasattr(message.author, 'guild_permissions'):
+            is_staff = message.author.guild_permissions.manage_messages
+
+        # Store in database
+        self.db.store_ticket_message(
+            ticket_id=ticket_id,
+            message_id=message.id,
+            author_id=message.author.id,
+            author_name=message.author.name,
+            author_display_name=message.author.display_name,
+            author_avatar_url=str(message.author.display_avatar.url) if message.author.display_avatar else None,
+            content=message.content,
+            timestamp=message.created_at.timestamp(),
+            is_bot=message.author.bot,
+            is_staff=is_staff,
+            attachments=attachments if attachments else None,
+            embeds=embeds if embeds else None,
+        )

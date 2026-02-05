@@ -25,7 +25,7 @@ from src.core.constants import (
     EMOJI_ID_HISTORY,
     EMOJI_ID_INFO,
     EMOJI_ID_TRANSFER,
-    TICKET_CREATION_COOLDOWN,
+    TICKET_CATEGORY_COOLDOWN,
     AUTO_CLOSE_CHECK_INTERVAL,
     THREAD_DELETE_DELAY,
     CLOSE_REQUEST_COOLDOWN,
@@ -81,6 +81,13 @@ TICKET_CATEGORIES = {
         "emoji": VERIFICATION_EMOJI,
         "description": "Request the Verified role",
         "color": EmbedColors.GREEN,
+    },
+    "appeal": {
+        "label": "Mute Appeal",
+        "emoji": PARTNERSHIP_EMOJI,  # Uses appeal emoji
+        "description": "Appeal a mute punishment",
+        "color": EmbedColors.GOLD,
+        "hidden": True,  # Don't show in panel dropdown
     },
 }
 
@@ -147,7 +154,7 @@ __all__ = [
     "MAX_TRANSCRIPT_MESSAGES",
     "MAX_TRANSCRIPT_USER_LOOKUPS",
     # Timeouts (from core)
-    "TICKET_CREATION_COOLDOWN",
+    "TICKET_CATEGORY_COOLDOWN",
     "AUTO_CLOSE_CHECK_INTERVAL",
     "THREAD_DELETE_DELAY",
     "CLOSE_REQUEST_COOLDOWN",

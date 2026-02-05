@@ -74,15 +74,14 @@ class MessageEvents(HelpersMixin, commands.Cog):
             await self.bot.case_log_service.handle_reason_reply(message)
 
         # -----------------------------------------------------------------
-        # Route 1.5: Ticket thread - track activity for auto-close
+        # Route 1.5: Ticket channel - track activity and store message
         # -----------------------------------------------------------------
         if (
-            isinstance(message.channel, discord.Thread)
-            and not message.author.bot
+            not message.author.bot
             and self.bot.ticket_service
             and self.bot.ticket_service.enabled
         ):
-            await self.bot.ticket_service.track_ticket_activity(message.channel.id)
+            await self.bot.ticket_service.handle_ticket_message(message)
 
         # -----------------------------------------------------------------
         # Route 2: Mod logs forum - parse mute embeds from threads
@@ -124,19 +123,9 @@ class MessageEvents(HelpersMixin, commands.Cog):
             return
 
         # -----------------------------------------------------------------
-        # Route 3: DM handling (modmail for banned users, mod tracker alerts)
+        # Route 3: DM handling (mod tracker alerts)
         # -----------------------------------------------------------------
         if isinstance(message.channel, discord.DMChannel):
-            # Check if this is a banned user trying to contact staff (modmail)
-            if (
-                self.bot.modmail_service
-                and self.bot.modmail_service.enabled
-                and not message.author.bot
-            ):
-                handled = await self.bot.modmail_service.handle_dm(message)
-                if handled:
-                    return  # Modmail handled the message
-
             # Check if this is a tracked mod DMing the bot
             if self.bot.mod_tracker and self.bot.mod_tracker.is_tracked(message.author.id):
                 await self.bot.mod_tracker.alert_dm_attempt(
@@ -144,20 +133,6 @@ class MessageEvents(HelpersMixin, commands.Cog):
                     message_content=message.content or "(no text content)",
                 )
             return
-
-        # -----------------------------------------------------------------
-        # Route 3.5: Modmail thread - relay staff replies to user
-        # -----------------------------------------------------------------
-        if (
-            isinstance(message.channel, discord.Thread)
-            and self.config.modmail_forum_id
-            and message.channel.parent_id == self.config.modmail_forum_id
-            and not message.author.bot
-            and self.bot.modmail_service
-            and self.bot.modmail_service.enabled
-        ):
-            await self.bot.modmail_service.handle_thread_message(message)
-            # Don't return - let other handlers run if needed
 
         # -----------------------------------------------------------------
         # Cache attachments for delete logging

@@ -641,7 +641,8 @@ class SchemaMixin:
                 resolved_at REAL,
                 resolved_by INTEGER,
                 resolution TEXT,
-                resolution_reason TEXT
+                resolution_reason TEXT,
+                email TEXT
             )
         """)
         cursor.execute(
@@ -653,6 +654,18 @@ class SchemaMixin:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_appeals_status ON appeals(status)"
         )
+
+        # Migration: Add email column if missing
+        try:
+            cursor.execute("SELECT email FROM appeals LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE appeals ADD COLUMN email TEXT")
+
+        # Migration: Add attachments column if missing (JSON string of attachment metadata)
+        try:
+            cursor.execute("SELECT attachments FROM appeals LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE appeals ADD COLUMN attachments TEXT")
 
         # -----------------------------------------------------------------
         # Linked Messages Table
@@ -724,6 +737,39 @@ class SchemaMixin:
         )
 
         # -----------------------------------------------------------------
+        # Ticket Messages Table (incremental storage for real-time transcripts)
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_id TEXT NOT NULL,
+                message_id INTEGER NOT NULL UNIQUE,
+                author_id INTEGER NOT NULL,
+                author_name TEXT NOT NULL,
+                author_display_name TEXT NOT NULL,
+                author_avatar_url TEXT,
+                content TEXT,
+                timestamp REAL NOT NULL,
+                is_bot INTEGER DEFAULT 0,
+                is_staff INTEGER DEFAULT 0,
+                attachments TEXT,
+                embeds TEXT,
+                FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id)
+            )
+        """)
+        # Add embeds column if missing (migration)
+        try:
+            cursor.execute("ALTER TABLE ticket_messages ADD COLUMN embeds TEXT")
+        except sqlite3.OperationalError:
+            pass
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket ON ticket_messages(ticket_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ticket_messages_timestamp ON ticket_messages(ticket_id, timestamp)"
+        )
+
+        # -----------------------------------------------------------------
         # Message Samples Table (for alt detection writing style)
         # -----------------------------------------------------------------
         cursor.execute("""
@@ -779,5 +825,103 @@ class SchemaMixin:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_interactions_target ON user_interactions(target_id, guild_id)"
         )
+
+        # -----------------------------------------------------------------
+        # Timeout History Table
+        # DESIGN: Tracks Discord timeouts applied/removed
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS timeout_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                moderator_id INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                reason TEXT,
+                duration_seconds INTEGER,
+                until_timestamp REAL,
+                timestamp REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_timeout_history_user ON timeout_history(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_timeout_history_time ON timeout_history(timestamp)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_timeout_history_moderator ON timeout_history(moderator_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # Kick History Table
+        # DESIGN: Tracks kicks performed
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS kick_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                moderator_id INTEGER NOT NULL,
+                reason TEXT,
+                timestamp REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_kick_history_user ON kick_history(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_kick_history_time ON kick_history(timestamp)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_kick_history_moderator ON kick_history(moderator_id)"
+        )
+
+        # -----------------------------------------------------------------
+        # Moderation Audit Log Table (Permanent - Never Decays)
+        # DESIGN: Complete audit trail of all moderation actions
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS moderation_audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                moderator_id INTEGER NOT NULL,
+                action_type TEXT NOT NULL,
+                action_source TEXT NOT NULL,
+                reason TEXT,
+                duration_seconds INTEGER,
+                details TEXT,
+                case_id TEXT,
+                timestamp REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_user ON moderation_audit_log(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_time ON moderation_audit_log(timestamp)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_action ON moderation_audit_log(action_type)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_moderator ON moderation_audit_log(moderator_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_source ON moderation_audit_log(action_source)"
+        )
+
+        # -----------------------------------------------------------------
+        # Mod Dashboard Users Table
+        # DESIGN: Stores credentials for web moderation dashboard
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mod_dashboard_users (
+                discord_id INTEGER PRIMARY KEY,
+                password_hash TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )
+        """)
 
         conn.commit()

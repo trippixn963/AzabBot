@@ -49,7 +49,6 @@ from .handlers import (
     AlertsLogsMixin,
     TicketsLogsMixin,
     AppealsLogsMixin,
-    ModmailLogsMixin,
     WarningsLogsMixin,
     AuditLogsMixin,
 )
@@ -83,7 +82,6 @@ class LoggingService(
     AlertsLogsMixin,
     TicketsLogsMixin,
     AppealsLogsMixin,
-    ModmailLogsMixin,
     WarningsLogsMixin,
     AuditLogsMixin,
 ):
@@ -278,11 +276,15 @@ class LoggingService(
             logger.info(f"Logging Service: Unrecognized thread '{thread.name}' in forum")
 
         if issues:
-            logger.tree("Thread Sync Validation", [
+            log_items = [
                 ("Total Categories", str(len(LogCategory))),
                 ("Loaded Threads", str(len(self._threads))),
                 ("Issues Found", str(len(issues))),
-            ], emoji="⚠️")
+            ]
+            # Add each issue to the tree output for visibility
+            for issue in issues[:5]:  # Limit to first 5 issues
+                log_items.append(("Issue", issue))
+            logger.tree("Thread Sync Validation", log_items, emoji="⚠️")
         else:
             logger.tree("Thread Sync Validation", [
                 ("Status", "All threads synced"),

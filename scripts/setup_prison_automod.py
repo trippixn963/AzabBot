@@ -134,9 +134,9 @@ async def setup_automod():
 
         await client.close()
 
-    token = os.getenv("DISCORD_TOKEN")
+    token = os.getenv("AZAB_TOKEN")
     if not token:
-        print("ERROR: DISCORD_TOKEN not set")
+        print("ERROR: AZAB_TOKEN not set")
         return
 
     await client.start(token)

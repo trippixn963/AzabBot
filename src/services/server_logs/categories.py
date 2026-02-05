@@ -41,7 +41,6 @@ class LogCategory(Enum):
     TICKETS = "🎫 Tickets"
     TRANSCRIPTS = "📜 Transcripts"
     APPEALS = "📨 Appeals"
-    MODMAIL = "📬 Modmail"
     WARNINGS = "⚠️ Warnings"
     AUDIT_RAW = "🔍 Audit Raw"
 
@@ -76,7 +75,6 @@ THREAD_DESCRIPTIONS = {
     LogCategory.TICKETS: "Logs for ticket creates, claims, closes, reopens, and user additions",
     LogCategory.TRANSCRIPTS: "Full conversation transcripts of closed tickets and approved cases",
     LogCategory.APPEALS: "Logs for appeal creates, approvals, denials, and reopens",
-    LogCategory.MODMAIL: "Logs for modmail thread creates, closes, and message relays",
     LogCategory.WARNINGS: "Logs for user warnings issued by moderators",
     LogCategory.AUDIT_RAW: "Catch-all for uncategorized audit log events",
 }

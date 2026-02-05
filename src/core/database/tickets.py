@@ -184,12 +184,19 @@ class TicketsMixin:
         close_reason: Optional[str] = None,
     ) -> bool:
         """Close a ticket."""
+        # Get ticket info first for guild_id
+        ticket = self.get_ticket(ticket_id)
+        if not ticket:
+            return False
+
         cursor = self.execute(
             """UPDATE tickets SET status = 'closed', closed_at = ?, closed_by = ?, close_reason = ?
                WHERE ticket_id = ? AND status != 'closed'""",
             (time.time(), closed_by, close_reason, ticket_id)
         )
         if cursor.rowcount > 0:
+            # Increment permanent counter
+            self.increment_total_tickets_closed(ticket["guild_id"])
             logger.tree("Ticket Closed", [
                 ("Ticket ID", ticket_id),
                 ("Closed By", str(closed_by)),
@@ -276,6 +283,35 @@ class TicketsMixin:
             (user_id, guild_id)
         )
         return row["c"] if row else 0
+
+    def get_user_last_closed_ticket_by_category(
+        self: "DatabaseManager",
+        user_id: int,
+        guild_id: int,
+        category: str,
+    ) -> Optional[float]:
+        """
+        Get the close timestamp of user's most recently closed ticket in a category.
+
+        This is used for per-category cooldowns. The cooldown starts when a ticket
+        is CLOSED, not when it's created. This prevents trolls from spamming tickets
+        while still allowing users to open new tickets after their issues are resolved.
+
+        Args:
+            user_id: User ID
+            guild_id: Guild ID
+            category: Ticket category (support, partnership, suggestion, etc.)
+
+        Returns:
+            Unix timestamp of last ticket close, or None if no closed tickets found.
+        """
+        row = self.fetchone(
+            """SELECT closed_at FROM tickets
+               WHERE user_id = ? AND guild_id = ? AND category = ? AND status = 'closed'
+               ORDER BY closed_at DESC LIMIT 1""",
+            (user_id, guild_id, category)
+        )
+        return row["closed_at"] if row and row["closed_at"] else None
 
     def get_user_ticket_count(self: "DatabaseManager", user_id: int, guild_id: int) -> int:
         """Get total ticket count for a user (all statuses)."""
@@ -415,3 +451,151 @@ class TicketsMixin:
     def clear_close_request(self: "DatabaseManager", ticket_id: str) -> bool:
         """Clear close request status for a ticket."""
         return True
+
+    # =========================================================================
+    # Ticket Messages (Incremental Storage for Real-Time Transcripts)
+    # =========================================================================
+
+    def store_ticket_message(
+        self: "DatabaseManager",
+        ticket_id: str,
+        message_id: int,
+        author_id: int,
+        author_name: str,
+        author_display_name: str,
+        author_avatar_url: Optional[str],
+        content: str,
+        timestamp: float,
+        is_bot: bool = False,
+        is_staff: bool = False,
+        attachments: Optional[List[Dict[str, Any]]] = None,
+        embeds: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
+        """
+        Store a single ticket message for incremental transcript building.
+
+        Args:
+            ticket_id: The ticket ID (e.g., T001)
+            message_id: Discord message ID (used for deduplication)
+            author_id: Message author's Discord ID
+            author_name: Author's username
+            author_display_name: Author's display name
+            author_avatar_url: Author's avatar URL
+            content: Message content
+            timestamp: Unix timestamp
+            is_bot: Whether author is a bot
+            is_staff: Whether author has staff permissions
+            attachments: List of attachment dicts [{filename, url, content_type, size}]
+            embeds: List of embed dicts [{title, description, color, fields, image, etc.}]
+
+        Returns:
+            True if stored successfully, False if duplicate or error
+        """
+        import json
+
+        try:
+            attachments_json = json.dumps(attachments) if attachments else None
+            embeds_json = json.dumps(embeds) if embeds else None
+            cursor = self.execute(
+                """
+                INSERT OR IGNORE INTO ticket_messages (
+                    ticket_id, message_id, author_id, author_name, author_display_name,
+                    author_avatar_url, content, timestamp, is_bot, is_staff, attachments, embeds
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    ticket_id, message_id, author_id, author_name, author_display_name,
+                    author_avatar_url, content, timestamp,
+                    1 if is_bot else 0,
+                    1 if is_staff else 0,
+                    attachments_json,
+                    embeds_json,
+                )
+            )
+            return cursor.rowcount > 0
+        except Exception as e:
+            logger.warning("Failed to store ticket message", [
+                ("Ticket ID", ticket_id),
+                ("Message ID", str(message_id)),
+                ("Error", str(e)[:50]),
+            ])
+            return False
+
+    def get_ticket_messages(
+        self: "DatabaseManager",
+        ticket_id: str,
+        limit: int = 1000,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all stored messages for a ticket (ordered by timestamp).
+
+        Args:
+            ticket_id: The ticket ID
+            limit: Maximum messages to return
+
+        Returns:
+            List of message dicts with all fields
+        """
+        import json
+
+        rows = self.fetchall(
+            """
+            SELECT * FROM ticket_messages
+            WHERE ticket_id = ?
+            ORDER BY timestamp ASC
+            LIMIT ?
+            """,
+            (ticket_id, limit)
+        )
+
+        messages = []
+        for row in rows:
+            msg = dict(row)
+            # Parse attachments JSON
+            if msg.get("attachments"):
+                try:
+                    msg["attachments"] = json.loads(msg["attachments"])
+                except json.JSONDecodeError:
+                    msg["attachments"] = []
+            else:
+                msg["attachments"] = []
+            # Parse embeds JSON
+            if msg.get("embeds"):
+                try:
+                    msg["embeds"] = json.loads(msg["embeds"])
+                except json.JSONDecodeError:
+                    msg["embeds"] = []
+            else:
+                msg["embeds"] = []
+            # Convert int flags to bool
+            msg["is_bot"] = bool(msg.get("is_bot", 0))
+            msg["is_staff"] = bool(msg.get("is_staff", 0))
+            messages.append(msg)
+
+        return messages
+
+    def get_ticket_message_count(self: "DatabaseManager", ticket_id: str) -> int:
+        """Get the count of stored messages for a ticket."""
+        row = self.fetchone(
+            "SELECT COUNT(*) as count FROM ticket_messages WHERE ticket_id = ?",
+            (ticket_id,)
+        )
+        return row["count"] if row else 0
+
+    def delete_ticket_messages(self: "DatabaseManager", ticket_id: str) -> int:
+        """
+        Delete all stored messages for a ticket (cleanup after close).
+
+        Returns:
+            Number of messages deleted
+        """
+        cursor = self.execute(
+            "DELETE FROM ticket_messages WHERE ticket_id = ?",
+            (ticket_id,)
+        )
+        if cursor.rowcount > 0:
+            logger.debug("Ticket Messages Deleted", [
+                ("Ticket ID", ticket_id),
+                ("Count", str(cursor.rowcount)),
+            ])
+        return cursor.rowcount

@@ -48,6 +48,22 @@ class LoggingMixin:
                     await self.bot.logging_service.log_kick(
                         entry.target, moderator=moderator, reason=entry.reason,
                     )
+                    # Record kick to database
+                    self.bot.db.add_kick(
+                        user_id=entry.target.id,
+                        guild_id=entry.guild.id,
+                        moderator_id=moderator.id if moderator else entry.user_id,
+                        reason=entry.reason,
+                    )
+                    # Log to audit log
+                    self.bot.db.log_moderation_action(
+                        user_id=entry.target.id,
+                        guild_id=entry.guild.id,
+                        moderator_id=moderator.id if moderator else entry.user_id,
+                        action_type="kick",
+                        action_source="manual",
+                        reason=entry.reason,
+                    )
 
             # Mutes & Timeouts
             elif entry.action == discord.AuditLogAction.member_update:
@@ -176,6 +192,37 @@ class LoggingMixin:
                     entry.target, until=entry.after.timed_out_until,
                     moderator=moderator, reason=entry.reason,
                 )
+
+                # Calculate duration in seconds
+                import time
+                duration_seconds = None
+                until_timestamp = entry.after.timed_out_until.timestamp() if entry.after.timed_out_until else None
+                if until_timestamp:
+                    duration_seconds = int(until_timestamp - time.time())
+                    if duration_seconds < 0:
+                        duration_seconds = None
+
+                # Record timeout to database
+                self.bot.db.add_timeout(
+                    user_id=entry.target.id,
+                    guild_id=entry.guild.id,
+                    moderator_id=moderator.id if moderator else entry.user_id,
+                    reason=entry.reason,
+                    duration_seconds=duration_seconds,
+                    until_timestamp=until_timestamp,
+                )
+
+                # Log to audit log
+                self.bot.db.log_moderation_action(
+                    user_id=entry.target.id,
+                    guild_id=entry.guild.id,
+                    moderator_id=moderator.id if moderator else entry.user_id,
+                    action_type="timeout",
+                    action_source="manual",
+                    reason=entry.reason,
+                    duration_seconds=duration_seconds,
+                )
+
                 # Log to case log
                 if self.bot.case_log_service:
                     try:
@@ -208,6 +255,22 @@ class LoggingMixin:
             if entry.target and isinstance(entry.target, discord.Member):
                 await self.bot.logging_service.log_timeout_remove(
                     entry.target, moderator=moderator,
+                )
+                # Record timeout removal to database
+                self.bot.db.remove_timeout(
+                    user_id=entry.target.id,
+                    guild_id=entry.guild.id,
+                    moderator_id=moderator.id if moderator else entry.user_id,
+                    reason=entry.reason,
+                )
+                # Log to audit log
+                self.bot.db.log_moderation_action(
+                    user_id=entry.target.id,
+                    guild_id=entry.guild.id,
+                    moderator_id=moderator.id if moderator else entry.user_id,
+                    action_type="untimeout",
+                    action_source="manual",
+                    reason=entry.reason,
                 )
 
         if entry.target and isinstance(entry.target, discord.Member):

@@ -175,6 +175,18 @@ class MuteOpsMixin:
                 duration_seconds=duration_seconds,
             )
 
+            # Log to permanent audit log
+            self.db.log_moderation_action(
+                user_id=user.id,
+                guild_id=target_guild.id,
+                moderator_id=interaction.user.id,
+                action_type="mute",
+                action_source="manual",
+                reason=reason,
+                duration_seconds=duration_seconds,
+                details={"is_extension": is_extension, "cross_server": cross_server},
+            )
+
             action = "EXTENDED" if is_extension else "MUTED"
             log_items = [
                 ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),

@@ -8,9 +8,11 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import base64
+import io
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import discord
 
@@ -37,6 +39,8 @@ class CreateMixin:
         case_id: str,
         user: discord.User,
         reason: str,
+        email: Optional[str] = None,
+        attachments: Optional[List[Dict[str, str]]] = None,
     ) -> tuple[bool, str, Optional[str]]:
         """
         Create a new appeal for a case.
@@ -45,6 +49,8 @@ class CreateMixin:
             case_id: Case ID to appeal.
             user: User submitting the appeal.
             reason: User's appeal reason.
+            email: Optional email for notifications.
+            attachments: Optional list of attachments with name, type, and base64 data.
 
         Returns:
             Tuple of (success, message, appeal_id).
@@ -123,7 +129,14 @@ class CreateMixin:
                 ),
             )
 
-            # Store in database
+            # Store in database (only store metadata, not the actual attachment data)
+            attachment_metadata = None
+            if attachments:
+                attachment_metadata = [
+                    {"name": att["name"], "type": att["type"]}
+                    for att in attachments
+                ]
+
             self.db.create_appeal(
                 appeal_id=appeal_id,
                 case_id=case_id,
@@ -132,7 +145,13 @@ class CreateMixin:
                 thread_id=thread.thread.id,
                 action_type=action_type,
                 reason=reason,
+                email=email,
+                attachments=attachment_metadata,
             )
+
+            # Upload attachments to the thread if any
+            if attachments:
+                await self._upload_attachments(thread.thread, attachments, appeal_id)
 
             # Cache thread
             self._thread_cache[thread.thread.id] = (thread.thread, datetime.now(NY_TZ))
@@ -251,6 +270,55 @@ class CreateMixin:
         set_footer(embed)
 
         return embed
+
+    async def _upload_attachments(
+        self: "AppealService",
+        thread: discord.Thread,
+        attachments: List[Dict[str, str]],
+        appeal_id: str,
+    ) -> None:
+        """
+        Upload attachments to the appeal thread.
+
+        Args:
+            thread: Discord thread to upload to.
+            attachments: List of attachments with name, type, and base64 data.
+            appeal_id: Appeal ID for logging.
+        """
+        if not attachments:
+            return
+
+        discord_files = []
+        for att in attachments:
+            try:
+                # Decode base64 data
+                file_data = base64.b64decode(att["data"])
+                file_obj = io.BytesIO(file_data)
+                discord_file = discord.File(file_obj, filename=att["name"])
+                discord_files.append(discord_file)
+            except Exception as e:
+                logger.warning("Failed to process attachment", [
+                    ("Appeal ID", appeal_id),
+                    ("File", att.get("name", "unknown")),
+                    ("Error", str(e)[:50]),
+                ])
+                continue
+
+        if discord_files:
+            try:
+                await thread.send(
+                    content="📎 **Attachments from appellant:**",
+                    files=discord_files,
+                )
+                logger.tree("Appeal Attachments Uploaded", [
+                    ("Appeal ID", appeal_id),
+                    ("Count", str(len(discord_files))),
+                ], emoji="📎")
+            except discord.HTTPException as e:
+                logger.error("Failed to upload attachments", [
+                    ("Appeal ID", appeal_id),
+                    ("Error", str(e)[:100]),
+                ])
 
 
 __all__ = ["CreateMixin"]

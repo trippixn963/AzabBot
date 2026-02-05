@@ -30,6 +30,8 @@ from src.core.constants import (
 )
 from src.utils.footer import set_footer
 from src.utils.snipe_blocker import block_from_snipe
+from src.utils.dm_helpers import send_moderation_dm
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from .cog import MessageEvents
@@ -112,12 +114,74 @@ class HelpersMixin:
                         reason=f"Ping spam in prison ({violation_count} pings in {PRISONER_PING_WINDOW}s)"
                     )
 
+                    # Record timeout to database
+                    self.bot.db.add_timeout(
+                        user_id=message.author.id,
+                        guild_id=message.guild.id,
+                        moderator_id=self.bot.user.id,
+                        reason=f"Ping spam in prison ({violation_count} pings in {PRISONER_PING_WINDOW}s)",
+                        duration_seconds=3600,  # 1 hour
+                        until_timestamp=(datetime.now(NY_TZ) + PRISONER_PING_TIMEOUT).timestamp(),
+                    )
+
+                    # Log to permanent audit log
+                    self.bot.db.log_moderation_action(
+                        user_id=message.author.id,
+                        guild_id=message.guild.id,
+                        moderator_id=self.bot.user.id,
+                        action_type="timeout",
+                        action_source="auto_ping_spam",
+                        reason=f"Ping spam in prison ({violation_count} pings in {PRISONER_PING_WINDOW}s)",
+                        duration_seconds=3600,
+                        details={"violation_count": violation_count, "window_seconds": PRISONER_PING_WINDOW},
+                    )
+
                     logger.tree("PRISONER PING SPAM - TIMEOUT", [
                         ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
                         ("ID", str(message.author.id)),
                         ("Violations", f"{violation_count} in {PRISONER_PING_WINDOW}s"),
                         ("Timeout", "1 hour"),
                     ], emoji="⏰")
+
+                    # Create case for the timeout
+                    if self.bot.case_log_service:
+                        try:
+                            bot_member = message.guild.get_member(self.bot.user.id)
+                            if bot_member:
+                                await asyncio.wait_for(
+                                    self.bot.case_log_service.log_mute(
+                                        user=message.author,
+                                        moderator=bot_member,
+                                        duration="1 hour",
+                                        reason=f"Auto-timeout: Ping spam in prison ({violation_count} pings in {PRISONER_PING_WINDOW}s)",
+                                        is_extension=False,
+                                        evidence=None,
+                                    ),
+                                    timeout=CASE_LOG_TIMEOUT,
+                                )
+                        except asyncio.TimeoutError:
+                            logger.warning("Case Log Timeout", [
+                                ("Action", "Prisoner Ping Spam"),
+                                ("User", str(message.author.id)),
+                            ])
+                        except Exception as e:
+                            logger.error("Case Log Failed", [
+                                ("Action", "Prisoner Ping Spam"),
+                                ("User", str(message.author.id)),
+                                ("Error", str(e)[:100]),
+                            ])
+
+                    # Send DM to user (fire-and-forget, no appeal button)
+                    create_safe_task(send_moderation_dm(
+                        user=message.author,
+                        title="You have been timed out",
+                        color=EmbedColors.ERROR,
+                        guild=message.guild,
+                        moderator=None,
+                        reason=f"Ping spam in prison ({violation_count} pings in {PRISONER_PING_WINDOW}s)",
+                        fields=[("Duration", "`1 hour`", True)],
+                        context="Prisoner Ping Spam DM",
+                    ))
 
                     # Send timeout notification
                     try:
@@ -372,6 +436,19 @@ class HelpersMixin:
             duration="permanent",
             reason="Auto-mute: Advertising external Discord server",
         )
+
+        # Log to permanent audit log
+        self.bot.db.log_moderation_action(
+            user_id=member.id,
+            guild_id=guild.id,
+            moderator_id=self.bot.user.id,
+            action_type="mute",
+            action_source="auto_invite",
+            reason="Auto-mute: Advertising external Discord server",
+            duration_seconds=None,  # Permanent
+            details={"invite_code": invite_code, "channel": message.channel.name if hasattr(message.channel, 'name') else str(message.channel.id)},
+        )
+
         logger.tree("DATABASE RECORD", [
             ("Action", "Mute recorded"),
             ("User ID", str(member.id)),
@@ -492,6 +569,24 @@ class HelpersMixin:
                 ("ID", str(member.id)),
                 ("Reason", "Case log service not configured"),
             ], emoji="⚠️")
+
+        # -----------------------------------------------------------------
+        # 6. Send DM to user (no appeal button)
+        # -----------------------------------------------------------------
+        # Fire-and-forget DM (no appeal button)
+        create_safe_task(send_moderation_dm(
+            user=member,
+            title="You have been permanently muted",
+            color=EmbedColors.ERROR,
+            guild=guild,
+            moderator=None,
+            reason="Posting an external Discord server invite link",
+            fields=[
+                ("Duration", "`Permanent`", True),
+                ("Violation", "`Advertising`", True),
+            ],
+            context="External Invite Auto-Mute DM",
+        ))
 
 
 __all__ = ["HelpersMixin", "INVITE_PATTERN"]

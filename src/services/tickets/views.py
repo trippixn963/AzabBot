@@ -137,7 +137,7 @@ class MuteAppealButton(
     def __init__(self, case_id: str, user_id: int) -> None:
         super().__init__(
             discord.ui.Button(
-                label="Appeal Mute",
+                label="Appeal",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"mute_appeal:{case_id}:{user_id}",
                 emoji=TICKET_CATEGORIES["appeal"]["emoji"],

@@ -579,10 +579,16 @@ class LinkCog(commands.Cog):
                         "An error occurred. Please try again.",
                         ephemeral=True,
                     )
-            except discord.HTTPException:
-                pass
-            except Exception:
-                pass
+            except discord.HTTPException as http_err:
+                logger.debug("Link Error Response Failed (HTTP)", [
+                    ("Original Error", str(e)[:50]),
+                    ("HTTP Error", str(http_err)[:50]),
+                ])
+            except Exception as response_err:
+                logger.debug("Link Error Response Failed", [
+                    ("Original Error", str(e)[:50]),
+                    ("Response Error", str(response_err)[:50]),
+                ])
 
 
 # =============================================================================

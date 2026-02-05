@@ -252,7 +252,7 @@ class HistoryMixin:
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
         """
-        Get combined mute, ban, and note history for a user.
+        Get combined mute, ban, warn, timeout, and kick history for a user.
 
         Returns a unified list sorted by timestamp, with type indicators.
         Uses single UNION ALL query for efficiency.
@@ -282,9 +282,19 @@ class HistoryMixin:
                       NULL as duration_seconds, created_at as timestamp, 'warn' as type
                FROM warnings
                WHERE user_id = ? AND guild_id = ?
+               UNION ALL
+               SELECT id, user_id, guild_id, moderator_id, action, reason,
+                      duration_seconds, timestamp, 'timeout' as type
+               FROM timeout_history
+               WHERE user_id = ? AND guild_id = ?
+               UNION ALL
+               SELECT id, user_id, guild_id, moderator_id, 'kick' as action, reason,
+                      NULL as duration_seconds, timestamp, 'kick' as type
+               FROM kick_history
+               WHERE user_id = ? AND guild_id = ?
                ORDER BY timestamp DESC
                LIMIT ? OFFSET ?""",
-            (user_id, guild_id, user_id, guild_id, user_id, guild_id, limit, offset)
+            (user_id, guild_id, user_id, guild_id, user_id, guild_id, user_id, guild_id, user_id, guild_id, limit, offset)
         )
 
         combined = [dict(row) for row in rows]
@@ -299,7 +309,7 @@ class HistoryMixin:
 
     def get_history_count(self: "DatabaseManager", user_id: int, guild_id: int) -> int:
         """
-        Get total count of history records (mutes + bans + warnings).
+        Get total count of history records (mutes + bans + warnings + timeouts + kicks).
         Uses single query with subqueries for efficiency.
 
         Args:
@@ -313,8 +323,10 @@ class HistoryMixin:
             """SELECT
                 (SELECT COUNT(*) FROM mute_history WHERE user_id = ? AND guild_id = ?) +
                 (SELECT COUNT(*) FROM ban_history WHERE user_id = ? AND guild_id = ?) +
-                (SELECT COUNT(*) FROM warnings WHERE user_id = ? AND guild_id = ?) as total""",
-            (user_id, guild_id, user_id, guild_id, user_id, guild_id)
+                (SELECT COUNT(*) FROM warnings WHERE user_id = ? AND guild_id = ?) +
+                (SELECT COUNT(*) FROM timeout_history WHERE user_id = ? AND guild_id = ?) +
+                (SELECT COUNT(*) FROM kick_history WHERE user_id = ? AND guild_id = ?) as total""",
+            (user_id, guild_id, user_id, guild_id, user_id, guild_id, user_id, guild_id, user_id, guild_id)
         )
         return row["total"] if row else 0
 

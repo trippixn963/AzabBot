@@ -125,6 +125,17 @@ class UnbanOpsMixin:
             reason=reason,
         )
 
+        # Log to permanent audit log
+        db.log_moderation_action(
+            user_id=target_user.id,
+            guild_id=target_guild.id,
+            moderator_id=interaction.user.id,
+            action_type="unban",
+            action_source="manual",
+            reason=reason,
+            details={"cross_server": cross_server},
+        )
+
         # -----------------------------------------------------------------
         # DM User About Unban
         # -----------------------------------------------------------------

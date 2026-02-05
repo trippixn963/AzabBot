@@ -15,6 +15,7 @@ from discord import app_commands
 
 from src.core.config import get_config
 from src.core.constants import MODERATION_REASONS, MODERATION_REMOVAL_REASONS, MAX_AUTOCOMPLETE_RESULTS
+from src.core.logger import logger
 
 
 async def reason_autocomplete(
@@ -83,7 +84,13 @@ async def banned_user_autocomplete(
                     value=str(user.id),
                 ))
         return choices[:25]
-    except Exception:
+    except Exception as e:
+        logger.warning("Banned User Autocomplete Failed", [
+            ("Guild", interaction.guild.name if interaction.guild else "Unknown"),
+            ("User", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Input", current[:50] if current else "None"),
+            ("Error", str(e)[:100]),
+        ])
         return []
 
 

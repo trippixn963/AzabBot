@@ -264,6 +264,18 @@ class BanOpsMixin:
             reason=reason,
         )
 
+        # Log to permanent audit log
+        db.log_moderation_action(
+            user_id=user.id,
+            guild_id=target_guild.id,
+            moderator_id=interaction.user.id,
+            action_type="softban" if is_softban else "ban",
+            action_source="manual",
+            reason=reason,
+            details={"ban_count": ban_count, "cross_server": cross_server, "is_softban": is_softban},
+            case_id=case_info["case_id"] if case_info else None,
+        )
+
         # -----------------------------------------------------------------
         # Logging
         # -----------------------------------------------------------------

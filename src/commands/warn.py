@@ -279,6 +279,21 @@ class WarnCog(commands.Cog):
                     )
 
         # ---------------------------------------------------------------------
+        # Log to Permanent Audit Log
+        # ---------------------------------------------------------------------
+
+        self.db.log_moderation_action(
+            user_id=user.id,
+            guild_id=target_guild.id,
+            moderator_id=interaction.user.id,
+            action_type="warn",
+            action_source="manual",
+            reason=reason,
+            details={"evidence": evidence, "cross_server": cross_server, "active_warns": active_warns, "total_warns": total_warns},
+            case_id=case_info["case_id"] if case_info else None,
+        )
+
+        # ---------------------------------------------------------------------
         # Build & Send Embed
         # ---------------------------------------------------------------------
 

@@ -8,8 +8,8 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-# Minimum mute duration (in seconds) that can be appealed (6 hours)
-MIN_APPEALABLE_MUTE_DURATION = 6 * 60 * 60  # 6 hours in seconds
+# Minimum mute duration (in seconds) that can be appealed (1 hour)
+MIN_APPEALABLE_MUTE_DURATION = 1 * 60 * 60  # 1 hour in seconds
 
 # Appeal cooldown: 24 hours between appeals for the same case
 APPEAL_COOLDOWN_SECONDS = 24 * 60 * 60  # 24 hours

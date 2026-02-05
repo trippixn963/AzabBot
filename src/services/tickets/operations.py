@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Optional, Tuple
 import discord
 
 from src.core.logger import logger
-from src.core.constants import TICKET_CREATION_COOLDOWN, CLOSE_REQUEST_COOLDOWN
+from src.core.constants import TICKET_CATEGORY_COOLDOWN, CLOSE_REQUEST_COOLDOWN
 from src.utils.retry import safe_send
 
 from .constants import TICKET_CATEGORIES, MAX_OPEN_TICKETS_PER_USER, TRANSCRIPT_EMOJI
@@ -74,26 +74,46 @@ class OperationsMixin:
         if not self.enabled:
             return (False, "Ticket system is not enabled.", None)
 
-        # Check cooldown (skip for staff) - atomic check-and-set to prevent race condition
+        # Check per-category cooldown (skip for staff)
+        # Cooldown starts when a ticket is CLOSED, not when created.
+        # This prevents trolls from spamming tickets while allowing users
+        # to open new tickets after their issues are resolved.
         if not self.has_staff_permission(user):
-            async with self._cooldowns_lock:
-                now = time.time()
-                last_created = self._creation_cooldowns.get(user.id, 0)
-                remaining = TICKET_CREATION_COOLDOWN - (now - last_created)
+            now = time.time()
+            last_closed_time = self.db.get_user_last_closed_ticket_by_category(
+                user.id, user.guild.id, category
+            )
+            if last_closed_time:
+                remaining = TICKET_CATEGORY_COOLDOWN - (now - last_closed_time)
                 if remaining > 0:
-                    mins = int(remaining // 60)
-                    secs = int(remaining % 60)
+                    hours = int(remaining // 3600)
+                    mins = int((remaining % 3600) // 60)
+                    cat_info = TICKET_CATEGORIES.get(category, TICKET_CATEGORIES["support"])
+                    if hours > 0:
+                        time_str = f"{hours}h {mins}m"
+                    else:
+                        time_str = f"{mins}m"
+                    logger.tree("Ticket Creation Blocked (Category Cooldown)", [
+                        ("User", f"{user.name} ({user.id})"),
+                        ("Category", cat_info["label"]),
+                        ("Remaining", time_str),
+                        ("Last Closed", f"{int((now - last_closed_time) // 3600)}h ago"),
+                    ], emoji="⏳")
                     return (
                         False,
-                        f"Please wait {mins}m {secs}s before creating another ticket.",
+                        f"You can only open one {cat_info['label'].lower()} ticket every 24 hours. "
+                        f"Please wait {time_str} before creating another {cat_info['label'].lower()} ticket.",
                         None,
                     )
-                # Set cooldown immediately to prevent race condition
-                self._creation_cooldowns[user.id] = now
 
         # Check open ticket limit
         open_count = self.db.get_user_open_ticket_count(user.id, user.guild.id)
         if open_count >= MAX_OPEN_TICKETS_PER_USER:
+            logger.tree("Ticket Creation Blocked (Open Limit)", [
+                ("User", f"{user.name} ({user.id})"),
+                ("Open Tickets", str(open_count)),
+                ("Max Allowed", str(MAX_OPEN_TICKETS_PER_USER)),
+            ], emoji="🚫")
             if open_count == 1:
                 return (
                     False,
@@ -121,6 +141,10 @@ class OperationsMixin:
         if len(channel_name) > 100:
             channel_name = channel_name[:97] + "..."
 
+        # Create channel topic with Discord timestamp
+        created_timestamp = int(time.time())
+        channel_topic = f"Created: <t:{created_timestamp}:f> • {cat_info['label']} ticket by {user.display_name}"
+
         try:
             # Build permission overwrites (person-specific only, no role-based)
             overwrites = {
@@ -128,13 +152,14 @@ class OperationsMixin:
                 user.guild.default_role: discord.PermissionOverwrite(
                     view_channel=False,
                 ),
-                # Ticket creator - can view and send messages
+                # Ticket creator - can view and send messages, no reactions
                 user: discord.PermissionOverwrite(
                     view_channel=True,
                     send_messages=True,
                     attach_files=True,
                     embed_links=True,
                     read_message_history=True,
+                    add_reactions=False,
                 ),
                 # Bot - full permissions
                 user.guild.me: discord.PermissionOverwrite(
@@ -145,6 +170,7 @@ class OperationsMixin:
                     attach_files=True,
                     embed_links=True,
                     read_message_history=True,
+                    add_reactions=True,
                 ),
             }
 
@@ -153,6 +179,7 @@ class OperationsMixin:
                 name=channel_name,
                 category=category_channel,
                 overwrites=overwrites,
+                topic=channel_topic,
                 reason=f"Ticket {ticket_id} created by {user.name}",
             )
 
@@ -213,6 +240,7 @@ class OperationsMixin:
                                 attach_files=True,
                                 embed_links=True,
                                 read_message_history=True,
+                                add_reactions=True,
                             )
                     except discord.HTTPException as e:
                         logger.warning("Failed to add support user permissions", [
@@ -237,6 +265,7 @@ class OperationsMixin:
                             attach_files=True,
                             embed_links=True,
                             read_message_history=True,
+                            add_reactions=True,
                         )
                 except discord.HTTPException as e:
                     logger.warning("Failed to add assigned user permissions", [
@@ -559,7 +588,7 @@ class OperationsMixin:
 
         channel = await self._get_ticket_channel(ticket["thread_id"])
         if channel:
-            # Add claimer permissions to channel
+            # Add claimer permissions to channel (staff can react)
             try:
                 await channel.set_permissions(
                     staff,
@@ -569,6 +598,7 @@ class OperationsMixin:
                     attach_files=True,
                     embed_links=True,
                     read_message_history=True,
+                    add_reactions=True,
                 )
             except discord.HTTPException as e:
                 logger.warning("Failed to add staff permissions on claim", [
@@ -653,7 +683,7 @@ class OperationsMixin:
         if not channel:
             return (False, "Ticket channel not found.")
 
-        # Add user permissions to channel
+        # Add user permissions to channel (no reactions for regular users)
         try:
             await channel.set_permissions(
                 user,
@@ -662,6 +692,7 @@ class OperationsMixin:
                 attach_files=True,
                 embed_links=True,
                 read_message_history=True,
+                add_reactions=False,
             )
         except discord.HTTPException as e:
             return (False, f"Failed to add user: {e}")

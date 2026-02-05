@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import json
 import secrets
 import string
 import time
@@ -50,6 +51,8 @@ class AppealsMixin:
         thread_id: int,
         action_type: str,
         reason: Optional[str] = None,
+        email: Optional[str] = None,
+        attachments: Optional[List[Dict[str, str]]] = None,
     ) -> None:
         """
         Create a new appeal.
@@ -62,13 +65,18 @@ class AppealsMixin:
             thread_id: Forum thread ID for this appeal.
             action_type: Type of action being appealed (ban/mute).
             reason: User's appeal reason.
+            email: Optional email for notifications.
+            attachments: Optional list of attachment metadata (name, type - no base64 data).
         """
+        # Store only attachment metadata (name, type), not the actual data
+        attachments_json = json.dumps(attachments) if attachments else None
+
         self.execute(
             """INSERT INTO appeals (
                 appeal_id, case_id, user_id, guild_id, thread_id,
-                action_type, reason, status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
-            (appeal_id, case_id, user_id, guild_id, thread_id, action_type, reason, time.time())
+                action_type, reason, status, created_at, email, attachments
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)""",
+            (appeal_id, case_id, user_id, guild_id, thread_id, action_type, reason, time.time(), email, attachments_json)
         )
 
         logger.tree("Appeal Created", [
@@ -76,6 +84,8 @@ class AppealsMixin:
             ("Case ID", case_id),
             ("User ID", str(user_id)),
             ("Type", action_type),
+            ("Email", email[:20] + "..." if email and len(email) > 20 else (email or "None")),
+            ("Attachments", str(len(attachments)) if attachments else "0"),
         ], emoji="📝")
 
     def get_appeal(self: "DatabaseManager", appeal_id: str) -> Optional[AppealRecord]:

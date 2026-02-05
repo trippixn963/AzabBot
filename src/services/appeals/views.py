@@ -18,7 +18,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.views import CASE_EMOJI, APPROVE_EMOJI, APPEAL_EMOJI, DENY_EMOJI, InfoButton, HistoryButton, UserInfoSelect
-from src.core.constants import EMOJI_ID_MODMAIL, EMOJI_ID_TRANSCRIPT, MODAL_FIELD_MEDIUM, MODAL_FIELD_LONG
+from src.core.constants import EMOJI_ID_TICKET, EMOJI_ID_TRANSCRIPT, MODAL_FIELD_MEDIUM, MODAL_FIELD_LONG
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -76,11 +76,6 @@ class AppealActionView(discord.ui.View):
             ticket_btn = OpenAppealTicketButton(appeal_id, user_id)
             ticket_btn.row = 1
             self.add_item(ticket_btn)
-        # Add Contact User button for ban appeals (initiates modmail with banned user)
-        elif action_type == "ban":
-            contact_btn = ContactBannedUserButton(appeal_id, user_id)
-            contact_btn.row = 1
-            self.add_item(contact_btn)
 
 
 class ApproveAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"appeal_approve:(?P<appeal_id>[A-Z0-9]+):(?P<case_id>[A-Z0-9]+)"):
@@ -214,7 +209,7 @@ class OpenAppealTicketButton(discord.ui.DynamicItem[discord.ui.Button], template
                 label="Open Ticket",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"appeal_ticket:{appeal_id}:{user_id}",
-                emoji=discord.PartialEmoji(name="modmail", id=EMOJI_ID_MODMAIL),
+                emoji=discord.PartialEmoji(name="ticket", id=EMOJI_ID_TICKET),
             )
         )
         self.appeal_id = appeal_id
@@ -326,171 +321,6 @@ class OpenAppealTicketButton(discord.ui.DynamicItem[discord.ui.Button], template
                 f"❌ Failed to create ticket: {message}",
                 ephemeral=True,
             )
-
-
-class ContactBannedUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"appeal_contact:(?P<appeal_id>[A-Z0-9]+):(?P<user_id>\d+)"):
-    """Persistent button to contact a banned user via modmail to discuss their appeal."""
-
-    def __init__(self, appeal_id: str, user_id: int):
-        super().__init__(
-            discord.ui.Button(
-                label="Contact User",
-                style=discord.ButtonStyle.secondary,
-                custom_id=f"appeal_contact:{appeal_id}:{user_id}",
-                emoji=discord.PartialEmoji(name="transcript", id=EMOJI_ID_TRANSCRIPT),
-            )
-        )
-        self.appeal_id = appeal_id
-        self.user_id = user_id
-
-    @classmethod
-    async def from_custom_id(
-        cls,
-        interaction: discord.Interaction,
-        item: discord.ui.Button,
-        match,
-    ) -> "ContactBannedUserButton":
-        appeal_id = match.group("appeal_id")
-        user_id = int(match.group("user_id"))
-        return cls(appeal_id, user_id)
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        # Check permissions
-        config = get_config()
-        allowed_ids = {config.owner_id}
-        if config.appeal_allowed_user_ids:
-            allowed_ids |= config.appeal_allowed_user_ids
-
-        has_permission = (
-            interaction.user.guild_permissions.moderate_members or
-            interaction.user.id in allowed_ids
-        )
-
-        if not has_permission:
-            logger.warning("Appeal Contact Permission Denied", [
-                ("User", f"{interaction.user.name} ({interaction.user.id})"),
-                ("Appeal ID", self.appeal_id),
-            ])
-            await interaction.response.send_message(
-                "You don't have permission to contact banned users.",
-                ephemeral=True,
-            )
-            return
-
-        await interaction.response.defer(ephemeral=True)
-
-        bot = interaction.client
-        if not hasattr(bot, "modmail_service") or not bot.modmail_service:
-            await interaction.followup.send(
-                "Modmail service is not available.",
-                ephemeral=True,
-            )
-            return
-
-        if not bot.modmail_service.enabled:
-            await interaction.followup.send(
-                "Modmail service is not enabled.",
-                ephemeral=True,
-            )
-            return
-
-        # Get the appeal details
-        db = get_db()
-        appeal = db.get_appeal(self.appeal_id)
-        if not appeal:
-            await interaction.followup.send(
-                "Appeal not found.",
-                ephemeral=True,
-            )
-            return
-
-        # Fetch the banned user
-        try:
-            user = await bot.fetch_user(self.user_id)
-        except discord.NotFound:
-            await interaction.followup.send(
-                "User not found.",
-                ephemeral=True,
-            )
-            return
-        except discord.HTTPException as e:
-            await interaction.followup.send(
-                f"Failed to fetch user: {e}",
-                ephemeral=True,
-            )
-            return
-
-        # Create or get existing modmail thread
-        thread = await bot.modmail_service.create_thread(user)
-        if not thread:
-            await interaction.followup.send(
-                "Failed to create modmail thread.",
-                ephemeral=True,
-            )
-            return
-
-        # Send initial message to the user
-        appeal_embed = discord.Embed(
-            title="📬 Staff Wants to Discuss Your Appeal",
-            description=(
-                f"A staff member wants to discuss your ban appeal **{self.appeal_id}**.\n\n"
-                "You can reply to this message to communicate with the moderation team. "
-                "All your messages will be forwarded to staff."
-            ),
-            color=EmbedColors.INFO,
-            timestamp=datetime.now(NY_TZ)
-        )
-        set_footer(appeal_embed)
-
-        try:
-            await user.send(embed=appeal_embed)
-        except discord.Forbidden:
-            await interaction.followup.send(
-                "Could not DM the user - they may have DMs disabled.",
-                ephemeral=True,
-            )
-            return
-        except discord.HTTPException as e:
-            await interaction.followup.send(
-                f"Failed to send DM: {e}",
-                ephemeral=True,
-            )
-            return
-
-        # Post notification in the modmail thread
-        thread_embed = discord.Embed(
-            title="Appeal Discussion Started",
-            description=(
-                f"**{interaction.user.mention}** initiated a discussion about appeal **{self.appeal_id}**.\n\n"
-                f"The user has been notified and can now reply via DM."
-            ),
-            color=EmbedColors.SUCCESS,
-            timestamp=datetime.now(NY_TZ)
-        )
-        thread_embed.add_field(name="Appeal ID", value=self.appeal_id, inline=True)
-        thread_embed.add_field(name="Case ID", value=appeal["case_id"], inline=True)
-        set_footer(thread_embed)
-
-        try:
-            await thread.send(embed=thread_embed)
-        except discord.HTTPException:
-            pass
-
-        staff = interaction.user
-        logger.tree("Appeal Contact Initiated", [
-            ("Appeal ID", self.appeal_id),
-            ("User", user.name),
-            ("User ID", str(user.id)),
-            ("Initiated By", f"{staff.name} ({staff.nick})" if hasattr(staff, 'nick') and staff.nick else staff.name),
-            ("Staff ID", str(staff.id)),
-            ("Thread", str(thread.id)),
-        ], emoji="📬")
-
-        await interaction.followup.send(
-            f"✅ Modmail initiated with **{user}**.\n\n"
-            f"The user has been DMed and can now reply. Check the modmail thread to continue the conversation.",
-            ephemeral=True,
-        )
 
 
 # =============================================================================
@@ -731,6 +561,5 @@ def setup_appeal_views(bot: "AzabBot") -> None:
         DenyAppealButton,
         SubmitAppealButton,
         OpenAppealTicketButton,
-        ContactBannedUserButton,
     )
     logger.debug("Appeal Views Registered")

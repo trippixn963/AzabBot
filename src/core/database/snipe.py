@@ -9,23 +9,13 @@ Server: discord.gg/syria
 """
 
 import json
-import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from src.core.logger import logger
+from src.core.database.base import _safe_json_loads
 
 if TYPE_CHECKING:
     from .manager import DatabaseManager
-
-
-def _safe_json_loads(value: Optional[str], default: Any = None) -> Any:
-    """Safely parse JSON, returning default on error."""
-    if not value:
-        return default if default is not None else []
-    try:
-        return json.loads(value)
-    except (json.JSONDecodeError, ValueError):
-        return default if default is not None else []
 
 
 class SnipeMixin:
@@ -157,29 +147,6 @@ class SnipeMixin:
             )
 
         return cursor.rowcount
-
-    def cleanup_old_snipes(
-        self: "DatabaseManager",
-        max_age_seconds: int = 600
-    ) -> int:
-        """
-        Clean up snipes older than max age.
-
-        Args:
-            max_age_seconds: Max age in seconds (default 10 minutes).
-
-        Returns:
-            Number of messages cleaned.
-        """
-        cutoff = time.time() - max_age_seconds
-        cursor = self.execute(
-            "DELETE FROM snipe_cache WHERE deleted_at < ?",
-            (cutoff,)
-        )
-        count = cursor.rowcount
-        if count > 0:
-            logger.debug("Old Snipes Cleaned", [("Count", str(count))])
-        return count
 
 
 __all__ = ["SnipeMixin"]

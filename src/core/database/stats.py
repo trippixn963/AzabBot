@@ -9,12 +9,9 @@ Server: discord.gg/syria
 """
 
 import time
-import asyncio
-from datetime import datetime
-from typing import Optional, List, Dict, Any, Tuple, TYPE_CHECKING
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
 from src.core.logger import logger
-from src.core.config import NY_TZ
 
 if TYPE_CHECKING:
     from src.core.database.manager import DatabaseManager
@@ -22,6 +19,47 @@ if TYPE_CHECKING:
 
 class StatsMixin:
     """Mixin for statistics database operations."""
+
+    # Permanent Counters (never decrease)
+    # =========================================================================
+
+    def get_permanent_counter(self: "DatabaseManager", key: str, guild_id: int) -> int:
+        """Get a permanent counter value from bot_state."""
+        full_key = f"{key}_{guild_id}"
+        row = self.fetchone(
+            "SELECT value FROM bot_state WHERE key = ?",
+            (full_key,)
+        )
+        return int(row["value"]) if row else 0
+
+    def increment_permanent_counter(self: "DatabaseManager", key: str, guild_id: int) -> int:
+        """Increment a permanent counter and return new value."""
+        import time
+        full_key = f"{key}_{guild_id}"
+        current = self.get_permanent_counter(key, guild_id)
+        new_value = current + 1
+        self.execute(
+            """INSERT OR REPLACE INTO bot_state (key, value, updated_at)
+               VALUES (?, ?, ?)""",
+            (full_key, str(new_value), time.time())
+        )
+        return new_value
+
+    def get_total_tickets_closed(self: "DatabaseManager", guild_id: int) -> int:
+        """Get total tickets closed (permanent counter)."""
+        return self.get_permanent_counter("total_tickets_closed", guild_id)
+
+    def increment_total_tickets_closed(self: "DatabaseManager", guild_id: int) -> int:
+        """Increment total tickets closed counter."""
+        return self.increment_permanent_counter("total_tickets_closed", guild_id)
+
+    def get_total_appeals_resolved(self: "DatabaseManager", guild_id: int) -> int:
+        """Get total appeals resolved (permanent counter)."""
+        return self.get_permanent_counter("total_appeals_resolved", guild_id)
+
+    def increment_total_appeals_resolved(self: "DatabaseManager", guild_id: int) -> int:
+        """Increment total appeals resolved counter."""
+        return self.increment_permanent_counter("total_appeals_resolved", guild_id)
 
     # Stats API Helper Methods
     # =========================================================================
@@ -107,6 +145,60 @@ class StatsMixin:
             row = self.fetchone("SELECT COUNT(*) as count FROM warnings")
         return row["count"] if row else 0
 
+    def get_timeouts_in_range(self: "DatabaseManager", start_ts: float, end_ts: float, guild_id: Optional[int] = None) -> int:
+        """Get count of timeouts in a time range."""
+        if guild_id:
+            row = self.fetchone(
+                """SELECT COUNT(*) as count FROM timeout_history
+                   WHERE action = 'timeout' AND timestamp >= ? AND timestamp <= ? AND guild_id = ?""",
+                (start_ts, end_ts, guild_id)
+            )
+        else:
+            row = self.fetchone(
+                """SELECT COUNT(*) as count FROM timeout_history
+                   WHERE action = 'timeout' AND timestamp >= ? AND timestamp <= ?""",
+                (start_ts, end_ts)
+            )
+        return row["count"] if row else 0
+
+    def get_kicks_in_range(self: "DatabaseManager", start_ts: float, end_ts: float, guild_id: Optional[int] = None) -> int:
+        """Get count of kicks in a time range."""
+        if guild_id:
+            row = self.fetchone(
+                """SELECT COUNT(*) as count FROM kick_history
+                   WHERE timestamp >= ? AND timestamp <= ? AND guild_id = ?""",
+                (start_ts, end_ts, guild_id)
+            )
+        else:
+            row = self.fetchone(
+                """SELECT COUNT(*) as count FROM kick_history
+                   WHERE timestamp >= ? AND timestamp <= ?""",
+                (start_ts, end_ts)
+            )
+        return row["count"] if row else 0
+
+    def get_total_timeouts(self: "DatabaseManager", guild_id: Optional[int] = None) -> int:
+        """Get total timeout count."""
+        if guild_id:
+            row = self.fetchone(
+                "SELECT COUNT(*) as count FROM timeout_history WHERE action = 'timeout' AND guild_id = ?",
+                (guild_id,)
+            )
+        else:
+            row = self.fetchone("SELECT COUNT(*) as count FROM timeout_history WHERE action = 'timeout'")
+        return row["count"] if row else 0
+
+    def get_total_kicks(self: "DatabaseManager", guild_id: Optional[int] = None) -> int:
+        """Get total kick count."""
+        if guild_id:
+            row = self.fetchone(
+                "SELECT COUNT(*) as count FROM kick_history WHERE guild_id = ?",
+                (guild_id,)
+            )
+        else:
+            row = self.fetchone("SELECT COUNT(*) as count FROM kick_history")
+        return row["count"] if row else 0
+
     def get_total_cases(self: "DatabaseManager", guild_id: Optional[int] = None) -> int:
         """Get total case count."""
         if guild_id:
@@ -129,6 +221,17 @@ class StatsMixin:
             row = self.fetchone("SELECT COUNT(*) as count FROM active_mutes WHERE unmuted = 0")
         return row["count"] if row else 0
 
+    def get_total_prisoners(self: "DatabaseManager", guild_id: Optional[int] = None) -> int:
+        """Get count of unique users ever muted (all-time prisoner count)."""
+        if guild_id:
+            row = self.fetchone(
+                "SELECT COUNT(DISTINCT user_id) as count FROM mute_history WHERE action = 'mute' AND guild_id = ?",
+                (guild_id,)
+            )
+        else:
+            row = self.fetchone("SELECT COUNT(DISTINCT user_id) as count FROM mute_history WHERE action = 'mute'")
+        return row["count"] if row else 0
+
     def get_open_cases_count(self: "DatabaseManager", guild_id: Optional[int] = None) -> int:
         """Get count of open cases."""
         if guild_id:
@@ -141,7 +244,7 @@ class StatsMixin:
         return row["count"] if row else 0
 
     def get_top_offenders(self: "DatabaseManager", limit: int = 10, guild_id: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Get top offenders by total infractions (mutes + bans + warns)."""
+        """Get top offenders by total infractions (mutes + bans + warns + timeouts + kicks)."""
         if guild_id:
             rows = self.fetchall(
                 """
@@ -150,25 +253,35 @@ class StatsMixin:
                     SUM(mute_count) as mutes,
                     SUM(ban_count) as bans,
                     SUM(warn_count) as warns,
-                    (SUM(mute_count) + SUM(ban_count) + SUM(warn_count)) as total
+                    SUM(timeout_count) as timeouts,
+                    SUM(kick_count) as kicks,
+                    (SUM(mute_count) + SUM(ban_count) + SUM(warn_count) + SUM(timeout_count) + SUM(kick_count)) as total
                 FROM (
-                    SELECT user_id, COUNT(*) as mute_count, 0 as ban_count, 0 as warn_count
+                    SELECT user_id, COUNT(*) as mute_count, 0 as ban_count, 0 as warn_count, 0 as timeout_count, 0 as kick_count
                     FROM mute_history WHERE action = 'mute' AND guild_id = ?
                     GROUP BY user_id
                     UNION ALL
-                    SELECT user_id, 0 as mute_count, COUNT(*) as ban_count, 0 as warn_count
+                    SELECT user_id, 0 as mute_count, COUNT(*) as ban_count, 0 as warn_count, 0 as timeout_count, 0 as kick_count
                     FROM ban_history WHERE action = 'ban' AND guild_id = ?
                     GROUP BY user_id
                     UNION ALL
-                    SELECT user_id, 0 as mute_count, 0 as ban_count, COUNT(*) as warn_count
+                    SELECT user_id, 0 as mute_count, 0 as ban_count, COUNT(*) as warn_count, 0 as timeout_count, 0 as kick_count
                     FROM warnings WHERE guild_id = ?
+                    GROUP BY user_id
+                    UNION ALL
+                    SELECT user_id, 0 as mute_count, 0 as ban_count, 0 as warn_count, COUNT(*) as timeout_count, 0 as kick_count
+                    FROM timeout_history WHERE action = 'timeout' AND guild_id = ?
+                    GROUP BY user_id
+                    UNION ALL
+                    SELECT user_id, 0 as mute_count, 0 as ban_count, 0 as warn_count, 0 as timeout_count, COUNT(*) as kick_count
+                    FROM kick_history WHERE guild_id = ?
                     GROUP BY user_id
                 ) combined
                 GROUP BY user_id
                 ORDER BY total DESC
                 LIMIT ?
                 """,
-                (guild_id, guild_id, guild_id, limit)
+                (guild_id, guild_id, guild_id, guild_id, guild_id, limit)
             )
         else:
             rows = self.fetchall(
@@ -178,18 +291,28 @@ class StatsMixin:
                     SUM(mute_count) as mutes,
                     SUM(ban_count) as bans,
                     SUM(warn_count) as warns,
-                    (SUM(mute_count) + SUM(ban_count) + SUM(warn_count)) as total
+                    SUM(timeout_count) as timeouts,
+                    SUM(kick_count) as kicks,
+                    (SUM(mute_count) + SUM(ban_count) + SUM(warn_count) + SUM(timeout_count) + SUM(kick_count)) as total
                 FROM (
-                    SELECT user_id, COUNT(*) as mute_count, 0 as ban_count, 0 as warn_count
+                    SELECT user_id, COUNT(*) as mute_count, 0 as ban_count, 0 as warn_count, 0 as timeout_count, 0 as kick_count
                     FROM mute_history WHERE action = 'mute'
                     GROUP BY user_id
                     UNION ALL
-                    SELECT user_id, 0 as mute_count, COUNT(*) as ban_count, 0 as warn_count
+                    SELECT user_id, 0 as mute_count, COUNT(*) as ban_count, 0 as warn_count, 0 as timeout_count, 0 as kick_count
                     FROM ban_history WHERE action = 'ban'
                     GROUP BY user_id
                     UNION ALL
-                    SELECT user_id, 0 as mute_count, 0 as ban_count, COUNT(*) as warn_count
+                    SELECT user_id, 0 as mute_count, 0 as ban_count, COUNT(*) as warn_count, 0 as timeout_count, 0 as kick_count
                     FROM warnings
+                    GROUP BY user_id
+                    UNION ALL
+                    SELECT user_id, 0 as mute_count, 0 as ban_count, 0 as warn_count, COUNT(*) as timeout_count, 0 as kick_count
+                    FROM timeout_history WHERE action = 'timeout'
+                    GROUP BY user_id
+                    UNION ALL
+                    SELECT user_id, 0 as mute_count, 0 as ban_count, 0 as warn_count, 0 as timeout_count, COUNT(*) as kick_count
+                    FROM kick_history
                     GROUP BY user_id
                 ) combined
                 GROUP BY user_id
@@ -214,11 +337,17 @@ class StatsMixin:
                     UNION ALL
                     SELECT 'warn' as type, user_id, moderator_id, reason, created_at as timestamp, guild_id
                     FROM warnings WHERE guild_id = ?
+                    UNION ALL
+                    SELECT 'timeout' as type, user_id, moderator_id, reason, timestamp, guild_id
+                    FROM timeout_history WHERE action = 'timeout' AND guild_id = ?
+                    UNION ALL
+                    SELECT 'kick' as type, user_id, moderator_id, reason, timestamp, guild_id
+                    FROM kick_history WHERE guild_id = ?
                 ) combined
                 ORDER BY timestamp DESC
                 LIMIT ?
                 """,
-                (guild_id, guild_id, guild_id, limit)
+                (guild_id, guild_id, guild_id, guild_id, guild_id, limit)
             )
         else:
             rows = self.fetchall(
@@ -232,6 +361,12 @@ class StatsMixin:
                     UNION ALL
                     SELECT 'warn' as type, user_id, moderator_id, reason, created_at as timestamp, guild_id
                     FROM warnings
+                    UNION ALL
+                    SELECT 'timeout' as type, user_id, moderator_id, reason, timestamp, guild_id
+                    FROM timeout_history WHERE action = 'timeout'
+                    UNION ALL
+                    SELECT 'kick' as type, user_id, moderator_id, reason, timestamp, guild_id
+                    FROM kick_history
                 ) combined
                 ORDER BY timestamp DESC
                 LIMIT ?
@@ -392,7 +527,7 @@ class StatsMixin:
         return [dict(row) for row in rows] if rows else []
 
     def get_moderator_leaderboard(self: "DatabaseManager", limit: int = 10, exclude_user_id: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Get moderator leaderboard by action count with mutes/bans/warns breakdown."""
+        """Get moderator leaderboard by action count with mutes/bans/warns/timeouts/kicks breakdown."""
         if exclude_user_id:
             rows = self.fetchall(
                 """
@@ -401,13 +536,19 @@ class StatsMixin:
                     SUM(mutes) as mutes,
                     SUM(bans) as bans,
                     SUM(warns) as warns,
-                    SUM(mutes + bans + warns) as total_actions
+                    SUM(timeouts) as timeouts,
+                    SUM(kicks) as kicks,
+                    SUM(mutes + bans + warns + timeouts + kicks) as total_actions
                 FROM (
-                    SELECT moderator_id, 1 as mutes, 0 as bans, 0 as warns FROM mute_history
+                    SELECT moderator_id, 1 as mutes, 0 as bans, 0 as warns, 0 as timeouts, 0 as kicks FROM mute_history
                     UNION ALL
-                    SELECT moderator_id, 0 as mutes, 1 as bans, 0 as warns FROM ban_history WHERE action = 'ban'
+                    SELECT moderator_id, 0 as mutes, 1 as bans, 0 as warns, 0 as timeouts, 0 as kicks FROM ban_history WHERE action = 'ban'
                     UNION ALL
-                    SELECT moderator_id, 0 as mutes, 0 as bans, 1 as warns FROM warnings
+                    SELECT moderator_id, 0 as mutes, 0 as bans, 1 as warns, 0 as timeouts, 0 as kicks FROM warnings
+                    UNION ALL
+                    SELECT moderator_id, 0 as mutes, 0 as bans, 0 as warns, 1 as timeouts, 0 as kicks FROM timeout_history WHERE action = 'timeout'
+                    UNION ALL
+                    SELECT moderator_id, 0 as mutes, 0 as bans, 0 as warns, 0 as timeouts, 1 as kicks FROM kick_history
                 )
                 WHERE moderator_id != ?
                 GROUP BY moderator_id
@@ -424,13 +565,19 @@ class StatsMixin:
                     SUM(mutes) as mutes,
                     SUM(bans) as bans,
                     SUM(warns) as warns,
-                    SUM(mutes + bans + warns) as total_actions
+                    SUM(timeouts) as timeouts,
+                    SUM(kicks) as kicks,
+                    SUM(mutes + bans + warns + timeouts + kicks) as total_actions
                 FROM (
-                    SELECT moderator_id, 1 as mutes, 0 as bans, 0 as warns FROM mute_history
+                    SELECT moderator_id, 1 as mutes, 0 as bans, 0 as warns, 0 as timeouts, 0 as kicks FROM mute_history
                     UNION ALL
-                    SELECT moderator_id, 0 as mutes, 1 as bans, 0 as warns FROM ban_history WHERE action = 'ban'
+                    SELECT moderator_id, 0 as mutes, 1 as bans, 0 as warns, 0 as timeouts, 0 as kicks FROM ban_history WHERE action = 'ban'
                     UNION ALL
-                    SELECT moderator_id, 0 as mutes, 0 as bans, 1 as warns FROM warnings
+                    SELECT moderator_id, 0 as mutes, 0 as bans, 1 as warns, 0 as timeouts, 0 as kicks FROM warnings
+                    UNION ALL
+                    SELECT moderator_id, 0 as mutes, 0 as bans, 0 as warns, 1 as timeouts, 0 as kicks FROM timeout_history WHERE action = 'timeout'
+                    UNION ALL
+                    SELECT moderator_id, 0 as mutes, 0 as bans, 0 as warns, 0 as timeouts, 1 as kicks FROM kick_history
                 )
                 GROUP BY moderator_id
                 ORDER BY total_actions DESC
@@ -450,6 +597,8 @@ class StatsMixin:
                     SUM(CASE WHEN action_type = 'mute' THEN 1 ELSE 0 END) as mutes,
                     SUM(CASE WHEN action_type = 'ban' THEN 1 ELSE 0 END) as bans,
                     SUM(CASE WHEN action_type = 'warn' THEN 1 ELSE 0 END) as warns,
+                    SUM(CASE WHEN action_type = 'timeout' THEN 1 ELSE 0 END) as timeouts,
+                    SUM(CASE WHEN action_type = 'kick' THEN 1 ELSE 0 END) as kicks,
                     COUNT(*) as total
                 FROM (
                     SELECT user_id, 'mute' as action_type FROM mute_history WHERE guild_id = ?
@@ -457,13 +606,17 @@ class StatsMixin:
                     SELECT user_id, 'ban' as action_type FROM ban_history WHERE guild_id = ?
                     UNION ALL
                     SELECT user_id, 'warn' as action_type FROM warnings WHERE guild_id = ?
+                    UNION ALL
+                    SELECT user_id, 'timeout' as action_type FROM timeout_history WHERE action = 'timeout' AND guild_id = ?
+                    UNION ALL
+                    SELECT user_id, 'kick' as action_type FROM kick_history WHERE guild_id = ?
                 )
                 GROUP BY user_id
                 HAVING total >= ?
                 ORDER BY total DESC
                 LIMIT ?
                 """,
-                (guild_id, guild_id, guild_id, min_offenses, limit)
+                (guild_id, guild_id, guild_id, guild_id, guild_id, min_offenses, limit)
             )
         else:
             rows = self.fetchall(
@@ -473,6 +626,8 @@ class StatsMixin:
                     SUM(CASE WHEN action_type = 'mute' THEN 1 ELSE 0 END) as mutes,
                     SUM(CASE WHEN action_type = 'ban' THEN 1 ELSE 0 END) as bans,
                     SUM(CASE WHEN action_type = 'warn' THEN 1 ELSE 0 END) as warns,
+                    SUM(CASE WHEN action_type = 'timeout' THEN 1 ELSE 0 END) as timeouts,
+                    SUM(CASE WHEN action_type = 'kick' THEN 1 ELSE 0 END) as kicks,
                     COUNT(*) as total
                 FROM (
                     SELECT user_id, 'mute' as action_type FROM mute_history
@@ -480,6 +635,10 @@ class StatsMixin:
                     SELECT user_id, 'ban' as action_type FROM ban_history
                     UNION ALL
                     SELECT user_id, 'warn' as action_type FROM warnings
+                    UNION ALL
+                    SELECT user_id, 'timeout' as action_type FROM timeout_history WHERE action = 'timeout'
+                    UNION ALL
+                    SELECT user_id, 'kick' as action_type FROM kick_history
                 )
                 GROUP BY user_id
                 HAVING total >= ?

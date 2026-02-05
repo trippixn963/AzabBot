@@ -235,6 +235,18 @@ class SpamHandlerMixin:
                 reason="Auto-spam: Sticker Spam",
             )
 
+            # Log to permanent audit log
+            db.log_moderation_action(
+                user_id=member.id,
+                guild_id=message.guild.id,
+                moderator_id=bot.user.id,
+                action_type="mute",
+                action_source="auto_spam",
+                reason="Auto-spam: Sticker Spam",
+                duration_seconds=mute_duration,
+                details={"spam_type": "sticker_spam", "violation_count": violation_count},
+            )
+
             # Open case
             case_info = await self._open_spam_case(member, "Sticker Spam", mute_duration, violation_count)
 
@@ -448,6 +460,18 @@ class SpamHandlerMixin:
                 guild_id=member.guild.id,
                 expires_at=expires_at.timestamp(),
                 reason=f"Auto-spam: {spam_type}",
+            )
+
+            # Log to permanent audit log
+            db.log_moderation_action(
+                user_id=member.id,
+                guild_id=member.guild.id,
+                moderator_id=self.bot.user.id,  # type: ignore
+                action_type="mute",
+                action_source="auto_spam",
+                reason=f"Auto-spam: {spam_type}",
+                duration_seconds=duration,
+                details={"spam_type": spam_type, "violation_count": violation_count},
             )
 
             case_info = await self._open_spam_case(member, spam_type, duration, violation_count)

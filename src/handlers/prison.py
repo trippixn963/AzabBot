@@ -16,15 +16,18 @@ from collections import OrderedDict
 
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ, EmbedColors
-from src.core.constants import QUERY_LIMIT_MEDIUM, QUERY_LIMIT_XXL
+from src.core.constants import QUERY_LIMIT_MEDIUM, QUERY_LIMIT_XXL, CASE_LOG_TIMEOUT
 from src.utils.footer import set_footer
 from src.utils.rate_limiter import rate_limit
 from src.utils.duration import format_duration_from_minutes as format_duration
 from src.utils.async_utils import create_safe_task
 from src.utils.retry import safe_fetch_channel
+from src.utils.dm_helpers import send_moderation_dm
+from src.services.appeals.constants import MIN_APPEALABLE_MUTE_DURATION
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
+    from sqlite3 import Row
 
 
 # =============================================================================
@@ -173,6 +176,11 @@ class PrisonHandler:
             if sentence_text:
                 embed.add_field(name="Sentence", value=f"`{sentence_text}`", inline=True)
 
+            if mute_reason:
+                # Truncate long reasons
+                reason_display = mute_reason[:100] + "..." if len(mute_reason) > 100 else mute_reason
+                embed.add_field(name="Reason", value=f"`{reason_display}`", inline=False)
+
             if prisoner_stats["total_mutes"] > 0:
                 total_time = format_duration(prisoner_stats["total_minutes"] or 0)
                 embed.add_field(name="Visit #", value=f"`{visit_num}`", inline=True)
@@ -184,7 +192,58 @@ class PrisonHandler:
             )
             set_footer(embed)
 
-            await prison_channel.send(member.mention, embed=embed)
+            # ---------------------------------------------------------------------
+            # Create Case if None Exists
+            # DESIGN: Ensures every muted user has a case, even if muted manually
+            # by adding the role directly (not via /mute command)
+            # ---------------------------------------------------------------------
+            case_created = False
+            if self.bot.case_log_service and mute_record:
+                # Check if case already exists
+                existing_case = self.bot.db.get_active_mute_case(member.id, member.guild.id)
+                if not existing_case:
+                    try:
+                        # Get duration string for case
+                        duration_str = sentence_text or "Unknown"
+
+                        # Use bot as moderator for manually-added mutes
+                        bot_member = member.guild.get_member(self.bot.user.id)
+                        if bot_member:
+                            case_info = await asyncio.wait_for(
+                                self.bot.case_log_service.log_mute(
+                                    user=member,
+                                    moderator=bot_member,
+                                    duration=duration_str,
+                                    reason=mute_reason or "Manual mute (role added directly)",
+                                    is_extension=False,
+                                    evidence=None,
+                                ),
+                                timeout=CASE_LOG_TIMEOUT,
+                            )
+                            if case_info:
+                                case_created = True
+                                logger.tree("Case Created (Auto)", [
+                                    ("Action", "Mute"),
+                                    ("Case ID", case_info.get("case_id", "Unknown")),
+                                    ("User", f"{member.name} ({member.id})"),
+                                    ("Reason", "No existing case - created automatically"),
+                                ], emoji="📋")
+                    except asyncio.TimeoutError:
+                        logger.warning("Case Log Timeout (Auto)", [
+                            ("Action", "Mute"),
+                            ("User", f"{member.name} ({member.id})"),
+                        ])
+                    except Exception as e:
+                        logger.error("Case Log Failed (Auto)", [
+                            ("Action", "Mute"),
+                            ("User", f"{member.name} ({member.id})"),
+                            ("Error", str(e)[:100]),
+                        ])
+
+            # Build appeal button view if eligible (>= 1 hour or permanent)
+            view = self._build_appeal_view(member, mute_record)
+
+            await prison_channel.send(member.mention, embed=embed, view=view)
 
             # Update presence
             if self.bot.presence:
@@ -218,6 +277,7 @@ class PrisonHandler:
                 ("ID", str(member.id)),
                 ("Reason", (mute_reason or "Unknown")[:50]),
                 ("Visit #", str(prisoner_stats["total_mutes"] + 1)),
+                ("Appeal Button", "Yes" if view else "No (< 1h)"),
             ], emoji="😈")
 
         except Exception as e:
@@ -324,12 +384,77 @@ class PrisonHandler:
                         timedelta(minutes=timeout_minutes),
                         reason=f"Prisoner VC violation #{kick_count}"
                     )
+
+                    # Record timeout to database
+                    from datetime import timezone
+                    until_ts = (datetime.now(NY_TZ) + timedelta(minutes=timeout_minutes)).timestamp()
+                    self.bot.db.add_timeout(
+                        user_id=member.id,
+                        guild_id=member.guild.id,
+                        moderator_id=self.bot.user.id,
+                        reason=f"Prisoner VC violation #{kick_count} (joined #{vc_name})",
+                        duration_seconds=timeout_minutes * 60,
+                        until_timestamp=until_ts,
+                    )
+
+                    # Log to permanent audit log
+                    self.bot.db.log_moderation_action(
+                        user_id=member.id,
+                        guild_id=member.guild.id,
+                        moderator_id=self.bot.user.id,
+                        action_type="timeout",
+                        action_source="auto_vc",
+                        reason=f"Prisoner VC violation #{kick_count}",
+                        duration_seconds=timeout_minutes * 60,
+                        details={"vc_channel": vc_name, "kick_count": kick_count},
+                    )
+
                     logger.tree("Timeout Applied", [
                         ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
                         ("ID", str(member.id)),
                         ("Duration", f"{timeout_minutes}min"),
                         ("Offense #", str(kick_count)),
                     ], emoji="⏱️")
+
+                    # Create case for the timeout
+                    if self.bot.case_log_service and member.guild:
+                        try:
+                            bot_member = member.guild.get_member(self.bot.user.id)
+                            if bot_member:
+                                await asyncio.wait_for(
+                                    self.bot.case_log_service.log_mute(
+                                        user=member,
+                                        moderator=bot_member,
+                                        duration=f"{timeout_minutes} minute(s)",
+                                        reason=f"Auto-timeout: Prisoner VC violation #{kick_count} (joined #{vc_name})",
+                                        is_extension=False,
+                                        evidence=None,
+                                    ),
+                                    timeout=CASE_LOG_TIMEOUT,
+                                )
+                        except asyncio.TimeoutError:
+                            logger.warning("Case Log Timeout", [
+                                ("Action", "Prisoner VC Violation"),
+                                ("User", str(member.id)),
+                            ])
+                        except Exception as e:
+                            logger.error("Case Log Failed", [
+                                ("Action", "Prisoner VC Violation"),
+                                ("User", str(member.id)),
+                                ("Error", str(e)[:100]),
+                            ])
+
+                    # Fire-and-forget DM (no appeal button)
+                    create_safe_task(send_moderation_dm(
+                        user=member,
+                        title="You have been timed out",
+                        color=EmbedColors.ERROR,
+                        guild=member.guild,
+                        moderator=None,
+                        reason=f"VC violation #{kick_count} - Prisoners cannot join voice channels",
+                        fields=[("Duration", f"`{timeout_minutes} minutes`", True)],
+                        context="Prisoner VC Violation DM",
+                    ))
                 except discord.Forbidden:
                     pass
 
@@ -368,6 +493,100 @@ class PrisonHandler:
     # =========================================================================
     # Helper Methods
     # =========================================================================
+
+    def _build_appeal_view(
+        self,
+        member: discord.Member,
+        mute_record: Optional["Row"],
+    ) -> Optional[discord.ui.View]:
+        """
+        Build appeal button view for prison intro embed.
+
+        Only includes appeal button if:
+        - Mute duration >= MIN_APPEALABLE_MUTE_DURATION (1 hour), OR
+        - Mute is permanent (no expiration)
+        - An active case exists in the database
+
+        Args:
+            member: The muted member.
+            mute_record: Active mute record from database.
+
+        Returns:
+            View with appeal button, or None if not eligible.
+        """
+        if not mute_record:
+            logger.tree("Appeal Button Skipped", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Reason", "No mute record found"),
+            ], emoji="ℹ️")
+            return None
+
+        # Check if mute qualifies for appeal
+        is_permanent = mute_record["expires_at"] is None
+        is_long_enough = False
+
+        if not is_permanent and mute_record["expires_at"] and mute_record["muted_at"]:
+            duration_seconds = int(mute_record["expires_at"] - mute_record["muted_at"])
+            is_long_enough = duration_seconds >= MIN_APPEALABLE_MUTE_DURATION
+
+        if not is_permanent and not is_long_enough:
+            logger.tree("Appeal Button Skipped", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Reason", f"Mute < {MIN_APPEALABLE_MUTE_DURATION // 3600}h"),
+            ], emoji="ℹ️")
+            return None
+
+        # Get case_id from cases table
+        try:
+            case_data = self.bot.db.get_active_mute_case(member.id, member.guild.id)
+        except Exception as e:
+            logger.error("Appeal Button Failed", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Location", "get_active_mute_case"),
+                ("Error", str(e)[:100]),
+            ])
+            return None
+
+        if not case_data or not case_data.get("case_id"):
+            logger.warning("Appeal Button Skipped", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Reason", "No active case found"),
+            ])
+            return None
+
+        case_id: str = case_data["case_id"]
+
+        # Build the view with appeal button (opens a ticket)
+        try:
+            from src.services.tickets import MuteAppealButton
+
+            view = discord.ui.View(timeout=None)
+            appeal_btn = MuteAppealButton(case_id, member.id)
+            view.add_item(appeal_btn)
+
+            logger.tree("Appeal Button Added", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Case ID", case_id),
+                ("Mute Type", "Permanent" if is_permanent else "Timed"),
+                ("Action", "Opens ticket"),
+            ], emoji="📝")
+
+            return view
+
+        except ImportError as e:
+            logger.error("Appeal Button Failed", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Location", "Import MuteAppealButton"),
+                ("Error", str(e)[:100]),
+            ])
+            return None
+        except Exception as e:
+            logger.error("Appeal Button Failed", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Location", "Button creation"),
+                ("Error", str(e)[:100]),
+            ])
+            return None
 
     async def _scan_logs_for_reason(
         self,

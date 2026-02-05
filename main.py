@@ -291,12 +291,12 @@ async def main() -> None:
         ("Developer", "حَـــــنَّـــــا"),
     ], emoji="🚀")
 
-    token = os.getenv("DISCORD_TOKEN")
+    token = os.getenv("AZAB_TOKEN")
     if not token:
         # This should not happen if validate_and_log_config() passed
         logger.error("Missing Discord Token", [
-            ("Variable", "DISCORD_TOKEN"),
-            ("Solution", "Create .env file with DISCORD_TOKEN=your_token_here"),
+            ("Variable", "AZAB_TOKEN"),
+            ("Solution", "Create .env file with AZAB_TOKEN=your_token_here"),
         ])
         sys.exit(1)
 
@@ -402,7 +402,7 @@ async def main() -> None:
     except discord.LoginFailure as e:
         logger.error("🔐 Discord Authentication Failed", [
             ("Error", str(e)[:100]),
-            ("Solution", "Check your DISCORD_TOKEN in .env file"),
+            ("Solution", "Check your AZAB_TOKEN in .env file"),
         ])
 
     except discord.PrivilegedIntentsRequired as e:

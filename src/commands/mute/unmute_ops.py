@@ -108,13 +108,25 @@ class UnmuteOpsMixin:
                 reason=reason,
             )
 
+            # Log to permanent audit log
+            self.db.log_moderation_action(
+                user_id=user.id,
+                guild_id=target_guild.id,
+                moderator_id=interaction.user.id,
+                action_type="unmute",
+                action_source="manual",
+                reason=reason,
+                details={"muted_duration": muted_duration, "cross_server": cross_server},
+            )
+
             log_items = [
                 ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
                 ("ID", str(user.id)),
                 ("Moderator", str(interaction.user)),
-                ("Was Muted For", muted_duration or "Unknown"),
                 ("Reason", (reason or "None")[:50]),
             ]
+            if muted_duration:
+                log_items.insert(3, ("Was Muted For", muted_duration))
             if cross_server:
                 log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
             logger.tree("USER UNMUTED", log_items, emoji="🔊")
@@ -193,7 +205,8 @@ class UnmuteOpsMixin:
         )
         embed.add_field(name="User", value=user.mention, inline=True)
         embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
-        embed.add_field(name="Was Muted For", value=f"`{muted_duration or 'Unknown'}`", inline=True)
+        if muted_duration:
+            embed.add_field(name="Was Muted For", value=f"`{muted_duration}`", inline=True)
 
         if case_info:
             embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)

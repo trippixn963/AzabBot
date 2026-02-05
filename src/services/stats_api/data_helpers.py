@@ -10,8 +10,9 @@ Server: discord.gg/syria
 
 import asyncio
 import os
+import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 import psutil
 
@@ -25,6 +26,11 @@ if TYPE_CHECKING:
 # Avatar cache: {user_id: (name, avatar, is_booster)}
 _avatar_cache: Dict[int, tuple[str, Optional[str], bool]] = {}
 _avatar_cache_date: Optional[str] = None
+
+# Member ID cache for filtering users who left
+_member_ids_cache: Optional[set[int]] = None
+_member_ids_cache_time: Optional[float] = None
+MEMBER_CACHE_TTL = 60  # Refresh member list every 60 seconds
 
 BOT_HOME = os.environ.get("BOT_HOME", "/root/AzabBot")
 
@@ -47,17 +53,24 @@ class DataHelpersMixin:
                 "mutes": db.get_mutes_in_range(today_start, today_end, guild_id),
                 "bans": db.get_bans_in_range(today_start, today_end, guild_id),
                 "warns": db.get_warns_in_range(today_start, today_end, guild_id),
+                "timeouts": db.get_timeouts_in_range(today_start, today_end, guild_id),
+                "kicks": db.get_kicks_in_range(today_start, today_end, guild_id),
             },
             "weekly": {
                 "mutes": db.get_mutes_in_range(week_start, today_end, guild_id),
                 "bans": db.get_bans_in_range(week_start, today_end, guild_id),
                 "warns": db.get_warns_in_range(week_start, today_end, guild_id),
+                "timeouts": db.get_timeouts_in_range(week_start, today_end, guild_id),
+                "kicks": db.get_kicks_in_range(week_start, today_end, guild_id),
             },
             "all_time": {
                 "total_mutes": db.get_total_mutes(guild_id),
                 "total_bans": db.get_total_bans(guild_id),
                 "total_warns": db.get_total_warns(guild_id),
+                "total_timeouts": db.get_total_timeouts(guild_id),
+                "total_kicks": db.get_total_kicks(guild_id),
                 "total_cases": db.get_total_cases(guild_id),
+                "total_prisoners": db.get_total_prisoners(guild_id),
             },
             "active": {
                 "prisoners": db.get_active_prisoners_count(guild_id),
@@ -65,49 +78,133 @@ class DataHelpersMixin:
             },
         }
 
-    async def _get_top_offenders(self: "AzabAPI", guild_id: Optional[int], limit: int = 10) -> List[Dict]:
-        """Get top offenders with avatar data and booster status."""
-        offenders = self._bot.db.get_top_offenders(limit=limit, guild_id=guild_id)
+    async def _get_top_offenders(self: "AzabAPI", guild_id: Optional[int], limit: int = 100) -> List[Dict]:
+        """Get top offenders with avatar data (only includes members still in the server)."""
+        # Fetch more from DB since we'll filter out users who left
+        offenders = self._bot.db.get_top_offenders(limit=limit * 3, guild_id=guild_id)
 
-        # Enrich with user data
+        # Get set of current member IDs for filtering
+        member_ids = await self._get_guild_member_ids()
+
+        # Enrich with user data, filtering out users who left
         enriched = []
         for offender in offenders:
             user_id = offender["user_id"]
+
+            # Skip users who are no longer in the server
+            if member_ids is not None and user_id not in member_ids:
+                continue
+
             name, avatar, is_booster = await self._fetch_user_data(user_id, f"User {user_id}")
+
+            # Get ticket count for this user
+            tickets_opened = self._bot.db.get_user_ticket_count(user_id, guild_id) if guild_id else 0
+
             enriched.append({
                 "user_id": str(user_id),
                 "name": name,
                 "mutes": offender["mutes"],
                 "bans": offender["bans"],
                 "warns": offender["warns"],
+                "timeouts": offender.get("timeouts", 0),
+                "kicks": offender.get("kicks", 0),
                 "total": offender["total"],
+                "tickets_opened": tickets_opened,
                 "avatar": avatar,
                 "is_booster": is_booster,
+                "in_server": True,
             })
+
+            # Stop once we have enough
+            if len(enriched) >= limit:
+                break
 
         return enriched
 
-    async def _get_moderator_leaderboard(self: "AzabAPI", limit: int = 10) -> List[Dict]:
-        """Get moderator leaderboard with avatar data and booster status (excludes bot)."""
+    async def _get_moderator_leaderboard(self: "AzabAPI", limit: int = 100) -> List[Dict]:
+        """Get all members with mod role, sorted by action count (includes mods with 0 actions)."""
+        config = get_config()
         bot_user_id = self._bot.user.id if self._bot.user else None
-        mods = self._bot.db.get_moderator_leaderboard(limit=limit, exclude_user_id=bot_user_id)
 
-        enriched = []
-        for mod in mods:
-            mod_id = mod["moderator_id"]
-            name, avatar, is_booster = await self._fetch_user_data(mod_id, f"Mod {mod_id}")
-            enriched.append({
-                "user_id": str(mod_id),
-                "name": name,
-                "actions": mod.get("total_actions", 0),
-                "mutes": mod.get("mutes", 0),
-                "bans": mod.get("bans", 0),
-                "warns": mod.get("warns", 0),
-                "avatar": avatar,
-                "is_booster": is_booster,
+        # Get the main guild
+        guild = self._bot.get_guild(config.logging_guild_id) if config.logging_guild_id else None
+        if not guild or not config.moderation_role_id:
+            return []
+
+        # Ensure guild members are loaded (required for role.members to work properly)
+        if not guild.chunked:
+            try:
+                await asyncio.wait_for(guild.chunk(), timeout=10.0)
+            except asyncio.TimeoutError:
+                pass  # Continue with cached members
+
+        # Get all members with the moderation role
+        mod_role = guild.get_role(config.moderation_role_id)
+        if not mod_role:
+            return []
+
+        # Get stats from database for all mods (keyed by user_id)
+        db_stats = self._bot.db.get_moderator_leaderboard(limit=500, exclude_user_id=bot_user_id)
+        stats_by_id = {mod["moderator_id"]: mod for mod in db_stats}
+
+        # Build list of all mods with their stats
+        all_mods = []
+        added_ids = set()
+
+        for member in mod_role.members:
+            # Skip the bot itself
+            if member.id == bot_user_id:
+                continue
+
+            # Get stats from DB or default to 0
+            db_mod = stats_by_id.get(member.id, {})
+
+            # Get ticket stats for this moderator
+            ticket_stats = self._bot.db.get_staff_ticket_stats(member.id, guild.id)
+
+            all_mods.append({
+                "user_id": member.id,
+                "name": member.display_name,
+                "actions": db_mod.get("total_actions", 0),
+                "mutes": db_mod.get("mutes", 0),
+                "bans": db_mod.get("bans", 0),
+                "warns": db_mod.get("warns", 0),
+                "timeouts": db_mod.get("timeouts", 0),
+                "kicks": db_mod.get("kicks", 0),
+                "tickets_claimed": ticket_stats.get("claimed", 0),
+                "avatar": member.display_avatar.url if member.display_avatar else None,
+                "is_booster": member.premium_since is not None,
             })
+            added_ids.add(member.id)
 
-        return enriched
+        # Always include the owner even if they don't have mod role
+        if config.owner_id and config.owner_id not in added_ids and config.owner_id != bot_user_id:
+            owner = guild.get_member(config.owner_id)
+            if owner:
+                db_mod = stats_by_id.get(config.owner_id, {})
+                ticket_stats = self._bot.db.get_staff_ticket_stats(config.owner_id, guild.id)
+                all_mods.append({
+                    "user_id": config.owner_id,
+                    "name": owner.display_name,
+                    "actions": db_mod.get("total_actions", 0),
+                    "mutes": db_mod.get("mutes", 0),
+                    "bans": db_mod.get("bans", 0),
+                    "warns": db_mod.get("warns", 0),
+                    "timeouts": db_mod.get("timeouts", 0),
+                    "kicks": db_mod.get("kicks", 0),
+                    "tickets_claimed": ticket_stats.get("claimed", 0),
+                    "avatar": owner.display_avatar.url if owner.display_avatar else None,
+                    "is_booster": owner.premium_since is not None,
+                })
+
+        # Sort by total actions descending
+        all_mods.sort(key=lambda x: x["actions"], reverse=True)
+
+        # Convert user_id to string and return top N
+        return [
+            {**mod, "user_id": str(mod["user_id"])}
+            for mod in all_mods[:limit]
+        ]
 
     async def _get_recent_actions(self: "AzabAPI", guild_id: Optional[int], limit: int = 10) -> List[Dict]:
         """Get recent moderation actions."""
@@ -147,23 +244,40 @@ class DataHelpersMixin:
         return enriched
 
     async def _get_repeat_offenders(self: "AzabAPI", guild_id: Optional[int], limit: int = 5) -> List[Dict]:
-        """Get users with 3+ total punishments (repeat offenders)."""
-        offenders = self._bot.db.get_repeat_offenders(min_offenses=3, limit=limit, guild_id=guild_id)
+        """Get users with 3+ total punishments (only includes members still in the server)."""
+        # Fetch more from DB since we'll filter out users who left
+        offenders = self._bot.db.get_repeat_offenders(min_offenses=3, limit=limit * 3, guild_id=guild_id)
+
+        # Get set of current member IDs for filtering
+        member_ids = await self._get_guild_member_ids()
 
         enriched = []
         for offender in offenders:
             user_id = offender["user_id"]
+
+            # Skip users who are no longer in the server
+            if member_ids is not None and user_id not in member_ids:
+                continue
+
             name, avatar, is_booster = await self._fetch_user_data(user_id, f"User {user_id}")
+
             enriched.append({
                 "user_id": str(user_id),
                 "name": name,
                 "mutes": offender["mutes"],
                 "bans": offender["bans"],
                 "warns": offender["warns"],
+                "timeouts": offender.get("timeouts", 0),
+                "kicks": offender.get("kicks", 0),
                 "total": offender["total"],
                 "avatar": avatar,
                 "is_booster": is_booster,
+                "in_server": True,
             })
+
+            # Stop once we have enough
+            if len(enriched) >= limit:
+                break
 
         return enriched
 
@@ -411,8 +525,34 @@ class DataHelpersMixin:
         return " ".join(parts)
 
     # =========================================================================
-    # Avatar Fetching
+    # Member & Avatar Fetching
     # =========================================================================
+
+    async def _get_guild_member_ids(self: "AzabAPI") -> Optional[Set[int]]:
+        """Get set of all member IDs in the main guild with caching."""
+        global _member_ids_cache, _member_ids_cache_time
+
+        # Check if cache is still valid
+        now = time.time()
+        if _member_ids_cache is not None and _member_ids_cache_time is not None:
+            if now - _member_ids_cache_time < MEMBER_CACHE_TTL:
+                return _member_ids_cache
+
+        # Get the main guild
+        config = get_config()
+        if not config.logging_guild_id:
+            return None
+
+        guild = self._bot.get_guild(config.logging_guild_id)
+        if not guild:
+            return None
+
+        # Build set of member IDs from guild's member cache
+        # Note: This relies on members intent being enabled
+        _member_ids_cache = {member.id for member in guild.members}
+        _member_ids_cache_time = now
+
+        return _member_ids_cache
 
     def _check_cache_refresh(self: "AzabAPI") -> None:
         """Clear avatar cache at midnight EST."""

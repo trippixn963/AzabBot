@@ -228,8 +228,11 @@ class SnipeCmdMixin:
                     "Failed to send snipe result. Please try again.",
                     ephemeral=True,
                 )
-            except Exception:
-                pass
+            except Exception as followup_error:
+                logger.debug("Snipe Error Followup Failed", [
+                    ("Original Error", str(e)[:50]),
+                    ("Followup Error", str(followup_error)[:50]),
+                ])
 
         except Exception as e:
             logger.error("Snipe Command Failed", [
@@ -255,10 +258,16 @@ class SnipeCmdMixin:
                         "An error occurred while sniping. Please try again.",
                         ephemeral=True,
                     )
-            except discord.HTTPException:
-                pass
-            except Exception:
-                pass
+            except discord.HTTPException as http_err:
+                logger.debug("Snipe Error Response Failed (HTTP)", [
+                    ("Original Error", str(e)[:50]),
+                    ("HTTP Error", str(http_err)[:50]),
+                ])
+            except Exception as response_err:
+                logger.debug("Snipe Error Response Failed", [
+                    ("Original Error", str(e)[:50]),
+                    ("Response Error", str(response_err)[:50]),
+                ])
 
 
 __all__ = ["SnipeCmdMixin"]

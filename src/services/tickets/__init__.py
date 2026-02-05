@@ -16,6 +16,7 @@ from .views import (
     TicketControlPanelView,
     CloseRequestView,
     TicketPanelSelect,
+    MuteAppealButton,
 )
 from .buttons import setup_ticket_buttons
 from .modals import TicketCreateModal, TicketCloseModal, TicketAddUserModal
@@ -37,7 +38,7 @@ def setup_ticket_views(bot: "AzabBot") -> None:
     bot.add_view(TicketPanelView())
 
     # Register dynamic items (select menus and buttons that persist across restarts)
-    bot.add_dynamic_items(TicketPanelSelect)
+    bot.add_dynamic_items(TicketPanelSelect, MuteAppealButton)
     setup_ticket_buttons(bot)
 
 
@@ -51,6 +52,7 @@ __all__ = [
     "TicketControlPanelView",
     "CloseRequestView",
     "TicketPanelSelect",
+    "MuteAppealButton",
     # Buttons
     "setup_ticket_buttons",
     # Modals

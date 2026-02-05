@@ -37,6 +37,7 @@ from src.core.database.voice import VoiceMixin
 from src.core.database.snipe import SnipeMixin
 from src.core.database.appeals import AppealsMixin
 from src.core.database.linked import LinkedMixin
+from src.core.database.timeouts import TimeoutsMixin
 
 # Import type definitions from models module
 from src.core.database.models import (
@@ -103,6 +104,7 @@ class DatabaseManager(
     SnipeMixin,
     AppealsMixin,
     LinkedMixin,
+    TimeoutsMixin,
 ):
     """
     Centralized database manager with thread-safe operations.
@@ -226,11 +228,6 @@ class DatabaseManager(
         """Execute query and fetch all results."""
         cursor = self.execute(query, params, commit=False)
         return cursor.fetchall()
-
-    # Alias for compatibility
-    def fetch_one(self, query: str, params: Tuple = ()) -> Optional[sqlite3.Row]:
-        """Alias for fetchone (compatibility)."""
-        return self.fetchone(query, params)
 
     def close(self) -> None:
         """Close database connection."""

@@ -27,6 +27,7 @@ from src.core.constants import (
 from src.core.logger import logger
 from src.utils.async_utils import create_safe_task
 from src.utils.footer import set_footer
+from src.utils.dm_helpers import send_moderation_dm
 from src.utils.snipe_blocker import block_from_snipe
 
 from .classifier import ContentClassifier, ClassificationResult
@@ -150,8 +151,6 @@ class ContentModerationService:
             self._exempt_channels.add(self.config.server_logs_forum_id)
         if self.config.case_log_forum_id:
             self._exempt_channels.add(self.config.case_log_forum_id)
-        if self.config.modmail_forum_id:
-            self._exempt_channels.add(self.config.modmail_forum_id)
         if self.config.appeal_forum_id:
             self._exempt_channels.add(self.config.appeal_forum_id)
 
@@ -628,6 +627,8 @@ class ContentModerationService:
         """
         Auto-mute a user for repeated religion talk violations.
 
+        Uses the muted role (not Discord timeout) so the prison system works properly.
+
         Args:
             message: The violating message.
             offense_count: Number of offenses in the window.
@@ -636,20 +637,101 @@ class ContentModerationService:
         channel_str = f"#{message.channel.name}" if hasattr(message.channel, "name") else str(message.channel.id)
         duration_mins = RELIGION_AUTO_MUTE_MINUTES
         window_mins = RELIGION_OFFENSE_WINDOW // 60
+        member = message.author
+        reason = f"Auto-mute: {offense_count} religion talk violations in {window_mins} minutes"
+
+        # Check for muted role
+        if not self.config.muted_role_id or not message.guild:
+            logger.warning("Cannot Auto-Mute (No Muted Role)", [
+                ("User", user_str),
+            ])
+            return
+
+        muted_role = message.guild.get_role(self.config.muted_role_id)
+        if not muted_role:
+            logger.warning("Cannot Auto-Mute (Muted Role Not Found)", [
+                ("User", user_str),
+                ("Role ID", str(self.config.muted_role_id)),
+            ])
+            return
 
         try:
-            # Timeout the user
-            await message.author.timeout(
-                timedelta(minutes=RELIGION_AUTO_MUTE_MINUTES),
-                reason=f"Auto-mute: {offense_count} religion talk violations in {window_mins} minutes"
+            # Add muted role (triggers prison handler via on_member_update)
+            await member.add_roles(muted_role, reason=reason)
+
+            # Add to database for scheduled unmute
+            expires_at = datetime.now(NY_TZ) + timedelta(minutes=duration_mins)
+            self.bot.db.add_mute(
+                user_id=member.id,
+                guild_id=message.guild.id,
+                expires_at=expires_at.timestamp(),
+                reason=reason,
             )
+
+            # Log to permanent audit log
+            self.bot.db.log_moderation_action(
+                user_id=member.id,
+                guild_id=message.guild.id,
+                moderator_id=self.bot.user.id,
+                action_type="mute",
+                action_source="auto_religion",
+                reason=reason,
+                duration_seconds=duration_mins * 60,
+                details={"offense_count": offense_count, "window_minutes": window_mins},
+            )
+
+            # Create case log entry
+            if self.bot.case_log_service:
+                try:
+                    bot_member = message.guild.get_member(self.bot.user.id)
+                    if bot_member:
+                        await asyncio.wait_for(
+                            self.bot.case_log_service.log_mute(
+                                user=member,
+                                moderator=bot_member,
+                                duration=f"{duration_mins} minute(s)",
+                                reason=reason,
+                                is_extension=False,
+                                evidence=None,
+                            ),
+                            timeout=10.0,
+                        )
+                except asyncio.TimeoutError:
+                    logger.warning("Case Log Timeout", [
+                        ("Action", "Religion Auto-Mute"),
+                        ("User", user_str),
+                    ])
+                except Exception as e:
+                    logger.error("Case Log Failed", [
+                        ("Action", "Religion Auto-Mute"),
+                        ("User", user_str),
+                        ("Error", str(e)[:100]),
+                    ])
+
+            # Store reason in prison handler cache for welcome embed
+            if self.bot.prison:
+                async with self.bot.prison._state_lock:
+                    self.bot.prison.mute_reasons[member.id] = reason
 
             logger.tree("AUTO-MUTE APPLIED", [
                 ("User", user_str),
                 ("Channel", channel_str),
                 ("Offenses", f"{offense_count} in last {window_mins}m"),
                 ("Duration", f"{duration_mins} minutes"),
+                ("Method", "Muted Role"),
             ], emoji="🔇")
+
+            # Fire-and-forget DM (no appeal button)
+            create_safe_task(send_moderation_dm(
+                user=member,
+                title="You have been muted",
+                color=EmbedColors.ERROR,
+                guild=message.guild,
+                moderator=None,  # Auto-mute, no moderator
+                reason=reason,
+                fields=[("Duration", f"`{duration_mins} minutes`", True)],
+                context="Religion Auto-Mute DM",
+            ))
 
             # Send mute notification to channel
             try:

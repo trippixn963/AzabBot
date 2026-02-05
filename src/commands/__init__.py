@@ -28,7 +28,6 @@ Available Commands:
     /quarantine: Activate quarantine mode - strip dangerous role perms (owner)
     /unquarantine: Lift quarantine mode - restore role perms (owner)
     /quarantine-status: Check quarantine status (admin)
-    /history: View moderation history for a user (moderator)
     /snipe: View last deleted message in channel (moderator)
     /forbid: Restrict specific permissions for a user (moderator)
     /unforbid: Remove restrictions from a user (moderator)
@@ -50,7 +49,6 @@ COMMAND_COGS = [
     "src.commands.purge",
     "src.commands.lockdown",
     "src.commands.quarantine",
-    "src.commands.history",
     "src.commands.snipe",
     "src.commands.forbid",
     "src.commands.link",

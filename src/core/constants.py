@@ -87,7 +87,8 @@ CASE_LOG_BACKOFF_MAX = SECONDS_PER_HOUR  # Case log retry max backoff
 
 COMMAND_COOLDOWN = 10                 # General command cooldown
 PRISONER_COOLDOWN = 30                # Prisoner response cooldown
-TICKET_CREATION_COOLDOWN = 300        # 5 minutes - ticket creation
+TICKET_CREATION_COOLDOWN = 300        # 5 minutes - ticket creation (legacy, not used)
+TICKET_CATEGORY_COOLDOWN = SECONDS_PER_DAY  # 24 hours - per-category ticket cooldown
 CLOSE_REQUEST_COOLDOWN = 300          # 5 minutes - close request
 APPEAL_COOLDOWN = SECONDS_PER_DAY     # 24 hours - appeal cooldown
 PARTNERSHIP_COOLDOWN = 300            # 5 minutes - partnership response cooldown
@@ -425,6 +426,7 @@ __all__ = [
     "COMMAND_COOLDOWN",
     "PRISONER_COOLDOWN",
     "TICKET_CREATION_COOLDOWN",
+    "TICKET_CATEGORY_COOLDOWN",
     "CLOSE_REQUEST_COOLDOWN",
     "APPEAL_COOLDOWN",
     "PARTNERSHIP_COOLDOWN",

@@ -28,7 +28,6 @@ from .misc import MiscLogsMixin
 from .alerts import AlertsLogsMixin
 from .tickets import TicketsLogsMixin
 from .appeals import AppealsLogsMixin
-from .modmail import ModmailLogsMixin
 from .warnings import WarningsLogsMixin
 from .audit import AuditLogsMixin
 
@@ -53,7 +52,6 @@ __all__ = [
     "AlertsLogsMixin",
     "TicketsLogsMixin",
     "AppealsLogsMixin",
-    "ModmailLogsMixin",
     "WarningsLogsMixin",
     "AuditLogsMixin",
 ]

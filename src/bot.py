@@ -98,7 +98,6 @@ class AzabBot(commands.Bot):
         self.prison = None
         self.mute = None
         self.presence = None
-        self.health_server = None
         self.mute_scheduler = None
         self.case_log_service = None
         self.case_archive_scheduler = None
@@ -111,7 +110,6 @@ class AzabBot(commands.Bot):
         self.raid_lockdown_service = None
         self.appeal_service = None
         self.ticket_service = None
-        self.modmail_service = None
         self.stats_api = None
         self.content_moderation = None
         self.maintenance = None
@@ -201,9 +199,6 @@ class AzabBot(commands.Bot):
 
         from src.services.tickets import setup_ticket_views
         setup_ticket_views(self)
-
-        from src.services.modmail_service import setup_modmail_views
-        setup_modmail_views(self)
 
         from src.services.case_log.views import setup_case_log_views
         setup_case_log_views(self)
@@ -308,7 +303,7 @@ class AzabBot(commands.Bot):
             ("Mute Scheduler", "Running" if self.mute_scheduler else "Stopped"),
             ("Case Log", "Enabled" if self.case_log_service and self.case_log_service.enabled else "Disabled"),
             ("Mod Tracker", "Enabled" if self.mod_tracker and self.mod_tracker.enabled else "Disabled"),
-            ("Health Server", "Running" if self.health_server else "Stopped"),
+            ("Stats API", "Running" if self.stats_api else "Stopped"),
             ("Webhook Alerts", "Enabled" if self.webhook_alert_service and self.webhook_alert_service.enabled else "Disabled"),
         ], emoji="🔥")
 
@@ -397,43 +392,6 @@ class AzabBot(commands.Bot):
             from src.services.maintenance import MaintenanceService
             self.maintenance = MaintenanceService(self)
 
-            if not self.health_server:
-                from src.core.health import HealthCheckServer
-                self.health_server = HealthCheckServer(self)
-
-                # Register database health callback
-                async def db_health() -> dict:
-                    try:
-                        connected = self.db.is_active() if self.db else False
-                        return {"connected": connected, "error": None}
-                    except Exception as e:
-                        return {"connected": False, "error": str(e)}
-
-                self.health_server.register_db_health(db_health)
-
-                # Register system health callback
-                import psutil
-                _psutil_process = psutil.Process()
-
-                async def system_health() -> dict:
-                    cpu_percent = psutil.cpu_percent(interval=None)
-                    memory = psutil.virtual_memory()
-                    disk = psutil.disk_usage("/")
-                    bot_memory_mb = _psutil_process.memory_info().rss / (1024 * 1024)
-                    return {
-                        "cpu_percent": cpu_percent,
-                        "memory_percent": memory.percent,
-                        "disk_percent": disk.percent,
-                        "disk_total_gb": round(disk.total / (1024 ** 3), 1),
-                        "disk_used_gb": round(disk.used / (1024 ** 3), 1),
-                        "bot_memory_mb": round(bot_memory_mb, 1),
-                        "threads": _psutil_process.num_threads(),
-                        "open_files": len(_psutil_process.open_files()),
-                    }
-
-                self.health_server.register_system(system_health)
-                await self.health_server.start()
-
             from src.services.stats_api import AzabAPI
             self.stats_api = AzabAPI(self)
             await self.stats_api.start()
@@ -521,16 +479,6 @@ class AzabBot(commands.Bot):
             else:
                 logger.info("Ticket Service Disabled (no channel configured)")
 
-            from src.services.modmail_service import ModmailService
-            self.modmail_service = ModmailService(self)
-            if self.modmail_service.enabled:
-                logger.tree("Modmail Service Initialized", [
-                    ("Forum ID", str(self.config.modmail_forum_id)),
-                    ("For", "Banned users only"),
-                ], emoji="📬")
-            else:
-                logger.info("Modmail Service Disabled (no forum configured)")
-
             # Summary of all initialized services
             logger.tree("ALL SERVICES INITIALIZED", [
                 ("Prison Handler", "✓ Ready"),
@@ -540,7 +488,6 @@ class AzabBot(commands.Bot):
                 ("Server Logs", "✓ Enabled" if self.logging_service.enabled else "✗ Disabled"),
                 ("Appeals", "✓ Enabled" if self.appeal_service.enabled else "✗ Disabled"),
                 ("Tickets", "✓ Enabled" if self.ticket_service.enabled else "✗ Disabled"),
-                ("Modmail", "✓ Enabled" if self.modmail_service.enabled else "✗ Disabled"),
                 ("Interaction Logger", "✓ Ready"),
                 ("Voice Handler", "✓ Ready"),
                 ("Anti-Spam", "✓ Ready"),
@@ -909,9 +856,6 @@ class AzabBot(commands.Bot):
 
         if self.presence:
             await self.presence.stop()
-
-        if self.health_server:
-            await self.health_server.stop()
 
         if self.stats_api:
             await self.stats_api.stop()

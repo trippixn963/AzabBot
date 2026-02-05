@@ -9,8 +9,9 @@ Server: discord.gg/syria
 """
 
 import time
+from collections import defaultdict
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List
 
 from aiohttp import web
 
@@ -22,6 +23,51 @@ from .middleware import get_client_ip
 
 if TYPE_CHECKING:
     from .service import AzabAPI
+
+
+# =============================================================================
+# Appeal Rate Limiter (stricter than general rate limiter)
+# =============================================================================
+
+APPEAL_RATE_LIMIT = 3  # Max appeals per IP per hour
+APPEAL_RATE_WINDOW = 3600  # 1 hour in seconds
+
+# Attachment limits
+MAX_ATTACHMENTS = 3
+MAX_ATTACHMENT_SIZE = 2 * 1024 * 1024  # 2MB
+ALLOWED_ATTACHMENT_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+# In-memory storage for appeal submission timestamps by IP
+_appeal_submissions: Dict[str, List[float]] = defaultdict(list)
+
+
+def _check_appeal_rate_limit(client_ip: str) -> tuple[bool, int]:
+    """
+    Check if IP is allowed to submit another appeal.
+
+    Returns:
+        Tuple of (allowed, retry_after_seconds).
+    """
+    now = time.time()
+    window_start = now - APPEAL_RATE_WINDOW
+
+    # Clean old entries
+    _appeal_submissions[client_ip] = [
+        ts for ts in _appeal_submissions[client_ip] if ts > window_start
+    ]
+
+    if len(_appeal_submissions[client_ip]) >= APPEAL_RATE_LIMIT:
+        # Calculate when the oldest submission will expire
+        oldest = min(_appeal_submissions[client_ip])
+        retry_after = int(oldest + APPEAL_RATE_WINDOW - now) + 1
+        return False, retry_after
+
+    return True, 0
+
+
+def _record_appeal_submission(client_ip: str) -> None:
+    """Record a successful appeal submission for rate limiting."""
+    _appeal_submissions[client_ip].append(time.time())
 
 
 class HandlersMixin:
@@ -37,7 +83,14 @@ class HandlersMixin:
         })
 
     async def handle_transcript(self: "AzabAPI", request: web.Request) -> web.Response:
-        """Serve ticket transcript HTML."""
+        """
+        Serve ticket transcript HTML (generated on-demand).
+
+        DESIGN: Generates transcript from stored messages on each request.
+        - Messages are stored incrementally as they're sent
+        - Transcript is generated fresh on view (always up-to-date)
+        - Short cache (30s) to prevent excessive regeneration
+        """
         ticket_id = request.match_info.get("ticket_id", "").upper()
 
         if not ticket_id:
@@ -47,20 +100,105 @@ class HandlersMixin:
                 content_type="text/html",
             )
 
-        # Get transcript from database
         from src.core.database import get_db
-        db = get_db()
-        html_content = db.get_ticket_transcript(ticket_id)
+        from src.services.tickets.transcript import generate_html_transcript
+        from datetime import datetime
 
-        if not html_content:
+        db = get_db()
+
+        # Get ticket data
+        ticket = db.get_ticket(ticket_id)
+        if not ticket:
             return web.Response(
-                text=f"<h1>404 - Transcript Not Found</h1><p>No transcript found for ticket {ticket_id}</p>",
+                text=f"<h1>404 - Ticket Not Found</h1><p>No ticket found with ID {ticket_id}</p>",
                 status=404,
                 content_type="text/html",
             )
 
-        logger.tree("Transcript Served", [
+        # Get stored messages
+        stored_messages = db.get_ticket_messages(ticket_id)
+
+        # If no stored messages, fall back to pre-generated transcript (for old tickets)
+        if not stored_messages:
+            html_content = db.get_ticket_transcript(ticket_id)
+            if html_content:
+                logger.tree("Transcript Served (Legacy)", [
+                    ("Ticket ID", ticket_id),
+                    ("Client IP", get_client_ip(request)),
+                ], emoji="📜")
+                return web.Response(
+                    text=html_content,
+                    content_type="text/html",
+                    headers={"Cache-Control": "public, max-age=60"},
+                )
+            return web.Response(
+                text=f"<h1>404 - Transcript Not Found</h1><p>No messages found for ticket {ticket_id}</p>",
+                status=404,
+                content_type="text/html",
+            )
+
+        # Transform stored messages to format expected by generate_html_transcript
+        messages = []
+        mention_map = {}
+        for msg in stored_messages:
+            # Build mention map for user resolution
+            mention_map[msg["author_id"]] = msg["author_display_name"]
+
+            # Format timestamp
+            try:
+                ts = datetime.fromtimestamp(msg["timestamp"], tz=NY_TZ)
+                timestamp_str = ts.strftime("%b %d, %Y %I:%M %p")
+            except Exception:
+                timestamp_str = "Unknown"
+
+            # Transform attachments to URL list
+            attachments = []
+            if msg.get("attachments"):
+                for att in msg["attachments"]:
+                    if isinstance(att, dict) and att.get("url"):
+                        attachments.append(att["url"])
+
+            messages.append({
+                "author": msg["author_display_name"],
+                "author_id": str(msg["author_id"]),
+                "content": msg["content"] or "",
+                "timestamp": timestamp_str,
+                "attachments": attachments,
+                "embeds": msg.get("embeds", []),
+                "avatar_url": msg["author_avatar_url"] or "",
+                "is_bot": msg["is_bot"],
+                "is_staff": msg["is_staff"],
+            })
+
+        # Create a simple user-like object for the ticket creator
+        class SimpleUser:
+            def __init__(self, user_id, display_name):
+                self.id = user_id
+                self.display_name = display_name
+
+        # Try to get creator's display name from first message or ticket data
+        creator_name = "Unknown User"
+        if messages:
+            # Find first non-bot message as likely the creator
+            for msg in messages:
+                if not msg["is_bot"]:
+                    creator_name = msg["author"]
+                    break
+
+        user = SimpleUser(ticket.get("user_id", 0), creator_name)
+
+        # Generate HTML transcript
+        html_content = generate_html_transcript(
+            ticket=ticket,
+            messages=messages,
+            user=user,
+            closed_by=None,
+            mention_map=mention_map,
+        )
+
+        logger.tree("Transcript Generated", [
             ("Ticket ID", ticket_id),
+            ("Messages", str(len(messages))),
             ("Client IP", get_client_ip(request)),
         ], emoji="📜")
 
@@ -68,7 +206,7 @@ class HandlersMixin:
             text=html_content,
             content_type="text/html",
             headers={
-                "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
+                "Cache-Control": "public, max-age=30",  # Short cache for real-time updates
             }
         )
 
@@ -479,6 +617,7 @@ class HandlersMixin:
                 "resolved_at": existing_appeal.get("resolved_at"),
                 "resolution": existing_appeal.get("resolution"),
                 "resolution_reason": existing_appeal.get("resolution_reason"),
+                "appeal_reason": existing_appeal.get("reason"),  # User's appeal text
             }
 
         # Check eligibility
@@ -512,6 +651,13 @@ class HandlersMixin:
             "existing_appeal": appeal_status,
         }
 
+        # Include server invite URL if appeal was approved
+        if appeal_status and appeal_status.get("resolution") == "approved":
+            from src.core.config import get_config
+            config = get_config()
+            if config.server_invite_url:
+                response["server_invite_url"] = config.server_invite_url
+
         return web.json_response(
             response,
             headers={"Access-Control-Allow-Origin": "*"}
@@ -525,6 +671,25 @@ class HandlersMixin:
         """
         token = request.match_info.get("token", "")
         client_ip = get_client_ip(request)
+
+        # Check appeal-specific rate limit (3 per hour per IP)
+        allowed, retry_after = _check_appeal_rate_limit(client_ip)
+        if not allowed:
+            logger.warning("Appeal Rate Limited", [
+                ("Client IP", client_ip),
+                ("Retry After", f"{retry_after}s"),
+            ])
+            return web.json_response(
+                {
+                    "error": f"Too many appeals submitted. Please try again in {retry_after // 60} minutes.",
+                    "retry_after": retry_after,
+                },
+                status=429,
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Retry-After": str(retry_after),
+                }
+            )
 
         if not token:
             return web.json_response(
@@ -562,6 +727,71 @@ class HandlersMixin:
             )
 
         appeal_reason = body.get("reason", "").strip()
+        appeal_email = body.get("email", "").strip() or None
+        raw_attachments = body.get("attachments", [])
+
+        # Validate and process attachments
+        attachments = []
+        if raw_attachments:
+            if not isinstance(raw_attachments, list):
+                return web.json_response(
+                    {"error": "Invalid attachments format"},
+                    status=400,
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
+
+            if len(raw_attachments) > MAX_ATTACHMENTS:
+                return web.json_response(
+                    {"error": f"Maximum {MAX_ATTACHMENTS} attachments allowed"},
+                    status=400,
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
+
+            for i, att in enumerate(raw_attachments):
+                if not isinstance(att, dict):
+                    continue
+
+                att_name = att.get("name", f"attachment_{i}")
+                att_type = att.get("type", "")
+                att_data = att.get("data", "")
+
+                # Validate type
+                if att_type not in ALLOWED_ATTACHMENT_TYPES:
+                    return web.json_response(
+                        {"error": f"Invalid file type: {att_type}. Only images allowed."},
+                        status=400,
+                        headers={"Access-Control-Allow-Origin": "*"}
+                    )
+
+                # Validate size (base64 is ~4/3 larger than original)
+                if len(att_data) > MAX_ATTACHMENT_SIZE * 1.4:
+                    return web.json_response(
+                        {"error": f"File {att_name} exceeds 2MB limit"},
+                        status=400,
+                        headers={"Access-Control-Allow-Origin": "*"}
+                    )
+
+                attachments.append({
+                    "name": att_name[:100],  # Limit filename length
+                    "type": att_type,
+                    "data": att_data,
+                })
+
+        # Validate email if provided
+        if appeal_email:
+            if len(appeal_email) > 254:
+                return web.json_response(
+                    {"error": "Invalid email address"},
+                    status=400,
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
+            # Basic email validation
+            if "@" not in appeal_email or "." not in appeal_email.split("@")[-1]:
+                return web.json_response(
+                    {"error": "Invalid email address format"},
+                    status=400,
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
 
         # Validate appeal reason
         if not appeal_reason:
@@ -635,15 +865,21 @@ class HandlersMixin:
             case_id=case_id,
             user=user,
             reason=appeal_reason,
+            email=appeal_email,
+            attachments=attachments if attachments else None,
         )
 
         if success:
+            # Record for rate limiting
+            _record_appeal_submission(client_ip)
+
             logger.success("Web Appeal Submitted", [
                 ("Case ID", case_id),
                 ("Appeal ID", appeal_id),
                 ("User ID", str(user_id)),
                 ("Client IP", client_ip),
             ])
+
             return web.json_response(
                 {
                     "success": True,
@@ -679,6 +915,65 @@ class HandlersMixin:
                 "Access-Control-Max-Age": "86400",
             }
         )
+
+    async def handle_search(self: "AzabAPI", request: web.Request) -> web.Response:
+        """
+        GET /api/azab/search?q=query&category=moderators|offenders&limit=50
+
+        Search for users across all data (not limited to top 100).
+        """
+        start_time = time.time()
+        query = request.query.get("q", "").strip().lower()
+        category = request.query.get("category", "moderators")
+        limit = min(int(request.query.get("limit", "50")), 100)
+
+        if not query or len(query) < 2:
+            return web.json_response(
+                {"error": "Query must be at least 2 characters"},
+                status=400,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        try:
+            guild_id = self._config.logging_guild_id
+
+            if category == "moderators":
+                # Search all moderators (get more than 100 for search)
+                all_mods = await self._get_moderator_leaderboard(limit=500)
+                results = [
+                    {**mod, "rank": i + 1}
+                    for i, mod in enumerate(all_mods)
+                    if query in (mod.get("name") or "").lower()
+                ][:limit]
+            else:
+                # Search all offenders
+                all_offenders = await self._get_top_offenders(guild_id, limit=500)
+                results = [
+                    {**off, "rank": i + 1}
+                    for i, off in enumerate(all_offenders)
+                    if query in (off.get("name") or "").lower()
+                ][:limit]
+
+            response = {
+                "results": results,
+                "total": len(results),
+                "query": query,
+                "category": category,
+                "response_time_ms": round((time.time() - start_time) * 1000, 1),
+            }
+
+            return web.json_response(
+                response,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        except Exception as e:
+            logger.error("Search API Error", [("Error", str(e)[:100])])
+            return web.json_response(
+                {"error": "Internal server error"},
+                status=500,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
 
 
 __all__ = ["HandlersMixin"]

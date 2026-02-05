@@ -14,10 +14,12 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from src.core.config import get_config
+from src.core.config import get_config, EmbedColors
 from src.core.database import get_db
 from src.core.logger import logger
 from src.core.constants import CASE_LOG_TIMEOUT
+from src.utils.dm_helpers import send_moderation_dm
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -167,6 +169,30 @@ class VoiceHandler:
 
         try:
             await member.timeout(timeout_duration, reason="Attempted to join voice channel while muted")
+
+            # Record timeout to database
+            from datetime import datetime
+            until_ts = (datetime.now() + timeout_duration).timestamp()
+            self.db.add_timeout(
+                user_id=member.id,
+                guild_id=member.guild.id,
+                moderator_id=self.bot.user.id,
+                reason="Attempted to join voice channel while muted",
+                duration_seconds=3600,  # 1 hour
+                until_timestamp=until_ts,
+            )
+
+            # Log to permanent audit log
+            self.db.log_moderation_action(
+                user_id=member.id,
+                guild_id=member.guild.id,
+                moderator_id=self.bot.user.id,
+                action_type="timeout",
+                action_source="auto_vc",
+                reason="Attempted to join voice channel while muted",
+                duration_seconds=3600,
+                details={"vc_channel": channel_name, "violation_type": "muted_user_vc_join"},
+            )
         except Exception as e:
             logger.error("Failed to Timeout Muted User", [
                 ("User", str(member)),
@@ -221,6 +247,20 @@ class VoiceHandler:
             ("ID", str(member.id)),
                     ("Error", str(e)[:100]),
                 ])
+
+        # -----------------------------------------------------------------
+        # 6. Fire-and-forget DM (no appeal button)
+        # -----------------------------------------------------------------
+        create_safe_task(send_moderation_dm(
+            user=member,
+            title="You have been timed out",
+            color=EmbedColors.ERROR,
+            guild=member.guild,
+            moderator=None,
+            reason="Attempting to join a voice channel while muted",
+            fields=[("Duration", "`1 hour`", True)],
+            context="Muted VC Violation DM",
+        ))
 
     async def _log_mod_voice_activity(
         self,

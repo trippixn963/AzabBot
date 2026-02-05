@@ -17,9 +17,11 @@ from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
 from src.utils.footer import set_footer
 from src.utils.retry import safe_send
+from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
 
 from .constants import APPEAL_COOLDOWN_SECONDS
 from .views import AppealApprovedView, AppealDeniedView
+from .email import send_appeal_email
 
 if TYPE_CHECKING:
     from .service import AppealService
@@ -35,7 +37,7 @@ class ResolveMixin:
         reason: Optional[str] = None,
     ) -> tuple[bool, str]:
         """
-        Approve a mute appeal and unmute the user.
+        Approve an appeal (ban or mute) and reverse the punishment.
 
         Args:
             appeal_id: Appeal ID to approve.
@@ -72,35 +74,67 @@ class ResolveMixin:
             user_id = appeal["user_id"]
             case_id = appeal["case_id"]
 
-            # Remove muted role
-            member = guild.get_member(user_id)
-            if member:
-                muted_role = guild.get_role(self.config.muted_role_id)
-                if muted_role and muted_role in member.roles:
-                    try:
-                        await member.remove_roles(
-                            muted_role,
-                            reason=f"Appeal {appeal_id} approved by {moderator}"
-                        )
-                    except discord.HTTPException as e:
-                        logger.warning("Appeal Unmute Failed", [
-                            ("User ID", str(user_id)),
-                            ("Appeal ID", appeal_id),
-                            ("Error", str(e)[:50]),
-                        ])
+            # Get the original case to determine action type
+            case = self.db.get_case(case_id)
+            action_type = case.get("action_type", "mute") if case else "mute"
+            is_ban = action_type == "ban"
 
-                # Remove timeout if any
-                if member.is_timed_out():
-                    try:
-                        await member.timeout(None, reason=f"Appeal {appeal_id} approved")
-                    except discord.HTTPException:
-                        pass
+            if is_ban:
+                # Handle ban appeal - unban the user
+                try:
+                    await guild.unban(
+                        discord.Object(id=user_id),
+                        reason=f"Appeal {appeal_id} approved by {moderator}"
+                    )
+                    action_taken = "User has been unbanned"
+                except discord.NotFound:
+                    action_taken = "User was not banned (already unbanned?)"
+                except discord.HTTPException as e:
+                    logger.warning("Appeal Unban Failed", [
+                        ("User ID", str(user_id)),
+                        ("Appeal ID", appeal_id),
+                        ("Error", str(e)[:50]),
+                    ])
+                    action_taken = "Failed to unban user"
 
-            # Clear mute from database
-            self.db.remove_mute(user_id, guild.id, moderator.id, "Appeal approved")
+                # DM the user with approval notification
+                await self._send_appeal_approved_dm(
+                    user_id=user_id,
+                    guild=guild,
+                    moderator=moderator,
+                    reason=reason,
+                    is_ban=True,
+                )
+            else:
+                # Handle mute appeal - unmute the user
+                member = guild.get_member(user_id)
+                if member:
+                    muted_role = guild.get_role(self.config.muted_role_id)
+                    if muted_role and muted_role in member.roles:
+                        try:
+                            await member.remove_roles(
+                                muted_role,
+                                reason=f"Appeal {appeal_id} approved by {moderator}"
+                            )
+                        except discord.HTTPException as e:
+                            logger.warning("Appeal Unmute Failed", [
+                                ("User ID", str(user_id)),
+                                ("Appeal ID", appeal_id),
+                                ("Error", str(e)[:50]),
+                            ])
+
+                    # Remove timeout if any
+                    if member.is_timed_out():
+                        try:
+                            await member.timeout(None, reason=f"Appeal {appeal_id} approved")
+                        except discord.HTTPException:
+                            pass
+
+                # Clear mute from database
+                self.db.remove_mute(user_id, guild.id, moderator.id, "Appeal approved")
+                action_taken = "User has been unmuted"
 
             # Resolve the original case
-            case = self.db.get_case(case_id)
             if case:
                 self.db.resolve_case(
                     case_id=case_id,
@@ -121,7 +155,7 @@ class ResolveMixin:
                 if reason:
                     embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
 
-                embed.add_field(name="Action Taken", value="User has been unmuted", inline=False)
+                embed.add_field(name="Action Taken", value=action_taken, inline=False)
 
                 set_footer(embed)
                 approved_view = AppealApprovedView(user_id, guild.id)
@@ -137,6 +171,7 @@ class ResolveMixin:
             logger.tree("APPEAL APPROVED", [
                 ("Appeal ID", appeal_id),
                 ("Case ID", case_id),
+                ("Type", action_type.upper()),
                 ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
                 ("Mod ID", str(moderator.id)),
             ], emoji="✅")
@@ -151,7 +186,20 @@ class ResolveMixin:
                 reason=reason,
             )
 
-            return (True, "Appeal approved. User has been unmuted.")
+            # Send email notification if user provided email
+            appeal_email = appeal.get("email")
+            if appeal_email:
+                await send_appeal_email(
+                    to_email=appeal_email,
+                    appeal_id=appeal_id,
+                    resolution="approved",
+                    resolution_reason=reason,
+                    server_name=guild.name,
+                    server_invite_url=self.config.server_invite_url,
+                )
+
+            result_msg = "Appeal approved. User has been unbanned." if is_ban else "Appeal approved. User has been unmuted."
+            return (True, result_msg)
 
         except Exception as e:
             logger.error("Appeal Approval Failed", [
@@ -198,6 +246,23 @@ class ResolveMixin:
         try:
             user_id = appeal["user_id"]
             case_id = appeal["case_id"]
+            guild_id = appeal["guild_id"]
+
+            # Get the original case to determine action type
+            case = self.db.get_case(case_id)
+            action_type = case.get("action_type", "mute") if case else "mute"
+            is_ban = action_type == "ban"
+
+            # DM the user about the denial (especially important for bans)
+            guild = self.bot.get_guild(guild_id)
+            if guild:
+                await self._send_appeal_denied_dm(
+                    user_id=user_id,
+                    guild=guild,
+                    moderator=moderator,
+                    reason=reason,
+                    is_ban=is_ban,
+                )
 
             # Update thread
             thread = await self._get_appeal_thread(appeal["thread_id"])
@@ -222,7 +287,6 @@ class ResolveMixin:
                 set_footer(embed)
 
                 # Add contact staff button if ticket channel is configured
-                guild_id = appeal["guild_id"]
                 if self.config.ticket_channel_id:
                     denied_view = AppealDeniedView(self.config.ticket_channel_id, guild_id)
                     await safe_send(thread, embed=embed, view=denied_view)
@@ -239,6 +303,7 @@ class ResolveMixin:
             logger.tree("APPEAL DENIED", [
                 ("Appeal ID", appeal_id),
                 ("Case ID", case_id),
+                ("Type", action_type.upper()),
                 ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
                 ("Mod ID", str(moderator.id)),
             ], emoji="❌")
@@ -253,6 +318,17 @@ class ResolveMixin:
                 reason=reason,
             )
 
+            # Send email notification if user provided email
+            appeal_email = appeal.get("email")
+            if appeal_email and guild:
+                await send_appeal_email(
+                    to_email=appeal_email,
+                    appeal_id=appeal_id,
+                    resolution="denied",
+                    resolution_reason=reason,
+                    server_name=guild.name,
+                )
+
             return (True, "Appeal denied.")
 
         except Exception as e:
@@ -261,6 +337,111 @@ class ResolveMixin:
                 ("Error", str(e)[:100]),
             ])
             return (False, f"Failed to deny appeal: {str(e)[:50]}")
+
+    async def _send_appeal_approved_dm(
+        self: "AppealService",
+        user_id: int,
+        guild: discord.Guild,
+        moderator: discord.Member,
+        reason: Optional[str],
+        is_ban: bool,
+    ) -> None:
+        """Send DM to user when their appeal is approved."""
+        try:
+            user = await self.bot.fetch_user(user_id)
+        except discord.NotFound:
+            logger.warning("Appeal DM Failed", [
+                ("User ID", str(user_id)),
+                ("Reason", "User not found"),
+            ])
+            return
+        except discord.HTTPException:
+            return
+
+        # Build the embed
+        embed = discord.Embed(
+            title="✅ Your Appeal Has Been Approved",
+            color=EmbedColors.SUCCESS,
+            timestamp=datetime.now(NY_TZ),
+        )
+
+        if is_ban:
+            description = f"Your ban appeal for **{guild.name}** has been approved."
+            if self.config.server_invite_url:
+                description += f"\n\nYou may rejoin the server using this link:\n{self.config.server_invite_url}"
+            embed.description = description
+        else:
+            embed.description = f"Your mute appeal for **{guild.name}** has been approved. You have been unmuted."
+
+        if reason:
+            embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
+
+        embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+        set_footer(embed)
+
+        # Send the DM
+        sent = await safe_send_dm(user, embed=embed, context="Appeal Approved DM")
+
+        logger.tree("Appeal Approved DM", [
+            ("User", user.name),
+            ("ID", str(user_id)),
+            ("Type", "Ban" if is_ban else "Mute"),
+            ("Delivered", "Yes" if sent else "No (DMs disabled)"),
+        ], emoji="📨")
+
+    async def _send_appeal_denied_dm(
+        self: "AppealService",
+        user_id: int,
+        guild: discord.Guild,
+        moderator: discord.Member,
+        reason: Optional[str],
+        is_ban: bool,
+    ) -> None:
+        """Send DM to user when their appeal is denied."""
+        try:
+            user = await self.bot.fetch_user(user_id)
+        except discord.NotFound:
+            logger.warning("Appeal DM Failed", [
+                ("User ID", str(user_id)),
+                ("Reason", "User not found"),
+            ])
+            return
+        except discord.HTTPException:
+            return
+
+        # Build the embed
+        embed = discord.Embed(
+            title="❌ Your Appeal Has Been Denied",
+            color=EmbedColors.ERROR,
+            timestamp=datetime.now(NY_TZ),
+        )
+
+        action_type = "ban" if is_ban else "mute"
+        embed.description = f"Your {action_type} appeal for **{guild.name}** has been denied."
+
+        if reason:
+            embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
+
+        # Add cooldown info
+        cooldown_hours = APPEAL_COOLDOWN_SECONDS // 3600
+        embed.add_field(
+            name="⏰ Re-appeal",
+            value=f"You may submit a new appeal in **{cooldown_hours} hours**.",
+            inline=False,
+        )
+
+        embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+        set_footer(embed)
+
+        # Send the DM
+        sent = await safe_send_dm(user, embed=embed, context="Appeal Denied DM")
+
+        logger.tree("Appeal Denied DM", [
+            ("User", user.name),
+            ("ID", str(user_id)),
+            ("Type", "Ban" if is_ban else "Mute"),
+            ("Delivered", "Yes" if sent else "No (DMs disabled)"),
+        ], emoji="📨")
 
 
 __all__ = ["ResolveMixin"]
