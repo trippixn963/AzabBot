@@ -195,11 +195,14 @@ class ModAuthManager:
 
         # Evict oldest if at capacity
         while len(self._tokens) >= MAX_ACTIVE_SESSIONS:
-            oldest_token = min(
-                self._tokens.keys(),
-                key=lambda t: self._tokens[t].created_at
-            )
-            del self._tokens[oldest_token]
+            try:
+                oldest_token = min(
+                    self._tokens.keys(),
+                    key=lambda t: self._tokens[t].created_at
+                )
+                del self._tokens[oldest_token]
+            except (KeyError, ValueError):
+                break  # Dict modified or empty
 
         # Generate new token
         token = secrets.token_urlsafe(TOKEN_LENGTH)
@@ -239,17 +242,21 @@ class ModAuthManager:
 
         # Check expiration
         if time.time() > token_data.expires_at:
-            del self._tokens[token]
+            try:
+                del self._tokens[token]
+            except KeyError:
+                pass  # Already removed
             return None
 
         return token_data.discord_id
 
     def revoke_token(self, token: str) -> bool:
         """Revoke an authentication token (logout)."""
-        if token in self._tokens:
+        try:
             del self._tokens[token]
             return True
-        return False
+        except KeyError:
+            return False
 
     def _cleanup_expired(self) -> None:
         """Remove all expired tokens from storage."""
@@ -259,7 +266,10 @@ class ModAuthManager:
             if now > data.expires_at
         ]
         for token in expired:
-            del self._tokens[token]
+            try:
+                del self._tokens[token]
+            except KeyError:
+                pass  # Already removed
 
 
 # =============================================================================

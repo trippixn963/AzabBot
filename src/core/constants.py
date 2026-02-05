@@ -189,6 +189,7 @@ LAST_MESSAGES_LIMIT = 5000            # Last messages cache
 ATTACHMENT_CACHE_LIMIT = 500          # Attachment cache
 MESSAGE_CACHE_LIMIT = 5000            # General message cache
 EDITSNIPE_CHANNEL_LIMIT = 500         # Edit snipe channel limit
+EDITSNIPE_CACHE_TTL = SECONDS_PER_HOUR * 24  # 24 hours - editsnipe cache TTL
 MUTE_REASONS_LIMIT = 1000             # Mute reasons cache
 
 # Mod tracker
@@ -491,6 +492,7 @@ __all__ = [
     "ATTACHMENT_CACHE_LIMIT",
     "MESSAGE_CACHE_LIMIT",
     "EDITSNIPE_CHANNEL_LIMIT",
+    "EDITSNIPE_CACHE_TTL",
     "MUTE_REASONS_LIMIT",
     "MESSAGE_CACHE_SIZE",
     "MESSAGE_CACHE_MAX_MODS",
@@ -544,7 +546,7 @@ __all__ = [
     "HTTP_OK",
     "HTTP_RATE_LIMITED",
     "HTTP_SERVER_ERROR",
-    # Emojis
+    # Custom Discord Emojis
     "EMOJI_MUTE",
     "EMOJI_BAN",
     "EMOJI_WARN",

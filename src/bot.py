@@ -23,7 +23,12 @@ from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
 from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
-from src.core.constants import GUILD_FETCH_TIMEOUT, SECONDS_PER_HOUR, QUERY_LIMIT_LARGE
+from src.core.constants import (
+    GUILD_FETCH_TIMEOUT,
+    SECONDS_PER_HOUR,
+    QUERY_LIMIT_LARGE,
+    EDITSNIPE_CACHE_TTL,
+)
 
 # Constants for cache limits
 PRISONER_TRACKING_LIMIT = 1000  # Max prisoner tracking entries
@@ -118,10 +123,11 @@ class AzabBot(commands.Bot):
         self._http_session: Optional[aiohttp.ClientSession] = None
 
         # Prisoner rate limiting (with async lock for thread safety)
+        # IMPORTANT: All three dicts below MUST be accessed within `async with self._prisoner_lock:`
         self._prisoner_lock = asyncio.Lock()
-        self.prisoner_cooldowns: Dict[int, datetime] = {}
-        self.prisoner_message_buffer: Dict[int, List[str]] = {}
-        self.prisoner_pending_response: Dict[int, bool] = {}
+        self.prisoner_cooldowns: Dict[int, datetime] = {}  # Protected by _prisoner_lock
+        self.prisoner_message_buffer: Dict[int, List[str]] = {}  # Protected by _prisoner_lock
+        self.prisoner_pending_response: Dict[int, bool] = {}  # Protected by _prisoner_lock
 
         # Message history tracking (LRU cache with limit)
         self._last_messages_lock = asyncio.Lock()
@@ -649,6 +655,46 @@ class AzabBot(commands.Bot):
 
         if cleaned > 0:
             logger.debug(f"Prisoner tracking cleanup: {cleaned} stale entries removed")
+
+        return cleaned
+
+    async def _cleanup_editsnipe_cache(self) -> int:
+        """
+        Clean up stale editsnipe cache entries based on TTL.
+
+        Removes channels that haven't had edits tracked in EDITSNIPE_CACHE_TTL.
+        This prevents unbounded memory growth from inactive channels.
+
+        Returns:
+            Number of channels removed from cache.
+        """
+        from datetime import datetime, timedelta
+
+        cutoff = datetime.now() - timedelta(seconds=EDITSNIPE_CACHE_TTL)
+        cleaned = 0
+
+        async with self._editsnipe_cache_lock:
+            # Check each channel's most recent edit timestamp
+            stale_channels = []
+            for channel_id, edits in list(self._editsnipe_cache.items()):
+                if edits:
+                    # Get timestamp of most recent edit (edits are stored newest first)
+                    most_recent = edits[0] if edits else None
+                    if most_recent:
+                        edit_time = most_recent.get("edited_at")
+                        if edit_time and edit_time < cutoff:
+                            stale_channels.append(channel_id)
+                else:
+                    # Empty deque, remove it
+                    stale_channels.append(channel_id)
+
+            # Remove stale channels
+            for channel_id in stale_channels:
+                self._editsnipe_cache.pop(channel_id, None)
+                cleaned += 1
+
+        if cleaned > 0:
+            logger.debug(f"EditSnipe cache cleanup: {cleaned} stale channels removed")
 
         return cleaned
 

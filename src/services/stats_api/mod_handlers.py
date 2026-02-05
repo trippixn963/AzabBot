@@ -714,5 +714,40 @@ class ModHandlersMixin:
         """Handle CORS preflight for all mod endpoints."""
         return web.Response(status=204, headers=_cors_headers())
 
+    async def handle_mod_server_info(self: "AzabAPI", request: web.Request) -> web.Response:
+        """
+        Get public server info (no auth required).
+
+        GET /api/azab/mod/server-info
+
+        Returns server name and icon URL for the login page.
+        """
+        config = get_config()
+        guild_id = config.logging_guild_id
+
+        if not guild_id:
+            return web.json_response({
+                "name": "Moderation Dashboard",
+                "icon_url": None,
+            }, headers=_cors_headers())
+
+        try:
+            guild = self._bot.get_guild(guild_id)
+            if not guild:
+                guild = await self._bot.fetch_guild(guild_id)
+
+            icon_url = str(guild.icon.url) if guild.icon else None
+
+            return web.json_response({
+                "name": guild.name,
+                "icon_url": icon_url,
+            }, headers=_cors_headers())
+        except Exception as e:
+            logger.error(f"Failed to fetch server info: {e}")
+            return web.json_response({
+                "name": "Moderation Dashboard",
+                "icon_url": None,
+            }, headers=_cors_headers())
+
 
 __all__ = ["ModHandlersMixin"]

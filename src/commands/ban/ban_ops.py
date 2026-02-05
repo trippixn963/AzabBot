@@ -282,16 +282,16 @@ class BanOpsMixin:
 
         log_type = "USER SOFTBANNED" if is_softban else "USER BANNED"
         log_items = [
-            ("User", user.name),
-                    ("ID", str(user.id)),
-            ("Moderator", str(interaction.user)),
+            ("User", f"{user.name} ({user.id})"),
+            ("Guild", f"{target_guild.name} ({target_guild.id})"),
+            ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
             ("Reason", (reason or "None")[:50]),
             ("Evidence", (evidence or "None")[:50]),
             ("Ban Count", str(ban_count)),
             ("DM Sent", "Yes" if dm_sent else "No"),
         ]
         if cross_server:
-            log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
+            log_items.insert(2, ("Cross-Server", f"From {interaction.guild.name}"))
         logger.tree(log_type, log_items, emoji="🔨")
 
         # Server logs (uses case_id from earlier logging)

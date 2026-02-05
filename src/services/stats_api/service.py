@@ -125,6 +125,7 @@ class AzabAPI(HandlersMixin, DataHelpersMixin, ModHandlersMixin):
         self.app.router.add_post("/api/azab/mod/register", self.handle_mod_register)
         self.app.router.add_post("/api/azab/mod/login", self.handle_mod_login)
         self.app.router.add_post("/api/azab/mod/logout", self.handle_mod_logout)
+        self.app.router.add_get("/api/azab/mod/server-info", self.handle_mod_server_info)
         self.app.router.add_get("/api/azab/mod/stats", self.handle_mod_stats)
         self.app.router.add_get("/api/azab/mod/cases", self.handle_mod_cases)
         self.app.router.add_get("/api/azab/mod/cases/{case_id}", self.handle_mod_case_detail)
