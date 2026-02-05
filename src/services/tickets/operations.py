@@ -658,15 +658,11 @@ class OperationsMixin:
             else:
                 await safe_send(channel, embed=claim_embed)
 
-            # Send AI summary for staff (if available)
+            # Send AI summary for staff (if available) - ping the mod with a human summary
             if ai_summary:
-                summary_embed = discord.Embed(
-                    title="🤖 AI Summary",
-                    description=ai_summary,
-                    color=0x5865F2,  # Discord blurple
-                )
-                await safe_send(channel, embed=summary_embed)
-                logger.tree("AI Summary Displayed", [
+                summary_content = f"{staff.mention} {ai_summary}"
+                await safe_send(channel, content=summary_content)
+                logger.tree("AI Summary Sent", [
                     ("Ticket ID", ticket_id),
                     ("Staff", f"{staff.name} ({staff.id})"),
                 ], emoji="🤖")
