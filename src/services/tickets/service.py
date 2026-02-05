@@ -22,6 +22,7 @@ from src.core.constants import (
     THREAD_DELETE_DELAY,
     CLOSE_REQUEST_COOLDOWN,
 )
+from src.utils.async_utils import create_safe_task
 
 from .constants import (
     INACTIVE_WARNING_DAYS,
