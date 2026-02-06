@@ -175,11 +175,19 @@ class OperationsMixin:
                 ),
             }
 
-            # Ticket staff role - can view, send, and react
-            if self.config.ticket_staff_role_id:
-                staff_role = user.guild.get_role(self.config.ticket_staff_role_id)
-                if staff_role:
-                    overwrites[staff_role] = discord.PermissionOverwrite(
+            # Ticket staff users - can view, send, and react
+            staff_user_ids = set()
+            if self.config.ticket_support_user_ids:
+                staff_user_ids.update(self.config.ticket_support_user_ids)
+            if self.config.ticket_partnership_user_id:
+                staff_user_ids.add(self.config.ticket_partnership_user_id)
+            if self.config.ticket_suggestion_user_id:
+                staff_user_ids.add(self.config.ticket_suggestion_user_id)
+
+            for staff_id in staff_user_ids:
+                staff_member = user.guild.get_member(staff_id)
+                if staff_member and staff_member != user:  # Don't override ticket creator's perms
+                    overwrites[staff_member] = discord.PermissionOverwrite(
                         view_channel=True,
                         send_messages=True,
                         attach_files=True,
