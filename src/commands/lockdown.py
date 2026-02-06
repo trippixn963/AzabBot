@@ -30,7 +30,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
-from src.utils.tasks import create_safe_task
+from src.utils.async_utils import create_safe_task
 
 if TYPE_CHECKING:
     from src.bot import AzabBot

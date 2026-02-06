@@ -45,16 +45,16 @@ class HelpersMixin:
                 return self._channel
 
         # Fetch channel
-        logger.debug(f"Fetching ticket channel: {self.config.ticket_channel_id}")
+        logger.debug("Fetching Ticket Channel", [("ID", str(self.config.ticket_channel_id))])
         channel = await safe_fetch_channel(self.bot, self.config.ticket_channel_id)
-        logger.debug(f"Fetched channel: {channel}, type: {type(channel)}")
+        logger.debug("Fetched Channel", [("Channel", str(channel)), ("Type", type(channel).__name__)])
 
         if channel and isinstance(channel, discord.TextChannel):
             self._channel = channel
             self._channel_cache_time = datetime.now()
             return channel
 
-        logger.warning(f"Ticket channel is not a TextChannel: {type(channel)}")
+        logger.warning("Ticket Channel Not a TextChannel", [("Type", type(channel).__name__)])
         return None
 
     async def _get_ticket_category(
@@ -145,7 +145,7 @@ class HelpersMixin:
                 pass
 
         if expired_keys:
-            logger.debug(f"Cleaned up {len(expired_keys)} expired channel cache entries")
+            logger.debug("Channel Cache Cleanup", [("Expired", str(len(expired_keys)))])
 
     def has_staff_permission(self: "TicketService", member: discord.Member) -> bool:
         """Check if a member has staff permissions."""
@@ -203,7 +203,7 @@ class HelpersMixin:
                 ])
 
         if locked_count > 0:
-            logger.debug(f"Locked out {locked_count} staff from ticket {ticket_id}")
+            logger.debug("Staff Locked Out", [("Count", str(locked_count)), ("Ticket", ticket_id)])
 
     async def _restore_staff_access(
         self: "TicketService",
@@ -251,7 +251,7 @@ class HelpersMixin:
                 ])
 
         if restored_count > 0:
-            logger.debug(f"Restored {restored_count} staff access to ticket {ticket_id}")
+            logger.debug("Staff Access Restored", [("Count", str(restored_count)), ("Ticket", ticket_id)])
 
     async def _lock_ticket_on_close(
         self: "TicketService",
@@ -298,7 +298,7 @@ class HelpersMixin:
         if locked_count > 0:
             try:
                 await channel.edit(overwrites=new_overwrites)
-                logger.debug(f"Locked {locked_count} user(s) from sending messages on ticket close")
+                logger.debug("Ticket Locked on Close", [("Users", str(locked_count))])
             except discord.HTTPException as e:
                 logger.warning("Failed to lock ticket on close", [
                     ("Ticket ID", ticket.get("ticket_id", "unknown")),
@@ -358,7 +358,7 @@ class HelpersMixin:
             except discord.NotFound:
                 pass
             except discord.HTTPException as e:
-                logger.warning(f"Failed to edit control panel: {e}")
+                logger.warning("Failed to Edit Control Panel", [("Error", str(e)[:50])])
 
         # Fallback: find first embed message
         try:
@@ -380,15 +380,15 @@ class HelpersMixin:
         channel: discord.TextChannel,
     ) -> Optional[discord.Message]:
         """Send the ticket creation panel to a channel and store its info."""
-        logger.debug(f"send_panel called for channel: {channel.name} ({channel.id})")
+        logger.debug("send_panel Called", [("Channel", f"{channel.name} ({channel.id})")])
 
         embed = build_panel_embed()
         view = TicketPanelView()
 
         try:
-            logger.debug("Sending ticket panel embed...")
+            logger.debug("Sending Ticket Panel Embed")
             message = await channel.send(embed=embed, view=view)
-            logger.debug(f"Panel message sent: {message.id}")
+            logger.debug("Panel Message Sent", [("Message ID", str(message.id))])
 
             # Store panel info in bot_state for recovery
             self.db.set_bot_state("ticket_panel", {
@@ -418,7 +418,7 @@ class HelpersMixin:
     async def verify_panel(self: "TicketService") -> None:
         """Verify the ticket panel exists, resend if missing."""
         panel_info = self.db.get_bot_state("ticket_panel")
-        logger.debug(f"Ticket panel info from DB: {panel_info}")
+        logger.debug("Ticket Panel Info from DB", [("Info", str(panel_info)[:50])])
 
         if not panel_info:
             # No panel stored, send a new one
@@ -426,7 +426,7 @@ class HelpersMixin:
                 ("Reason", "No panel info in database"),
             ], emoji="🎫")
             channel = await self._get_channel()
-            logger.debug(f"Got channel for panel: {channel}")
+            logger.debug("Got Channel for Panel", [("Channel", str(channel))])
             if channel:
                 await self.send_panel(channel)
             else:
@@ -509,11 +509,11 @@ class HelpersMixin:
                 channel = await self.bot.fetch_channel(channel_id)
                 if isinstance(channel, (discord.TextChannel, discord.Thread)):
                     await channel.delete()
-                    logger.debug(f"Deleted channel for ticket {ticket_id}")
+                    logger.debug("Ticket Channel Deleted", [("Ticket", ticket_id)])
             except discord.NotFound:
                 pass
             except Exception as e:
-                logger.error(f"Failed to delete channel: {e}")
+                logger.error("Failed to Delete Channel", [("Ticket", ticket_id), ("Error", str(e)[:50])])
             finally:
                 async with self._deletions_lock:
                     try:

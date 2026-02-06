@@ -180,7 +180,7 @@ class AzabBot(commands.Bot):
         for cog in EVENT_COGS:
             try:
                 await self.load_extension(cog)
-                logger.debug(f"Event Cog Loaded: {cog.split('.')[-1]}")
+                logger.debug("Event Cog Loaded", [("Cog", cog.split('.')[-1])])
             except Exception as e:
                 logger.error("Failed to Load Event Cog", [("Cog", cog), ("Error", str(e))])
 
@@ -650,7 +650,7 @@ class AzabBot(commands.Bot):
                 cleaned += 1
 
         if cleaned > 0:
-            logger.debug(f"EditSnipe cache cleanup: {cleaned} stale channels removed")
+            logger.debug("EditSnipe Cache Cleanup", [("Removed", str(cleaned))])
 
         return cleaned
 
@@ -669,11 +669,11 @@ class AzabBot(commands.Bot):
                         self._invite_cache[invite.code] = invite.uses or 0
                     logger.info(f"Cached {len(invites)} invites for {guild.name}")
                 except discord.Forbidden:
-                    logger.debug(f"No permission to fetch invites for {guild.name}")
+                    logger.debug("No Permission to Fetch Invites", [("Guild", guild.name)])
                 except asyncio.TimeoutError:
-                    logger.warning(f"Invite fetch timeout for {guild.name}")
+                    logger.warning("Invite Fetch Timeout", [("Guild", guild.name)])
         except Exception as e:
-            logger.warning(f"Invite cache failed: {e}")
+            logger.warning("Invite Cache Failed", [("Error", str(e)[:50])])
 
     async def _check_lockdown_state(self) -> None:
         """Check if any guild is in lockdown state on startup."""
@@ -707,7 +707,7 @@ class AzabBot(commands.Bot):
                                 alert_msg = f"<@{self.config.owner_id}> {alert_msg}"
                             await alert_channel.send(alert_msg)
                         except discord.HTTPException as e:
-                            logger.warning(f"Failed to send lockdown restart alert: {e}")
+                            logger.warning("Failed to Send Lockdown Restart Alert", [("Error", str(e)[:50])])
 
     async def _find_used_invite(self, guild: discord.Guild) -> Optional[tuple]:
         """Find which invite was used by comparing use counts."""
@@ -720,9 +720,9 @@ class AzabBot(commands.Bot):
                     return (invite.code, invite.inviter)
                 self._invite_cache[invite.code] = invite.uses or 0
         except discord.Forbidden:
-            logger.debug(f"No permission to check invites for {guild.name}")
+            logger.debug("No Permission to Check Invites", [("Guild", guild.name)])
         except Exception as e:
-            logger.debug(f"Find invite failed: {e}")
+            logger.debug("Find Invite Failed", [("Error", str(e)[:50])])
         return None
 
     async def _cache_message_attachments(self, message: discord.Message) -> None:
@@ -817,9 +817,9 @@ class AzabBot(commands.Bot):
                 ("Hidden From", muted_role.name),
             ], emoji="🔒")
         except discord.Forbidden:
-            logger.warning(f"No permission to hide channel #{channel.name} from muted role")
+            logger.warning("No Permission to Hide Channel", [("Channel", f"#{channel.name}")])
         except discord.HTTPException as e:
-            logger.warning(f"Failed to hide channel #{channel.name}: {e}")
+            logger.warning("Failed to Hide Channel", [("Channel", f"#{channel.name}"), ("Error", str(e)[:50])])
 
     # =========================================================================
     # Shared HTTP Session

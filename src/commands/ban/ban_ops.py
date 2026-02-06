@@ -307,7 +307,7 @@ class BanOpsMixin:
                     timeout=GUILD_FETCH_TIMEOUT,
                 )
             except Exception as e:
-                logger.debug(f"Server log failed (ban): {e}")
+                logger.debug("Server Log Failed (Ban)", [("Error", str(e)[:50])])
 
         # -----------------------------------------------------------------
         # Build & Send Embed

@@ -132,12 +132,18 @@ async def safe_respond(
 
     except discord.HTTPException as e:
         # Log but don't raise - this is expected for expired interactions
-        logger.debug(f"safe_respond failed: {e.status} - {str(e)[:50]}")
+        logger.debug("safe_respond Failed", [
+            ("Status", str(e.status)),
+            ("Error", str(e)[:50]),
+        ])
         return None
 
     except Exception as e:
         # Unexpected error - log it
-        logger.debug(f"safe_respond unexpected error: {type(e).__name__}: {str(e)[:50]}")
+        logger.debug("safe_respond Unexpected Error", [
+            ("Type", type(e).__name__),
+            ("Error", str(e)[:50]),
+        ])
         return None
 
 
@@ -207,7 +213,10 @@ async def safe_edit(
         await interaction.edit_original_response(**kwargs)
         return True
     except discord.HTTPException as e:
-        logger.debug(f"safe_edit failed: {e.status} - {str(e)[:50]}")
+        logger.debug("safe_edit Failed", [
+            ("Status", str(e.status)),
+            ("Error", str(e)[:50]),
+        ])
         return False
 
 

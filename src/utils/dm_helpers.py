@@ -70,12 +70,12 @@ async def safe_send_dm(
     except discord.Forbidden:
         # User has DMs disabled - this is expected and not an error
         if context:
-            logger.debug(f"DM blocked ({context}): {user} has DMs disabled")
+            logger.debug("DM Blocked", [("Context", context), ("User", str(user))])
         return False
     except discord.HTTPException as e:
         # Network/API error
         if context:
-            logger.debug(f"DM failed ({context}): {user} - {e}")
+            logger.debug("DM Failed", [("Context", context), ("User", str(user)), ("Error", str(e)[:30])])
         return False
 
 

@@ -158,7 +158,10 @@ class ContentModerationService:
         if self.config.moderation_role_id:
             self._exempt_roles.add(self.config.moderation_role_id)
 
-        logger.debug(f"Content moderation exemptions loaded: {len(self._exempt_channels)} channels, {len(self._exempt_roles)} roles")
+        logger.debug("Content Moderation Exemptions Loaded", [
+            ("Channels", str(len(self._exempt_channels))),
+            ("Roles", str(len(self._exempt_roles))),
+        ])
 
     def _start_cleanup_task(self) -> None:
         """Start background cleanup task."""
@@ -238,7 +241,11 @@ class ContentModerationService:
                     pass
 
         if cleaned_cooldowns > 0 or cleaned_cache > 0 or cleaned_offenses > 0:
-            logger.debug(f"Content moderation cleanup: {cleaned_cooldowns} cooldowns, {cleaned_cache} cache, {cleaned_offenses} offense records")
+            logger.debug("Content Moderation Cleanup", [
+                ("Cooldowns", str(cleaned_cooldowns)),
+                ("Cache", str(cleaned_cache)),
+                ("Offenses", str(cleaned_offenses)),
+            ])
 
     # =========================================================================
     # Exemption Checks
@@ -321,7 +328,9 @@ class ContentModerationService:
 
             # Move to end (LRU)
             self._cache.move_to_end(content_hash)
-            logger.debug(f"Cache hit for content hash {content_hash[:8]}")
+            logger.debug("Classification Cache Hit", [
+                ("Hash", content_hash[:8]),
+            ])
             return result
 
     async def _cache_result(self, content_hash: str, result: ClassificationResult) -> None:
@@ -390,7 +399,9 @@ class ContentModerationService:
                         del self._user_cooldowns[uid]
                     except KeyError:
                         pass
-                logger.debug(f"Forced cooldown cleanup: removed {MAX_COOLDOWN_ENTRIES // 2} entries")
+                logger.debug("Forced Cooldown Cleanup", [
+                    ("Removed", str(MAX_COOLDOWN_ENTRIES // 2)),
+                ])
 
             self._user_cooldowns[user_id] = now
             return True
@@ -464,7 +475,10 @@ class ContentModerationService:
                 ("Reason", result.reason[:50]),
             ], emoji="🔍")
         elif result.error:
-            logger.debug(f"Classification error for user {message.author.id}: {result.error}")
+            logger.debug("Classification Error", [
+                ("User", str(message.author.id)),
+                ("Error", result.error[:50]),
+            ])
 
         return result
 
@@ -542,7 +556,7 @@ class ContentModerationService:
                         f"-# Repeated offenses will cause an auto mute"
                     )
                     await message.channel.send(warning_msg, delete_after=RELIGION_WARNING_DELETE_AFTER)
-                    logger.debug(f"Warning sent to {channel_str}")
+                    logger.debug("Warning Sent", [("Channel", channel_str)])
                 except discord.HTTPException as e:
                     logger.warning("Failed to send warning", [
                         ("Channel", channel_str),
@@ -556,7 +570,7 @@ class ContentModerationService:
             await self._send_mod_alert(message, result, deleted=True)
 
         except discord.NotFound:
-            logger.debug(f"Message already deleted for user {message.author.id}")
+            logger.debug("Message Already Deleted", [("User", str(message.author.id))])
         except discord.Forbidden:
             logger.warning("No Permission to Delete", [
                 ("Channel", channel_str),
@@ -620,7 +634,10 @@ class ContentModerationService:
             ]
 
             count = len(self._offense_history[user_id])
-            logger.debug(f"Offense recorded for user {user_id}: {count}/{RELIGION_OFFENSE_THRESHOLD} in window")
+            logger.debug("Offense Recorded", [
+                ("User", str(user_id)),
+                ("Count", f"{count}/{RELIGION_OFFENSE_THRESHOLD}"),
+            ])
             return count
 
     async def _auto_mute_user(self, message: discord.Message, offense_count: int) -> None:
@@ -808,7 +825,7 @@ class ContentModerationService:
                 embed,
                 user_id=message.author.id,
             )
-            logger.debug(f"Auto-mute alert sent for user {message.author.id}")
+            logger.debug("Auto-Mute Alert Sent", [("User", str(message.author.id))])
         except discord.HTTPException as e:
             logger.warning("Failed to Send Auto-Mute Alert", [
                 ("User", f"{message.author.id}"),
@@ -847,11 +864,14 @@ class ContentModerationService:
             )
             dm_embed.set_footer(text="Please keep discussions secular. Repeated violations may result in mute.")
             await message.author.send(embed=dm_embed)
-            logger.debug(f"Violation DM sent to user {message.author.id}")
+            logger.debug("Violation DM Sent", [("User", str(message.author.id))])
         except discord.Forbidden:
-            logger.debug(f"Cannot DM user {message.author.id}: DMs disabled")
+            logger.debug("Violation DM Blocked", [("User", str(message.author.id))])
         except discord.HTTPException as e:
-            logger.debug(f"DM failed for user {message.author.id}: {e}")
+            logger.debug("Violation DM Failed", [
+                ("User", str(message.author.id)),
+                ("Error", str(e)[:50]),
+            ])
 
     async def _send_mod_alert(
         self,
@@ -909,7 +929,7 @@ class ContentModerationService:
                 embed,
                 user_id=message.author.id,
             )
-            logger.debug(f"Mod alert sent for user {message.author.id}")
+            logger.debug("Mod Alert Sent", [("User", str(message.author.id))])
         except discord.HTTPException as e:
             logger.warning("Failed to Send Mod Alert", [
                 ("Error", str(e)[:50]),
