@@ -8,11 +8,12 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import time
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
 import aiohttp
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from src.core.config import get_config
@@ -27,8 +28,50 @@ from src.api.services.snapshots import get_snapshot_service
 # TrippixnBot API for guild stats (has accurate online count)
 TRIPPIXN_API_URL = "http://localhost:8085/api/stats"
 
+# Cache settings
+CACHE_TTL_SECONDS = 120  # 2 minutes
+
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+
+
+# =============================================================================
+# Cache
+# =============================================================================
+
+class DashboardCache:
+    """Simple TTL cache for dashboard stats."""
+
+    def __init__(self):
+        self._cache: dict[int, tuple[float, dict]] = {}  # mod_id -> (timestamp, data)
+
+    def get(self, moderator_id: int) -> Optional[dict]:
+        """Get cached data if still valid."""
+        if moderator_id not in self._cache:
+            return None
+
+        cached_at, data = self._cache[moderator_id]
+        if time.time() - cached_at > CACHE_TTL_SECONDS:
+            del self._cache[moderator_id]
+            return None
+
+        return data
+
+    def set(self, moderator_id: int, data: dict) -> None:
+        """Cache data for moderator."""
+        self._cache[moderator_id] = (time.time(), data)
+
+    def invalidate(self, moderator_id: int) -> None:
+        """Remove cached data for moderator."""
+        self._cache.pop(moderator_id, None)
+
+    def clear(self) -> None:
+        """Clear all cached data."""
+        self._cache.clear()
+
+
+# Singleton cache instance
+_dashboard_cache = DashboardCache()
 
 
 # =============================================================================
@@ -81,31 +124,208 @@ class DashboardStatsResponse(BaseModel):
     moderator: ModeratorDashboardStats
     server: ServerDashboardStats
     activity: list[DailyActivity] = Field(default_factory=list, description="Last 14 days activity")
+    cached: bool = Field(False, description="Whether this response was served from cache")
+    cached_at: Optional[float] = Field(None, description="Cache timestamp (unix)")
 
 
 # =============================================================================
-# Helper Functions
+# Optimized Query Helpers
 # =============================================================================
 
-def _get_daily_counts(
-    db,
-    now: datetime,
-    days: int,
-    query: str,
-    params: tuple = ()
-) -> list[int]:
-    """Get daily counts for the last N days."""
-    counts = []
-    for i in range(days - 1, -1, -1):  # Oldest to newest
-        day = now - timedelta(days=i)
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        day_end = day_start + 86400
+def _get_moderator_stats_optimized(db, moderator_id: int, week_ago: float, two_weeks_ago: float, month_ago: float) -> dict:
+    """
+    Get all moderator stats in a single optimized query.
 
-        full_query = query.format(day_start=day_start, day_end=day_end)
-        result = db.fetchone(full_query, params)
-        counts.append(result[0] if result else 0)
+    Returns dict with: total_cases, cases_this_week, cases_last_week, cases_this_month,
+                       total_mutes, total_bans, total_warns
+    """
+    result = db.fetchone(
+        """
+        SELECT
+            COUNT(*) as total_cases,
+            SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) as cases_this_week,
+            SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) as cases_last_week,
+            SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) as cases_this_month,
+            SUM(CASE WHEN action_type = 'mute' THEN 1 ELSE 0 END) as total_mutes,
+            SUM(CASE WHEN action_type = 'ban' THEN 1 ELSE 0 END) as total_bans,
+            SUM(CASE WHEN action_type = 'warn' THEN 1 ELSE 0 END) as total_warns
+        FROM cases
+        WHERE moderator_id = ?
+        """,
+        (week_ago, two_weeks_ago, week_ago, month_ago, moderator_id)
+    )
 
-    return counts
+    return {
+        "total_cases": result[0] or 0,
+        "cases_this_week": result[1] or 0,
+        "cases_last_week": result[2] or 0,
+        "cases_this_month": result[3] or 0,
+        "total_mutes": result[4] or 0,
+        "total_bans": result[5] or 0,
+        "total_warns": result[6] or 0,
+    }
+
+
+def _get_moderator_daily_stats(db, moderator_id: int, now: datetime) -> dict:
+    """
+    Get moderator's daily breakdown for last 7 days in a single query.
+
+    Returns dict with: daily_cases, daily_warns, daily_mutes, daily_bans (each a list of 7 ints)
+    """
+    # Calculate date boundaries
+    seven_days_ago = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+
+    rows = db.fetchall(
+        """
+        SELECT
+            CAST((created_at - ?) / 86400 AS INTEGER) as day_index,
+            COUNT(*) as total,
+            SUM(CASE WHEN action_type = 'warn' THEN 1 ELSE 0 END) as warns,
+            SUM(CASE WHEN action_type = 'mute' THEN 1 ELSE 0 END) as mutes,
+            SUM(CASE WHEN action_type = 'ban' THEN 1 ELSE 0 END) as bans
+        FROM cases
+        WHERE moderator_id = ? AND created_at >= ?
+        GROUP BY day_index
+        """,
+        (seven_days_ago, moderator_id, seven_days_ago)
+    )
+
+    # Initialize arrays with zeros
+    daily_cases = [0] * 7
+    daily_warns = [0] * 7
+    daily_mutes = [0] * 7
+    daily_bans = [0] * 7
+
+    # Fill in actual values
+    for row in rows:
+        day_idx = int(row[0])
+        if 0 <= day_idx < 7:
+            daily_cases[day_idx] = row[1] or 0
+            daily_warns[day_idx] = row[2] or 0
+            daily_mutes[day_idx] = row[3] or 0
+            daily_bans[day_idx] = row[4] or 0
+
+    return {
+        "daily_cases": daily_cases,
+        "daily_warns": daily_warns,
+        "daily_mutes": daily_mutes,
+        "daily_bans": daily_bans,
+    }
+
+
+def _get_server_stats_optimized(db, today_start: float, week_ago: float, two_weeks_ago: float) -> dict:
+    """
+    Get all server stats in a single optimized query.
+
+    Returns dict with: total_cases, cases_today, cases_this_week, cases_last_week
+    """
+    result = db.fetchone(
+        """
+        SELECT
+            COUNT(*) as total_cases,
+            SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) as cases_today,
+            SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) as cases_this_week,
+            SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) as cases_last_week
+        FROM cases
+        """,
+        (today_start, week_ago, two_weeks_ago, week_ago)
+    )
+
+    return {
+        "total_cases": result[0] or 0,
+        "cases_today": result[1] or 0,
+        "cases_this_week": result[2] or 0,
+        "cases_last_week": result[3] or 0,
+    }
+
+
+def _get_server_daily_stats(db, now: datetime) -> dict:
+    """
+    Get server's daily cases and tickets for last 7 days in optimized queries.
+
+    Returns dict with: daily_cases, daily_tickets (each a list of 7 ints)
+    """
+    seven_days_ago = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+
+    # Daily cases
+    case_rows = db.fetchall(
+        """
+        SELECT
+            CAST((created_at - ?) / 86400 AS INTEGER) as day_index,
+            COUNT(*) as total
+        FROM cases
+        WHERE created_at >= ?
+        GROUP BY day_index
+        """,
+        (seven_days_ago, seven_days_ago)
+    )
+
+    # Daily tickets
+    ticket_rows = db.fetchall(
+        """
+        SELECT
+            CAST((created_at - ?) / 86400 AS INTEGER) as day_index,
+            COUNT(*) as total
+        FROM tickets
+        WHERE created_at >= ?
+        GROUP BY day_index
+        """,
+        (seven_days_ago, seven_days_ago)
+    )
+
+    # Initialize arrays
+    daily_cases = [0] * 7
+    daily_tickets = [0] * 7
+
+    for row in case_rows:
+        day_idx = int(row[0])
+        if 0 <= day_idx < 7:
+            daily_cases[day_idx] = row[1] or 0
+
+    for row in ticket_rows:
+        day_idx = int(row[0])
+        if 0 <= day_idx < 7:
+            daily_tickets[day_idx] = row[1] or 0
+
+    return {
+        "daily_cases": daily_cases,
+        "daily_tickets": daily_tickets,
+    }
+
+
+def _get_activity_chart(db, now: datetime) -> list[DailyActivity]:
+    """
+    Get 14-day activity chart in a single query.
+
+    Returns list of DailyActivity objects.
+    """
+    fourteen_days_ago = (now - timedelta(days=13)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+
+    rows = db.fetchall(
+        """
+        SELECT
+            CAST((created_at - ?) / 86400 AS INTEGER) as day_index,
+            COUNT(*) as total
+        FROM cases
+        WHERE created_at >= ?
+        GROUP BY day_index
+        """,
+        (fourteen_days_ago, fourteen_days_ago)
+    )
+
+    # Build day index -> count map
+    day_counts = {int(row[0]): row[1] for row in rows}
+
+    # Generate activity list
+    activity = []
+    for i in range(14):
+        day = now - timedelta(days=13 - i)
+        activity.append(DailyActivity(
+            date=day.strftime("%b %d"),
+            cases=day_counts.get(i, 0),
+        ))
+
+    return activity
 
 
 # =============================================================================
@@ -116,15 +336,30 @@ def _get_daily_counts(
 async def get_dashboard_stats(
     bot: Any = Depends(get_bot),
     payload: TokenPayload = Depends(require_auth),
+    refresh: bool = Query(False, description="Force refresh, bypass cache"),
 ) -> APIResponse[DashboardStatsResponse]:
     """
     Get combined dashboard statistics.
 
     Returns both personal moderator stats and server-wide stats.
+    Use ?refresh=true to bypass cache and get fresh data.
     """
-    db = get_db()
     config = get_config()
     moderator_id = payload.sub
+
+    # Check cache first (unless refresh requested)
+    if not refresh:
+        cached_data = _dashboard_cache.get(moderator_id)
+        if cached_data:
+            logger.debug("Dashboard Cache Hit", [
+                ("Moderator", str(moderator_id)),
+            ])
+            # Mark as cached when returning from cache
+            cached_data["cached"] = True
+            return APIResponse(success=True, data=DashboardStatsResponse(**cached_data))
+
+    # Cache miss or refresh requested - fetch fresh data
+    db = get_db()
 
     # Time calculations
     now = datetime.utcnow()
@@ -134,89 +369,11 @@ async def get_dashboard_stats(
     month_ago = (now - timedelta(days=30)).timestamp()
 
     # =========================================================================
-    # Moderator Stats
+    # Moderator Stats (2 optimized queries instead of 10+)
     # =========================================================================
 
-    # Total cases by this mod
-    mod_total_cases = db.fetchone(
-        "SELECT COUNT(*) FROM cases WHERE moderator_id = ?",
-        (moderator_id,)
-    )[0]
-
-    # Cases this week
-    mod_cases_week = db.fetchone(
-        "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND created_at >= ?",
-        (moderator_id, week_ago)
-    )[0]
-
-    # Cases last week (7-14 days ago)
-    mod_cases_last_week = db.fetchone(
-        "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND created_at >= ? AND created_at < ?",
-        (moderator_id, two_weeks_ago, week_ago)
-    )[0]
-
-    # Cases this month
-    mod_cases_month = db.fetchone(
-        "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND created_at >= ?",
-        (moderator_id, month_ago)
-    )[0]
-
-    # Mutes by this mod
-    mod_mutes = db.fetchone(
-        "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND action_type = 'mute'",
-        (moderator_id,)
-    )[0]
-
-    # Bans by this mod
-    mod_bans = db.fetchone(
-        "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND action_type = 'ban'",
-        (moderator_id,)
-    )[0]
-
-    # Warns by this mod
-    mod_warns = db.fetchone(
-        "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND action_type = 'warn'",
-        (moderator_id,)
-    )[0]
-
-    # Daily sparklines for moderator (last 7 days)
-    mod_daily_cases = []
-    mod_daily_warns = []
-    mod_daily_mutes = []
-    mod_daily_bans = []
-
-    for i in range(6, -1, -1):  # 6 days ago to today
-        day = now - timedelta(days=i)
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        day_end = day_start + 86400
-
-        # All cases
-        day_cases = db.fetchone(
-            "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND created_at >= ? AND created_at < ?",
-            (moderator_id, day_start, day_end)
-        )[0]
-        mod_daily_cases.append(day_cases)
-
-        # Warns
-        day_warns = db.fetchone(
-            "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND action_type = 'warn' AND created_at >= ? AND created_at < ?",
-            (moderator_id, day_start, day_end)
-        )[0]
-        mod_daily_warns.append(day_warns)
-
-        # Mutes
-        day_mutes = db.fetchone(
-            "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND action_type = 'mute' AND created_at >= ? AND created_at < ?",
-            (moderator_id, day_start, day_end)
-        )[0]
-        mod_daily_mutes.append(day_mutes)
-
-        # Bans
-        day_bans = db.fetchone(
-            "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND action_type = 'ban' AND created_at >= ? AND created_at < ?",
-            (moderator_id, day_start, day_end)
-        )[0]
-        mod_daily_bans.append(day_bans)
+    mod_stats = _get_moderator_stats_optimized(db, moderator_id, week_ago, two_weeks_ago, month_ago)
+    mod_daily = _get_moderator_daily_stats(db, moderator_id, now)
 
     # When did this mod join the server?
     joined_at = None
@@ -228,22 +385,22 @@ async def get_dashboard_stats(
                 joined_at = member.joined_at
 
     moderator_stats = ModeratorDashboardStats(
-        total_cases=mod_total_cases,
-        cases_this_week=mod_cases_week,
-        cases_last_week=mod_cases_last_week,
-        cases_this_month=mod_cases_month,
-        total_mutes=mod_mutes,
-        total_bans=mod_bans,
-        total_warns=mod_warns,
+        total_cases=mod_stats["total_cases"],
+        cases_this_week=mod_stats["cases_this_week"],
+        cases_last_week=mod_stats["cases_last_week"],
+        cases_this_month=mod_stats["cases_this_month"],
+        total_mutes=mod_stats["total_mutes"],
+        total_bans=mod_stats["total_bans"],
+        total_warns=mod_stats["total_warns"],
         joined_at=joined_at,
-        daily_cases=mod_daily_cases,
-        daily_warns=mod_daily_warns,
-        daily_mutes=mod_daily_mutes,
-        daily_bans=mod_daily_bans,
+        daily_cases=mod_daily["daily_cases"],
+        daily_warns=mod_daily["daily_warns"],
+        daily_mutes=mod_daily["daily_mutes"],
+        daily_bans=mod_daily["daily_bans"],
     )
 
     # =========================================================================
-    # Server Stats
+    # Server Stats (3 optimized queries instead of 8+)
     # =========================================================================
 
     # Fetch guild stats from TrippixnBot (has accurate member/online counts)
@@ -259,66 +416,25 @@ async def get_dashboard_stats(
                     total_members = guild_data.get("member_count", 0)
                     online_members = guild_data.get("online_count", 0)
     except Exception as e:
-        logger.warning("Failed to Fetch TrippixnBot Stats", [
+        logger.warning("Dashboard TrippixnBot Fetch Failed", [
+            ("Error Type", type(e).__name__),
             ("Error", str(e)[:50]),
         ])
         # Fallback to local guild data
-        guild = None
         if config.logging_guild_id:
             guild = bot.get_guild(config.logging_guild_id)
-        if guild:
-            total_members = guild.member_count or 0
+            if guild:
+                total_members = guild.member_count or 0
 
-    # Total cases server-wide
-    server_total_cases = db.fetchone("SELECT COUNT(*) FROM cases")[0]
+    server_stats_data = _get_server_stats_optimized(db, today_start, week_ago, two_weeks_ago)
+    server_daily = _get_server_daily_stats(db, now)
 
-    # Cases today
-    server_cases_today = db.fetchone(
-        "SELECT COUNT(*) FROM cases WHERE created_at >= ?",
-        (today_start,)
-    )[0]
-
-    # Cases this week
-    server_cases_week = db.fetchone(
-        "SELECT COUNT(*) FROM cases WHERE created_at >= ?",
-        (week_ago,)
-    )[0]
-
-    # Cases last week (7-14 days ago)
-    server_cases_last_week = db.fetchone(
-        "SELECT COUNT(*) FROM cases WHERE created_at >= ? AND created_at < ?",
-        (two_weeks_ago, week_ago)
-    )[0]
-
-    # Active tickets (open or claimed)
+    # Active tickets (simple count)
     active_tickets = db.fetchone(
         "SELECT COUNT(*) FROM tickets WHERE status IN ('open', 'claimed')"
     )[0]
 
-    # Daily server stats (last 7 days)
-    server_daily_cases = []
-    server_daily_tickets = []
-
-    for i in range(6, -1, -1):  # 6 days ago to today
-        day = now - timedelta(days=i)
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        day_end = day_start + 86400
-
-        # Cases
-        day_cases = db.fetchone(
-            "SELECT COUNT(*) FROM cases WHERE created_at >= ? AND created_at < ?",
-            (day_start, day_end)
-        )[0]
-        server_daily_cases.append(day_cases)
-
-        # New tickets created
-        day_tickets = db.fetchone(
-            "SELECT COUNT(*) FROM tickets WHERE created_at >= ? AND created_at < ?",
-            (day_start, day_end)
-        )[0]
-        server_daily_tickets.append(day_tickets)
-
-    # Get historical snapshots from snapshot service
+    # Historical snapshots for member/online trends
     daily_members = []
     daily_online = []
     snapshot_service = get_snapshot_service()
@@ -329,56 +445,47 @@ async def get_dashboard_stats(
     server_stats = ServerDashboardStats(
         total_members=total_members,
         online_members=online_members,
-        total_cases=server_total_cases,
-        cases_today=server_cases_today,
-        cases_this_week=server_cases_week,
-        cases_last_week=server_cases_last_week,
+        total_cases=server_stats_data["total_cases"],
+        cases_today=server_stats_data["cases_today"],
+        cases_this_week=server_stats_data["cases_this_week"],
+        cases_last_week=server_stats_data["cases_last_week"],
         active_tickets=active_tickets,
         daily_members=daily_members,
         daily_online=daily_online,
-        daily_cases=server_daily_cases,
-        daily_tickets=server_daily_tickets,
+        daily_cases=server_daily["daily_cases"],
+        daily_tickets=server_daily["daily_tickets"],
     )
 
     # =========================================================================
-    # Activity (Last 14 Days)
+    # Activity Chart (1 optimized query instead of 14)
     # =========================================================================
 
-    activity = []
-    for i in range(13, -1, -1):  # 13 days ago to today
-        day = now - timedelta(days=i)
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        day_end = day_start + 86400  # 24 hours
-
-        day_cases = db.fetchone(
-            "SELECT COUNT(*) FROM cases WHERE created_at >= ? AND created_at < ?",
-            (day_start, day_end)
-        )[0]
-
-        activity.append(DailyActivity(
-            date=day.strftime("%b %d"),  # e.g., "Jan 24"
-            cases=day_cases,
-        ))
+    activity = _get_activity_chart(db, now)
 
     # =========================================================================
-    # Response
+    # Build Response & Cache
     # =========================================================================
+
+    cache_time = time.time()
+    response_data = DashboardStatsResponse(
+        moderator=moderator_stats,
+        server=server_stats,
+        activity=activity,
+        cached=False,
+        cached_at=cache_time,
+    )
+
+    # Cache the response
+    _dashboard_cache.set(moderator_id, response_data.model_dump())
 
     logger.debug("Dashboard Stats Fetched", [
         ("Moderator", str(moderator_id)),
-        ("Mod Cases", str(mod_total_cases)),
-        ("Server Cases", str(server_total_cases)),
-        ("Active Tickets", str(active_tickets)),
+        ("Mod Cases", str(mod_stats["total_cases"])),
+        ("Server Cases", str(server_stats_data["total_cases"])),
+        ("Refresh", str(refresh)),
     ])
 
-    return APIResponse(
-        success=True,
-        data=DashboardStatsResponse(
-            moderator=moderator_stats,
-            server=server_stats,
-            activity=activity,
-        ),
-    )
+    return APIResponse(success=True, data=response_data)
 
 
 __all__ = ["router"]
