@@ -33,6 +33,7 @@ from src.api.routers import (
     users_router,
     stats_router,
     websocket_router,
+    server_router,
 )
 
 
@@ -142,6 +143,7 @@ def create_app(bot: Optional[Any] = None) -> FastAPI:
 
     app.include_router(health_router, prefix="/api/azab")
     app.include_router(auth_router, prefix="/api/azab")
+    app.include_router(server_router, prefix="/api/azab")
     app.include_router(cases_router, prefix="/api/azab")
     app.include_router(tickets_router, prefix="/api/azab")
     app.include_router(transcripts_router, prefix="/api/azab")

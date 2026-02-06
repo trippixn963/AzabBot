@@ -18,6 +18,7 @@ from .appeal_form import router as appeal_form_router
 from .users import router as users_router
 from .stats import router as stats_router
 from .websocket import router as websocket_router
+from .server import router as server_router
 
 __all__ = [
     "health_router",
@@ -30,4 +31,5 @@ __all__ = [
     "users_router",
     "stats_router",
     "websocket_router",
+    "server_router",
 ]
