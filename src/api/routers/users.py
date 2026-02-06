@@ -8,6 +8,8 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
+import time
 from datetime import datetime
 from typing import Any, List, Optional
 
@@ -28,6 +30,41 @@ from src.core.database import get_db
 
 
 router = APIRouter(prefix="/users", tags=["Users"])
+
+
+# =============================================================================
+# Lookup Cache
+# =============================================================================
+
+LOOKUP_CACHE_TTL = 60  # 1 minute cache
+
+
+class LookupCache:
+    """Simple TTL cache for user lookups."""
+
+    def __init__(self):
+        self._cache: dict[int, tuple[float, dict]] = {}  # user_id -> (timestamp, data)
+
+    def get(self, user_id: int) -> Optional[dict]:
+        """Get cached data if still valid."""
+        if user_id not in self._cache:
+            return None
+        cached_at, data = self._cache[user_id]
+        if time.time() - cached_at > LOOKUP_CACHE_TTL:
+            del self._cache[user_id]
+            return None
+        return data
+
+    def set(self, user_id: int, data: dict) -> None:
+        """Cache lookup result."""
+        self._cache[user_id] = (time.time(), data)
+
+    def invalidate(self, user_id: int) -> None:
+        """Remove cached data."""
+        self._cache.pop(user_id, None)
+
+
+_lookup_cache = LookupCache()
 
 
 # =============================================================================
@@ -67,12 +104,53 @@ class UserLookupResult(BaseModel):
 
 
 # =============================================================================
+# Lookup Helpers
+# =============================================================================
+
+async def _batch_fetch_moderators(bot: Any, mod_ids: set[int]) -> dict[int, str]:
+    """
+    Batch fetch moderator names. Returns dict of mod_id -> username.
+    Uses bot cache first, then fetches missing ones concurrently.
+    """
+    result = {}
+    to_fetch = []
+
+    # First pass: check bot cache
+    for mod_id in mod_ids:
+        cached = bot.get_user(mod_id)
+        if cached:
+            result[mod_id] = cached.name
+        else:
+            to_fetch.append(mod_id)
+
+    # Fetch missing ones concurrently (max 10 at a time to avoid rate limits)
+    if to_fetch:
+        async def fetch_one(uid: int) -> tuple[int, Optional[str]]:
+            try:
+                user = await bot.fetch_user(uid)
+                return (uid, user.name if user else None)
+            except Exception:
+                return (uid, None)
+
+        # Batch in groups of 10
+        for i in range(0, len(to_fetch), 10):
+            batch = to_fetch[i:i+10]
+            fetched = await asyncio.gather(*[fetch_one(uid) for uid in batch])
+            for uid, name in fetched:
+                if name:
+                    result[uid] = name
+
+    return result
+
+
+# =============================================================================
 # Lookup
 # =============================================================================
 
 @router.get("/lookup", response_model=APIResponse[UserLookupResult])
 async def lookup_user(
     query: str = Query(..., min_length=1, description="Discord ID or username"),
+    refresh: bool = Query(False, description="Bypass cache"),
     bot: Any = Depends(get_bot),
     payload: TokenPayload = Depends(require_auth),
 ) -> APIResponse[UserLookupResult]:
@@ -80,33 +158,55 @@ async def lookup_user(
     Look up a user by Discord ID or username.
 
     Returns comprehensive user info including punishment history.
+    Use ?refresh=true to bypass cache.
     """
     db = get_db()
     config = get_config()
     user: Optional[discord.User] = None
     member: Optional[discord.Member] = None
+    user_id: Optional[int] = None
 
-    # Try to find the user
-    # First, try parsing as Discord ID
+    # Try to parse as Discord ID first
     try:
         user_id = int(query)
-        user = await bot.fetch_user(user_id)
-    except (ValueError, discord.NotFound):
+    except ValueError:
         pass
+
+    # Check cache if we have a user_id and not refreshing
+    if user_id and not refresh:
+        cached = _lookup_cache.get(user_id)
+        if cached:
+            logger.debug("User Lookup Cache Hit", [
+                ("User ID", str(user_id)),
+            ])
+            return APIResponse(success=True, data=UserLookupResult(**cached))
+
+    # Fetch user by ID
+    if user_id:
+        try:
+            user = await bot.fetch_user(user_id)
+        except discord.NotFound:
+            pass
+        except discord.HTTPException as e:
+            logger.warning("User Lookup Fetch Failed", [
+                ("User ID", str(user_id)),
+                ("Error", str(e)[:50]),
+            ])
 
     # If not found by ID, search guild members by name
     if not user and config.logging_guild_id:
         guild = bot.get_guild(config.logging_guild_id)
         if guild:
-            # Search by username or display name
             query_lower = query.lower()
-            for m in guild.members:
-                if (query_lower in m.name.lower() or
-                    query_lower in m.display_name.lower() or
-                    query_lower == str(m.id)):
-                    user = m
-                    member = m
-                    break
+            # Use discord.utils.find for cleaner search
+            member = discord.utils.find(
+                lambda m: (query_lower in m.name.lower() or
+                          query_lower in m.display_name.lower()),
+                guild.members
+            )
+            if member:
+                user = member
+                user_id = member.id
 
     if not user:
         logger.debug("User Lookup Not Found", [
@@ -161,7 +261,7 @@ async def lookup_user(
     if active_mute and active_mute[0]:
         mute_expires_at = datetime.utcfromtimestamp(active_mute[0]).isoformat()
 
-    # Check for active ban (check if user is banned from guild)
+    # Check for active ban
     is_banned = False
     if config.logging_guild_id:
         guild = bot.get_guild(config.logging_guild_id)
@@ -172,7 +272,8 @@ async def lookup_user(
             except discord.NotFound:
                 is_banned = False
             except discord.Forbidden:
-                # Can't check bans, assume not banned
+                pass
+            except discord.HTTPException:
                 pass
 
     # Get punishment history (last 50 cases)
@@ -188,13 +289,19 @@ async def lookup_user(
         (user_id,)
     )
 
+    # Batch fetch all moderator names (instead of N+1 queries)
+    mod_ids = {row[3] for row in case_rows if row[3]}
+    mod_names = await _batch_fetch_moderators(bot, mod_ids)
+
+    # Build punishments list
     punishments = []
     for row in case_rows:
         created_ts = row[4]
         duration = row[5]
         resolved_at = row[6]
+        mod_id = row[3]
 
-        # Calculate if active and expiry
+        # Calculate expiry and active status
         expires_at = None
         is_active = False
         if duration and created_ts:
@@ -202,24 +309,14 @@ async def lookup_user(
             expires_at = datetime.utcfromtimestamp(expires_ts).isoformat()
             is_active = expires_ts > now and resolved_at is None
         elif resolved_at is None and row[1] in ('mute', 'ban'):
-            # Permanent punishment, check if still active
             is_active = True
-
-        # Get moderator name
-        mod_name = None
-        try:
-            mod_user = bot.get_user(row[3]) or await bot.fetch_user(row[3])
-            if mod_user:
-                mod_name = mod_user.name
-        except Exception:
-            pass
 
         punishments.append(UserPunishment(
             case_id=row[0],
             action_type=row[1],
             reason=row[2],
-            moderator_id=str(row[3]),
-            moderator_name=mod_name,
+            moderator_id=str(mod_id),
+            moderator_name=mod_names.get(mod_id),
             created_at=datetime.utcfromtimestamp(created_ts).isoformat(),
             expires_at=expires_at,
             is_active=is_active,
@@ -243,10 +340,12 @@ async def lookup_user(
         punishments=punishments,
     )
 
+    # Cache the result
+    _lookup_cache.set(user_id, result.model_dump())
+
     logger.debug("User Lookup", [
         ("Query", query[:20]),
         ("User ID", str(user_id)),
-        ("Username", user.name[:20]),
         ("Cases", str(total_cases)),
         ("Muted", str(is_muted)),
         ("Banned", str(is_banned)),
