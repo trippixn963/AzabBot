@@ -117,7 +117,7 @@ class ContentClassifier:
         original_length = len(content)
         if original_length > MAX_MESSAGE_LENGTH:
             content = content[:MAX_MESSAGE_LENGTH] + "..."
-            logger.debug(f"Content truncated from {original_length} to {MAX_MESSAGE_LENGTH} chars")
+            logger.debug("Content Truncated", [("From", str(original_length)), ("To", str(MAX_MESSAGE_LENGTH))])
 
         try:
             session = await self._get_session()
@@ -137,7 +137,7 @@ class ContentClassifier:
                 "Content-Type": "application/json",
             }
 
-            logger.debug(f"OpenAI API call: {len(content)} chars")
+            logger.debug("OpenAI API Call", [("Chars", str(len(content)))])
 
             async with session.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -182,7 +182,7 @@ class ContentClassifier:
                 reason=result.get("reason", "No reason provided"),
             )
 
-            logger.debug(f"Classification result: violation={classification.violation}, confidence={classification.confidence:.0%}")
+            logger.debug("Classification Result", [("Violation", str(classification.violation)), ("Confidence", f"{classification.confidence:.0%}")])
 
             return classification
 

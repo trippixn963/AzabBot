@@ -546,7 +546,7 @@ class WarnCog(commands.Cog):
                     reason=reason,
                 )
         except Exception as e:
-            logger.error(f"Failed to post to mod log: {e}")
+            logger.error("Mod Log Post Failed", [("Error", str(e)[:50])])
 
 
 # =============================================================================

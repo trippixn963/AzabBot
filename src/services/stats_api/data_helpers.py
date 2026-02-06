@@ -329,7 +329,7 @@ class DataHelpersMixin:
                     "released": time_str,
                 })
             except Exception as e:
-                logger.debug(f"Stats API: Skipping release entry for user {release.get('user_id', '?')}: {str(e)[:50]}")
+                logger.debug("Stats API Release Skip", [("User", str(release.get('user_id', '?'))), ("Error", str(e)[:50])])
                 continue
 
         return enriched

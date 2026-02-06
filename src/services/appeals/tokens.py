@@ -58,7 +58,7 @@ def generate_appeal_token(case_id: str, user_id: int) -> Optional[str]:
 
     try:
         token = jwt.encode(payload, secret, algorithm=ALGORITHM)
-        logger.debug(f"Appeal Token Generated: case_id={case_id}, user_id={user_id}")
+        logger.debug("Appeal Token Generated", [("Case ID", case_id), ("User ID", str(user_id))])
         return token
     except Exception as e:
         logger.error("Appeal Token Generation Failed", [

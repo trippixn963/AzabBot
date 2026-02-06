@@ -84,7 +84,7 @@ class HelpersMixin:
             )
 
         except Exception as e:
-            logger.debug(f"Failed to log snipe usage: {e}")
+            logger.debug("Snipe Log Failed", [("Error", str(e)[:50])])
 
     async def _log_editsnipe_usage(
         self: "SnipeCog",
@@ -152,7 +152,7 @@ class HelpersMixin:
             )
 
         except Exception as e:
-            logger.debug(f"Failed to log editsnipe usage: {e}")
+            logger.debug("Editsnipe Log Failed", [("Error", str(e)[:50])])
 
     async def _log_clearsnipe_usage(
         self: "SnipeCog",
@@ -215,7 +215,7 @@ class HelpersMixin:
             )
 
         except Exception as e:
-            logger.debug(f"Failed to log clearsnipe usage: {e}")
+            logger.debug("Clearsnipe Log Failed", [("Error", str(e)[:50])])
 
 
 __all__ = ["HelpersMixin"]

@@ -364,7 +364,7 @@ class CaseLogActionsMixin:
                 try:
                     await case_thread.edit(locked=False)
                 except discord.HTTPException as e:
-                    logger.debug(f"Thread unlock failed for unmute: {case_thread.id} - {e.code}: {e.text[:50] if e.text else 'No text'}")
+                    logger.debug("Thread Unlock Failed", [("Thread", str(case_thread.id)), ("Code", str(e.code))])
 
             embed = build_unmute_embed(
                 moderator, reason, user_avatar_url, time_served,
@@ -397,7 +397,7 @@ class CaseLogActionsMixin:
                 try:
                     await case_thread.edit(locked=True)
                 except discord.HTTPException as e:
-                    logger.debug(f"Thread re-lock failed for unmute: {case_thread.id} - {e.code}: {e.text[:50] if e.text else 'No text'}")
+                    logger.debug("Thread Re-lock Failed", [("Thread", str(case_thread.id)), ("Code", str(e.code))])
 
             self.db.resolve_case(
                 case_id=active_case["case_id"],

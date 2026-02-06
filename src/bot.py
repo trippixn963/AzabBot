@@ -171,7 +171,7 @@ class AzabBot(commands.Bot):
         for cog in COMMAND_COGS:
             try:
                 await self.load_extension(cog)
-                logger.info(f"Cog Loaded: {cog.split('.')[-1]}")
+                logger.info("Cog Loaded", [("Cog", cog.split('.')[-1])])
             except Exception as e:
                 logger.error("Failed to Load Cog", [("Cog", cog), ("Error", str(e))])
 
@@ -667,7 +667,7 @@ class AzabBot(commands.Bot):
                         if len(self._invite_cache) >= self._invite_cache_limit:
                             break
                         self._invite_cache[invite.code] = invite.uses or 0
-                    logger.info(f"Cached {len(invites)} invites for {guild.name}")
+                    logger.info("Invites Cached", [("Count", str(len(invites))), ("Guild", guild.name)])
                 except discord.Forbidden:
                     logger.debug("No Permission to Fetch Invites", [("Guild", guild.name)])
                 except asyncio.TimeoutError:

@@ -320,7 +320,7 @@ class CaseLogExtendedActionsMixin:
                     try:
                         await case_thread.edit(locked=False)
                     except discord.HTTPException as e:
-                        logger.debug(f"Thread unlock failed for unban: {case_thread.id} - {e.code}: {e.text[:50] if e.text else 'No text'}")
+                        logger.debug("Thread Unlock Failed", [("Thread", str(case_thread.id)), ("Code", str(e.code))])
 
                 now = datetime.now(NY_TZ)
 
@@ -395,7 +395,7 @@ class CaseLogExtendedActionsMixin:
                     try:
                         await case_thread.edit(locked=True)
                     except discord.HTTPException as e:
-                        logger.debug(f"Thread re-lock failed for unban: {case_thread.id} - {e.code}: {e.text[:50] if e.text else 'No text'}")
+                        logger.debug("Thread Re-lock Failed", [("Thread", str(case_thread.id)), ("Code", str(e.code))])
 
                 self.db.resolve_case(
                     case_id=active_ban_case["case_id"],
@@ -609,7 +609,7 @@ class CaseLogExtendedActionsMixin:
                 try:
                     await case_thread.edit(locked=False)
                 except discord.HTTPException as e:
-                    logger.debug(f"Thread unlock failed for unforbid: {case_thread.id} - {e.code}: {e.text[:50] if e.text else 'No text'}")
+                    logger.debug("Thread Unlock Failed", [("Thread", str(case_thread.id)), ("Code", str(e.code))])
 
             embed = build_unforbid_embed(user, moderator, restrictions)
             # Action embeds no longer have buttons - control panel handles all controls
@@ -646,7 +646,7 @@ class CaseLogExtendedActionsMixin:
                 try:
                     await case_thread.edit(locked=True)
                 except discord.HTTPException as e:
-                    logger.debug(f"Thread re-lock failed for unforbid: {case_thread.id} - {e.code}: {e.text[:50] if e.text else 'No text'}")
+                    logger.debug("Thread Re-lock Failed", [("Thread", str(case_thread.id)), ("Code", str(e.code))])
 
             # Mark case as resolved
             self.db.resolve_case(

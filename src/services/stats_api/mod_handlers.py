@@ -260,7 +260,7 @@ class ModHandlersMixin:
 
         # Verify password
         if not auth_manager.verify_user(discord_id, password):
-            logger.warning(f"Mod Dashboard: Failed login for {discord_id}")
+            logger.warning("Mod Dashboard Login Failed", [("User", str(discord_id))])
             return web.json_response(
                 {"success": False, "error": "Invalid password"},
                 status=401,
@@ -743,7 +743,7 @@ class ModHandlersMixin:
                 "icon_url": icon_url,
             }, headers=_cors_headers())
         except Exception as e:
-            logger.error(f"Failed to fetch server info: {e}")
+            logger.error("Server Info Fetch Failed", [("Error", str(e)[:50])])
             return web.json_response({
                 "name": "Moderation Dashboard",
                 "icon_url": None,

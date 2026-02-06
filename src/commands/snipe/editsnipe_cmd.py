@@ -53,7 +53,7 @@ class EditsnipeCmdMixin:
             channel_edits = list(edit_cache.get(channel_id, []))
 
             if not channel_edits:
-                logger.debug(f"Editsnipe attempted but no cache for channel {channel_id}")
+                logger.debug("Editsnipe No Cache", [("Channel", str(channel_id))])
                 await interaction.response.send_message(
                     "No recently edited messages in this channel.",
                     ephemeral=True,

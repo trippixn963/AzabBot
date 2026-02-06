@@ -172,7 +172,7 @@ class GenderRoleTask(MaintenanceTask):
                 user_id=member.id,
             )
         except Exception as e:
-            logger.debug(f"Failed to log gender resolution: {e}")
+            logger.debug("Gender Resolution Log Failed", [("Error", str(e)[:50])])
 
 
 __all__ = ["GenderRoleTask"]

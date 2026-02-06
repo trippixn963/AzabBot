@@ -281,7 +281,7 @@ class LinkConfirmView(discord.ui.View):
             )
 
         except Exception as e:
-            logger.debug(f"Failed to log link creation: {e}")
+            logger.debug("Link Log Failed", [("Error", str(e)[:50])])
 
 
 # =============================================================================

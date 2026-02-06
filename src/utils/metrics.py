@@ -118,7 +118,7 @@ class MetricsCollector:
 
         # Log slow operations
         if LOG_SLOW_OPERATIONS and duration_ms > SLOW_THRESHOLD_MS:
-            logger.warning(f"Slow Operation Detected", [
+            logger.warning("Slow Operation Detected", [
                 ("Metric", name),
                 ("Duration", f"{duration_ms:.0f}ms"),
                 ("Threshold", f"{SLOW_THRESHOLD_MS}ms"),

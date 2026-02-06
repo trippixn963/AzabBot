@@ -102,7 +102,7 @@ class ModAuthManager:
 
         guild = bot.get_guild(guild_id)
         if not guild:
-            logger.warning(f"Could not find guild {guild_id} for mod dashboard auth")
+            logger.warning("Guild Not Found", [("Guild", str(guild_id)), ("Context", "Mod dashboard auth")])
             return False
 
         # Get the member
@@ -111,7 +111,7 @@ class ModAuthManager:
             if not member:
                 member = await guild.fetch_member(discord_id)
         except Exception as e:
-            logger.debug(f"Could not fetch member {discord_id}: {e}")
+            logger.debug("Member Fetch Failed", [("Member", str(discord_id)), ("Error", str(e)[:50])])
             return False
 
         if not member:

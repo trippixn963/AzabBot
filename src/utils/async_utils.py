@@ -102,7 +102,7 @@ async def safe_async_operation(
         ]
 
         if log_level == "debug":
-            logger.debug(f"Async Operation Failed: {name}", error_details)
+            logger.debug("Async Operation Failed", error_details)
         elif log_level == "error":
             logger.error("Async Operation Failed", error_details)
         else:

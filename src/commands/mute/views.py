@@ -66,7 +66,7 @@ class MuteModal(discord.ui.Modal, title="Mute User"):
         # Get the target as a Member
         user = interaction.guild.get_member(self.target_user.id)
         if not user:
-            logger.debug(f"Mute modal target not found: {self.target_user.id}")
+            logger.debug("Mute Modal Target Not Found", [("User ID", str(self.target_user.id))])
             await interaction.followup.send(
                 "User not found in this server.",
                 ephemeral=True,

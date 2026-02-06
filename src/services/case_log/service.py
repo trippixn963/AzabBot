@@ -270,7 +270,7 @@ class CaseLogService(
                 "control_panel_message_id": control_panel_msg_id,
             }
 
-        logger.error(f"_create_action_case: Failed to create thread for {action_type} case, user {user.id}")
+        logger.error("Action Case Thread Failed", [("Action", action_type), ("User", str(user.id))])
         raise RuntimeError(f"Failed to create {action_type} case thread")
 
     async def _create_action_thread(
@@ -428,7 +428,7 @@ class CaseLogService(
             return thread, control_panel_msg_id
 
         except Exception as e:
-            logger.error(f"Failed to create action thread: {type(e).__name__}: {str(e)[:100]}")
+            logger.error("Action Thread Creation Failed", [("Error", f"{type(e).__name__}: {str(e)[:100]}")])
             return None, None
 
     async def _send_evidence_request(
@@ -637,7 +637,7 @@ class CaseLogService(
                 "just_created": True,
             }
 
-        logger.error(f"_get_or_create_case: Failed to create thread for user {user.id}, case_id={case_id}")
+        logger.error("Case Thread Creation Failed", [("User", str(user.id)), ("Case", case_id)])
         raise RuntimeError("Failed to create case thread")
 
     async def _create_case_thread(
@@ -752,7 +752,7 @@ class CaseLogService(
                         delete_after=DELETE_AFTER_MEDIUM,
                     )
                 except discord.HTTPException as e:
-                    logger.debug(f"Evidence requirement message failed: {message.channel.id} - {e.code}")
+                    logger.debug("Evidence Message Failed", [("Channel", str(message.channel.id)), ("Code", str(e.code))])
                 return False
         else:
             if not reason:

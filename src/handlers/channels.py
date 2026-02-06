@@ -54,7 +54,7 @@ class ChannelEvents(commands.Cog):
                     # Try to get as member
                     return guild.get_member(entry.user.id)
         except discord.Forbidden:
-            logger.debug(f"Channel Events: No permission to access audit log for {action.name}")
+            logger.debug("Audit Log Access Denied", [("Action", action.name)])
         except discord.HTTPException as e:
             logger.warning("Channel Events: Audit log fetch failed", [
                 ("Action", action.name),
@@ -248,7 +248,7 @@ class ChannelEvents(commands.Cog):
                         added_by = entry.user
                         break
             except discord.Forbidden:
-                logger.debug(f"Audit log access denied for thread member add lookup in {thread.guild.name}")
+                logger.debug("Audit Log Access Denied", [("Action", "thread_member_add"), ("Guild", thread.guild.name)])
             except discord.HTTPException as e:
                 logger.warning("Audit Log Fetch Failed", [
                     ("Action", "thread_member_add"),
@@ -304,7 +304,7 @@ class ChannelEvents(commands.Cog):
                         removed_by = entry.user
                         break
             except discord.Forbidden:
-                logger.debug(f"Audit log access denied for thread member remove lookup in {thread.guild.name}")
+                logger.debug("Audit Log Access Denied", [("Action", "thread_member_remove"), ("Guild", thread.guild.name)])
             except discord.HTTPException as e:
                 logger.warning("Audit Log Fetch Failed", [
                     ("Action", "thread_member_remove"),
@@ -485,9 +485,9 @@ class ChannelEvents(commands.Cog):
                         rule = await guild.fetch_automod_rule(execution.rule_id)
                         rule_name = rule.name
                 except discord.NotFound:
-                    logger.debug(f"Channel Events: AutoMod rule {execution.rule_id} not found (deleted?)")
+                    logger.debug("AutoMod Rule Not Found", [("Rule ID", str(execution.rule_id))])
                 except discord.Forbidden:
-                    logger.debug(f"Channel Events: No permission to fetch AutoMod rule {execution.rule_id}")
+                    logger.debug("AutoMod Rule Fetch Denied", [("Rule ID", str(execution.rule_id))])
                 except Exception as e:
                     logger.warning("Channel Events: AutoMod rule fetch failed", [
                         ("Rule ID", str(execution.rule_id)),
@@ -564,7 +564,7 @@ class ChannelEvents(commands.Cog):
                     matched_keyword=matched,
                 )
         except Exception as e:
-            logger.debug(f"AutoMod log failed: {e}")
+            logger.debug("AutoMod Log Failed", [("Error", str(e)[:50])])
 
 
 async def setup(bot: "AzabBot") -> None:

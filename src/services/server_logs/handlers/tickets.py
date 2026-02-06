@@ -321,7 +321,7 @@ class TicketsLogsMixin:
     ) -> None:
         """Log a ticket transcript when closed."""
         if not self.enabled:
-            logger.warning(f"Logging Service: Disabled, cannot log transcript for {ticket_id}")
+            logger.warning("Logging Service Disabled For Transcript", [("Ticket ID", ticket_id)])
             return
 
         from ..categories import LogCategory

@@ -46,7 +46,7 @@ class ThreadsMixin:
         if self._forum is not None and self._forum_cached_at is not None:
             cache_age = (now - self._forum_cached_at).total_seconds()
             if cache_age > CACHE_TTL:
-                logger.debug(f"Mod Tracker: Forum cache expired (age: {cache_age:.0f}s)")
+                logger.debug("Mod Tracker Forum Cache Expired", [("Age", f"{cache_age:.0f}s")])
                 self._forum = None
                 self._forum_cached_at = None
 
@@ -58,7 +58,7 @@ class ThreadsMixin:
                 if isinstance(channel, discord.ForumChannel):
                     self._forum = channel
                     self._forum_cached_at = datetime.now(NY_TZ)
-                    logger.debug(f"Mod Tracker: Forum Channel Cached (ID: {self.config.mod_logs_forum_id})")
+                    logger.debug("Mod Tracker Forum Cached", [("ID", str(self.config.mod_logs_forum_id))])
             except discord.NotFound:
                 logger.error("Mod Tracker: Forum Not Found", [
                     ("Forum ID", str(self.config.mod_logs_forum_id)),
@@ -171,7 +171,7 @@ class ThreadsMixin:
         # Check if already tracked
         existing = self.db.get_tracked_mod(mod.id)
         if existing:
-            logger.debug(f"Mod Tracker: Mod Already Tracked - {mod.display_name} ({mod.id})")
+            logger.debug("Mod Tracker Mod Already Tracked", [("Mod", mod.display_name), ("ID", str(mod.id))])
             return await self._get_mod_thread(existing["thread_id"])
 
         forum = await self._get_forum()
@@ -281,7 +281,7 @@ class ThreadsMixin:
                 ("Mod ID", str(mod_id)),
             ], emoji="👁️")
         else:
-            logger.debug(f"Mod Tracker: Mod Not Found For Removal - ID: {mod_id}")
+            logger.debug("Mod Tracker Mod Not Found", [("ID", str(mod_id))])
         return removed
 
     def is_tracked(self: "ModTrackerService", user_id: int) -> bool:
@@ -310,7 +310,7 @@ class ThreadsMixin:
 
         tracked = self.db.get_tracked_mod(member.id)
         if not tracked:
-            logger.debug(f"Mod Tracker: Mod {member.id} not tracked, skipping cleanup")
+            logger.debug("Mod Tracker Mod Not Tracked", [("ID", str(member.id))])
             return False
 
         thread_id = tracked.get("thread_id")
@@ -393,7 +393,7 @@ class ThreadsMixin:
         all_tracked = self.db.get_all_tracked_mods()
         tracked_by_id = {t["mod_id"]: t for t in all_tracked}
 
-        logger.debug(f"Mod Tracker: Found {len(all_tracked)} tracked mods in database")
+        logger.debug("Mod Tracker Database", [("Tracked Mods", str(len(all_tracked)))])
 
         # Collect threads
         all_threads = list(forum.threads)
@@ -406,7 +406,7 @@ class ThreadsMixin:
             ])
 
         stats["threads_scanned"] = len(all_threads)
-        logger.debug(f"Mod Tracker: Scanning {len(all_threads)} threads (active + archived)")
+        logger.debug("Mod Tracker Scanning Threads", [("Count", str(len(all_threads)))])
 
         # Group by mod
         threads_by_mod = {}
@@ -449,7 +449,7 @@ class ThreadsMixin:
                             ("Thread Name", old_thread.name[:40] if old_thread.name else "Unknown"),
                         ], emoji="🗑️")
                     except discord.NotFound:
-                        logger.debug(f"Mod Tracker: Duplicate thread {old_thread.id} already deleted")
+                        logger.debug("Mod Tracker Duplicate Already Deleted", [("Thread", str(old_thread.id))])
                     except discord.Forbidden:
                         stats["errors"] += 1
                         logger.error("Mod Tracker: No Permission To Delete Duplicate", [
@@ -474,7 +474,7 @@ class ThreadsMixin:
                         ("Reason", "Not linked to any tracked mod"),
                     ], emoji="🗑️")
                 except discord.NotFound:
-                    logger.debug(f"Mod Tracker: Orphan thread {thread.id} already deleted")
+                    logger.debug("Mod Tracker Orphan Already Deleted", [("Thread", str(thread.id))])
                 except discord.Forbidden:
                     stats["errors"] += 1
                     logger.error("Mod Tracker: No Permission To Delete Orphan", [

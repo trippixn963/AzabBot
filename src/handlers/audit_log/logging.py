@@ -176,7 +176,7 @@ class LoggingMixin:
                 await self._log_message_pin(entry, moderator, pinned=False)
 
         except Exception as e:
-            logger.debug(f"Logging Service: Audit event failed: {e}")
+            logger.debug("Logging Service Audit Event Failed", [("Error", str(e)[:50])])
 
     # =========================================================================
     # Helper Methods

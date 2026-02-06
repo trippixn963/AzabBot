@@ -146,7 +146,7 @@ class ForbidAppealModal(discord.ui.Modal):
                     return
 
                 except Exception as e:
-                    logger.debug(f"Appeal via logging service failed: {e}")
+                    logger.debug("Appeal Via Logging Service Failed", [("Error", str(e)[:50])])
 
             if alert_channel:
                 embed = discord.Embed(
@@ -175,7 +175,7 @@ class ForbidAppealModal(discord.ui.Modal):
             )
 
         except Exception as e:
-            logger.debug(f"Failed to submit forbid appeal: {e}")
+            logger.debug("Forbid Appeal Submit Failed", [("Error", str(e)[:50])])
             await interaction.response.send_message(
                 "Failed to submit appeal. Please contact a moderator directly.",
                 ephemeral=True,

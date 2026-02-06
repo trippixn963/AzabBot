@@ -236,7 +236,7 @@ class UnbanOpsMixin:
                     timeout=GUILD_FETCH_TIMEOUT,
                 )
             except Exception as e:
-                logger.debug(f"Server log failed (unban): {e}")
+                logger.debug("Server Log Failed (Unban)", [("Error", str(e)[:50])])
 
         # Get ban duration from history
         ban_duration = None

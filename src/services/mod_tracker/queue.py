@@ -65,7 +65,7 @@ class QueueMixin:
         remaining = len(self._message_queue)
 
         if remaining > 0:
-            logger.info(f"Mod Tracker: Draining {remaining} queued items...")
+            logger.info("Mod Tracker Draining Queue", [("Items", str(remaining))])
             start = asyncio.get_event_loop().time()
 
             # Process remaining items with timeout
@@ -78,7 +78,7 @@ class QueueMixin:
 
             remaining = len(self._message_queue)
             if remaining > 0:
-                logger.warning(f"Mod Tracker: {remaining} items lost on shutdown (timeout)")
+                logger.warning("Mod Tracker Queue Lost", [("Items", str(remaining)), ("Reason", "Timeout")])
             else:
                 logger.info("Mod Tracker: Queue fully drained")
 

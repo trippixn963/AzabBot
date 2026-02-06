@@ -416,7 +416,7 @@ class MuteScheduler:
                 reason="Mute duration expired",
             )
         except Exception as e:
-            logger.debug(f"Auto-unmute log failed: {e}")
+            logger.debug("Auto-Unmute Log Failed", [("Error", str(e)[:50])])
 
     # =========================================================================
     # State Synchronization
@@ -574,7 +574,7 @@ class MuteScheduler:
                 fixed = await self._scan_guild_mute_overwrites(guild)
                 total_fixed += fixed
             except Exception as e:
-                logger.debug(f"Mute overwrites scan error for {guild.name}: {e}")
+                logger.debug("Mute Overwrites Scan Error", [("Guild", guild.name), ("Error", str(e)[:50])])
 
         logger.tree("Mute Role Overwrites Scan Complete", [
             ("Guilds Scanned", str(len(self.bot.guilds))),

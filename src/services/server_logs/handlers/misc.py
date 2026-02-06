@@ -155,7 +155,7 @@ class MiscLogsMixin:
         except discord.NotFound:
             pass
         except Exception as e:
-            logger.debug(f"Logging Service: Failed to edit join message: {e}")
+            logger.debug("Logging Service Join Edit Failed", [("Error", str(e)[:50])])
 
     async def log_nickname_force_change(
         self: "LoggingService",

@@ -321,7 +321,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                     guild=guild,
                 )
                 if dm_sent:
-                    logger.debug(f"Forbid DM sent to {user}")
+                    logger.debug("Forbid DM Sent", [("User", str(user))])
 
             # Log to server logs
             await self._log_forbid(
@@ -346,7 +346,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                     ephemeral=True,
                 )
             except Exception as e:
-                logger.debug(f"Error response failed: {e}")
+                logger.debug("Error Response Failed", [("Error", str(e)[:50])])
 
         except Exception as e:
             logger.error("Forbid Command Failed", [
@@ -596,7 +596,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             )
 
         except Exception as e:
-            logger.debug(f"Failed to log forbid action: {e}")
+            logger.debug("Forbid Log Failed", [("Error", str(e)[:50])])
 
     # =========================================================================
     # Channel Creation Listener

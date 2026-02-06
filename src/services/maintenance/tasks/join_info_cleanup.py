@@ -75,7 +75,7 @@ class JoinInfoCleanupTask(MaintenanceTask):
                             deleted += 1
                         except Exception as e:
                             errors += 1
-                            logger.debug(f"Join info delete error: {e}")
+                            logger.debug("Join Info Delete Error", [("Error", str(e)[:50])])
                 else:
                     # Guild not accessible, delete anyway
                     try:

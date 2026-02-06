@@ -135,7 +135,7 @@ class HistoryMixin:
         """
         # Skip AFK nicknames - these are temporary and not real name changes
         if display_name and "[AFK]" in display_name:
-            logger.debug(f"Skipped AFK nickname for user {user_id}: {display_name[:30]}")
+            logger.debug("Skipped AFK Nickname", [("User ID", str(user_id)), ("Name", display_name[:30])])
             return 0
 
         now = time.time()

@@ -105,11 +105,11 @@ class MessageEvents(HelpersMixin, commands.Cog):
                 try:
                     await message.delete()
                     # Use debug logging to reduce noise in high-volume poll channels
-                    logger.debug(f"Poll result deleted in #{message.channel.name}")
+                    logger.debug("Poll Result Deleted", [("Channel", message.channel.name)])
                 except discord.Forbidden:
                     logger.warning("No permission to delete poll result message")
                 except discord.HTTPException as e:
-                    logger.warning(f"Failed to delete poll result: {e}")
+                    logger.warning("Poll Result Delete Failed", [("Error", str(e)[:50])])
                 return
 
             # Delete non-poll messages
@@ -117,9 +117,9 @@ class MessageEvents(HelpersMixin, commands.Cog):
                 try:
                     await message.delete()
                     # Use debug logging to reduce noise in high-volume poll channels
-                    logger.debug(f"Non-poll deleted from {message.author} in #{message.channel.name}")
+                    logger.debug("Non-Poll Deleted", [("Author", str(message.author)), ("Channel", message.channel.name)])
                 except discord.Forbidden:
-                    logger.warning(f"No permission to delete non-poll by {message.author}")
+                    logger.warning("Non-Poll Delete Denied", [("Author", str(message.author))])
             return
 
         # -----------------------------------------------------------------

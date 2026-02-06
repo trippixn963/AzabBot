@@ -311,7 +311,7 @@ class AIService:
                 data = json.dumps(conv.to_dict())
                 self.bot.ticket_service.db.save_ai_conversation(ticket_id, data)
         except Exception as e:
-            logger.warning(f"Failed to save AI conversation: {e}")
+            logger.warning("Failed to Save AI Conversation", [("Error", str(e)[:50])])
 
     def _load_conversation(self, ticket_id: str) -> Optional[TicketConversation]:
         """Load conversation from database."""
@@ -327,7 +327,7 @@ class AIService:
                     ], emoji="🤖")
                     return conv
         except Exception as e:
-            logger.warning(f"Failed to load AI conversation: {e}")
+            logger.warning("Failed to Load AI Conversation", [("Error", str(e)[:50])])
         return None
 
     def _delete_conversation(self, ticket_id: str) -> None:
@@ -336,7 +336,7 @@ class AIService:
             if hasattr(self.bot, "ticket_service") and self.bot.ticket_service:
                 self.bot.ticket_service.db.delete_ai_conversation(ticket_id)
         except Exception as e:
-            logger.warning(f"Failed to delete AI conversation: {e}")
+            logger.warning("Failed to Delete AI Conversation", [("Error", str(e)[:50])])
 
     def _update_conversation(self, ticket_id: str, conv: TicketConversation) -> None:
         """Update conversation in database."""
@@ -456,7 +456,7 @@ class AIService:
 
         # Skip empty messages (e.g., just attachments)
         if not user_message or not user_message.strip():
-            logger.debug(f"Skipping AI response for empty message in ticket {ticket_id}")
+            logger.debug("Skipping AI Response for Empty Message", [("Ticket", ticket_id)])
             return None
 
         # Get conversation and check if we can respond
@@ -469,7 +469,7 @@ class AIService:
                     self._conversations[ticket_id] = conv
 
             if not conv:
-                logger.debug(f"No AI conversation found for ticket {ticket_id}")
+                logger.debug("No AI Conversation Found", [("Ticket", ticket_id)])
                 return None
 
             if not conv.can_respond():
@@ -481,7 +481,7 @@ class AIService:
                 return None
 
             if conv.is_on_cooldown():
-                logger.debug(f"AI on cooldown for ticket {ticket_id}")
+                logger.debug("AI on Cooldown", [("Ticket", ticket_id)])
                 return None
 
             # Add user message to history

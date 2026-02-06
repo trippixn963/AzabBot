@@ -167,7 +167,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
                 channel = await self._get_ticket_channel(channel_id)
                 if channel:
                     await channel.delete()
-                    logger.debug(f"Recovered deletion for ticket {ticket_id}")
+                    logger.debug("Ticket Deletion Recovered", [("Ticket", ticket_id)])
                     recovered += 1
             except Exception as e:
                 logger.warning("Failed to recover ticket deletion", [
@@ -403,7 +403,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
                 cleared += 1
 
         if cleared > 0:
-            logger.debug(f"Cleared {cleared} claim reminder cooldowns for ticket {ticket_id}")
+            logger.debug("Claim Cooldowns Cleared", [("Ticket", ticket_id), ("Cleared", str(cleared))])
 
         return cleared
 

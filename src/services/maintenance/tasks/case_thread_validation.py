@@ -82,7 +82,7 @@ class CaseThreadValidationTask(MaintenanceTask):
 
                 except Exception as e:
                     errors += 1
-                    logger.debug(f"Thread validation error: {e}")
+                    logger.debug("Thread Validation Error", [("Error", str(e)[:50])])
 
             if missing > 0:
                 logger.tree("Case Thread Validation Complete", [

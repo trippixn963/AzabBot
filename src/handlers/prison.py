@@ -599,7 +599,7 @@ class PrisonHandler:
 
         # Skip if logs_channel is a forum (forums don't have history)
         if isinstance(logs_channel, discord.ForumChannel):
-            logger.debug(f"Log scan skipped - logs channel is a forum")
+            logger.debug("Log Scan Skipped", [("Reason", "Forum channel")])
             return
 
         try:

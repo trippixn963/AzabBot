@@ -179,7 +179,7 @@ class RaidDetectionMixin:
                             f"Consider running `/lockdown`."
                         )
             except Exception as e:
-                logger.debug(f"Failed to log raid: {e}")
+                logger.debug("Raid Log Failed", [("Error", str(e)[:50])])
 
         # Alert in mod channel if configured
         if config.alert_channel_id:

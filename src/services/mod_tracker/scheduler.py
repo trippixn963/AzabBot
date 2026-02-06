@@ -284,7 +284,7 @@ class SchedulerMixin:
                         ("Orphans", str(maint.get("orphan_threads_deleted", 0))),
                     ], emoji="🧹")
             except Exception as me:
-                logger.debug(f"Maintenance scan failed: {me}")
+                logger.debug("Maintenance Scan Failed", [("Error", str(me)[:50])])
 
             # Update health metrics on success
             self._last_scan_time = datetime.now(NY_TZ)
@@ -375,7 +375,7 @@ class SchedulerMixin:
                         ("Orphans", str(maint.get("orphan_threads_deleted", 0))),
                     ], emoji="🧹")
             except Exception as me:
-                logger.debug(f"Startup maintenance failed: {me}")
+                logger.debug("Startup Maintenance Failed", [("Error", str(me)[:50])])
 
         except Exception as e:
             logger.error("Mod Tracker: Auto-Scan Failed", [

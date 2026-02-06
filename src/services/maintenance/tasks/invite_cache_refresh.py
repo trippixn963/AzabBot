@@ -54,7 +54,7 @@ class InviteCacheRefreshTask(MaintenanceTask):
                     pass
                 except discord.HTTPException as e:
                     errors += 1
-                    logger.debug(f"Invite cache refresh failed for {guild.name}: {e}")
+                    logger.debug("Invite Cache Refresh Failed", [("Guild", guild.name), ("Error", str(e)[:50])])
 
             if guilds_refreshed > 0:
                 logger.tree("Invite Cache Refreshed", [

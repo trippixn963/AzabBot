@@ -87,7 +87,7 @@ class CacheMixin:
                 cleaned += len(targets) - TARGET_ACTIONS_MAX_ENTRIES
 
         if cleaned > 0:
-            logger.debug(f"Mod Tracker: Cleaned {cleaned} stale cache entries")
+            logger.debug("Mod Tracker Cache Cleaned", [("Entries", str(cleaned))])
 
     async def cache_message(self: "ModTrackerService", message: discord.Message) -> None:
         """

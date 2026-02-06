@@ -189,9 +189,9 @@ class SpamHandlerMixin:
                     embed,
                     user_id=member.id,
                 )
-                logger.debug(f"Sticker spam warning logged for user {member.id}")
+                logger.debug("Sticker Spam Warning Logged", [("User", str(member.id))])
             except Exception as e:
-                logger.debug(f"Failed to log sticker spam warning: {e}")
+                logger.debug("Sticker Spam Warning Log Failed", [("Error", str(e)[:50])])
 
     async def _apply_sticker_spam_mute(
         self,
@@ -225,7 +225,7 @@ class SpamHandlerMixin:
                 reason=f"Sticker spam (violation #{violation_count})",
             )
 
-            logger.debug(f"Sticker spam mute role added for {member.id}, proceeding with case creation")
+            logger.debug("Sticker Spam Mute Role Added", [("User", str(member.id))])
 
             db.add_mute(
                 user_id=member.id,
@@ -286,9 +286,9 @@ class SpamHandlerMixin:
                 await member.send(embed=dm_embed)
                 dm_sent = True
             except discord.Forbidden:
-                logger.debug(f"Sticker spam mute DM failed for {member.id}: DMs disabled")
+                logger.debug("Sticker Spam Mute DM Blocked", [("User", str(member.id))])
             except discord.HTTPException as e:
-                logger.debug(f"Sticker spam mute DM failed for {member.id}: {e}")
+                logger.debug("Sticker Spam Mute DM Failed", [("User", str(member.id)), ("Error", str(e)[:50])])
 
             logger.tree("STICKER SPAM MUTE", [
                 ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
@@ -319,9 +319,9 @@ class SpamHandlerMixin:
                         log_embed,
                         user_id=member.id,
                     )
-                    logger.debug(f"Sticker spam mute logged for user {member.id}")
+                    logger.debug("Sticker Spam Mute Logged", [("User", str(member.id))])
                 except Exception as e:
-                    logger.debug(f"Failed to log sticker spam mute: {e}")
+                    logger.debug("Sticker Spam Mute Log Failed", [("Error", str(e)[:50])])
 
         except discord.Forbidden:
             logger.warning("Sticker Spam Mute Permission Denied", [
@@ -388,9 +388,9 @@ class SpamHandlerMixin:
                     LogCategory.AUTOMOD,
                     embed,
                 )
-                logger.debug(f"Webhook spam logged for webhook {message.webhook_id}")
+                logger.debug("Webhook Spam Logged", [("Webhook", str(message.webhook_id))])
             except Exception as e:
-                logger.debug(f"Failed to log webhook spam: {e}")
+                logger.debug("Webhook Spam Log Failed", [("Error", str(e)[:50])])
 
     async def _send_warning(
         self,
@@ -512,9 +512,9 @@ class SpamHandlerMixin:
                 await member.send(embed=dm_embed)
                 dm_sent = True
             except discord.Forbidden:
-                logger.debug(f"Auto-mute DM failed for {member.id}: DMs disabled")
+                logger.debug("Auto-Mute DM Blocked", [("User", str(member.id))])
             except discord.HTTPException as e:
-                logger.debug(f"Auto-mute DM failed for {member.id}: {e}")
+                logger.debug("Auto-Mute DM Failed", [("User", str(member.id)), ("Error", str(e)[:50])])
 
             logger.tree("AUTO-MUTE APPLIED", [
                 ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
@@ -657,7 +657,7 @@ class SpamHandlerMixin:
                         embed,
                         user_id=message.author.id,
                     )
-                    logger.debug(f"Auto-spam mute logged for user {message.author.id}")
+                    logger.debug("Auto-Spam Mute Logged", [("User", str(message.author.id))])
                 else:
                     # Warning action
                     embed = discord.Embed(
@@ -680,7 +680,7 @@ class SpamHandlerMixin:
                         embed,
                         user_id=message.author.id,
                     )
-                    logger.debug(f"Auto-spam warning logged for user {message.author.id}")
+                    logger.debug("Auto-Spam Warning Logged", [("User", str(message.author.id))])
             except Exception as e:
                 logger.warning("AutoMod Log Failed", [
                     ("Action", "Spam Detection"),

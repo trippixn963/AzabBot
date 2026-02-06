@@ -97,7 +97,7 @@ class PresenceHandler(BasePresenceHandler):
                 stats.append(f"🎫 {row['count']:,} tickets")
 
         except Exception as e:
-            logger.debug(f"Stats fetch error: {e}")
+            logger.debug("Stats Fetch Error", [("Error", str(e)[:50])])
 
         return stats
 
@@ -147,7 +147,8 @@ class PresenceHandler(BasePresenceHandler):
     def on_error(self, context: str, error: Exception) -> None:
         error_msg = str(error).lower()
         if any(x in error_msg for x in ["transport", "not connected", "closed", "connection"]):
-            logger.debug(f"{context} (Connection Issue)", [
+            logger.debug("Presence Connection Issue", [
+                ("Context", context),
                 ("Error", str(error)[:50]),
             ])
         else:
@@ -189,7 +190,7 @@ class PresenceHandler(BasePresenceHandler):
             mute_count: Number of times this user has been muted.
         """
         if self._is_promo_active:
-            logger.debug(f"Prisoner arrival presence skipped (promo active): {username}")
+            logger.debug("Prisoner Presence Skipped", [("User", username or "Unknown"), ("Reason", "Promo Active")])
             return
 
         try:
@@ -232,7 +233,7 @@ class PresenceHandler(BasePresenceHandler):
             duration_minutes: How long they were muted.
         """
         if self._is_promo_active:
-            logger.debug(f"Prisoner release presence skipped (promo active): {username}")
+            logger.debug("Release Presence Skipped", [("User", username or "Unknown"), ("Reason", "Promo Active")])
             return
 
         try:

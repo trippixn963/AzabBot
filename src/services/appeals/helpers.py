@@ -62,7 +62,7 @@ class HelpersMixin:
                 embed,
             )
         except Exception as e:
-            logger.debug(f"Failed to log appeal creation: {e}")
+            logger.debug("Appeal Creation Log Failed", [("Error", str(e)[:50])])
 
     async def _log_appeal_resolved(
         self: "AppealService",
@@ -105,7 +105,7 @@ class HelpersMixin:
                 embed,
             )
         except Exception as e:
-            logger.debug(f"Failed to log appeal resolution: {e}")
+            logger.debug("Appeal Resolution Log Failed", [("Error", str(e)[:50])])
 
 
 __all__ = ["HelpersMixin"]

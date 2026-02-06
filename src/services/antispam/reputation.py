@@ -57,7 +57,7 @@ class ReputationMixin:
                     days_in_server = (time.time() - join_timestamp) / 86400
                     reputation += min(days_in_server * 0.5, 50)  # Max 50 from tenure
         except Exception as e:
-            logger.debug(f"Reputation calculation - join info error: {e}")
+            logger.debug("Reputation Calc Join Info Error", [("Error", str(e)[:50])])
 
         # Subtract for violations
         violations = db.get_spam_violations(user_id, guild_id)
@@ -71,7 +71,7 @@ class ReputationMixin:
             if warnings:
                 reputation -= len(warnings) * REP_LOSS_WARNING
         except Exception as e:
-            logger.debug(f"Reputation calculation - warnings error: {e}")
+            logger.debug("Reputation Calc Warnings Error", [("Error", str(e)[:50])])
 
         # Clamp to reasonable range
         return max(0, min(reputation, REPUTATION_VETERAN * 2))

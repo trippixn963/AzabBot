@@ -138,7 +138,7 @@ class MemberEvents(commands.Cog):
                                 changed_by_member = after.guild.get_member(entry.user.id)
                             break
                 except discord.Forbidden:
-                    logger.debug(f"Audit log access denied for role change lookup in {after.guild.name}")
+                    logger.debug("Audit Log Access Denied", [("Action", "role_change"), ("Guild", after.guild.name)])
                 except discord.HTTPException as e:
                     logger.warning("Audit Log Fetch Failed", [
                         ("Action", "member_role_update"),
@@ -350,9 +350,9 @@ class MemberEvents(commands.Cog):
                 ("Action", "Assigned verification role (other bot missed)"),
             ], emoji="✅")
         except discord.Forbidden:
-            logger.debug(f"Cannot assign verification role to {member} - missing permissions")
+            logger.debug("Verification Role Assign Denied", [("Member", str(member))])
         except discord.HTTPException as e:
-            logger.debug(f"Failed to assign verification role to {member}: {e}")
+            logger.debug("Verification Role Assign Failed", [("Member", str(member)), ("Error", str(e)[:50])])
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
@@ -388,7 +388,7 @@ class MemberEvents(commands.Cog):
                         was_banned = True
                     break
         except discord.Forbidden:
-            logger.debug(f"Audit log access denied for ban check in {member.guild.name}")
+            logger.debug("Audit Log Access Denied", [("Action", "ban_check"), ("Guild", member.guild.name)])
         except discord.HTTPException as e:
             logger.warning("Audit Log Fetch Failed", [
                 ("Action", "ban_check"),
@@ -558,7 +558,7 @@ class MemberEvents(commands.Cog):
             )
 
         except Exception as e:
-            logger.debug(f"Failed to log linked message deletion: {e}")
+            logger.debug("Linked Message Deletion Log Failed", [("Error", str(e)[:50])])
 
     @commands.Cog.listener()
     async def on_user_update(self, before: discord.User, after: discord.User) -> None:
@@ -612,7 +612,7 @@ class MemberEvents(commands.Cog):
                     reason = entry.reason
                     break
         except discord.Forbidden:
-            logger.debug(f"Audit log access denied for ban moderator lookup in {guild.name}")
+            logger.debug("Audit Log Access Denied", [("Action", "ban_moderator_lookup"), ("Guild", guild.name)])
         except discord.HTTPException as e:
             logger.warning("Audit Log Fetch Failed", [
                 ("Action", "ban_moderator_lookup"),
@@ -654,7 +654,7 @@ class MemberEvents(commands.Cog):
                     reason = entry.reason
                     break
         except discord.Forbidden:
-            logger.debug(f"Audit log access denied for unban moderator lookup in {guild.name}")
+            logger.debug("Audit Log Access Denied", [("Action", "unban_moderator_lookup"), ("Guild", guild.name)])
         except discord.HTTPException as e:
             logger.warning("Audit Log Fetch Failed", [
                 ("Action", "unban_moderator_lookup"),
@@ -840,7 +840,7 @@ class MemberEvents(commands.Cog):
                 embed,
                 user_id=member.id,
             )
-            logger.debug(f"Gender role resolution logged for {member.id}")
+            logger.debug("Gender Role Resolution Logged", [("User", str(member.id))])
 
         except discord.HTTPException as e:
             logger.warning("Failed to Log Gender Role Resolution", [

@@ -106,7 +106,7 @@ class PrisonerService:
         """
         async with self._lock:
             self._cooldowns[user_id] = timestamp or datetime.now()
-            logger.debug(f"Prisoner cooldown set: user_id={user_id}")
+            logger.debug("Prisoner Cooldown Set", [("User", str(user_id))])
 
     async def clear_cooldown(self, user_id: int) -> bool:
         """
@@ -172,7 +172,7 @@ class PrisonerService:
         async with self._lock:
             buffer = self._message_buffers.pop(user_id, [])
             if buffer:
-                logger.debug(f"Prisoner buffer cleared: user_id={user_id}, messages={len(buffer)}")
+                logger.debug("Prisoner Buffer Cleared", [("User", str(user_id)), ("Messages", str(len(buffer)))])
             return buffer
 
     async def get_buffer_size(self, user_id: int) -> int:

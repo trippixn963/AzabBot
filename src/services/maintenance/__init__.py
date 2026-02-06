@@ -174,7 +174,7 @@ class MaintenanceService:
             try:
                 # Check if task should run
                 if not await task.should_run():
-                    logger.debug(f"Skipping {task.name}: conditions not met")
+                    logger.debug("Task Skipped", [("Task", task.name), ("Reason", "Conditions not met")])
                     continue
 
                 # Run the task
@@ -183,7 +183,8 @@ class MaintenanceService:
                 results.append(f"{task.name} ({result_str})")
 
             except Exception as e:
-                logger.error(f"Maintenance Task Failed: {task.name}", [
+                logger.error("Maintenance Task Failed", [
+                    ("Task", task.name),
                     ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
                 ])
                 results.append(f"{task.name} (error)")

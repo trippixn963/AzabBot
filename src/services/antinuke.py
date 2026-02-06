@@ -560,7 +560,7 @@ class AntiNukeService:
             return True
 
         except Exception as e:
-            logger.error(f"Quarantine activation failed: {e}")
+            logger.error("Quarantine Activation Failed", [("Error", str(e)[:50])])
             return False
 
     async def lift_quarantine(self, guild: discord.Guild) -> bool:
@@ -626,7 +626,7 @@ class AntiNukeService:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to lift quarantine: {e}")
+            logger.error("Quarantine Lift Failed", [("Error", str(e)[:50])])
             return False
 
     async def _send_quarantine_alert(

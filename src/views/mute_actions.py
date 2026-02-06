@@ -117,7 +117,7 @@ class ExtendModal(discord.ui.Modal, title="Extend Mute"):
                     set_footer(embed)
                     await thread.send(embed=embed)
         except Exception as e:
-            logger.debug(f"Mute extension case log failed: {e}")
+            logger.debug("Mute Extension Case Log Failed", [("Error", str(e)[:50])])
 
 
 class ExtendButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_extend:(?P<user_id>\d+):(?P<guild_id>\d+)"):

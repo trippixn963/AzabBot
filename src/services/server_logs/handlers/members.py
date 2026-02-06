@@ -64,7 +64,7 @@ class MemberLogsMixin:
         message_id = message.id if message else None
         db.record_member_join(member.id, member.guild.id, join_message_id=message_id)
         if message_id:
-            logger.debug(f"Stored join message {message_id} for member {member.id} in database")
+            logger.debug("Stored Join Message", [("Message", str(message_id)), ("Member", str(member.id))])
 
     async def _edit_join_message_on_leave(
         self: "LoggingService",
@@ -75,11 +75,11 @@ class MemberLogsMixin:
         """Edit the original join embed to show they left."""
         from ..categories import LogCategory
 
-        logger.debug(f"Editing join message {message_id} for member {member.id}")
+        logger.debug("Editing Join Message", [("Message", str(message_id)), ("Member", str(member.id))])
         try:
             thread = self._threads[LogCategory.JOINS]
             message = await thread.fetch_message(message_id)
-            logger.debug(f"Fetched message {message_id}, has embeds: {bool(message.embeds)}")
+            logger.debug("Fetched Join Message", [("Message", str(message_id)), ("Has Embeds", str(bool(message.embeds)))])
 
             if message.embeds:
                 embed = message.embeds[0]
@@ -102,7 +102,7 @@ class MemberLogsMixin:
         except discord.NotFound:
             pass
         except Exception as e:
-            logger.debug(f"Logging Service: Failed to edit join message on leave: {e}")
+            logger.debug("Join Message Edit Failed", [("Error", str(e)[:50])])
 
     async def log_member_leave(
         self: "LoggingService",
@@ -115,12 +115,12 @@ class MemberLogsMixin:
         db = get_db()
 
         join_message_id = db.pop_join_message_id(member.id, member.guild.id)
-        logger.debug(f"Member leave: {member.id}, join_message_id={join_message_id}, JOINS in threads={LogCategory.JOINS in self._threads}")
+        logger.debug("Member Leave", [("Member", str(member.id)), ("Join Msg", str(join_message_id)), ("Has Thread", str(LogCategory.JOINS in self._threads))])
 
         if join_message_id and LogCategory.JOINS in self._threads:
             await self._edit_join_message_on_leave(join_message_id, member, was_banned)
         elif join_message_id:
-            logger.debug(f"JOINS thread not found, cannot edit join message for {member.id}")
+            logger.debug("JOINS Thread Not Found", [("Member", str(member.id))])
 
         if not self._should_log(member.guild.id, member.id):
             return

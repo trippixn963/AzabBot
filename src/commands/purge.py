@@ -490,7 +490,7 @@ class PurgeCog(commands.Cog):
             )
 
         except Exception as e:
-            logger.debug(f"Failed to log purge usage: {e}")
+            logger.debug("Purge Log Failed", [("Error", str(e)[:50])])
 
 
 # =============================================================================

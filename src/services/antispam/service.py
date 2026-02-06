@@ -208,7 +208,7 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
                 await self._cleanup_old_records()
                 decayed = self.db.decay_spam_violations(VIOLATION_DECAY_TIME)
                 if decayed > 0:
-                    logger.debug(f"Decayed {decayed} spam violation records")
+                    logger.debug("Spam Violations Decayed", [("Count", str(decayed))])
             except Exception as e:
                 logger.warning("Anti-Spam Cleanup Error", [
                     ("Error", str(e)[:50]),
@@ -261,7 +261,7 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
                         del guild_states[user_id]
                     except KeyError:
                         pass  # Already removed
-                logger.debug(f"Anti-spam: Evicted {excess} oldest users from guild {guild_id}")
+                logger.debug("Anti-Spam Cache Eviction", [("Guild", str(guild_id)), ("Evicted", str(excess))])
 
         # Clean image hashes
         image_cutoff = now - timedelta(seconds=IMAGE_DUPLICATE_TIME_WINDOW * 2)

@@ -362,16 +362,16 @@ def _parse_int_with_default(value: Optional[str], default: int, name: str, min_v
         parsed = int(value)
         if min_val is not None and parsed < min_val:
             from src.core.logger import logger
-            logger.warning(f"Config {name}={parsed} below min {min_val}, using {min_val}")
+            logger.warning("Config Below Min", [("Name", name), ("Value", str(parsed)), ("Min", str(min_val))])
             return min_val
         if max_val is not None and parsed > max_val:
             from src.core.logger import logger
-            logger.warning(f"Config {name}={parsed} above max {max_val}, using {max_val}")
+            logger.warning("Config Above Max", [("Name", name), ("Value", str(parsed)), ("Max", str(max_val))])
             return max_val
         return parsed
     except ValueError:
         from src.core.logger import logger
-        logger.warning(f"Config {name}='{value}' invalid, using default {default}")
+        logger.warning("Config Invalid", [("Name", name), ("Value", str(value)), ("Default", str(default))])
         return default
 
 
@@ -390,7 +390,7 @@ def _validate_url(value: Optional[str], name: str) -> Optional[str]:
         return None
     if not value.startswith(("https://", "http://")):
         from src.core.logger import logger
-        logger.warning(f"Config {name} invalid URL format, ignoring")
+        logger.warning("Config Invalid URL", [("Name", name)])
         return None
     return value
 
@@ -641,7 +641,7 @@ def validate_and_log_config() -> None:
 
     # Log missing optional (info level, not warning)
     for var in missing_optional:
-        logger.info(f"Optional config not set: {var}")
+        logger.info("Optional Config Not Set", [("Variable", var)])
 
     logger.tree("Configuration Validated", [
         ("Required", "✅ All required variables set"),

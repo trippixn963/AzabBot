@@ -303,5 +303,5 @@ class ModTrackerService(
         current_hour = datetime.now(NY_TZ).hour
         self.db.increment_hourly_activity(mod_id, current_hour)
 
-        logger.debug(f"Mod Tracker: Log Queued - Mod {mod_id}, Action: {action_name}")
+        logger.debug("Mod Tracker Log Queued", [("Mod", str(mod_id)), ("Action", action_name)])
         return True

@@ -171,7 +171,7 @@ class LoggingService(
         try:
             self._forum = self.bot.get_channel(self.config.server_logs_forum_id)
             if not self._forum or not isinstance(self._forum, discord.ForumChannel):
-                logger.warning(f"Logging Service: Forum channel not found: {self.config.server_logs_forum_id}")
+                logger.warning("Logging Service Forum Not Found", [("ID", str(self.config.server_logs_forum_id))])
                 return False
 
             await self._setup_threads()
@@ -192,7 +192,7 @@ class LoggingService(
             return True
 
         except Exception as e:
-            logger.warning(f"Logging Service: Init failed: {e}")
+            logger.warning("Logging Service Init Failed", [("Error", str(e)[:50])])
             return False
 
     async def _setup_threads(self) -> None:
@@ -227,7 +227,7 @@ class LoggingService(
                     self._threads[category] = thread.thread
                     await rate_limit("thread_create")
                 except Exception as e:
-                    logger.warning(f"Logging Service: Failed to create thread {thread_name}: {e}")
+                    logger.warning("Logging Service Thread Creation Failed", [("Thread", thread_name), ("Error", str(e)[:50])])
 
     async def _validate_threads(self) -> List[str]:
         """Validate that all log category threads exist and are synced."""
@@ -240,7 +240,7 @@ class LoggingService(
         for category in LogCategory:
             if category not in self._threads:
                 issues.append(f"Missing thread: {category.value}")
-                logger.warning(f"Logging Service: Missing thread for {category.value}")
+                logger.warning("Logging Service Thread Missing", [("Category", category.value)])
 
         category_names = {cat.value for cat in LogCategory}
         utility_thread_ids: set[int] = set()
@@ -263,7 +263,7 @@ class LoggingService(
         for name, count in thread_name_counts.items():
             if count > 1 and name in category_names:
                 issues.append(f"DUPLICATE thread: '{name}' ({count} copies) - delete extras!")
-                logger.error(f"Logging Service: Duplicate thread '{name}' found ({count} copies)")
+                logger.error("Logging Service Duplicate Thread", [("Thread", name), ("Copies", str(count))])
 
         for thread in forum_threads:
             if thread.name in category_names:
@@ -273,7 +273,7 @@ class LoggingService(
             if thread.name in utility_thread_names:
                 continue
             issues.append(f"Extra thread: {thread.name}")
-            logger.info(f"Logging Service: Unrecognized thread '{thread.name}' in forum")
+            logger.info("Logging Service Unrecognized Thread", [("Thread", thread.name)])
 
         if issues:
             log_items = [
@@ -322,7 +322,7 @@ class LoggingService(
                             ])
                         except Exception:
                             pass
-                    logger.debug(f"Utility thread verified: {thread_name} ({thread_id})")
+                    logger.debug("Utility Thread Verified", [("Thread", thread_name), ("ID", str(thread_id))])
                 else:
                     logger.warning("Utility Thread Not Found", [
                         ("Expected", thread_name),
@@ -433,11 +433,11 @@ class LoggingService(
     ) -> Optional[discord.Message]:
         """Send a log to the appropriate thread. Returns the message if successful."""
         if not self._initialized:
-            logger.warning(f"Logging Service: Not initialized, cannot send to {category.value}")
+            logger.warning("Logging Service Not Initialized", [("Category", category.value)])
             return None
 
         if category not in self._threads:
-            logger.warning(f"Logging Service: Thread missing for category {category.value}")
+            logger.warning("Logging Service Thread Missing", [("Category", category.value)])
             return None
 
         try:
@@ -447,10 +447,10 @@ class LoggingService(
             message = await thread.send(embed=embed, files=files or [], view=view)
             return message
         except discord.Forbidden:
-            logger.warning(f"Logging Service: Forbidden to send to {category.value}")
+            logger.warning("Logging Service Send Forbidden", [("Category", category.value)])
             return None
         except Exception as e:
-            logger.warning(f"Logging Service: Send failed to {category.value}: {e}")
+            logger.warning("Logging Service Send Failed", [("Category", category.value), ("Error", str(e)[:50])])
             return None
 
     # =========================================================================
@@ -717,14 +717,14 @@ class LoggingService(
                         except (discord.NotFound, discord.Forbidden):
                             pass
                         except Exception as e:
-                            logger.debug(f"Retention delete failed: {e}")
+                            logger.debug("Retention Delete Failed", [("Error", str(e)[:50])])
 
                     if deleted_in_thread > 0:
                         threads_cleaned += 1
-                        logger.debug(f"Retention: Cleaned {deleted_in_thread} from #{thread.name}")
+                        logger.debug("Retention Cleanup", [("Thread", f"#{thread.name}"), ("Deleted", str(deleted_in_thread))])
 
                 except Exception as e:
-                    logger.debug(f"Retention thread error ({thread.name}): {e}")
+                    logger.debug("Retention Thread Error", [("Thread", thread.name), ("Error", str(e)[:50])])
 
             if total_deleted > 0:
                 logger.tree("Log Retention Cleanup Complete", [

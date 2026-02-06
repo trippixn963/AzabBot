@@ -55,7 +55,7 @@ class SnipeCmdMixin:
             snipes = self.db.get_snipes(channel_id, limit=fetch_limit)
 
             if not snipes:
-                logger.debug(f"Snipe attempted but no cache for channel {channel_id}")
+                logger.debug("Snipe No Cache", [("Channel", str(channel_id))])
                 await interaction.response.send_message(
                     "No recently deleted messages in this channel.",
                     ephemeral=True,

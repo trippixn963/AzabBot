@@ -190,7 +190,7 @@ class RateLimiter:
         wait_time = await b.acquire(tokens)
 
         if wait_time > 0.1:  # Only log significant waits
-            logger.debug(f"Rate limit wait: {b.config.name} ({wait_time:.2f}s)")
+            logger.debug("Rate Limit Wait", [("Bucket", b.config.name), ("Wait", f"{wait_time:.2f}s")])
 
         return wait_time
 

@@ -61,7 +61,7 @@ class AntiNukeMixin:
                 await self._check_permission_escalation(entry)
 
         except Exception as e:
-            logger.warning(f"Anti-nuke check failed: {e}")
+            logger.warning("Anti-Nuke Check Failed", [("Error", str(e)[:50])])
 
     async def _check_permission_escalation(
         self: "AuditLogEvents",
