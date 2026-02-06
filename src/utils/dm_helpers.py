@@ -24,7 +24,7 @@ Usage:
         fields=[("Duration", "1 hour")],
     )
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 

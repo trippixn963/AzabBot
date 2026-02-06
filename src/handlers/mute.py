@@ -70,7 +70,7 @@ class MuteHandler:
         Args:
             message: Discord message containing potential mute embeds.
         """
-        logger.tree("Mute Handler: process_mute_embed Called", [
+        logger.tree("Processing Mute Embed", [
             ("Message ID", str(message.id)),
             ("Embed Count", str(len(message.embeds))),
             ("Channel", message.channel.name if hasattr(message.channel, 'name') else str(message.channel.id)),

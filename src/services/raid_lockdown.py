@@ -451,14 +451,16 @@ class RaidLockdownService:
         tasks: List[asyncio.Task] = []
 
         for channel in guild.text_channels:
-            task = asyncio.create_task(
-                lock_with_semaphore(self._lock_text_channel(channel, everyone_role, mod_role, reason))
+            task = create_safe_task(
+                lock_with_semaphore(self._lock_text_channel(channel, everyone_role, mod_role, reason)),
+                f"Lock #{channel.name}",
             )
             tasks.append(task)
 
         for channel in guild.voice_channels:
-            task = asyncio.create_task(
-                lock_with_semaphore(self._lock_voice_channel(channel, everyone_role, mod_role, reason))
+            task = create_safe_task(
+                lock_with_semaphore(self._lock_voice_channel(channel, everyone_role, mod_role, reason)),
+                f"Lock 🔊{channel.name}",
             )
             tasks.append(task)
 
@@ -518,15 +520,17 @@ class RaidLockdownService:
 
         for channel in guild.text_channels:
             saved = saved_lookup.get(channel.id)
-            task = asyncio.create_task(
-                unlock_with_semaphore(self._unlock_text_channel(channel, everyone_role, mod_role, saved, reason))
+            task = create_safe_task(
+                unlock_with_semaphore(self._unlock_text_channel(channel, everyone_role, mod_role, saved, reason)),
+                f"Unlock #{channel.name}",
             )
             tasks.append(task)
 
         for channel in guild.voice_channels:
             saved = saved_lookup.get(channel.id)
-            task = asyncio.create_task(
-                unlock_with_semaphore(self._unlock_voice_channel(channel, everyone_role, mod_role, saved, reason))
+            task = create_safe_task(
+                unlock_with_semaphore(self._unlock_voice_channel(channel, everyone_role, mod_role, saved, reason)),
+                f"Unlock 🔊{channel.name}",
             )
             tasks.append(task)
 

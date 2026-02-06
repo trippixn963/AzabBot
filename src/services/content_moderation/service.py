@@ -660,12 +660,12 @@ class ContentModerationService:
             await member.add_roles(muted_role, reason=reason)
 
             # Add to database for scheduled unmute
-            expires_at = datetime.now(NY_TZ) + timedelta(minutes=duration_mins)
             self.bot.db.add_mute(
                 user_id=member.id,
                 guild_id=message.guild.id,
-                expires_at=expires_at.timestamp(),
+                moderator_id=self.bot.user.id,
                 reason=reason,
+                duration_seconds=duration_mins * 60,
             )
 
             # Log to permanent audit log

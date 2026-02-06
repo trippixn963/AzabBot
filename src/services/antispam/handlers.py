@@ -227,12 +227,12 @@ class SpamHandlerMixin:
 
             logger.debug(f"Sticker spam mute role added for {member.id}, proceeding with case creation")
 
-            expires_at = now + timedelta(seconds=mute_duration)
             db.add_mute(
                 user_id=member.id,
                 guild_id=message.guild.id,
-                expires_at=expires_at.timestamp(),
+                moderator_id=bot.user.id,
                 reason="Auto-spam: Sticker Spam",
+                duration_seconds=mute_duration,
             )
 
             # Log to permanent audit log
@@ -454,12 +454,12 @@ class SpamHandlerMixin:
             else:
                 duration_str = f"{duration // 60}m"
 
-            expires_at = datetime.now(NY_TZ) + timedelta(seconds=duration)
             db.add_mute(
                 user_id=member.id,
                 guild_id=member.guild.id,
-                expires_at=expires_at.timestamp(),
+                moderator_id=self.bot.user.id,
                 reason=f"Auto-spam: {spam_type}",
+                duration_seconds=duration,
             )
 
             # Log to permanent audit log
