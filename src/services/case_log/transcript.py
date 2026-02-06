@@ -127,36 +127,69 @@ class TranscriptEmbed:
 
 
 @dataclass
+class TranscriptReaction:
+    """Represents a reaction on a message."""
+    emoji: str
+    emoji_id: Optional[str] = None
+    emoji_name: Optional[str] = None
+    count: int = 0
+
+
+@dataclass
+class TranscriptReplyTo:
+    """Represents a reply reference."""
+    message_id: str
+    author_name: str
+    content: str
+
+
+@dataclass
 class TranscriptMessage:
     """Represents a single message in a transcript."""
+    message_id: str
     author_id: int
     author_name: str
     author_display_name: str
     author_avatar_url: Optional[str]
+    author_role_color: Optional[str]
     content: str
     timestamp: float
     attachments: List[TranscriptAttachment]
     embeds: List[TranscriptEmbed] = None
-    embeds_count: int = 0  # Kept for backwards compatibility
+    embeds_count: int = 0
     is_pinned: bool = False
+    reactions: List[TranscriptReaction] = None
+    reply_to: Optional[TranscriptReplyTo] = None
+    is_edited: bool = False
+    edited_at: Optional[float] = None
+    type: str = "default"
 
     def __post_init__(self):
         if self.embeds is None:
             self.embeds = []
+        if self.reactions is None:
+            self.reactions = []
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
+            "message_id": self.message_id,
             "author_id": self.author_id,
             "author_name": self.author_name,
             "author_display_name": self.author_display_name,
             "author_avatar_url": self.author_avatar_url,
+            "author_role_color": self.author_role_color,
             "content": self.content,
             "timestamp": self.timestamp,
             "attachments": [asdict(a) for a in self.attachments],
             "embeds": [e.to_dict() for e in self.embeds] if self.embeds else [],
             "embeds_count": self.embeds_count,
             "is_pinned": self.is_pinned,
+            "reactions": [asdict(r) for r in self.reactions] if self.reactions else [],
+            "reply_to": asdict(self.reply_to) if self.reply_to else None,
+            "is_edited": self.is_edited,
+            "edited_at": self.edited_at,
+            "type": self.type,
         }
 
     @classmethod
@@ -168,17 +201,30 @@ class TranscriptMessage:
         embeds = [
             TranscriptEmbed.from_dict(e) for e in data.get("embeds", [])
         ]
+        reactions = [
+            TranscriptReaction(**r) for r in data.get("reactions", [])
+        ]
+        reply_to_data = data.get("reply_to")
+        reply_to = TranscriptReplyTo(**reply_to_data) if reply_to_data else None
+
         return cls(
+            message_id=data.get("message_id", ""),
             author_id=data["author_id"],
             author_name=data["author_name"],
             author_display_name=data["author_display_name"],
             author_avatar_url=data.get("author_avatar_url"),
+            author_role_color=data.get("author_role_color"),
             content=data["content"],
             timestamp=data["timestamp"],
             attachments=attachments,
             embeds=embeds,
             embeds_count=data.get("embeds_count", 0),
             is_pinned=data.get("is_pinned", False),
+            reactions=reactions,
+            reply_to=reply_to,
+            is_edited=data.get("is_edited", False),
+            edited_at=data.get("edited_at"),
+            type=data.get("type", "default"),
         )
 
 
@@ -298,11 +344,18 @@ class TranscriptBuilder:
                     ("Thread ID", str(thread.id)),
                 ])
 
+            # Cache for referenced messages (for reply threading)
+            referenced_messages: Dict[int, discord.Message] = {}
+
             # Fetch all messages (oldest first for chronological order)
             async for message in thread.history(limit=None, oldest_first=True):
+                # Cache this message for potential reply lookups
+                referenced_messages[message.id] = message
+
                 transcript_msg = await self._process_message(
                     message,
-                    is_pinned=message.id in pinned_ids
+                    is_pinned=message.id in pinned_ids,
+                    referenced_messages=referenced_messages,
                 )
                 if transcript_msg:
                     messages.append(transcript_msg)
@@ -345,8 +398,12 @@ class TranscriptBuilder:
         self,
         message: discord.Message,
         is_pinned: bool = False,
+        referenced_messages: Optional[Dict[int, discord.Message]] = None,
     ) -> Optional[TranscriptMessage]:
         """Process a single message into a TranscriptMessage."""
+        if referenced_messages is None:
+            referenced_messages = {}
+
         try:
             # Re-upload attachments to permanent storage
             attachments = []
@@ -381,17 +438,71 @@ class TranscriptBuilder:
             if message.author.display_avatar:
                 avatar_url = message.author.display_avatar.url
 
+            # Get author role color
+            author_role_color = None
+            if hasattr(message.author, 'color') and message.author.color:
+                if message.author.color.value != 0:
+                    author_role_color = f"#{message.author.color.value:06x}"
+
+            # Process reactions
+            reactions = []
+            for reaction in message.reactions:
+                reactions.append(TranscriptReaction(
+                    emoji=str(reaction.emoji),
+                    emoji_id=str(reaction.emoji.id) if hasattr(reaction.emoji, 'id') and reaction.emoji.id else None,
+                    emoji_name=reaction.emoji.name if hasattr(reaction.emoji, 'name') else None,
+                    count=reaction.count,
+                ))
+
+            # Process reply threading
+            reply_to = None
+            if message.reference and message.reference.message_id:
+                ref_id = message.reference.message_id
+                ref_msg = referenced_messages.get(ref_id)
+                if ref_msg:
+                    content_preview = ref_msg.content[:100] + "..." if len(ref_msg.content) > 100 else ref_msg.content
+                    reply_to = TranscriptReplyTo(
+                        message_id=str(ref_id),
+                        author_name=ref_msg.author.display_name if ref_msg.author else "Unknown",
+                        content=content_preview,
+                    )
+
+            # Determine message type
+            message_type_map = {
+                discord.MessageType.default: "default",
+                discord.MessageType.reply: "reply",
+                discord.MessageType.thread_starter_message: "thread_starter",
+                discord.MessageType.new_member: "join",
+                discord.MessageType.pins_add: "pin",
+                discord.MessageType.premium_guild_subscription: "boost",
+                discord.MessageType.premium_guild_tier_1: "boost",
+                discord.MessageType.premium_guild_tier_2: "boost",
+                discord.MessageType.premium_guild_tier_3: "boost",
+            }
+            msg_type = message_type_map.get(message.type, "default")
+
+            # Check if edited
+            is_edited = message.edited_at is not None
+            edited_at = message.edited_at.timestamp() if message.edited_at else None
+
             return TranscriptMessage(
+                message_id=str(message.id),
                 author_id=message.author.id,
                 author_name=message.author.name,
                 author_display_name=message.author.display_name,
                 author_avatar_url=avatar_url,
+                author_role_color=author_role_color,
                 content=message.content or "",
                 timestamp=message.created_at.timestamp(),
                 attachments=attachments,
                 embeds=embeds,
                 embeds_count=len(message.embeds),
                 is_pinned=is_pinned,
+                reactions=reactions,
+                reply_to=reply_to,
+                is_edited=is_edited,
+                edited_at=edited_at,
+                type=msg_type,
             )
 
         except discord.HTTPException as e:
@@ -500,6 +611,8 @@ class TranscriptBuilder:
 
 __all__ = [
     "TranscriptAttachment",
+    "TranscriptReaction",
+    "TranscriptReplyTo",
     "TranscriptMessage",
     "Transcript",
     "TranscriptBuilder",

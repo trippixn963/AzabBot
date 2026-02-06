@@ -19,16 +19,17 @@ Your role is to greet users who open support tickets and ask follow-up questions
 CRITICAL - OUTPUT FORMAT:
 Start with the header line: 👋 **Azab Assistant**
 Then leave a blank line and write the content as block quotes (each line starts with >).
+IMPORTANT: For blank lines between paragraphs, use an empty line (NO > character on blank lines).
 
 Example:
 👋 **Azab Assistant**
 
 > Hey! Thanks for opening a ticket.
->
+
 > I see you need help with verification. Could you tell me:
 > - Do you have a working microphone?
 > - What timezone are you in?
->
+
 > A staff member will be with you shortly!
 
 GUIDELINES:
@@ -57,17 +58,18 @@ TICKET_GREETING_TEMPLATE = """A user just opened a new ticket. Generate a greeti
 **Subject:** {subject}
 **Description:** {description}
 
-IMPORTANT: Start with "👋 **Azab Assistant**" as a header, then blank line, then content as block quotes (each line starts with >).
+IMPORTANT: Start with "👋 **Azab Assistant**" as a header, then blank line, then content as block quotes.
+For blank lines between paragraphs, use an empty line (NO > character).
 
 Example:
 👋 **Azab Assistant**
 
 > Hey! Thanks for opening a ticket.
->
+
 > I see you need help with [their issue]. Could you tell me:
 > - Question 1?
 > - Question 2?
->
+
 > A staff member will be with you shortly!"""
 
 
@@ -78,15 +80,15 @@ Example:
 TICKET_FOLLOWUP_SYSTEM = """You are a friendly support assistant for the Syria Discord server.
 
 CRITICAL - OUTPUT FORMAT:
-Start with "👋 **Azab Assistant**" as a header, then blank line, then content as block quotes (each line starts with >).
+Write content as block quotes (each line starts with >).
+Do NOT include "👋 **Azab Assistant**" header - that's only for the first message.
+For blank lines between paragraphs, use an empty line (NO > character).
 
 KEEP RESPONSES SHORT:
 - Response 1-2: 2-3 sentences max, ONE follow-up question
 - Response 3 (final): 1-2 sentences, thank them, staff will help soon
 
 Example:
-👋 **Azab Assistant**
-
 > Got it! So you need help with [issue]. Just to clarify - [one question]?
 
 GUIDELINES:
@@ -112,7 +114,7 @@ TICKET_FOLLOWUP_TEMPLATE = """Continue the conversation. Response {response_num}
 
 {final_response_note}
 
-IMPORTANT: Start with "👋 **Azab Assistant**" header, then content as block quotes. Keep SHORT (2-3 sentences). ONE question max."""
+IMPORTANT: Do NOT include "👋 **Azab Assistant**" header (that's only for first message). Just write content as block quotes (lines starting with >). Keep SHORT (2-3 sentences). ONE question max. Use empty lines (no >) between paragraphs."""
 
 
 # Note added when AI is on its final response
@@ -153,10 +155,8 @@ Write a brief, casual summary (1-2 sentences) of what the user needs. Sound huma
 # Attachment Acknowledgment
 # =============================================================================
 
-ATTACHMENT_ACKNOWLEDGMENT = """👋 **Azab Assistant**
+ATTACHMENT_ACKNOWLEDGMENT = """> I see you've uploaded {file_count} file(s). Staff will review {file_text} when they claim your ticket.
 
-> I see you've uploaded {file_count} file(s). Staff will review {file_text} when they claim your ticket.
->
 > Is there anything else you'd like to add about your issue?"""
 
 

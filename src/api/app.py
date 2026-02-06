@@ -28,6 +28,7 @@ from src.api.routers import (
     cases_router,
     tickets_router,
     transcripts_router,
+    case_transcripts_router,
     appeals_router,
     appeal_form_router,
     users_router,
@@ -149,6 +150,7 @@ def create_app(bot: Optional[Any] = None) -> FastAPI:
     app.include_router(cases_router, prefix="/api/azab")
     app.include_router(tickets_router, prefix="/api/azab")
     app.include_router(transcripts_router, prefix="/api/azab")
+    app.include_router(case_transcripts_router, prefix="/api/azab")
     app.include_router(appeals_router, prefix="/api/azab")
     app.include_router(appeal_form_router, prefix="/api/azab")
     app.include_router(users_router, prefix="/api/azab")

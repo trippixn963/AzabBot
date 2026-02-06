@@ -28,6 +28,7 @@ from src.api.models.cases import CaseBrief, CaseType, CaseStatus
 from src.api.models.auth import TokenPayload
 from src.api.utils.pagination import create_paginated_response
 from src.core.database import get_db
+from src.services.user_snapshots import save_user_snapshot as save_snapshot
 
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -113,7 +114,17 @@ class UserLookupResult(BaseModel):
     discord_id: str = Field(description="Discord user ID as string")
     username: str = Field(description="Discord username")
     display_name: str = Field(description="Display name")
+    nickname: Optional[str] = Field(None, description="Server-specific nickname")
     avatar_url: Optional[str] = Field(None, description="Avatar URL")
+
+    # Data source indicator
+    is_cached: bool = Field(False, description="True if data is from cache (user left/banned)")
+    cached_at: Optional[str] = Field(None, description="When the cache was last updated")
+    in_server: bool = Field(True, description="Whether user is currently in server")
+
+    # Banner (Nitro feature)
+    banner_url: Optional[str] = Field(None, description="Profile banner image URL (Nitro users)")
+    banner_color: Optional[str] = Field(None, description="Accent color hex (fallback if no banner)")
 
     # Account info
     joined_server_at: Optional[str] = Field(None, description="ISO timestamp")
@@ -226,6 +237,19 @@ def _get_user_roles(member: Optional[discord.Member]) -> List[UserRole]:
             name=role.name,
             color=color_hex,
             position=role.position,
+        ))
+    return roles
+
+
+def _roles_from_snapshot(snapshot: dict) -> List[UserRole]:
+    """Convert snapshot roles to UserRole list."""
+    roles = []
+    for role_data in snapshot.get("roles", []):
+        roles.append(UserRole(
+            id=role_data.get("id", "0"),
+            name=role_data.get("name", "Unknown"),
+            color=role_data.get("color", "#99aab5"),
+            position=role_data.get("position", 0),
         ))
     return roles
 
@@ -353,12 +377,18 @@ async def lookup_user(
 
     Returns comprehensive user info including punishment history.
     Use ?refresh=true to bypass cache.
+
+    If the user has left or been banned, returns cached snapshot data
+    with is_cached=true and in_server=false.
     """
     db = get_db()
     config = get_config()
     user: Optional[discord.User] = None
     member: Optional[discord.Member] = None
     user_id: Optional[int] = None
+    snapshot: Optional[dict] = None
+    is_cached = False
+    in_server = True
 
     # Try to parse as Discord ID first
     try:
@@ -366,7 +396,7 @@ async def lookup_user(
     except ValueError:
         pass
 
-    # Check cache if we have a user_id and not refreshing
+    # Check in-memory cache if we have a user_id and not refreshing
     if user_id and not refresh:
         cached = _lookup_cache.get(user_id)
         if cached:
@@ -388,8 +418,9 @@ async def lookup_user(
             ])
 
     # If not found by ID, search guild members by name
-    if not user and config.logging_guild_id:
-        guild = bot.get_guild(config.logging_guild_id)
+    guild_id = config.logging_guild_id
+    if not user and guild_id:
+        guild = bot.get_guild(guild_id)
         if guild:
             query_lower = query.lower()
             # Use discord.utils.find for cleaner search
@@ -402,7 +433,18 @@ async def lookup_user(
                 user = member
                 user_id = member.id
 
-    if not user:
+    # If user not found via Discord API, try database snapshot
+    if not user and user_id and guild_id:
+        snapshot = db.get_user_snapshot(user_id, guild_id)
+        if snapshot:
+            is_cached = True
+            in_server = False
+            logger.debug("User Lookup Using Snapshot", [
+                ("User ID", str(user_id)),
+                ("Snapshot Reason", snapshot.get("snapshot_reason", "unknown")),
+            ])
+
+    if not user and not snapshot:
         logger.debug("User Lookup Not Found", [
             ("Query", query[:30]),
             ("Requested By", str(payload.sub)),
@@ -412,26 +454,38 @@ async def lookup_user(
             detail=f"User not found: {query}",
         )
 
-    user_id = user.id
+    # Set user_id from user or snapshot
+    if user:
+        user_id = user.id
+    elif snapshot:
+        user_id = snapshot["user_id"]
+
     now = datetime.utcnow()
     now_ts = now.timestamp()
 
-    # Get member from guild if not already fetched
-    guild_id = config.logging_guild_id
-    if not member and guild_id:
+    # Get member from guild if not already fetched (only if user exists)
+    if user and not member and guild_id:
         guild = bot.get_guild(guild_id)
         if guild:
             member = guild.get_member(user_id)
+            if not member:
+                in_server = False
 
     # Calculate account and server tenure
     account_age_days = 0
     server_tenure_days = 0
 
-    if user.created_at:
+    if user and user.created_at:
         account_age_days = (now - user.created_at.replace(tzinfo=None)).days
+    elif snapshot and snapshot.get("account_created_at"):
+        created_dt = datetime.utcfromtimestamp(snapshot["account_created_at"])
+        account_age_days = (now - created_dt).days
 
     if member and member.joined_at:
         server_tenure_days = (now - member.joined_at.replace(tzinfo=None)).days
+    elif snapshot and snapshot.get("joined_at"):
+        joined_dt = datetime.utcfromtimestamp(snapshot["joined_at"])
+        server_tenure_days = (now - joined_dt).days
 
     # Fetch SyriaBot activity data (async)
     syriabot_task = asyncio.create_task(_fetch_syriabot_data(user_id))
@@ -534,7 +588,14 @@ async def lookup_user(
     # Get additional data from AzabBot database
     previous_usernames = _get_previous_usernames(db, user_id)
     invite_code, inviter_id = _get_invite_info(db, user_id, guild_id) if guild_id else (None, None)
-    roles = _get_user_roles(member)
+
+    # Get roles from member or snapshot
+    if member:
+        roles = _get_user_roles(member)
+    elif snapshot:
+        roles = _roles_from_snapshot(snapshot)
+    else:
+        roles = []
 
     # Fetch inviter username if we have an inviter ID
     invited_by_name = None
@@ -584,14 +645,58 @@ async def lookup_user(
         days_in_server=server_tenure_days,
     )
 
-    # Build result
+    # Save snapshot for live users with member data (for future fallback)
+    if user and member and guild_id:
+        save_snapshot(user, member, guild_id, reason="lookup")
+
+    # Extract banner info (requires fetched user, not member)
+    banner_url = None
+    banner_color = None
+    if user:
+        # Check for custom banner image (Nitro users)
+        if hasattr(user, 'banner') and user.banner:
+            banner_url = str(user.banner.url)
+        # Fallback to accent color
+        elif hasattr(user, 'accent_color') and user.accent_color:
+            banner_color = f"#{user.accent_color.value:06x}"
+
+    # Build result - use live data if available, otherwise snapshot
+    if user:
+        discord_id = str(user.id)
+        username = user.name
+        display_name = user.display_name or user.name
+        nickname = member.nick if member else None
+        avatar_url = str(user.display_avatar.url) if user.display_avatar else None
+        joined_server_at = member.joined_at.isoformat() if member and member.joined_at else None
+        account_created_at = user.created_at.isoformat() if user.created_at else None
+    else:
+        # Using snapshot data
+        discord_id = str(snapshot["user_id"])
+        username = snapshot.get("username", "Unknown")
+        display_name = snapshot.get("display_name", username)
+        nickname = snapshot.get("nickname")
+        avatar_url = snapshot.get("avatar_url")
+        joined_server_at = datetime.utcfromtimestamp(snapshot["joined_at"]).isoformat() if snapshot.get("joined_at") else None
+        account_created_at = datetime.utcfromtimestamp(snapshot["account_created_at"]).isoformat() if snapshot.get("account_created_at") else None
+
+    # Cached timestamp for snapshot data
+    cached_at = None
+    if is_cached and snapshot:
+        cached_at = datetime.utcfromtimestamp(snapshot["updated_at"]).isoformat() + "Z"
+
     result = UserLookupResult(
-        discord_id=str(user.id),
-        username=user.name,
-        display_name=user.display_name or user.name,
-        avatar_url=str(user.display_avatar.url) if user.display_avatar else None,
-        joined_server_at=member.joined_at.isoformat() if member and member.joined_at else None,
-        account_created_at=user.created_at.isoformat() if user.created_at else None,
+        discord_id=discord_id,
+        username=username,
+        display_name=display_name,
+        nickname=nickname,
+        avatar_url=avatar_url,
+        banner_url=banner_url,
+        banner_color=banner_color,
+        is_cached=is_cached,
+        cached_at=cached_at,
+        in_server=in_server,
+        joined_server_at=joined_server_at,
+        account_created_at=account_created_at,
         account_age_days=account_age_days,
         server_tenure_days=server_tenure_days,
         last_seen_at=last_seen_at,
@@ -624,7 +729,9 @@ async def lookup_user(
     logger.tree("User Lookup", [
         ("Query", query[:20]),
         ("User ID", str(user_id)),
-        ("Username", user.name),
+        ("Username", username),
+        ("In Server", str(in_server)),
+        ("From Cache", str(is_cached)),
         ("Cases", str(total_cases)),
         ("Messages", str(total_messages)),
         ("Risk Score", str(risk_score)),

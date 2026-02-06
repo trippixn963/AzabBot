@@ -958,4 +958,33 @@ class SchemaMixin:
             "CREATE INDEX IF NOT EXISTS idx_snapshots_guild_date ON guild_daily_snapshots(guild_id, date DESC)"
         )
 
+        # -----------------------------------------------------------------
+        # User Snapshots Table
+        # DESIGN: Caches user data for banned/left users so we can still
+        # display their info on the dashboard after they leave
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_snapshots (
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                username TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                nickname TEXT,
+                avatar_url TEXT,
+                roles TEXT,
+                joined_at REAL,
+                account_created_at REAL,
+                snapshot_reason TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (user_id, guild_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_snapshots_updated ON user_snapshots(updated_at DESC)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_snapshots_reason ON user_snapshots(snapshot_reason)"
+        )
+
         conn.commit()

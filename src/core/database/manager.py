@@ -38,6 +38,7 @@ from src.core.database.snipe import SnipeMixin
 from src.core.database.appeals import AppealsMixin
 from src.core.database.linked import LinkedMixin
 from src.core.database.timeouts import TimeoutsMixin
+from src.core.database.snapshots import SnapshotsMixin
 
 # Import type definitions from models module
 from src.core.database.models import (
@@ -106,6 +107,7 @@ class DatabaseManager(
     AppealsMixin,
     LinkedMixin,
     TimeoutsMixin,
+    SnapshotsMixin,
 ):
     """
     Centralized database manager with thread-safe operations.

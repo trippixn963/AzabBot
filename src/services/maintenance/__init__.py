@@ -35,6 +35,7 @@ from .tasks import (
     InviteCacheRefreshTask,
     CaseThreadValidationTask,
     JoinInfoCleanupTask,
+    SnapshotCleanupTask,
 )
 
 if TYPE_CHECKING:
@@ -74,6 +75,7 @@ class MaintenanceService:
             StaleMuteCleanupTask(bot),
             HistoryCleanupTask(bot),
             JoinInfoCleanupTask(bot),
+            SnapshotCleanupTask(bot),
             # Validation & optimization
             CaseThreadValidationTask(bot),
             InviteCacheRefreshTask(bot),

@@ -27,6 +27,7 @@ from src.utils.async_utils import gather_with_logging
 from src.utils.duration import parse_duration, format_duration
 from src.utils.discord_rate_limit import log_http_error
 from src.core.constants import CASE_LOG_TIMEOUT
+from src.services.user_snapshots import save_member_snapshot
 
 from .views import MuteModal
 
@@ -123,6 +124,12 @@ class MuteOpsMixin:
                 ephemeral=True,
             )
             return
+
+        # ---------------------------------------------------------------------
+        # Save User Snapshot (for dashboard lookups if they leave)
+        # ---------------------------------------------------------------------
+
+        save_member_snapshot(target_member, reason="mute")
 
         # ---------------------------------------------------------------------
         # Apply Mute

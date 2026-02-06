@@ -15,7 +15,6 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import is_owner, has_mod_role, EmbedColors
-from src.core.database import get_db
 from src.core.moderation_validation import (
     validate_moderation_target,
     get_target_guild,
@@ -28,6 +27,7 @@ from src.utils.async_utils import create_safe_task
 from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
 from src.utils.discord_rate_limit import log_http_error
 from src.core.constants import CASE_LOG_TIMEOUT, GUILD_FETCH_TIMEOUT
+from src.services.user_snapshots import save_member_snapshot
 
 from .views import BanModal
 
@@ -90,6 +90,13 @@ class BanOpsMixin:
             else:
                 await interaction.followup.send(result.error_message, ephemeral=True)
             return False
+
+        # -----------------------------------------------------------------
+        # Save User Snapshot BEFORE Ban (for dashboard lookups)
+        # -----------------------------------------------------------------
+
+        if target_member:
+            save_member_snapshot(target_member, reason="ban")
 
         # -----------------------------------------------------------------
         # Log to Case Forum FIRST (to get case_id for appeal button)

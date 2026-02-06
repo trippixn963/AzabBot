@@ -159,9 +159,13 @@ class ContentModerationService:
         if self.config.moderation_role_id:
             self._exempt_roles.add(self.config.moderation_role_id)
 
+        # Store ticket category for runtime checks
+        self._ticket_category_id: Optional[int] = self.config.ticket_category_id
+
         logger.debug("Content Moderation Exemptions Loaded", [
             ("Channels", str(len(self._exempt_channels))),
             ("Roles", str(len(self._exempt_roles))),
+            ("Ticket Category", str(self._ticket_category_id) if self._ticket_category_id else "None"),
         ])
 
     def _start_cleanup_task(self) -> None:
@@ -275,6 +279,17 @@ class ContentModerationService:
         if isinstance(message.channel, discord.Thread):
             if message.channel.parent_id and message.channel.parent_id in self._exempt_channels:
                 return True, "exempt_forum_thread"
+
+        # Check if in ticket category (ticket channels are exempt)
+        if self._ticket_category_id:
+            channel = message.channel
+            # Check direct channel category
+            if hasattr(channel, 'category_id') and channel.category_id == self._ticket_category_id:
+                return True, "ticket_channel"
+            # Check thread parent's category
+            if isinstance(channel, discord.Thread) and channel.parent:
+                if hasattr(channel.parent, 'category_id') and channel.parent.category_id == self._ticket_category_id:
+                    return True, "ticket_thread"
 
         # Check role exemptions
         if isinstance(message.author, discord.Member):

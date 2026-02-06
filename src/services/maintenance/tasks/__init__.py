@@ -24,6 +24,7 @@ from .history_cleanup import HistoryCleanupTask
 from .invite_cache_refresh import InviteCacheRefreshTask
 from .case_thread_validation import CaseThreadValidationTask
 from .join_info_cleanup import JoinInfoCleanupTask
+from .snapshot_cleanup import SnapshotCleanupTask
 
 __all__ = [
     "GenderRoleTask",
@@ -42,4 +43,5 @@ __all__ = [
     "InviteCacheRefreshTask",
     "CaseThreadValidationTask",
     "JoinInfoCleanupTask",
+    "SnapshotCleanupTask",
 ]

@@ -13,6 +13,7 @@ from .auth import router as auth_router
 from .cases import router as cases_router
 from .tickets import router as tickets_router
 from .transcripts import router as transcripts_router
+from .case_transcripts import router as case_transcripts_router
 from .appeals import router as appeals_router
 from .appeal_form import router as appeal_form_router
 from .users import router as users_router
@@ -27,6 +28,7 @@ __all__ = [
     "cases_router",
     "tickets_router",
     "transcripts_router",
+    "case_transcripts_router",
     "appeals_router",
     "appeal_form_router",
     "users_router",

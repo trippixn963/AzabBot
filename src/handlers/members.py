@@ -21,6 +21,7 @@ from src.core.database import get_db
 from src.core.constants import CASE_LOG_TIMEOUT, QUERY_LIMIT_TINY, LOG_TRUNCATE_SHORT
 from src.utils.async_utils import create_safe_task
 from src.utils.discord_rate_limit import log_http_error
+from src.services.user_snapshots import save_member_snapshot, update_snapshot_reason
 
 # Verification role delay - another bot handles this, but we act as failsafe backup
 VERIFICATION_DELAY = 5  # seconds to wait before checking
@@ -356,7 +357,10 @@ class MemberEvents(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
-        """Log member leaves, track muted users leaving, delete linked messages."""
+        """Log member leaves, track muted users leaving, delete linked messages, save snapshot."""
+        # Save user snapshot BEFORE anything else (while we still have member data)
+        save_member_snapshot(member, reason="leave")
+
         # Clean up prisoner tracking state
         if self.bot.prisoner_service:
             await self.bot.prisoner_service.cleanup_for_user(member.id)
@@ -591,6 +595,10 @@ class MemberEvents(commands.Cog):
         """
         if self.bot.disabled:
             return
+
+        # The on_member_remove handler should have already saved the snapshot,
+        # but we update the reason to 'ban' to indicate this wasn't just a leave
+        update_snapshot_reason(user.id, guild.id, "ban")
 
         logger.tree("MEMBER BANNED", [
             ("User", user.name),
