@@ -677,7 +677,7 @@ class ContentModerationService:
             await member.add_roles(muted_role, reason=reason)
 
             # Add to database for scheduled unmute
-            self.bot.db.add_mute(
+            expires_at = self.bot.db.add_mute(
                 user_id=member.id,
                 guild_id=message.guild.id,
                 moderator_id=self.bot.user.id,
@@ -739,8 +739,12 @@ class ContentModerationService:
             ], emoji="🔇")
 
             # Fire-and-forget DM (no appeal button)
-            # Calculate unmute timestamp for Discord format
-            unmute_ts = int(time.time() + (duration_mins * 60))
+            # Build fields - include unmute time if we have expires_at
+            dm_fields = [("Duration", f"`{duration_mins} minutes`", True)]
+            if expires_at:
+                unmute_ts = int(expires_at)
+                dm_fields.append(("Unmutes", f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", False))
+
             create_safe_task(send_moderation_dm(
                 user=member,
                 title="You have been muted",
@@ -748,10 +752,7 @@ class ContentModerationService:
                 guild=message.guild,
                 moderator=None,  # Auto-mute, no moderator
                 reason=reason,
-                fields=[
-                    ("Duration", f"`{duration_mins} minutes`", True),
-                    ("Unmutes", f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", False),
-                ],
+                fields=dm_fields,
                 context="Religion Auto-Mute DM",
             ))
 

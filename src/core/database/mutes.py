@@ -212,7 +212,7 @@ class MutesMixin:
         moderator_id: int,
         reason: Optional[str] = None,
         duration_seconds: Optional[int] = None,
-    ) -> int:
+    ) -> Optional[float]:
         """
         Add a mute record to the database.
 
@@ -229,13 +229,13 @@ class MutesMixin:
             duration_seconds: Duration in seconds, None for permanent.
 
         Returns:
-            Row ID of the mute record.
+            Unix timestamp when mute expires, or None for permanent mutes.
         """
         now = time.time()
         expires_at = now + duration_seconds if duration_seconds else None
 
         # Insert/update active mute
-        cursor = self.execute(
+        self.execute(
             """INSERT OR REPLACE INTO active_mutes
                (user_id, guild_id, moderator_id, reason, muted_at, expires_at, unmuted)
                VALUES (?, ?, ?, ?, ?, ?, 0)""",
@@ -257,7 +257,7 @@ class MutesMixin:
             ("Reason", (reason or "None")[:50]),
         ], emoji="🔇")
 
-        return cursor.lastrowid
+        return expires_at
 
     def remove_mute(
         self,

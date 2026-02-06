@@ -167,7 +167,7 @@ class MuteOpsMixin:
             if not is_extension:
                 await target_member.add_roles(muted_role, reason=f"Muted by {interaction.user}: {reason or 'No reason'}")
 
-            self.db.add_mute(
+            expires_at = self.db.add_mute(
                 user_id=user.id,
                 guild_id=target_guild.id,
                 moderator_id=interaction.user.id,
@@ -309,7 +309,7 @@ class MuteOpsMixin:
                 guild=target_guild,
                 moderator=interaction.user,
                 duration_display=duration_display,
-                duration_seconds=duration_seconds,
+                expires_at=expires_at,
                 reason=reason,
                 evidence=evidence,
                 case_info=case_info,

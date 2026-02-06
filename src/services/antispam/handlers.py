@@ -227,7 +227,7 @@ class SpamHandlerMixin:
 
             logger.debug("Sticker Spam Mute Role Added", [("User", str(member.id))])
 
-            db.add_mute(
+            expires_at = db.add_mute(
                 user_id=member.id,
                 guild_id=message.guild.id,
                 moderator_id=bot.user.id,
@@ -257,6 +257,9 @@ class SpamHandlerMixin:
             )
             embed.add_field(name="Duration", value="10 minutes", inline=True)
             embed.add_field(name="Violation", value=f"#{violation_count}", inline=True)
+            if expires_at:
+                unmute_ts = int(expires_at)
+                embed.add_field(name="Unmutes", value=f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", inline=False)
             set_footer(embed)
 
             view = None
@@ -282,6 +285,9 @@ class SpamHandlerMixin:
                 dm_embed.add_field(name="Reason", value="Sticker Spam", inline=True)
                 dm_embed.add_field(name="Duration", value="10 minutes", inline=True)
                 dm_embed.add_field(name="Violation", value=f"#{violation_count}", inline=True)
+                if expires_at:
+                    unmute_ts = int(expires_at)
+                    dm_embed.add_field(name="Unmutes", value=f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", inline=False)
                 dm_embed.set_footer(text="This was an automatic action by the anti-spam system.")
                 await member.send(embed=dm_embed)
                 dm_sent = True
@@ -454,7 +460,7 @@ class SpamHandlerMixin:
             else:
                 duration_str = f"{duration // 60}m"
 
-            db.add_mute(
+            expires_at = db.add_mute(
                 user_id=member.id,
                 guild_id=member.guild.id,
                 moderator_id=self.bot.user.id,
@@ -483,6 +489,9 @@ class SpamHandlerMixin:
             )
             embed.add_field(name="Duration", value=duration_str, inline=True)
             embed.add_field(name="Violation", value=f"#{violation_count}", inline=True)
+            if expires_at:
+                unmute_ts = int(expires_at)
+                embed.add_field(name="Unmutes", value=f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", inline=False)
             set_footer(embed)
 
             view = None
@@ -508,6 +517,9 @@ class SpamHandlerMixin:
                 dm_embed.add_field(name="Reason", value=spam_type, inline=True)
                 dm_embed.add_field(name="Duration", value=duration_str, inline=True)
                 dm_embed.add_field(name="Violation", value=f"#{violation_count}", inline=True)
+                if expires_at:
+                    unmute_ts = int(expires_at)
+                    dm_embed.add_field(name="Unmutes", value=f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", inline=False)
                 dm_embed.set_footer(text="This was an automatic action by the anti-spam system.")
                 await member.send(embed=dm_embed)
                 dm_sent = True

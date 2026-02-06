@@ -29,23 +29,21 @@ class HelpersMixin:
         guild: discord.Guild,
         moderator: discord.Member,
         duration_display: str,
-        duration_seconds: Optional[int],
+        expires_at: Optional[float],
         reason: Optional[str],
         evidence: Optional[str],
         case_info: Optional[dict],
         is_extension: bool = False,
     ) -> None:
         """Send DM notification to muted user (appeal via tickets, not button)."""
-        import time
-
         dm_title = "Your mute has been extended" if is_extension else "You have been muted"
 
         # Build fields with duration and unmute time
         fields = [("Duration", f"`{duration_display}`", True)]
 
         # Add unmute time in Discord timestamp format (shows in user's timezone)
-        if duration_seconds:
-            unmute_ts = int(time.time() + duration_seconds)
+        if expires_at:
+            unmute_ts = int(expires_at)
             fields.append(("Unmutes", f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", False))
 
         # Note: Mute appeals are handled through server tickets, not appeal button
