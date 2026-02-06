@@ -11,6 +11,7 @@ Server: discord.gg/syria
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+import aiohttp
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
@@ -20,6 +21,10 @@ from src.core.database import get_db
 from src.api.dependencies import get_bot, require_auth
 from src.api.models.base import APIResponse
 from src.api.models.auth import TokenPayload
+
+
+# TrippixnBot API for guild stats (has accurate online count)
+TRIPPIXN_API_URL = "http://localhost:8085/api/stats"
 
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -147,33 +152,28 @@ async def get_dashboard_stats(
     # Server Stats
     # =========================================================================
 
-    # Get guild for member counts (use main server, not mod server)
-    guild = None
+    # Fetch guild stats from TrippixnBot (has accurate member/online counts)
     total_members = 0
     online_members = 0
 
-    # logging_guild_id holds the main GUILD_ID
-    if config.logging_guild_id:
-        guild = bot.get_guild(config.logging_guild_id)
-    elif config.mod_server_id:
-        guild = bot.get_guild(config.mod_server_id)
-
-    if guild:
-        total_members = guild.member_count or 0
-        # Count online members
-        # For large guilds, use approximate_presence_count (from Discord API)
-        # Falls back to counting cached members with online status
-        try:
-            if hasattr(guild, 'approximate_presence_count') and guild.approximate_presence_count:
-                online_members = guild.approximate_presence_count
-            else:
-                # Count from cached members (may be incomplete for large guilds)
-                online_members = sum(
-                    1 for m in guild.members
-                    if m.status.value in ("online", "idle", "dnd")
-                )
-        except Exception:
-            online_members = 0
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(TRIPPIXN_API_URL, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    guild_data = data.get("data", {}).get("guild", {})
+                    total_members = guild_data.get("member_count", 0)
+                    online_members = guild_data.get("online_count", 0)
+    except Exception as e:
+        logger.warning("Failed to Fetch TrippixnBot Stats", [
+            ("Error", str(e)[:50]),
+        ])
+        # Fallback to local guild data
+        guild = None
+        if config.logging_guild_id:
+            guild = bot.get_guild(config.logging_guild_id)
+        if guild:
+            total_members = guild.member_count or 0
 
     # Total cases server-wide
     server_total_cases = db.fetchone("SELECT COUNT(*) FROM cases")[0]
