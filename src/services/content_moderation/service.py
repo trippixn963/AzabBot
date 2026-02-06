@@ -782,6 +782,15 @@ class ContentModerationService:
                 ("Channel", channel_str),
                 ("Error", str(e)[:50]),
             ])
+        except Exception as e:
+            # Catch database errors and other unexpected exceptions
+            # Log but don't crash - the role was already added
+            logger.error("Religion Auto-Mute Database Error", [
+                ("User", user_str),
+                ("Channel", channel_str),
+                ("Error", str(e)[:100]),
+                ("Type", type(e).__name__),
+            ])
 
     async def _send_auto_mute_alert(self, message: discord.Message, offense_count: int) -> None:
         """

@@ -77,7 +77,8 @@ __all_types__ = [
 # Constants
 # =============================================================================
 
-DATA_DIR: Path = Path(__file__).parent.parent.parent / "data"
+# Path: src/core/database/manager.py -> go up 4 levels to reach project root
+DATA_DIR: Path = Path(__file__).parent.parent.parent.parent / "data"
 DB_PATH: Path = DATA_DIR / "azab.db"
 
 
