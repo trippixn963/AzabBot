@@ -148,9 +148,10 @@ class OperationsMixin:
         try:
             # Build permission overwrites (person-specific only, no role-based)
             overwrites = {
-                # @everyone - hidden by default
+                # @everyone - hidden and no reactions
                 user.guild.default_role: discord.PermissionOverwrite(
                     view_channel=False,
+                    add_reactions=False,
                 ),
                 # Ticket creator - can view and send messages, no reactions
                 user: discord.PermissionOverwrite(
