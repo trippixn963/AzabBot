@@ -57,11 +57,19 @@ class ServerDashboardStats(BaseModel):
     active_tickets: int = Field(0, description="Currently open/claimed tickets")
 
 
+class DailyActivity(BaseModel):
+    """Daily activity data point."""
+
+    date: str = Field(description="Date label (e.g., 'Jan 24')")
+    cases: int = Field(0, description="Number of cases on this day")
+
+
 class DashboardStatsResponse(BaseModel):
     """Combined dashboard stats response."""
 
     moderator: ModeratorDashboardStats
     server: ServerDashboardStats
+    activity: list[DailyActivity] = Field(default_factory=list, description="Last 14 days activity")
 
 
 # =============================================================================
@@ -205,6 +213,26 @@ async def get_dashboard_stats(
     )
 
     # =========================================================================
+    # Activity (Last 14 Days)
+    # =========================================================================
+
+    activity = []
+    for i in range(13, -1, -1):  # 13 days ago to today
+        day = now - timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        day_end = day_start + 86400  # 24 hours
+
+        day_cases = db.fetchone(
+            "SELECT COUNT(*) FROM cases WHERE created_at >= ? AND created_at < ?",
+            (day_start, day_end)
+        )[0]
+
+        activity.append(DailyActivity(
+            date=day.strftime("%b %d"),  # e.g., "Jan 24"
+            cases=day_cases,
+        ))
+
+    # =========================================================================
     # Response
     # =========================================================================
 
@@ -220,6 +248,7 @@ async def get_dashboard_stats(
         data=DashboardStatsResponse(
             moderator=moderator_stats,
             server=server_stats,
+            activity=activity,
         ),
     )
 
