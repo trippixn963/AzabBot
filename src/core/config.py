@@ -126,7 +126,7 @@ class Config:
     ticket_partnership_user_id: Optional[int] = None  # User to assign partnership tickets
     ticket_suggestion_user_id: Optional[int] = None  # User to assign suggestion tickets
     ticket_support_user_ids: Set[int] = None  # Users to assign support tickets
-    transcript_base_url: Optional[str] = None  # Base URL for transcript viewer (e.g., https://example.com/api/azab/transcripts)
+    transcript_base_url: Optional[str] = None  # Base URL for transcript viewer (e.g., https://example.com/api/v1/transcripts)
     case_transcript_base_url: Optional[str] = None  # Base URL for case transcript viewer
     transcript_assets_thread_id: Optional[int] = None  # Thread/post for permanent attachment storage
     case_transcripts_thread_id: Optional[int] = None  # Thread/post for logging case transcripts
@@ -428,9 +428,9 @@ def load_config() -> Config:
     if not owner_id_str:
         missing.append("OWNER_ID")
 
-    mod_logs_forum_id_str = os.getenv("MOD_LOGS_FORUM_ID")
+    mod_logs_forum_id_str = os.getenv("AZAB_MOD_LOGS_FORUM_ID")
     if not mod_logs_forum_id_str:
-        missing.append("MOD_LOGS_FORUM_ID")
+        missing.append("AZAB_MOD_LOGS_FORUM_ID")
 
     prison_channel_ids_str = os.getenv("PRISON_CHANNEL_IDS")
     if not prison_channel_ids_str:
@@ -467,10 +467,10 @@ def load_config() -> Config:
     # Parse Optional Values
     # -------------------------------------------------------------------------
 
-    polls_only_channel_ids = _parse_int_set(os.getenv("POLLS_ONLY_CHANNEL_IDS", ""))
-    case_log_forum_id = _parse_int_optional(os.getenv("CASE_LOG_FORUM_ID"))
+    polls_only_channel_ids = _parse_int_set(os.getenv("AZAB_POLLS_ONLY_CHANNEL_IDS", ""))
+    case_log_forum_id = _parse_int_optional(os.getenv("AZAB_CASE_LOG_FORUM_ID"))
     links_allowed_channel_id = _parse_int_optional(os.getenv("LINKS_ALLOWED_CHANNEL_ID"))
-    alliances_channel_id = _parse_int_optional(os.getenv("ALLIANCES_CHANNEL_ID"))
+    alliances_channel_id = _parse_int_optional(os.getenv("AZAB_ALLIANCES_CHANNEL_ID"))
     verification_role_id = _parse_int_optional(os.getenv("VERIFICATION_ROLE_ID"))
     moderation_role_id = _parse_int_optional(os.getenv("MODERATION_ROLE_ID"))
     male_role_id = _parse_int_optional(os.getenv("MALE_ROLE_ID"))
@@ -479,29 +479,29 @@ def load_config() -> Config:
     female_verified_role_id = _parse_int_optional(os.getenv("FEMALE_VERIFIED_ROLE_ID"))
     mod_server_id = _parse_int_optional(os.getenv("MODS_GUILD_ID"))
     alert_channel_id = _parse_int_optional(os.getenv("ALERT_CHANNEL_ID"))
-    appeal_forum_id = _parse_int_optional(os.getenv("APPEAL_FORUM_ID"))
-    appeal_token_secret = os.getenv("APPEAL_TOKEN_SECRET") or None
-    server_invite_url = os.getenv("SERVER_INVITE_URL") or None
+    appeal_forum_id = _parse_int_optional(os.getenv("AZAB_APPEAL_FORUM_ID"))
+    appeal_token_secret = os.getenv("AZAB_APPEAL_TOKEN_SECRET") or None
+    server_invite_url = os.getenv("AZAB_SERVER_INVITE_URL") or None
     openai_api_key = os.getenv("OPENAI_API_KEY") or None
     ticket_channel_id = _parse_int_optional(os.getenv("TICKET_CHANNEL_ID"))
-    ticket_category_id = _parse_int_optional(os.getenv("TICKET_CATEGORY_ID"))
+    ticket_category_id = _parse_int_optional(os.getenv("AZAB_TICKET_CATEGORY_ID"))
     ticket_staff_role_id = _parse_int_optional(os.getenv("TICKET_STAFF_ROLE_ID"))
     ticket_partnership_user_id = _parse_int_optional(os.getenv("TICKET_PARTNERSHIP_USER_ID"))
     ticket_suggestion_user_id = _parse_int_optional(os.getenv("TICKET_SUGGESTION_USER_ID"))
-    ticket_support_user_ids = _parse_int_set(os.getenv("TICKET_SUPPORT_USER_IDS", ""))
-    transcript_base_url = os.getenv("TRANSCRIPT_BASE_URL") or None
-    case_transcript_base_url = os.getenv("CASE_TRANSCRIPT_BASE_URL") or None
-    transcript_assets_thread_id = _parse_int_optional(os.getenv("TRANSCRIPT_ASSETS_THREAD_ID"))
-    case_transcripts_thread_id = _parse_int_optional(os.getenv("CASE_TRANSCRIPTS_THREAD_ID"))
-    server_logs_forum_id = _parse_int_optional(os.getenv("SERVER_LOGS_FORUM_ID"))
+    ticket_support_user_ids = _parse_int_set(os.getenv("AZAB_TICKET_SUPPORT_USER_IDS", ""))
+    transcript_base_url = os.getenv("AZAB_TRANSCRIPT_BASE_URL") or None
+    case_transcript_base_url = os.getenv("AZAB_CASE_TRANSCRIPT_BASE_URL") or None
+    transcript_assets_thread_id = _parse_int_optional(os.getenv("AZAB_TRANSCRIPT_ASSETS_THREAD_ID"))
+    case_transcripts_thread_id = _parse_int_optional(os.getenv("AZAB_CASE_TRANSCRIPTS_THREAD_ID"))
+    server_logs_forum_id = _parse_int_optional(os.getenv("AZAB_SERVER_LOGS_FORUM_ID"))
     logging_guild_id = _parse_int_optional(os.getenv("GUILD_ID"))
-    moderator_ids = _parse_int_set(os.getenv("MODERATOR_IDS"))
-    ignored_bot_ids = _parse_int_set(os.getenv("IGNORED_BOT_IDS"))
-    lockdown_exclude_ids = _parse_int_set(os.getenv("LOCKDOWN_EXCLUDE_IDS"))
-    link_allowed_user_ids = _parse_int_set(os.getenv("LINK_ALLOWED_USER_IDS"))
-    appeal_allowed_user_ids = _parse_int_set(os.getenv("APPEAL_ALLOWED_USER_IDS"))
+    moderator_ids = _parse_int_set(os.getenv("AZAB_MODERATOR_IDS"))
+    ignored_bot_ids = _parse_int_set(os.getenv("AZAB_IGNORED_BOT_IDS"))
+    lockdown_exclude_ids = _parse_int_set(os.getenv("AZAB_LOCKDOWN_EXCLUDE_IDS"))
+    link_allowed_user_ids = _parse_int_set(os.getenv("AZAB_LINK_ALLOWED_USER_IDS"))
+    appeal_allowed_user_ids = _parse_int_set(os.getenv("AZAB_APPEAL_ALLOWED_USER_IDS"))
     whitelisted_webhook_ids = _parse_int_set(os.getenv("WHITELISTED_WEBHOOK_IDS"))
-    mention_spam_exempt_channel_ids = _parse_int_set(os.getenv("MENTION_SPAM_EXEMPT_CHANNEL_IDS"))
+    mention_spam_exempt_channel_ids = _parse_int_set(os.getenv("AZAB_MENTION_SPAM_EXEMPT_CHANNEL_IDS"))
 
     # -------------------------------------------------------------------------
     # Build Config Object
@@ -563,9 +563,9 @@ def load_config() -> Config:
         developer_name=os.getenv("DEVELOPER_NAME", "حَـــــنَّـــــا"),
         server_name=os.getenv("SERVER_NAME", "discord.gg/syria"),
         moderator_ids=moderator_ids if moderator_ids else None,
-        status_webhook_url=_validate_url(os.getenv("STATUS_WEBHOOK_URL"), "STATUS_WEBHOOK_URL"),
-        error_webhook_url=_validate_url(os.getenv("ERROR_WEBHOOK_URL"), "ERROR_WEBHOOK_URL"),
-        live_logs_webhook_url=_validate_url(os.getenv("LIVE_LOGS_WEBHOOK_URL"), "LIVE_LOGS_WEBHOOK_URL"),
+        status_webhook_url=_validate_url(os.getenv("AZAB_STATUS_WEBHOOK_URL"), "AZAB_STATUS_WEBHOOK_URL"),
+        error_webhook_url=_validate_url(os.getenv("AZAB_ERROR_WEBHOOK_URL"), "AZAB_ERROR_WEBHOOK_URL"),
+        live_logs_webhook_url=_validate_url(os.getenv("AZAB_LIVE_LOGS_WEBHOOK_URL"), "AZAB_LIVE_LOGS_WEBHOOK_URL"),
         ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,
         lockdown_exclude_ids=lockdown_exclude_ids if lockdown_exclude_ids else None,
         link_allowed_user_ids=link_allowed_user_ids if link_allowed_user_ids else None,

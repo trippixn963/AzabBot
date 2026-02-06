@@ -28,9 +28,9 @@ MS_PER_SECOND = 1000
 
 import os
 
-# Unified API port (serves both /health and /api/azab/*)
+# API port (serves /health and /api/v1/*)
 # NOTE: OthmanBot=8080, AzabBot=8081, JawdatBot=8082, TahaBot=8083, SyriaBot=8084, TrippixnBot=8085
-STATS_API_PORT = int(os.getenv("AZAB_API_PORT", "8081"))
+API_PORT = int(os.getenv("AZAB_API_PORT", "8081"))
 
 # =============================================================================
 # Interval Constants (in seconds)
@@ -392,7 +392,7 @@ __all__ = [
     "SECONDS_PER_WEEK",
     "MS_PER_SECOND",
     # Network
-    "STATS_API_PORT",
+    "API_PORT",
     # Intervals
     "MUTE_CHECK_INTERVAL",
     "PRESENCE_UPDATE_INTERVAL",

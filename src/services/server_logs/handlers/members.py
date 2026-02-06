@@ -12,12 +12,12 @@ import io
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
-import aiohttp
 import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors
 from src.core.database import get_db
+from src.utils.http import http_session, DOWNLOAD_TIMEOUT
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -265,14 +265,13 @@ class MemberLogsMixin:
 
         if before_url:
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(before_url) as resp:
-                        if resp.status == 200:
-                            data = await resp.read()
-                            files.append(discord.File(io.BytesIO(data), filename="old_avatar.png"))
-                            embed.set_thumbnail(url="attachment://old_avatar.png")
-                            embed.add_field(name="Previous", value="See thumbnail ↗️", inline=True)
-                            old_avatar_downloaded = True
+                async with http_session.get(before_url, timeout=DOWNLOAD_TIMEOUT) as resp:
+                    if resp.status == 200:
+                        data = await resp.read()
+                        files.append(discord.File(io.BytesIO(data), filename="old_avatar.png"))
+                        embed.set_thumbnail(url="attachment://old_avatar.png")
+                        embed.add_field(name="Previous", value="See thumbnail ↗️", inline=True)
+                        old_avatar_downloaded = True
             except Exception:
                 pass
 

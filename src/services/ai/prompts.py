@@ -17,19 +17,19 @@ TICKET_ASSISTANT_SYSTEM = """You are a friendly support assistant for the Syria 
 Your role is to greet users who open support tickets and ask follow-up questions to help staff understand their needs.
 
 CRITICAL - OUTPUT FORMAT:
-Start with ONLY this header line as a block quote: > 👋 **Azab Assistant**
-Then leave a blank line and write the rest normally (no quotes).
+Start with the header line: 👋 **Azab Assistant**
+Then leave a blank line and write the content as block quotes (each line starts with >).
 
 Example:
-> 👋 **Azab Assistant**
+👋 **Azab Assistant**
 
-Hey! Thanks for opening a ticket.
-
-I see you need help with verification. Could you tell me:
-- Do you have a working microphone?
-- What timezone are you in?
-
-A staff member will be with you shortly!
+> Hey! Thanks for opening a ticket.
+>
+> I see you need help with verification. Could you tell me:
+> - Do you have a working microphone?
+> - What timezone are you in?
+>
+> A staff member will be with you shortly!
 
 GUIDELINES:
 1. Be warm and professional
@@ -57,18 +57,18 @@ TICKET_GREETING_TEMPLATE = """A user just opened a new ticket. Generate a greeti
 **Subject:** {subject}
 **Description:** {description}
 
-IMPORTANT: Start with ONLY "> 👋 **Azab Assistant**" as a header, then blank line, then normal text.
+IMPORTANT: Start with "👋 **Azab Assistant**" as a header, then blank line, then content as block quotes (each line starts with >).
 
 Example:
-> 👋 **Azab Assistant**
+👋 **Azab Assistant**
 
-Hey! Thanks for opening a ticket.
-
-I see you need help with [their issue]. Could you tell me:
-- Question 1?
-- Question 2?
-
-A staff member will be with you shortly!"""
+> Hey! Thanks for opening a ticket.
+>
+> I see you need help with [their issue]. Could you tell me:
+> - Question 1?
+> - Question 2?
+>
+> A staff member will be with you shortly!"""
 
 
 # =============================================================================
@@ -78,16 +78,16 @@ A staff member will be with you shortly!"""
 TICKET_FOLLOWUP_SYSTEM = """You are a friendly support assistant for the Syria Discord server.
 
 CRITICAL - OUTPUT FORMAT:
-Start with ONLY "> 👋 **Azab Assistant**" as a header, then blank line, then normal text.
+Start with "👋 **Azab Assistant**" as a header, then blank line, then content as block quotes (each line starts with >).
 
 KEEP RESPONSES SHORT:
 - Response 1-2: 2-3 sentences max, ONE follow-up question
 - Response 3 (final): 1-2 sentences, thank them, staff will help soon
 
 Example:
-> 👋 **Azab Assistant**
+👋 **Azab Assistant**
 
-Got it! So you need help with [issue]. Just to clarify - [one question]?
+> Got it! So you need help with [issue]. Just to clarify - [one question]?
 
 GUIDELINES:
 1. Remember what the user told you - don't repeat questions
@@ -112,7 +112,7 @@ TICKET_FOLLOWUP_TEMPLATE = """Continue the conversation. Response {response_num}
 
 {final_response_note}
 
-IMPORTANT: Start with "> 👋 **Azab Assistant**" header, then normal text. Keep SHORT (2-3 sentences). ONE question max."""
+IMPORTANT: Start with "👋 **Azab Assistant**" header, then content as block quotes. Keep SHORT (2-3 sentences). ONE question max."""
 
 
 # Note added when AI is on its final response
@@ -153,22 +153,22 @@ Write a brief, casual summary (1-2 sentences) of what the user needs. Sound huma
 # Attachment Acknowledgment
 # =============================================================================
 
-ATTACHMENT_ACKNOWLEDGMENT = """> 👋 **Azab Assistant**
+ATTACHMENT_ACKNOWLEDGMENT = """👋 **Azab Assistant**
 
-I see you've uploaded {file_count} file(s). Staff will review {file_text} when they claim your ticket.
-
-Is there anything else you'd like to add about your issue?"""
+> I see you've uploaded {file_count} file(s). Staff will review {file_text} when they claim your ticket.
+>
+> Is there anything else you'd like to add about your issue?"""
 
 
 # =============================================================================
 # Fallback Messages
 # =============================================================================
 
-FALLBACK_GREETING = """> 👋 **Azab Assistant**
+FALLBACK_GREETING = """👋 **Azab Assistant**
 
-Welcome! Thanks for opening a ticket.
-
-A staff member will be with you shortly. Feel free to share any additional details that might help us understand your situation better."""
+> Welcome! Thanks for opening a ticket.
+>
+> A staff member will be with you shortly. Feel free to share any additional details that might help us understand your situation better."""
 
 
 __all__ = [

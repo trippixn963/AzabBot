@@ -10,7 +10,6 @@ Server: discord.gg/syria
 
 import os
 import asyncio
-import aiohttp
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 from collections import deque, OrderedDict
@@ -24,6 +23,7 @@ from src.core.database import get_db
 from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
 from src.utils.discord_rate_limit import log_http_error
+from src.utils.http import http_session
 from src.core.constants import (
     GUILD_FETCH_TIMEOUT,
     SECONDS_PER_HOUR,
@@ -113,13 +113,10 @@ class AzabBot(commands.Bot):
         self.appeal_service = None
         self.ticket_service = None
         self.ai_service = None
-        self.stats_api = None
+        self.api_service = None
         self.content_moderation = None
         self.maintenance = None
         self.prisoner_service = None
-
-        # Shared HTTP session for all services
-        self._http_session: Optional[aiohttp.ClientSession] = None
 
         # Message history tracking (LRU cache with limit)
         self._last_messages_lock = asyncio.Lock()
@@ -167,6 +164,9 @@ class AzabBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         """Load cogs and sync commands before on_ready."""
+        # Start unified HTTP session
+        await http_session.start(user_agent="AzabBot/1.0")
+
         # Load command cogs
         from src.commands import COMMAND_COGS
         for cog in COMMAND_COGS:
@@ -301,7 +301,7 @@ class AzabBot(commands.Bot):
             ("Mute Scheduler", "Running" if self.mute_scheduler else "Stopped"),
             ("Case Log", "Enabled" if self.case_log_service and self.case_log_service.enabled else "Disabled"),
             ("Mod Tracker", "Enabled" if self.mod_tracker and self.mod_tracker.enabled else "Disabled"),
-            ("Stats API", "Running" if self.stats_api else "Stopped"),
+            ("API Service", "Running" if self.api_service else "Stopped"),
             ("Webhook Alerts", "Enabled" if self.webhook_alert_service and self.webhook_alert_service.enabled else "Disabled"),
         ], emoji="🔥")
 
@@ -393,9 +393,9 @@ class AzabBot(commands.Bot):
             from src.services.maintenance import MaintenanceService
             self.maintenance = MaintenanceService(self)
 
-            from src.services.stats_api import AzabAPI
-            self.stats_api = AzabAPI(self)
-            await self.stats_api.start()
+            from src.api import APIService
+            self.api_service = APIService(self)
+            await self.api_service.start()
 
             from src.services.backup import BackupScheduler
             self.backup_scheduler = BackupScheduler()
@@ -483,6 +483,17 @@ class AzabBot(commands.Bot):
                 ], emoji="🎫")
             else:
                 logger.info("Ticket Service Disabled (no channel configured)")
+
+            # Initialize status webhook service for hourly health reports
+            from src.services.status_webhook import get_status_service
+            self.webhook_alert_service = get_status_service(
+                webhook_url=self.config.status_webhook_url,
+                bot_name="AzabBot",
+            )
+            self.webhook_alert_service.set_bot(self)
+            if self.webhook_alert_service.enabled:
+                await self.webhook_alert_service.send_startup_alert()
+                await self.webhook_alert_service.start_hourly_alerts()
 
             # Summary of all initialized services
             logger.tree("ALL SERVICES INITIALIZED", [
@@ -822,17 +833,6 @@ class AzabBot(commands.Bot):
             log_http_error(e, "Auto-Hide Channel", [("Channel", f"#{channel.name}")])
 
     # =========================================================================
-    # Shared HTTP Session
-    # =========================================================================
-
-    async def get_http_session(self) -> aiohttp.ClientSession:
-        """Get or create the shared HTTP session for all services."""
-        if self._http_session is None or self._http_session.closed:
-            timeout = aiohttp.ClientTimeout(total=30)
-            self._http_session = aiohttp.ClientSession(timeout=timeout)
-        return self._http_session
-
-    # =========================================================================
     # Shutdown
     # =========================================================================
 
@@ -859,15 +859,14 @@ class AzabBot(commands.Bot):
         if self.presence:
             await self.presence.stop()
 
-        if self.stats_api:
-            await self.stats_api.stop()
+        if self.api_service:
+            await self.api_service.stop()
 
         if hasattr(self, 'backup_scheduler') and self.backup_scheduler:
             await self.backup_scheduler.stop()
 
-        # Close shared HTTP session
-        if self._http_session and not self._http_session.closed:
-            await self._http_session.close()
+        # Close unified HTTP session
+        await http_session.stop()
 
         # Close logger webhook session
         await logger.close_webhook_session()

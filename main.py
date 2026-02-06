@@ -25,7 +25,14 @@ from typing import Optional
 # CRITICAL: Load environment variables BEFORE importing any local modules
 # that read from environment at import time (e.g., config.py)
 from dotenv import load_dotenv
-load_dotenv()
+
+# Load from shared .env (all bots use one unified config)
+_shared_env = Path(__file__).parent.parent / "shared" / ".env"
+if _shared_env.exists():
+    load_dotenv(_shared_env)
+else:
+    # Fallback to local .env for development
+    load_dotenv()
 
 import discord
 from src.core.logger import logger

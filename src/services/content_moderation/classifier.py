@@ -16,6 +16,7 @@ from typing import Optional
 import aiohttp
 
 from src.core.logger import logger
+from src.utils.http import http_session, WEBHOOK_TIMEOUT
 
 from .constants import (
     MAX_MESSAGE_LENGTH,
@@ -60,7 +61,6 @@ class ContentClassifier:
     def __init__(self) -> None:
         """Initialize the content classifier."""
         self.api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
-        self._session: Optional[aiohttp.ClientSession] = None
 
         if not self.api_key:
             logger.warning("Content Classifier Disabled", [
@@ -78,22 +78,9 @@ class ContentClassifier:
         """Check if classifier is enabled (has API key)."""
         return bool(self.api_key)
 
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """
-        Get or create HTTP session for API calls.
-
-        Returns:
-            Active aiohttp ClientSession.
-        """
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-        return self._session
-
     async def close(self) -> None:
-        """Close HTTP session and release resources."""
-        if self._session and not self._session.closed:
-            await self._session.close()
-            logger.debug("Content Classifier session closed")
+        """No-op for backward compatibility. HTTP session is managed globally."""
+        pass
 
     async def classify(self, content: str) -> ClassificationResult:
         """
@@ -120,8 +107,6 @@ class ContentClassifier:
             logger.debug("Content Truncated", [("From", str(original_length)), ("To", str(MAX_MESSAGE_LENGTH))])
 
         try:
-            session = await self._get_session()
-
             payload = {
                 "model": OPENAI_MODEL,
                 "messages": [
@@ -139,11 +124,11 @@ class ContentClassifier:
 
             logger.debug("OpenAI API Call", [("Chars", str(len(content)))])
 
-            async with session.post(
+            async with http_session.post(
                 "https://api.openai.com/v1/chat/completions",
                 json=payload,
                 headers=headers,
-                timeout=aiohttp.ClientTimeout(total=10),
+                timeout=WEBHOOK_TIMEOUT,  # 10s - OpenAI can be slow
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()

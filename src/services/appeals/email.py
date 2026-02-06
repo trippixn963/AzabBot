@@ -9,11 +9,11 @@ Server: discord.gg/syria
 """
 
 import asyncio
-import aiohttp
 import os
 from typing import Optional
 
 from src.core.logger import logger
+from src.utils.http import http_session, WEBHOOK_TIMEOUT
 
 
 async def send_appeal_email(
@@ -96,21 +96,20 @@ async def send_appeal_email(
     # Retry loop with exponential backoff
     for attempt in range(max_retries):
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    "https://api.resend.com/emails",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "from": f"{server_name} <noreply@trippixn.com>",
-                        "to": [to_email],
-                        "subject": subject,
-                        "html": html_content,
-                    },
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
+            async with http_session.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": f"{server_name} <noreply@trippixn.com>",
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html_content,
+                },
+                timeout=WEBHOOK_TIMEOUT,
+            ) as resp:
                     if resp.status == 200:
                         logger.tree("Appeal Email Sent", [
                             ("Appeal ID", appeal_id),

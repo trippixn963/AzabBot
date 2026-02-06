@@ -378,7 +378,11 @@ class TicketsMixin:
         return [TicketRecord(**dict(row)) for row in rows]
 
     def delete_ticket(self: "DatabaseManager", ticket_id: str) -> bool:
-        """Delete a ticket from the database."""
+        """Delete a ticket and all related records from the database."""
+        # Delete related records first (foreign key constraints)
+        self.execute("DELETE FROM ticket_messages WHERE ticket_id = ?", (ticket_id,))
+        self.execute("DELETE FROM ai_conversations WHERE ticket_id = ?", (ticket_id,))
+        # Now delete the ticket
         cursor = self.execute("DELETE FROM tickets WHERE ticket_id = ?", (ticket_id,))
         if cursor.rowcount > 0:
             logger.debug("Ticket Deleted", [("Ticket ID", ticket_id)])

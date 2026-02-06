@@ -1,0 +1,129 @@
+"""
+AzabBot - WebSocket Router
+==========================
+
+WebSocket endpoints for real-time updates.
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
+"""
+
+import uuid
+from typing import Optional
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+
+from src.core.logger import logger
+from src.api.services.websocket import get_ws_manager
+from src.api.services.auth import get_auth_service
+from src.api.models.base import WSMessage, WSEventType
+
+
+router = APIRouter(tags=["WebSocket"])
+
+
+@router.websocket("/ws")
+async def websocket_endpoint(
+    websocket: WebSocket,
+    token: Optional[str] = Query(None, description="JWT auth token"),
+):
+    """
+    WebSocket endpoint for real-time dashboard updates.
+
+    Connect with optional token for authentication:
+        ws://host/api/v1/ws?token=<jwt_token>
+
+    Events:
+    - connected: Initial connection acknowledgment
+    - heartbeat: Periodic ping from server
+    - case_created/updated/resolved: Case events
+    - ticket_created/claimed/closed: Ticket events
+    - appeal_submitted/approved/denied: Appeal events
+    - mod_action: General moderation action events
+
+    Subscriptions:
+    Send {"action": "subscribe", "channel": "cases"} to subscribe to specific channels.
+    Available channels: cases, tickets, appeals, moderation
+    """
+    ws_manager = get_ws_manager()
+    connection_id = str(uuid.uuid4())
+
+    # Validate token if provided
+    user_id: Optional[int] = None
+    if token:
+        auth_service = get_auth_service()
+        payload = auth_service.get_token_payload(token)
+        if payload:
+            user_id = payload.sub
+
+    # Accept connection
+    accepted = await ws_manager.connect(websocket, connection_id, user_id)
+    if not accepted:
+        await websocket.close(code=1008, reason="Connection limit reached")
+        return
+
+    try:
+        while True:
+            # Wait for messages from client
+            data = await websocket.receive_json()
+
+            # Handle client actions
+            action = data.get("action")
+
+            if action == "subscribe":
+                channel = data.get("channel")
+                if channel:
+                    await ws_manager.subscribe(connection_id, channel)
+                    await ws_manager._send_to_connection(connection_id, WSMessage(
+                        event=WSEventType.SUBSCRIBED,
+                        data={"channel": channel},
+                    ))
+
+            elif action == "unsubscribe":
+                channel = data.get("channel")
+                if channel:
+                    await ws_manager.unsubscribe(connection_id, channel)
+                    await ws_manager._send_to_connection(connection_id, WSMessage(
+                        event=WSEventType.UNSUBSCRIBED,
+                        data={"channel": channel},
+                    ))
+
+            elif action == "authenticate":
+                # Late authentication
+                auth_token = data.get("token")
+                if auth_token:
+                    auth_service = get_auth_service()
+                    payload = auth_service.get_token_payload(auth_token)
+                    if payload:
+                        await ws_manager.authenticate(connection_id, payload.sub)
+                        await ws_manager._send_to_connection(connection_id, WSMessage(
+                            event=WSEventType.AUTHENTICATED,
+                            data={"user_id": payload.sub},
+                        ))
+                    else:
+                        await ws_manager._send_to_connection(connection_id, WSMessage(
+                            event=WSEventType.ERROR,
+                            data={"message": "Invalid token"},
+                        ))
+
+            elif action == "ping":
+                # Client ping
+                await ws_manager._send_to_connection(connection_id, WSMessage(
+                    event=WSEventType.PONG,
+                    data={},
+                ))
+
+    except WebSocketDisconnect:
+        logger.debug("WebSocket Client Disconnected", [
+            ("Connection ID", connection_id[:8]),
+        ])
+    except Exception as e:
+        logger.debug("WebSocket Error", [
+            ("Connection ID", connection_id[:8]),
+            ("Error", str(e)[:50]),
+        ])
+    finally:
+        await ws_manager.disconnect(connection_id)
+
+
+__all__ = ["router"]

@@ -45,7 +45,7 @@ from .constants import (
     SECONDS_PER_DAY,
     SECONDS_PER_WEEK,
     # Network
-    STATS_API_PORT,
+    API_PORT,
     # Intervals
     MUTE_CHECK_INTERVAL,
     PRESENCE_UPDATE_INTERVAL,
@@ -92,7 +92,7 @@ __all__ = [
     "SECONDS_PER_HOUR",
     "SECONDS_PER_DAY",
     "SECONDS_PER_WEEK",
-    "STATS_API_PORT",
+    "API_PORT",
     "MUTE_CHECK_INTERVAL",
     "PRESENCE_UPDATE_INTERVAL",
     "COMMAND_COOLDOWN",

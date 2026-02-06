@@ -12,11 +12,11 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
-import aiohttp
 import discord
 
 from src.core.logger import logger
 from src.core.config import NY_TZ
+from src.utils.http import http_session, DOWNLOAD_TIMEOUT
 
 from .constants import (
     MESSAGE_CACHE_SIZE,
@@ -102,19 +102,18 @@ class CacheMixin:
         # Download attachments
         attachment_data: List[Tuple[str, bytes]] = []
         if message.attachments:
-            async with aiohttp.ClientSession() as session:
-                for attachment in message.attachments[:5]:
-                    try:
-                        if attachment.content_type and any(
-                            t in attachment.content_type
-                            for t in ["image", "video", "gif"]
-                        ):
-                            async with session.get(attachment.url) as resp:
-                                if resp.status == 200:
-                                    data = await resp.read()
-                                    attachment_data.append((attachment.filename, data))
-                    except Exception:
-                        pass
+            for attachment in message.attachments[:5]:
+                try:
+                    if attachment.content_type and any(
+                        t in attachment.content_type
+                        for t in ["image", "video", "gif"]
+                    ):
+                        async with http_session.get(attachment.url, timeout=DOWNLOAD_TIMEOUT) as resp:
+                            if resp.status == 200:
+                                data = await resp.read()
+                                attachment_data.append((attachment.filename, data))
+                except Exception:
+                    pass
 
         # Create cached message
         cached = CachedMessage(
