@@ -39,11 +39,16 @@ class ModeratorDashboardStats(BaseModel):
 
     total_cases: int = Field(0, description="Total cases handled by this mod")
     cases_this_week: int = Field(0, description="Cases in the last 7 days")
+    cases_last_week: int = Field(0, description="Cases 7-14 days ago (for trend)")
     cases_this_month: int = Field(0, description="Cases in the last 30 days")
     total_mutes: int = Field(0, description="Total mute actions")
     total_bans: int = Field(0, description="Total ban actions")
     total_warns: int = Field(0, description="Total warn actions")
     joined_at: Optional[datetime] = Field(None, description="When the mod joined the server")
+    daily_cases: list[int] = Field(default_factory=list, description="Last 7 days cases (sparkline)")
+    daily_warns: list[int] = Field(default_factory=list, description="Last 7 days warns")
+    daily_mutes: list[int] = Field(default_factory=list, description="Last 7 days mutes")
+    daily_bans: list[int] = Field(default_factory=list, description="Last 7 days bans")
 
 
 class ServerDashboardStats(BaseModel):
@@ -54,7 +59,12 @@ class ServerDashboardStats(BaseModel):
     total_cases: int = Field(0, description="Total cases server-wide")
     cases_today: int = Field(0, description="Cases created today")
     cases_this_week: int = Field(0, description="Cases in the last 7 days")
+    cases_last_week: int = Field(0, description="Cases 7-14 days ago (for trend)")
     active_tickets: int = Field(0, description="Currently open/claimed tickets")
+    daily_members: list[int] = Field(default_factory=list, description="Last 7 days member count")
+    daily_online: list[int] = Field(default_factory=list, description="Last 7 days online count")
+    daily_cases: list[int] = Field(default_factory=list, description="Last 7 days cases")
+    daily_tickets: list[int] = Field(default_factory=list, description="Last 7 days new tickets")
 
 
 class DailyActivity(BaseModel):
@@ -70,6 +80,31 @@ class DashboardStatsResponse(BaseModel):
     moderator: ModeratorDashboardStats
     server: ServerDashboardStats
     activity: list[DailyActivity] = Field(default_factory=list, description="Last 14 days activity")
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def _get_daily_counts(
+    db,
+    now: datetime,
+    days: int,
+    query: str,
+    params: tuple = ()
+) -> list[int]:
+    """Get daily counts for the last N days."""
+    counts = []
+    for i in range(days - 1, -1, -1):  # Oldest to newest
+        day = now - timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        day_end = day_start + 86400
+
+        full_query = query.format(day_start=day_start, day_end=day_end)
+        result = db.fetchone(full_query, params)
+        counts.append(result[0] if result else 0)
+
+    return counts
 
 
 # =============================================================================
@@ -92,9 +127,9 @@ async def get_dashboard_stats(
 
     # Time calculations
     now = datetime.utcnow()
-    now_ts = now.timestamp()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     week_ago = (now - timedelta(days=7)).timestamp()
+    two_weeks_ago = (now - timedelta(days=14)).timestamp()
     month_ago = (now - timedelta(days=30)).timestamp()
 
     # =========================================================================
@@ -111,6 +146,12 @@ async def get_dashboard_stats(
     mod_cases_week = db.fetchone(
         "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND created_at >= ?",
         (moderator_id, week_ago)
+    )[0]
+
+    # Cases last week (7-14 days ago)
+    mod_cases_last_week = db.fetchone(
+        "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND created_at >= ? AND created_at < ?",
+        (moderator_id, two_weeks_ago, week_ago)
     )[0]
 
     # Cases this month
@@ -137,6 +178,45 @@ async def get_dashboard_stats(
         (moderator_id,)
     )[0]
 
+    # Daily sparklines for moderator (last 7 days)
+    mod_daily_cases = []
+    mod_daily_warns = []
+    mod_daily_mutes = []
+    mod_daily_bans = []
+
+    for i in range(6, -1, -1):  # 6 days ago to today
+        day = now - timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        day_end = day_start + 86400
+
+        # All cases
+        day_cases = db.fetchone(
+            "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND created_at >= ? AND created_at < ?",
+            (moderator_id, day_start, day_end)
+        )[0]
+        mod_daily_cases.append(day_cases)
+
+        # Warns
+        day_warns = db.fetchone(
+            "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND action_type = 'warn' AND created_at >= ? AND created_at < ?",
+            (moderator_id, day_start, day_end)
+        )[0]
+        mod_daily_warns.append(day_warns)
+
+        # Mutes
+        day_mutes = db.fetchone(
+            "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND action_type = 'mute' AND created_at >= ? AND created_at < ?",
+            (moderator_id, day_start, day_end)
+        )[0]
+        mod_daily_mutes.append(day_mutes)
+
+        # Bans
+        day_bans = db.fetchone(
+            "SELECT COUNT(*) FROM cases WHERE moderator_id = ? AND action_type = 'ban' AND created_at >= ? AND created_at < ?",
+            (moderator_id, day_start, day_end)
+        )[0]
+        mod_daily_bans.append(day_bans)
+
     # When did this mod join the server?
     joined_at = None
     if config.mod_server_id:
@@ -149,11 +229,16 @@ async def get_dashboard_stats(
     moderator_stats = ModeratorDashboardStats(
         total_cases=mod_total_cases,
         cases_this_week=mod_cases_week,
+        cases_last_week=mod_cases_last_week,
         cases_this_month=mod_cases_month,
         total_mutes=mod_mutes,
         total_bans=mod_bans,
         total_warns=mod_warns,
         joined_at=joined_at,
+        daily_cases=mod_daily_cases,
+        daily_warns=mod_daily_warns,
+        daily_mutes=mod_daily_mutes,
+        daily_bans=mod_daily_bans,
     )
 
     # =========================================================================
@@ -198,10 +283,43 @@ async def get_dashboard_stats(
         (week_ago,)
     )[0]
 
+    # Cases last week (7-14 days ago)
+    server_cases_last_week = db.fetchone(
+        "SELECT COUNT(*) FROM cases WHERE created_at >= ? AND created_at < ?",
+        (two_weeks_ago, week_ago)
+    )[0]
+
     # Active tickets (open or claimed)
     active_tickets = db.fetchone(
         "SELECT COUNT(*) FROM tickets WHERE status IN ('open', 'claimed')"
     )[0]
+
+    # Daily server stats (last 7 days)
+    server_daily_cases = []
+    server_daily_tickets = []
+
+    for i in range(6, -1, -1):  # 6 days ago to today
+        day = now - timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        day_end = day_start + 86400
+
+        # Cases
+        day_cases = db.fetchone(
+            "SELECT COUNT(*) FROM cases WHERE created_at >= ? AND created_at < ?",
+            (day_start, day_end)
+        )[0]
+        server_daily_cases.append(day_cases)
+
+        # New tickets created
+        day_tickets = db.fetchone(
+            "SELECT COUNT(*) FROM tickets WHERE created_at >= ? AND created_at < ?",
+            (day_start, day_end)
+        )[0]
+        server_daily_tickets.append(day_tickets)
+
+    # Note: daily_members and daily_online require historical snapshots
+    # which we don't currently store. Leaving as empty arrays.
+    # TODO: Add a daily snapshot system to track member/online counts
 
     server_stats = ServerDashboardStats(
         total_members=total_members,
@@ -209,7 +327,12 @@ async def get_dashboard_stats(
         total_cases=server_total_cases,
         cases_today=server_cases_today,
         cases_this_week=server_cases_week,
+        cases_last_week=server_cases_last_week,
         active_tickets=active_tickets,
+        daily_members=[],  # Requires historical snapshots
+        daily_online=[],   # Requires historical snapshots
+        daily_cases=server_daily_cases,
+        daily_tickets=server_daily_tickets,
     )
 
     # =========================================================================
