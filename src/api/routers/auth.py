@@ -160,7 +160,7 @@ async def register(
         )
 
     # Attempt registration
-    success, message = auth_service.register(request_body.discord_id, request_body.pin)
+    success, message = auth_service.register(request_body.discord_id, request_body.password)
 
     if not success:
         logger.warning("Dashboard Register Failed", [
@@ -242,7 +242,7 @@ async def login(
     auth_service.record_login_attempt(discord_id)
 
     # Attempt login
-    success, token, expires_at = auth_service.login(discord_id, request_body.pin)
+    success, token, expires_at = auth_service.login(discord_id, request_body.password)
 
     if not success or not token:
         # Record failed login (for account lockout)

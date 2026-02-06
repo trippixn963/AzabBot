@@ -379,7 +379,7 @@ class AuthService:
             ])
             return False
 
-    def register(self, discord_id: int, pin: str) -> tuple[bool, str]:
+    def register(self, discord_id: int, password: str) -> tuple[bool, str]:
         """
         Register a new dashboard user.
 
@@ -389,12 +389,12 @@ class AuthService:
         if self._get_user(discord_id) is not None:
             return False, "User already registered"
 
-        if not pin or len(pin) < 4:
-            return False, "PIN must be at least 4 characters"
+        if not password or len(password) < 4:
+            return False, "Password must be at least 4 characters"
 
         user = RegisteredUser(
             discord_id=discord_id,
-            pin_hash=self._hash_pin(pin),
+            pin_hash=self._hash_pin(password),
             created_at=time.time(),
         )
 
@@ -406,7 +406,7 @@ class AuthService:
 
         return False, "Failed to save registration"
 
-    def login(self, discord_id: int, pin: str) -> tuple[bool, Optional[str], Optional[datetime]]:
+    def login(self, discord_id: int, password: str) -> tuple[bool, Optional[str], Optional[datetime]]:
         """
         Authenticate a user and generate tokens.
 
@@ -417,7 +417,7 @@ class AuthService:
         if not user:
             return False, None, None
 
-        if not self._verify_pin(pin, user.pin_hash):
+        if not self._verify_pin(password, user.pin_hash):
             return False, None, None
 
         # Update last login

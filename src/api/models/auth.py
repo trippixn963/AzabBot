@@ -27,14 +27,14 @@ class RegisterRequest(BaseModel):
     """Request to register a moderator account."""
 
     discord_id: int = Field(description="Discord user ID")
-    pin: str = Field(min_length=4, max_length=8, description="PIN code (4-8 digits)")
+    password: str = Field(min_length=4, max_length=32, description="Password (4-32 characters)")
 
 
 class LoginRequest(BaseModel):
     """Request to log in."""
 
     discord_id: int = Field(description="Discord user ID")
-    pin: str = Field(description="PIN code")
+    password: str = Field(description="Password")
 
 
 # =============================================================================
