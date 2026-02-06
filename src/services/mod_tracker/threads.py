@@ -16,6 +16,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
 from src.core.constants import QUERY_LIMIT_XL
+from src.utils.discord_rate_limit import log_http_error
 
 from .constants import CACHE_TTL
 from .helpers import strip_emojis
@@ -253,9 +254,8 @@ class ThreadsMixin:
             ])
             return None
         except discord.HTTPException as e:
-            logger.error("Mod Tracker: HTTP Error Creating Thread", [
+            log_http_error(e, "Mod Tracker Create Thread", [
                 ("Mod", f"{mod.display_name} ({mod.id})"),
-                ("Error", str(e)[:100]),
             ])
             return None
         except Exception as e:

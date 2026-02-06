@@ -18,6 +18,7 @@ from src.core.logger import logger
 from src.core.constants import THREAD_DELETE_DELAY, QUERY_LIMIT_TINY
 from src.utils.retry import safe_fetch_channel
 from src.utils.async_utils import create_safe_task
+from src.utils.discord_rate_limit import log_http_error
 
 from .embeds import build_control_panel_embed, build_panel_embed
 from .views import TicketPanelView, TicketControlPanelView
@@ -196,10 +197,9 @@ class HelpersMixin:
                     )
                     locked_count += 1
             except discord.HTTPException as e:
-                logger.warning("Failed to lock out staff user", [
+                log_http_error(e, "Lock Out Staff User", [
                     ("Ticket ID", ticket_id),
                     ("User ID", str(uid)),
-                    ("Error", str(e)),
                 ])
 
         if locked_count > 0:
@@ -244,10 +244,9 @@ class HelpersMixin:
                     )
                     restored_count += 1
             except discord.HTTPException as e:
-                logger.warning("Failed to restore staff user permissions", [
+                log_http_error(e, "Restore Staff User Permissions", [
                     ("Ticket ID", ticket_id),
                     ("User ID", str(uid)),
-                    ("Error", str(e)),
                 ])
 
         if restored_count > 0:
@@ -300,9 +299,8 @@ class HelpersMixin:
                 await channel.edit(overwrites=new_overwrites)
                 logger.debug("Ticket Locked on Close", [("Users", str(locked_count))])
             except discord.HTTPException as e:
-                logger.warning("Failed to lock ticket on close", [
+                log_http_error(e, "Lock Ticket on Close", [
                     ("Ticket ID", ticket.get("ticket_id", "unknown")),
-                    ("Error", str(e)),
                 ])
 
     # =========================================================================
@@ -403,9 +401,8 @@ class HelpersMixin:
             ], emoji="🎫")
             return message
         except discord.HTTPException as e:
-            logger.error("Failed to send ticket panel", [
+            log_http_error(e, "Send Ticket Panel", [
                 ("Channel", f"{channel.name} ({channel.id})"),
-                ("Error", str(e)),
             ])
             return None
         except Exception as e:
@@ -463,7 +460,7 @@ class HelpersMixin:
                     ], emoji="🎫")
                     await self.send_panel(channel)
         except discord.HTTPException as e:
-            logger.error("Failed to verify ticket panel", [("Error", str(e))])
+            log_http_error(e, "Verify Ticket Panel", [])
 
     async def handle_panel_deletion(self: "TicketService", message_id: int) -> None:
         """Handle ticket panel deletion - resend automatically."""
@@ -489,7 +486,7 @@ class HelpersMixin:
                 ], emoji="🎫")
                 await self.send_panel(channel)
         except discord.HTTPException as e:
-            logger.error("Failed to resend ticket panel", [("Error", str(e))])
+            log_http_error(e, "Resend Ticket Panel", [])
 
     # =========================================================================
     # Channel Deletion

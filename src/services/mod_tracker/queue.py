@@ -19,6 +19,7 @@ from src.core.logger import logger
 from src.core.config import NY_TZ
 from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
+from src.utils.discord_rate_limit import log_http_error
 
 from .constants import (
     PRIORITY_CRITICAL,

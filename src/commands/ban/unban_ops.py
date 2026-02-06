@@ -28,6 +28,7 @@ from src.utils.footer import set_footer
 from src.views import CaseButtonView
 from src.utils.duration import format_duration
 from src.utils.dm_helpers import safe_send_dm
+from src.utils.discord_rate_limit import log_http_error
 from src.core.constants import CASE_LOG_TIMEOUT, GUILD_FETCH_TIMEOUT, QUERY_LIMIT_TINY
 
 from .autocomplete import banned_user_autocomplete, removal_reason_autocomplete
@@ -108,10 +109,9 @@ class UnbanOpsMixin:
             await interaction.followup.send("I don't have permission to unban users.", ephemeral=True)
             return
         except discord.HTTPException as e:
-            logger.error("Unban Failed (HTTP)", [
+            log_http_error(e, "Unban", [
                 ("User", f"{target_user.name} ({target_user.id})"),
                 ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
-                ("Error", str(e)[:100]),
             ])
             await interaction.followup.send(f"Failed to unban: {e}", ephemeral=True)
             return

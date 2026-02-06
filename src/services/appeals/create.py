@@ -19,6 +19,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
 from src.utils.footer import set_footer
+from src.utils.discord_rate_limit import log_http_error
 
 from .constants import (
     APPEAL_COOLDOWN_SECONDS,
@@ -315,9 +316,8 @@ class CreateMixin:
                     ("Count", str(len(discord_files))),
                 ], emoji="📎")
             except discord.HTTPException as e:
-                logger.error("Failed to upload attachments", [
+                log_http_error(e, "Upload Attachments", [
                     ("Appeal ID", appeal_id),
-                    ("Error", str(e)[:100]),
                 ])
 
 

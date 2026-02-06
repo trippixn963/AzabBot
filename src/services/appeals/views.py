@@ -17,6 +17,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
+from src.utils.discord_rate_limit import log_http_error
 from src.views import CASE_EMOJI, APPROVE_EMOJI, APPEAL_EMOJI, DENY_EMOJI, InfoButton, HistoryButton, UserInfoSelect
 from src.core.constants import EMOJI_ID_TICKET, EMOJI_ID_TRANSCRIPT, MODAL_FIELD_MEDIUM, MODAL_FIELD_LONG
 

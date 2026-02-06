@@ -21,6 +21,7 @@ from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
 from src.utils.async_utils import create_safe_task
 from src.utils.snipe_blocker import should_block_snipe
+from src.utils.discord_rate_limit import log_http_error
 
 from .helpers import HelpersMixin, INVITE_PATTERN
 
@@ -109,7 +110,7 @@ class MessageEvents(HelpersMixin, commands.Cog):
                 except discord.Forbidden:
                     logger.warning("No permission to delete poll result message")
                 except discord.HTTPException as e:
-                    logger.warning("Poll Result Delete Failed", [("Error", str(e)[:50])])
+                    log_http_error(e, "Poll Result Delete", [("Channel", message.channel.name)])
                 return
 
             # Delete non-poll messages

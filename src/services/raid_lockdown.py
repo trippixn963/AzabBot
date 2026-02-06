@@ -30,12 +30,11 @@ from src.core.constants import (
     AUTO_UNLOCK_DURATION,
     LOCKDOWN_COOLDOWN,
     DELETE_AFTER_EXTENDED,
-    LOG_TRUNCATE_SHORT,
-    LOG_TRUNCATE_MEDIUM,
 )
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.async_utils import create_safe_task
+from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -166,9 +165,8 @@ class RaidLockdownService:
 
         except discord.HTTPException as e:
             error_msg = f"#{channel.name}: {e.text[:50] if e.text else 'HTTP error'}"
-            logger.warning("Auto-Lock Channel Failed", [
+            log_http_error(e, "Auto-Lock Text Channel", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False, error_msg
 
@@ -248,9 +246,8 @@ class RaidLockdownService:
 
         except discord.HTTPException as e:
             error_msg = f"🔊{channel.name}: {e.text[:50] if e.text else 'HTTP error'}"
-            logger.warning("Auto-Lock Channel Failed", [
+            log_http_error(e, "Auto-Lock Voice Channel", [
                 ("Channel", f"🔊{channel.name} ({channel.id})"),
-                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False, error_msg
 
@@ -332,9 +329,8 @@ class RaidLockdownService:
             return False, f"#{channel.name}: Missing permissions"
 
         except discord.HTTPException as e:
-            logger.warning("Auto-Unlock Channel Failed", [
+            log_http_error(e, "Auto-Unlock Text Channel", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False, f"#{channel.name}: HTTP error"
 
@@ -408,9 +404,8 @@ class RaidLockdownService:
             return False, f"🔊{channel.name}: Missing permissions"
 
         except discord.HTTPException as e:
-            logger.warning("Auto-Unlock Channel Failed", [
+            log_http_error(e, "Auto-Unlock Voice Channel", [
                 ("Channel", f"🔊{channel.name} ({channel.id})"),
-                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False, f"🔊{channel.name}: HTTP error"
 
@@ -820,9 +815,8 @@ class RaidLockdownService:
             return False
 
         except discord.HTTPException as e:
-            logger.warning("Lockdown Announcement Failed", [
+            log_http_error(e, "Lockdown Announcement", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False
 
@@ -872,9 +866,8 @@ class RaidLockdownService:
             return False
 
         except discord.HTTPException as e:
-            logger.warning("Unlock Announcement Failed", [
+            log_http_error(e, "Unlock Announcement", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
             ])
             return False
 
@@ -945,9 +938,7 @@ class RaidLockdownService:
             return False
 
         except discord.HTTPException as e:
-            logger.warning("Mod Alert Failed", [
-                ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
-            ])
+            log_http_error(e, "Mod Alert", [])
             return False
 
         except Exception as e:

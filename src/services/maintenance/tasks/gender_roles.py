@@ -17,6 +17,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.constants import MAINTENANCE_RATE_LIMIT_DELAY, LOG_TRUNCATE_SHORT
+from src.utils.discord_rate_limit import log_http_error
 from ..base import MaintenanceTask
 
 if TYPE_CHECKING:
@@ -115,9 +116,8 @@ class GenderRoleTask(MaintenanceTask):
                         ])
                     except discord.HTTPException as e:
                         errors += 1
-                        logger.error("Maintenance: Gender Role Removal Failed", [
+                        log_http_error(e, "Gender Role Removal", [
                             ("User", f"{member.name} ({member.id})"),
-                            ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
                         ])
 
         if conflicts_resolved > 0 or errors > 0:

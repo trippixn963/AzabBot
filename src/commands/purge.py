@@ -20,6 +20,7 @@ from src.core.logger import logger
 from src.core.config import get_config, has_mod_role, EmbedColors, NY_TZ
 from src.core.constants import MAX_PURGE_AMOUNT, BULK_DELETE_LIMIT
 from src.utils.footer import set_footer
+from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -161,10 +162,9 @@ class PurgeCog(commands.Cog):
             )
             return
         except discord.HTTPException as e:
-            logger.tree("PURGE FAILED", [
-                ("Reason", "History fetch failed"),
-                ("Error", str(e)[:50]),
-            ], emoji="❌")
+            log_http_error(e, "Purge History Fetch", [
+                ("Channel", f"{channel.name} ({channel.id})"),
+            ])
             await interaction.followup.send(
                 "Failed to fetch messages. Please try again.",
                 ephemeral=True,

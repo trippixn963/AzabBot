@@ -18,6 +18,7 @@ from src.core.logger import logger
 from src.core.config import NY_TZ
 from src.core.constants import SNIPE_MAX_AGE, EMOJI_ID_MESSAGE
 from src.utils.interaction import safe_respond
+from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
     from .cog import SnipeCog
@@ -198,8 +199,7 @@ class EditsnipeCmdMixin:
             )
 
         except discord.HTTPException as e:
-            logger.error("Editsnipe Command Failed (HTTP)", [
-                ("Error", str(e)),
+            log_http_error(e, "Editsnipe Command", [
                 ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
                 ("User ID", str(interaction.user.id)),
                 ("Channel", str(interaction.channel.id) if interaction.channel else "Unknown"),

@@ -20,6 +20,7 @@ from src.core.config import get_config
 from src.core.database import get_db
 from src.core.constants import CASE_LOG_TIMEOUT, QUERY_LIMIT_TINY, LOG_TRUNCATE_SHORT
 from src.utils.async_utils import create_safe_task
+from src.utils.discord_rate_limit import log_http_error
 
 # Verification role delay - another bot handles this, but we act as failsafe backup
 VERIFICATION_DELAY = 5  # seconds to wait before checking
@@ -140,10 +141,9 @@ class MemberEvents(commands.Cog):
                 except discord.Forbidden:
                     logger.debug("Audit Log Access Denied", [("Action", "role_change"), ("Guild", after.guild.name)])
                 except discord.HTTPException as e:
-                    logger.warning("Audit Log Fetch Failed", [
+                    log_http_error(e, "Audit Log Fetch", [
                         ("Action", "member_role_update"),
                         ("Guild", after.guild.name),
-                        ("Error", str(e)[:50]),
                     ])
 
                 await self.bot.mod_tracker.log_role_change(
@@ -390,10 +390,9 @@ class MemberEvents(commands.Cog):
         except discord.Forbidden:
             logger.debug("Audit Log Access Denied", [("Action", "ban_check"), ("Guild", member.guild.name)])
         except discord.HTTPException as e:
-            logger.warning("Audit Log Fetch Failed", [
+            log_http_error(e, "Audit Log Fetch", [
                 ("Action", "ban_check"),
                 ("Guild", member.guild.name),
-                ("Error", str(e)[:50]),
             ])
 
         leave_type = "BANNED" if was_banned else "MEMBER LEFT"
@@ -614,10 +613,9 @@ class MemberEvents(commands.Cog):
         except discord.Forbidden:
             logger.debug("Audit Log Access Denied", [("Action", "ban_moderator_lookup"), ("Guild", guild.name)])
         except discord.HTTPException as e:
-            logger.warning("Audit Log Fetch Failed", [
+            log_http_error(e, "Audit Log Fetch", [
                 ("Action", "ban_moderator_lookup"),
                 ("Guild", guild.name),
-                ("Error", str(e)[:50]),
             ])
 
         # Log to server logs
@@ -656,10 +654,9 @@ class MemberEvents(commands.Cog):
         except discord.Forbidden:
             logger.debug("Audit Log Access Denied", [("Action", "unban_moderator_lookup"), ("Guild", guild.name)])
         except discord.HTTPException as e:
-            logger.warning("Audit Log Fetch Failed", [
+            log_http_error(e, "Audit Log Fetch", [
                 ("Action", "unban_moderator_lookup"),
                 ("Guild", guild.name),
-                ("Error", str(e)[:50]),
             ])
 
         # Log to server logs
@@ -771,10 +768,9 @@ class MemberEvents(commands.Cog):
                     ("Reason", "Missing permissions or role hierarchy"),
                 ])
             except discord.HTTPException as e:
-                logger.error("Gender Role Removal Failed", [
+                log_http_error(e, "Gender Role Removal", [
                     ("User", f"{after.name} ({after.id})"),
                     ("Role", non_verified_role.name),
-                    ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
                 ])
 
     async def _log_gender_role_resolution(
@@ -843,9 +839,8 @@ class MemberEvents(commands.Cog):
             logger.debug("Gender Role Resolution Logged", [("User", str(member.id))])
 
         except discord.HTTPException as e:
-            logger.warning("Failed to Log Gender Role Resolution", [
+            log_http_error(e, "Gender Role Resolution Log", [
                 ("User", str(member.id)),
-                ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
             ])
         except Exception as e:
             logger.error("Gender Role Log Failed", [

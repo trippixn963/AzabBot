@@ -23,6 +23,7 @@ from src.core.constants import (
     CLOSE_REQUEST_COOLDOWN,
 )
 from src.utils.async_utils import create_safe_task
+from src.utils.discord_rate_limit import log_http_error
 
 from .constants import (
     INACTIVE_WARNING_DAYS,
@@ -376,9 +377,8 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
                 ("Channel", f"#{message.channel.name}"),
             ], emoji="🔔")
         except discord.HTTPException as e:
-            logger.warning("Failed to send claim reminder", [
+            log_http_error(e, "Send Claim Reminder", [
                 ("Ticket ID", ticket["ticket_id"]),
-                ("Error", str(e)),
             ])
 
     async def clear_claim_reminder_cooldowns(self, ticket_id: str) -> int:
@@ -492,7 +492,6 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
                     ("Channel", f"#{message.channel.name}"),
                 ], emoji="🤖")
             except discord.HTTPException as e:
-                logger.warning("Failed to send AI follow-up", [
+                log_http_error(e, "Send AI Follow-up", [
                     ("Ticket ID", ticket["ticket_id"]),
-                    ("Error", str(e)),
                 ])

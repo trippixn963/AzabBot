@@ -17,6 +17,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import get_config
 from src.core.constants import LOG_TRUNCATE_SHORT, QUERY_LIMIT_XXL, MAINTENANCE_RATE_LIMIT_DELAY
+from src.utils.discord_rate_limit import log_http_error
 from ..base import MaintenanceTask
 
 if TYPE_CHECKING:

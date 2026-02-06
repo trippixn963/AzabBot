@@ -18,6 +18,7 @@ from src.core.config import get_config, EmbedColors
 from src.core.database import get_db
 from src.core.logger import logger
 from src.core.constants import WARNING_DECAY_DAYS, SECONDS_PER_DAY, SECONDS_PER_HOUR, QUERY_LIMIT_SMALL, QUERY_LIMIT_TINY
+from src.utils.discord_rate_limit import log_http_error
 
 from .constants import HISTORY_EMOJI
 
@@ -319,9 +320,8 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
         except discord.HTTPException as e:
-            logger.error("History Button Failed (HTTP)", [
+            log_http_error(e, "History Button", [
                 ("User ID", str(self.user_id)),
-                ("Error", str(e)[:100]),
             ])
             try:
                 await interaction.response.send_message(

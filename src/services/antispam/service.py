@@ -18,6 +18,7 @@ from src.core.constants import DELETE_AFTER_EXTENDED
 from src.core.database import get_db
 from src.core.logger import logger
 from src.utils.async_utils import create_safe_task
+from src.utils.discord_rate_limit import log_http_error
 from src.utils.footer import set_footer
 
 from .constants import (

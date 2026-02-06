@@ -26,6 +26,7 @@ from src.utils.footer import set_footer
 from src.views import CaseButtonView, APPEAL_EMOJI
 from src.utils.async_utils import create_safe_task
 from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
+from src.utils.discord_rate_limit import log_http_error
 from src.core.constants import CASE_LOG_TIMEOUT, GUILD_FETCH_TIMEOUT
 
 from .views import BanModal
@@ -199,10 +200,9 @@ class BanOpsMixin:
             await interaction.followup.send("I don't have permission to ban this user.", ephemeral=True)
             return False
         except discord.HTTPException as e:
-            logger.error("Ban Failed (HTTP)", [
+            log_http_error(e, "Ban", [
                 ("User", f"{user.name} ({user.id})"),
                 ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
-                ("Error", str(e)[:100]),
             ])
             await interaction.followup.send(f"Failed to ban: {e}", ephemeral=True)
             return False

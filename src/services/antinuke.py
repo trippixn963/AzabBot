@@ -33,6 +33,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.constants import RATE_LIMIT_DELAY
 from src.utils.footer import set_footer
+from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -368,10 +369,9 @@ class AntiNukeService:
                 ("Error", "Missing permissions"),
             ])
         except discord.HTTPException as e:
-            logger.warning("Bot Kick Failed (HTTP)", [
+            log_http_error(e, "Bot Kick", [
                 ("Bot", f"{bot_member.name} ({bot_member.id})"),
                 ("Guild", guild.name),
-                ("Error", str(e)[:100]),
             ])
 
     async def track_permission_change(
@@ -460,10 +460,9 @@ class AntiNukeService:
                 ("Error", "Missing permissions"),
             ])
         except discord.HTTPException as e:
-            logger.warning("Permission Revert Failed (HTTP)", [
+            log_http_error(e, "Permission Revert", [
                 ("Role", f"{role.name} ({role.id})"),
                 ("Guild", guild.name),
-                ("Error", str(e)[:100]),
             ])
 
     # =========================================================================
@@ -541,10 +540,9 @@ class AntiNukeService:
                             ("Error", "Missing permissions"),
                         ])
                     except discord.HTTPException as e:
-                        logger.warning("Role Quarantine Failed (HTTP)", [
+                        log_http_error(e, "Role Quarantine", [
                             ("Role", f"{role.name} ({role.id})"),
                             ("Guild", guild.name),
-                            ("Error", str(e)[:100]),
                         ])
 
             self._quarantined_guilds.add(guild.id)
@@ -599,10 +597,9 @@ class AntiNukeService:
                             ("Error", "Missing permissions"),
                         ])
                     except discord.HTTPException as e:
-                        logger.warning("Role Restore Failed (HTTP)", [
+                        log_http_error(e, "Role Restore", [
                             ("Role", f"{role.name} ({role.id})"),
                             ("Guild", guild.name),
-                            ("Error", str(e)[:100]),
                         ])
                 else:
                     logger.warning("Role Not Found During Restore", [
@@ -683,9 +680,8 @@ class AntiNukeService:
                         ("Channel ID", str(self.config.alert_channel_id)),
                     ])
             except discord.HTTPException as e:
-                logger.warning("Quarantine Alert Failed (HTTP)", [
+                log_http_error(e, "Quarantine Alert", [
                     ("Guild", guild.name),
-                    ("Error", str(e)[:100]),
                 ])
             except Exception as e:
                 logger.error("Quarantine Alert Failed", [
@@ -788,10 +784,9 @@ class AntiNukeService:
                 ("Error", "Missing permissions to remove roles"),
             ])
         except discord.HTTPException as e:
-            logger.error("Strip Permissions Failed (HTTP)", [
+            log_http_error(e, "Strip Permissions", [
                 ("User", f"{member.name} ({member.id})"),
                 ("Guild", member.guild.name),
-                ("Error", str(e)[:100]),
             ])
 
     async def _send_alert(
@@ -850,9 +845,8 @@ class AntiNukeService:
                     ("Type", nuke_display),
                 ])
             except discord.HTTPException as e:
-                logger.warning("Nuke Alert Log Failed (HTTP)", [
+                log_http_error(e, "Nuke Alert Log", [
                     ("Offender", f"{offender.name} ({offender.id})"),
-                    ("Error", str(e)[:100]),
                 ])
             except Exception as e:
                 logger.error("Nuke Alert Log Failed", [
@@ -888,9 +882,8 @@ class AntiNukeService:
                         ("Channel ID", str(self.config.alert_channel_id)),
                     ])
             except discord.HTTPException as e:
-                logger.warning("Nuke Alert to Mods Failed (HTTP)", [
+                log_http_error(e, "Nuke Alert to Mods", [
                     ("Channel", str(self.config.alert_channel_id)),
-                    ("Error", str(e)[:100]),
                 ])
             except Exception as e:
                 logger.error("Nuke Alert to Mods Failed", [

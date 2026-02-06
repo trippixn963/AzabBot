@@ -16,6 +16,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors
 from src.utils.footer import set_footer
+from src.utils.discord_rate_limit import log_http_error
 from ..constants import TRANSFER_EMOJI
 from .helpers import _is_ticket_staff, _get_ticket_staff_ids, REVERT_EMOJI
 

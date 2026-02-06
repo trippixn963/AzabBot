@@ -23,6 +23,7 @@ from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
 from src.utils.rate_limiter import rate_limit
 from src.utils.async_utils import create_safe_task
+from src.utils.discord_rate_limit import log_http_error
 from src.core.constants import (
     GUILD_FETCH_TIMEOUT,
     SECONDS_PER_HOUR,
@@ -567,9 +568,8 @@ class AzabBot(commands.Bot):
                             ])
                             break
                         except discord.HTTPException as e:
-                            logger.warning("Polls Cleanup Delete Failed", [
+                            log_http_error(e, "Polls Cleanup Delete", [
                                 ("Channel", f"#{channel.name}"),
-                                ("Error", str(e)[:50]),
                             ])
 
                 if deleted > 0:
@@ -707,7 +707,7 @@ class AzabBot(commands.Bot):
                                 alert_msg = f"<@{self.config.owner_id}> {alert_msg}"
                             await alert_channel.send(alert_msg)
                         except discord.HTTPException as e:
-                            logger.warning("Failed to Send Lockdown Restart Alert", [("Error", str(e)[:50])])
+                            log_http_error(e, "Lockdown Restart Alert", [])
 
     async def _find_used_invite(self, guild: discord.Guild) -> Optional[tuple]:
         """Find which invite was used by comparing use counts."""
@@ -819,7 +819,7 @@ class AzabBot(commands.Bot):
         except discord.Forbidden:
             logger.warning("No Permission to Hide Channel", [("Channel", f"#{channel.name}")])
         except discord.HTTPException as e:
-            logger.warning("Failed to Hide Channel", [("Channel", f"#{channel.name}"), ("Error", str(e)[:50])])
+            log_http_error(e, "Auto-Hide Channel", [("Channel", f"#{channel.name}")])
 
     # =========================================================================
     # Shared HTTP Session

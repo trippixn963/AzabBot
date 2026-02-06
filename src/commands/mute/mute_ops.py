@@ -25,6 +25,7 @@ from src.utils.footer import set_footer
 from src.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
 from src.utils.duration import parse_duration, format_duration
+from src.utils.discord_rate_limit import log_http_error
 from src.core.constants import CASE_LOG_TIMEOUT
 
 from .views import MuteModal
@@ -208,10 +209,9 @@ class MuteOpsMixin:
             await interaction.followup.send("I don't have permission to mute this user.", ephemeral=True)
             return
         except discord.HTTPException as e:
-            logger.error("Mute Failed (HTTP)", [
+            log_http_error(e, "Mute", [
                 ("User", f"{target_member.name} ({target_member.id})"),
                 ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
-                ("Error", str(e)[:100]),
             ])
             await interaction.followup.send(f"Failed to mute user: {e}", ephemeral=True)
             return

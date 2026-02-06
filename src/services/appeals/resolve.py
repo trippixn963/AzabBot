@@ -18,6 +18,7 @@ from src.core.config import EmbedColors, NY_TZ
 from src.utils.footer import set_footer
 from src.utils.retry import safe_send
 from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
+from src.utils.discord_rate_limit import log_http_error
 
 from .constants import APPEAL_COOLDOWN_SECONDS
 from .views import AppealApprovedView, AppealDeniedView
@@ -90,10 +91,9 @@ class ResolveMixin:
                 except discord.NotFound:
                     action_taken = "User was not banned (already unbanned?)"
                 except discord.HTTPException as e:
-                    logger.warning("Appeal Unban Failed", [
+                    log_http_error(e, "Appeal Unban", [
                         ("User ID", str(user_id)),
                         ("Appeal ID", appeal_id),
-                        ("Error", str(e)[:50]),
                     ])
                     action_taken = "Failed to unban user"
 
@@ -117,10 +117,9 @@ class ResolveMixin:
                                 reason=f"Appeal {appeal_id} approved by {moderator}"
                             )
                         except discord.HTTPException as e:
-                            logger.warning("Appeal Unmute Failed", [
+                            log_http_error(e, "Appeal Unmute", [
                                 ("User ID", str(user_id)),
                                 ("Appeal ID", appeal_id),
-                                ("Error", str(e)[:50]),
                             ])
 
                     # Remove timeout if any

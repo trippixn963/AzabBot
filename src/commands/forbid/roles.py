@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Dict, Optional, Tuple
 import discord
 
 from src.core.logger import logger
+from src.utils.discord_rate_limit import log_http_error
 
 from .constants import RESTRICTIONS, FORBID_ROLE_PREFIX
 
@@ -78,10 +79,9 @@ class RolesMixin:
                     ])
                     continue
                 except discord.HTTPException as e:
-                    logger.warning("Forbid Role Creation Failed", [
+                    log_http_error(e, "Forbid Role Creation", [
                         ("Role", role_name),
                         ("Guild", guild.name),
-                        ("Error", str(e)[:100]),
                     ])
                     continue
 

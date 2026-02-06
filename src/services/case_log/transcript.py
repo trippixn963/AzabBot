@@ -17,6 +17,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
+from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -292,10 +293,9 @@ class TranscriptBuilder:
                     ("Count", str(len(pinned_ids))),
                 ], emoji="📌")
             except discord.HTTPException as e:
-                logger.warning("Pinned Messages Fetch Failed", [
+                log_http_error(e, "Pinned Messages Fetch", [
                     ("Case ID", case_id),
                     ("Thread ID", str(thread.id)),
-                    ("Error", str(e)[:50]),
                 ])
 
             # Fetch all messages (oldest first for chronological order)
@@ -395,10 +395,9 @@ class TranscriptBuilder:
             )
 
         except discord.HTTPException as e:
-            logger.warning("Message Process Failed (HTTP)", [
+            log_http_error(e, "Message Process", [
                 ("Message ID", str(message.id)),
                 ("Author", message.author.name if message.author else "Unknown"),
-                ("Error", str(e)[:50]),
             ])
             return None
         except Exception as e:
@@ -470,9 +469,8 @@ class TranscriptBuilder:
                 )
 
         except discord.HTTPException as e:
-            logger.warning("Attachment Reupload Failed (HTTP)", [
+            log_http_error(e, "Attachment Reupload", [
                 ("Filename", attachment.filename),
-                ("Error", str(e)[:50]),
                 ("Fallback", "Using original URL"),
             ])
         except Exception as e:

@@ -24,6 +24,7 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ, is_owner
 from src.utils.footer import set_footer
+from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -100,9 +101,8 @@ class QuarantineCog(commands.Cog):
             ])
 
         except discord.HTTPException as e:
-            logger.warning("Quarantine Log Failed (HTTP)", [
+            log_http_error(e, "Quarantine Log", [
                 ("Action", action),
-                ("Error", str(e)[:100]),
             ])
         except Exception as e:
             logger.error("Quarantine Log Failed", [
@@ -210,10 +210,9 @@ class QuarantineCog(commands.Cog):
                 )
 
         except discord.HTTPException as e:
-            logger.error("Quarantine Command Failed (HTTP)", [
+            log_http_error(e, "Quarantine Command", [
                 ("Guild", f"{guild.name} ({guild.id})"),
                 ("User", f"{interaction.user.name} ({interaction.user.id})"),
-                ("Error", str(e)[:100]),
             ])
             await interaction.followup.send(
                 f"Failed to activate quarantine: {e.text[:100] if e.text else 'HTTP error'}",
@@ -317,10 +316,9 @@ class QuarantineCog(commands.Cog):
                 )
 
         except discord.HTTPException as e:
-            logger.error("Unquarantine Command Failed (HTTP)", [
+            log_http_error(e, "Unquarantine Command", [
                 ("Guild", f"{guild.name} ({guild.id})"),
                 ("User", f"{interaction.user.name} ({interaction.user.id})"),
-                ("Error", str(e)[:100]),
             ])
             await interaction.followup.send(
                 f"Failed to lift quarantine: {e.text[:100] if e.text else 'HTTP error'}",
@@ -400,10 +398,9 @@ class QuarantineCog(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
         except discord.HTTPException as e:
-            logger.error("Quarantine Status Failed (HTTP)", [
+            log_http_error(e, "Quarantine Status", [
                 ("Guild", f"{guild.name} ({guild.id})"),
                 ("User", f"{interaction.user.name} ({interaction.user.id})"),
-                ("Error", str(e)[:100]),
             ])
             await interaction.response.send_message(
                 "Failed to check quarantine status.",

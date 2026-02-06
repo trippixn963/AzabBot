@@ -16,6 +16,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.constants import AUTO_CLOSE_CHECK_INTERVAL
+from src.utils.discord_rate_limit import log_http_error
 
 from .constants import (
     INACTIVE_WARNING_DAYS,
@@ -98,9 +99,8 @@ class AutoCloseMixin:
                 ("Days Inactive", str(days_inactive)),
             ], emoji="⚠️")
         except discord.HTTPException as e:
-            logger.error("Failed to send inactivity warning", [
+            log_http_error(e, "Send Inactivity Warning", [
                 ("Ticket ID", ticket["ticket_id"]),
-                ("Error", str(e)),
             ])
 
     async def _auto_close_ticket(self: "TicketService", ticket: dict) -> None:
@@ -139,9 +139,8 @@ class AutoCloseMixin:
             except discord.NotFound:
                 pass  # Already deleted
             except discord.HTTPException as e:
-                logger.error("Failed to delete ticket channel", [
+                log_http_error(e, "Delete Ticket Channel", [
                     ("Ticket ID", ticket_id),
-                    ("Error", str(e)),
                 ])
                 return
 

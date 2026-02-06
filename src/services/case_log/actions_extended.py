@@ -17,6 +17,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
 from src.utils.retry import safe_send
+from src.utils.discord_rate_limit import log_http_error
 
 from .utils import (
     format_duration_precise,
@@ -320,7 +321,7 @@ class CaseLogExtendedActionsMixin:
                     try:
                         await case_thread.edit(locked=False)
                     except discord.HTTPException as e:
-                        logger.debug("Thread Unlock Failed", [("Thread", str(case_thread.id)), ("Code", str(e.code))])
+                        log_http_error(e, "Thread Unlock", [("Thread", str(case_thread.id))])
 
                 now = datetime.now(NY_TZ)
 
@@ -395,7 +396,7 @@ class CaseLogExtendedActionsMixin:
                     try:
                         await case_thread.edit(locked=True)
                     except discord.HTTPException as e:
-                        logger.debug("Thread Re-lock Failed", [("Thread", str(case_thread.id)), ("Code", str(e.code))])
+                        log_http_error(e, "Thread Re-lock", [("Thread", str(case_thread.id))])
 
                 self.db.resolve_case(
                     case_id=active_ban_case["case_id"],
@@ -609,7 +610,7 @@ class CaseLogExtendedActionsMixin:
                 try:
                     await case_thread.edit(locked=False)
                 except discord.HTTPException as e:
-                    logger.debug("Thread Unlock Failed", [("Thread", str(case_thread.id)), ("Code", str(e.code))])
+                    log_http_error(e, "Thread Unlock", [("Thread", str(case_thread.id))])
 
             embed = build_unforbid_embed(user, moderator, restrictions)
             # Action embeds no longer have buttons - control panel handles all controls
@@ -646,7 +647,7 @@ class CaseLogExtendedActionsMixin:
                 try:
                     await case_thread.edit(locked=True)
                 except discord.HTTPException as e:
-                    logger.debug("Thread Re-lock Failed", [("Thread", str(case_thread.id)), ("Code", str(e.code))])
+                    log_http_error(e, "Thread Re-lock", [("Thread", str(case_thread.id))])
 
             # Mark case as resolved
             self.db.resolve_case(

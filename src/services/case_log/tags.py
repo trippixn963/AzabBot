@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Dict, List
 import discord
 
 from src.core.logger import logger
+from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
     from .service import CaseLogService

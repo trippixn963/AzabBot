@@ -29,6 +29,7 @@ from src.utils.async_utils import create_safe_task
 from src.utils.footer import set_footer
 from src.utils.dm_helpers import send_moderation_dm
 from src.utils.snipe_blocker import block_from_snipe
+from src.utils.discord_rate_limit import log_http_error
 
 from .classifier import ContentClassifier, ClassificationResult
 from .constants import (
@@ -558,9 +559,8 @@ class ContentModerationService:
                     await message.channel.send(warning_msg, delete_after=RELIGION_WARNING_DELETE_AFTER)
                     logger.debug("Warning Sent", [("Channel", channel_str)])
                 except discord.HTTPException as e:
-                    logger.warning("Failed to send warning", [
+                    log_http_error(e, "Send Warning", [
                         ("Channel", channel_str),
-                        ("Error", str(e)[:50]),
                     ])
 
             # Try to DM the user
@@ -577,8 +577,7 @@ class ContentModerationService:
                 ("User", user_str),
             ])
         except discord.HTTPException as e:
-            logger.error("Failed to Handle Violation", [
-                ("Error", str(e)[:50]),
+            log_http_error(e, "Handle Violation", [
                 ("User", user_str),
             ])
 
@@ -764,9 +763,8 @@ class ContentModerationService:
                 )
                 await message.channel.send(mute_msg, delete_after=RELIGION_MUTE_MSG_DELETE_AFTER)
             except discord.HTTPException as e:
-                logger.warning("Failed to Send Mute Notification", [
+                log_http_error(e, "Send Mute Notification", [
                     ("Channel", channel_str),
-                    ("Error", str(e)[:50]),
                 ])
 
             # Send mod alert for the auto-mute
@@ -783,10 +781,9 @@ class ContentModerationService:
                 ("Reason", "Missing permissions or user has higher role"),
             ])
         except discord.HTTPException as e:
-            logger.error("Auto-Mute Failed", [
+            log_http_error(e, "Auto-Mute", [
                 ("User", user_str),
                 ("Channel", channel_str),
-                ("Error", str(e)[:50]),
             ])
         except Exception as e:
             # Catch database errors and other unexpected exceptions
@@ -842,9 +839,8 @@ class ContentModerationService:
             )
             logger.debug("Auto-Mute Alert Sent", [("User", str(message.author.id))])
         except discord.HTTPException as e:
-            logger.warning("Failed to Send Auto-Mute Alert", [
+            log_http_error(e, "Send Auto-Mute Alert", [
                 ("User", f"{message.author.id}"),
-                ("Error", str(e)[:50]),
             ])
         except Exception as e:
             logger.error("Auto-Mute Alert Failed", [
@@ -946,9 +942,7 @@ class ContentModerationService:
             )
             logger.debug("Mod Alert Sent", [("User", str(message.author.id))])
         except discord.HTTPException as e:
-            logger.warning("Failed to Send Mod Alert", [
-                ("Error", str(e)[:50]),
-            ])
+            log_http_error(e, "Send Mod Alert", [])
         except Exception as e:
             logger.error("Mod Alert Failed", [
                 ("Error", str(e)[:50]),

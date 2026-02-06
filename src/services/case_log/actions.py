@@ -17,6 +17,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
 from src.utils.retry import safe_send, safe_fetch_message
+from src.utils.discord_rate_limit import log_http_error
 
 from .constants import REPEAT_MUTE_THRESHOLD, REPEAT_WARN_THRESHOLD
 from .utils import (
@@ -364,7 +365,7 @@ class CaseLogActionsMixin:
                 try:
                     await case_thread.edit(locked=False)
                 except discord.HTTPException as e:
-                    logger.debug("Thread Unlock Failed", [("Thread", str(case_thread.id)), ("Code", str(e.code))])
+                    log_http_error(e, "Thread Unlock", [("Thread", str(case_thread.id))])
 
             embed = build_unmute_embed(
                 moderator, reason, user_avatar_url, time_served,
@@ -397,7 +398,7 @@ class CaseLogActionsMixin:
                 try:
                     await case_thread.edit(locked=True)
                 except discord.HTTPException as e:
-                    logger.debug("Thread Re-lock Failed", [("Thread", str(case_thread.id)), ("Code", str(e.code))])
+                    log_http_error(e, "Thread Re-lock", [("Thread", str(case_thread.id))])
 
             self.db.resolve_case(
                 case_id=active_case["case_id"],

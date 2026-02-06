@@ -16,6 +16,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors
 from src.utils.footer import set_footer
+from src.utils.discord_rate_limit import log_http_error
 from ..constants import EXTEND_EMOJI, DENY_EMOJI
 from .helpers import _is_ticket_staff
 
@@ -166,10 +167,9 @@ class RemoveUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt
                 pass
 
         except discord.HTTPException as e:
-            logger.error("Failed to remove user from ticket", [
+            log_http_error(e, "Remove User from Ticket", [
                 ("Ticket ID", self.ticket_id),
                 ("User ID", str(self.user_id)),
-                ("Error", str(e)),
             ])
             await interaction.followup.send(f"Failed to remove user: {e}", ephemeral=True)
 

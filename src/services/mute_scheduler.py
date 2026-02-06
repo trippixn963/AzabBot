@@ -20,6 +20,7 @@ from src.utils.footer import set_footer
 from src.views import CASE_EMOJI
 from src.utils.async_utils import create_safe_task
 from src.utils.rate_limiter import rate_limit
+from src.utils.discord_rate_limit import log_http_error
 from src.core.constants import (
     CASE_LOG_TIMEOUT,
     MUTE_CHECK_INTERVAL,
@@ -331,9 +332,8 @@ class MuteScheduler:
                 ])
                 return
             except discord.HTTPException as e:
-                logger.error("Auto-Unmute HTTP Error", [
+                log_http_error(e, "Auto-Unmute", [
                     ("User", str(member)),
-                    ("Error", str(e)[:50]),
                 ])
                 return
 

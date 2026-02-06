@@ -21,6 +21,7 @@ from src.core.database import get_db
 from src.core.constants import EMOJI_ID_APPROVE, EMOJI_ID_DENY
 from src.utils.footer import set_footer
 from src.utils.interaction import safe_respond
+from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -465,10 +466,9 @@ class LinkCog(commands.Cog):
                 )
                 return
             except discord.HTTPException as e:
-                logger.error("Link Command Failed", [
+                log_http_error(e, "Link Message Fetch", [
                     ("User", str(interaction.user)),
                     ("Message ID", str(msg_id)),
-                    ("Error", str(e)[:50]),
                 ])
                 await interaction.response.send_message(
                     f"Failed to fetch message: {e}",

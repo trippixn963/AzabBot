@@ -14,6 +14,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.constants import LOG_TRUNCATE_SHORT
+from src.utils.discord_rate_limit import log_http_error
 from ..base import MaintenanceTask
 
 if TYPE_CHECKING:
@@ -54,7 +55,7 @@ class InviteCacheRefreshTask(MaintenanceTask):
                     pass
                 except discord.HTTPException as e:
                     errors += 1
-                    logger.debug("Invite Cache Refresh Failed", [("Guild", guild.name), ("Error", str(e)[:50])])
+                    log_http_error(e, "Invite Cache Refresh", [("Guild", guild.name)])
 
             if guilds_refreshed > 0:
                 logger.tree("Invite Cache Refreshed", [

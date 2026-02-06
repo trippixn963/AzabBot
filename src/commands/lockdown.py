@@ -31,6 +31,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.async_utils import create_safe_task
+from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -188,9 +189,8 @@ class LockdownCog(commands.Cog):
 
         except discord.HTTPException as e:
             error_msg = f"#{channel.name}: {e.text[:50] if e.text else 'HTTP error'}"
-            logger.warning("Channel Lock Failed", [
+            log_http_error(e, "Channel Lock", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
             ])
             return False, error_msg
 
@@ -272,9 +272,8 @@ class LockdownCog(commands.Cog):
 
         except discord.HTTPException as e:
             error_msg = f"🔊{channel.name}: {e.text[:50] if e.text else 'HTTP error'}"
-            logger.warning("Channel Lock Failed", [
+            log_http_error(e, "Channel Lock (Voice)", [
                 ("Channel", f"🔊{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
             ])
             return False, error_msg
 
@@ -362,9 +361,8 @@ class LockdownCog(commands.Cog):
 
         except discord.HTTPException as e:
             error_msg = f"#{channel.name}: {e.text[:50] if e.text else 'HTTP error'}"
-            logger.warning("Channel Unlock Failed", [
+            log_http_error(e, "Channel Unlock", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
             ])
             return False, error_msg
 
@@ -442,9 +440,8 @@ class LockdownCog(commands.Cog):
 
         except discord.HTTPException as e:
             error_msg = f"🔊{channel.name}: {e.text[:50] if e.text else 'HTTP error'}"
-            logger.warning("Channel Unlock Failed", [
+            log_http_error(e, "Channel Unlock (Voice)", [
                 ("Channel", f"🔊{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
             ])
             return False, error_msg
 
@@ -651,9 +648,8 @@ class LockdownCog(commands.Cog):
             return False
 
         except discord.HTTPException as e:
-            logger.warning("Announcement Failed", [
+            log_http_error(e, "Announcement", [
                 ("Channel", f"#{channel.name} ({channel.id})"),
-                ("Error", str(e)[:100]),
             ])
             return False
 

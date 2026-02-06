@@ -25,6 +25,7 @@ from src.views import CaseButtonView
 from src.utils.duration import parse_duration, format_duration_short as format_duration
 from src.utils.async_utils import create_safe_task
 from src.utils.interaction import safe_respond
+from src.utils.discord_rate_limit import log_http_error
 from src.core.constants import CASE_LOG_TIMEOUT, MODERATION_REASONS, MODERATION_REMOVAL_REASONS
 
 # Import from local package
@@ -333,8 +334,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             )
 
         except discord.HTTPException as e:
-            logger.error("Forbid Command Failed (HTTP)", [
-                ("Error", str(e)),
+            log_http_error(e, "Forbid Command", [
                 ("User", f"{interaction.user.name} ({interaction.user.nick})" if hasattr(interaction.user, 'nick') and interaction.user.nick else interaction.user.name),
                 ("User ID", str(interaction.user.id)),
                 ("Target", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),

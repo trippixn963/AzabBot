@@ -26,6 +26,7 @@ from src.utils.retry import (
     safe_delete,
 )
 from src.utils.async_utils import create_safe_task
+from src.utils.discord_rate_limit import log_http_error
 from src.core.constants import DELETE_AFTER_MEDIUM, DELETE_AFTER_EXTENDED, QUERY_LIMIT_SMALL, PREVIOUS_NAMES_LIMIT
 
 from .constants import (
@@ -752,7 +753,7 @@ class CaseLogService(
                         delete_after=DELETE_AFTER_MEDIUM,
                     )
                 except discord.HTTPException as e:
-                    logger.debug("Evidence Message Failed", [("Channel", str(message.channel.id)), ("Code", str(e.code))])
+                    log_http_error(e, "Evidence Message", [("Channel", str(message.channel.id))])
                 return False
         else:
             if not reason:

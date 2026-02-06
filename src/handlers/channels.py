@@ -19,6 +19,7 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config
 from src.core.constants import AUDIT_LOG_WAIT, QUERY_LIMIT_TINY
+from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -56,9 +57,8 @@ class ChannelEvents(commands.Cog):
         except discord.Forbidden:
             logger.debug("Audit Log Access Denied", [("Action", action.name)])
         except discord.HTTPException as e:
-            logger.warning("Channel Events: Audit log fetch failed", [
+            log_http_error(e, "Audit Log Fetch", [
                 ("Action", action.name),
-                ("Error", str(e)[:50]),
             ])
         return None
 
@@ -250,10 +250,9 @@ class ChannelEvents(commands.Cog):
             except discord.Forbidden:
                 logger.debug("Audit Log Access Denied", [("Action", "thread_member_add"), ("Guild", thread.guild.name)])
             except discord.HTTPException as e:
-                logger.warning("Audit Log Fetch Failed", [
+                log_http_error(e, "Audit Log Fetch", [
                     ("Action", "thread_member_add"),
                     ("Guild", thread.guild.name),
-                    ("Error", str(e)[:50]),
                 ])
 
         await self.bot.logging_service.log_thread_member_add(
@@ -306,10 +305,9 @@ class ChannelEvents(commands.Cog):
             except discord.Forbidden:
                 logger.debug("Audit Log Access Denied", [("Action", "thread_member_remove"), ("Guild", thread.guild.name)])
             except discord.HTTPException as e:
-                logger.warning("Audit Log Fetch Failed", [
+                log_http_error(e, "Audit Log Fetch", [
                     ("Action", "thread_member_remove"),
                     ("Guild", thread.guild.name),
-                    ("Error", str(e)[:50]),
                 ])
 
         await self.bot.logging_service.log_thread_member_remove(

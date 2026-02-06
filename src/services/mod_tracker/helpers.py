@@ -16,6 +16,8 @@ import re
 
 import discord
 
+from src.utils.discord_rate_limit import log_http_error
+
 from .constants import MAX_RETRIES, BASE_RETRY_DELAY
 
 

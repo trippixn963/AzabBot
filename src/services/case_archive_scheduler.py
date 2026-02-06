@@ -23,6 +23,7 @@ from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
 from src.core.constants import CASE_ARCHIVE_CHECK_INTERVAL, QUERY_LIMIT_LARGE
 from src.utils.async_utils import create_safe_task
+from src.utils.discord_rate_limit import log_http_error
 from src.services.case_log.transcript import TranscriptBuilder
 
 if TYPE_CHECKING:
@@ -467,9 +468,8 @@ class CaseArchiveScheduler:
             ])
             return False
         except discord.HTTPException as e:
-            logger.error("HTTP Error Deleting Thread", [
+            log_http_error(e, "Delete Case Thread", [
                 ("Thread ID", str(thread_id)),
-                ("Error", str(e)[:50]),
             ])
             return False
 

@@ -21,6 +21,7 @@ import discord
 
 from src.core.config import NY_TZ
 from src.core.logger import logger
+from src.utils.discord_rate_limit import log_http_error
 
 from .constants import TICKET_CATEGORIES, MAX_TRANSCRIPT_MESSAGES, MAX_TRANSCRIPT_USER_LOOKUPS
 
@@ -238,9 +239,8 @@ async def collect_transcript_messages(
                     api_calls += 1  # Count failed lookups too
                 except discord.HTTPException as e:
                     api_calls += 1
-                    logger.warning("Failed to fetch user for transcript", [
+                    log_http_error(e, "Transcript User Fetch", [
                         ("User ID", str(user_id)),
-                        ("Error", str(e)),
                     ])
 
     except Exception as e:

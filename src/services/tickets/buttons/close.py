@@ -16,6 +16,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors
 from src.utils.footer import set_footer
+from src.utils.discord_rate_limit import log_http_error
 from ..constants import LOCK_EMOJI, APPROVE_EMOJI, DENY_EMOJI
 from .helpers import _is_ticket_staff
 
@@ -174,9 +175,8 @@ class CloseApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"t
             try:
                 await interaction.message.delete()
             except discord.HTTPException as e:
-                logger.warning("Failed to delete close request message", [
+                log_http_error(e, "Delete Close Request Message", [
                     ("Ticket ID", self.ticket_id),
-                    ("Error", str(e)),
                 ])
             # No ephemeral message - the channel close embed is sufficient
         else:
@@ -288,9 +288,8 @@ class CloseDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_
                 view=None,
             )
         except discord.HTTPException as e:
-            logger.warning("Failed to edit close request message", [
+            log_http_error(e, "Edit Close Request Message", [
                 ("Ticket ID", self.ticket_id),
-                ("Error", str(e)),
             ])
         # No ephemeral message needed - the embed is visible in the channel
 

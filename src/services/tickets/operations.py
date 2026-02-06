@@ -16,6 +16,7 @@ import discord
 from src.core.logger import logger
 from src.core.constants import TICKET_CATEGORY_COOLDOWN, CLOSE_REQUEST_COOLDOWN
 from src.utils.retry import safe_send
+from src.utils.discord_rate_limit import log_http_error
 
 from .constants import TICKET_CATEGORIES, MAX_OPEN_TICKETS_PER_USER, TRANSCRIPT_EMOJI
 from .embeds import (
@@ -265,10 +266,9 @@ class OperationsMixin:
                                 add_reactions=True,
                             )
                     except discord.HTTPException as e:
-                        logger.warning("Failed to add support user permissions", [
+                        log_http_error(e, "Add Support User Permissions", [
                             ("Ticket ID", ticket_id),
                             ("User ID", str(uid)),
-                            ("Error", str(e)),
                         ])
             else:
                 assigned_text = "A staff member will be with you shortly."
@@ -290,10 +290,9 @@ class OperationsMixin:
                             add_reactions=True,
                         )
                 except discord.HTTPException as e:
-                    logger.warning("Failed to add assigned user permissions", [
+                    log_http_error(e, "Add Assigned User Permissions", [
                         ("Ticket ID", ticket_id),
                         ("User ID", str(assigned_user_id)),
-                        ("Error", str(e)),
                     ])
 
             # Get estimated wait time
@@ -353,8 +352,7 @@ class OperationsMixin:
             return (True, f"Ticket {ticket_id} created! Check {ticket_channel.mention}", ticket_id)
 
         except discord.HTTPException as e:
-            logger.error("Ticket Creation Failed", [
-                ("Error", str(e)),
+            log_http_error(e, "Ticket Creation", [
                 ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
                 ("ID", str(user.id)),
             ])
@@ -658,10 +656,9 @@ class OperationsMixin:
                     add_reactions=True,
                 )
             except discord.HTTPException as e:
-                logger.warning("Failed to add staff permissions on claim", [
+                log_http_error(e, "Add Staff Permissions on Claim", [
                     ("Ticket ID", ticket_id),
                     ("Staff ID", str(staff.id)),
-                    ("Error", str(e)),
                 ])
 
             # Lock out other staff (can view but not send)
@@ -839,10 +836,9 @@ class OperationsMixin:
                     read_message_history=True,
                 )
             except discord.HTTPException as e:
-                logger.warning("Failed to add staff permissions on transfer", [
+                log_http_error(e, "Add Staff Permissions on Transfer", [
                     ("Ticket ID", ticket_id),
                     ("New Staff ID", str(new_staff.id)),
-                    ("Error", str(e)),
                 ])
 
             # Lock out other staff (including old claimer)
@@ -862,10 +858,9 @@ class OperationsMixin:
                             read_message_history=True,
                         )
                 except discord.HTTPException as e:
-                    logger.warning("Failed to lock out old claimer on transfer", [
+                    log_http_error(e, "Lock Out Old Claimer on Transfer", [
                         ("Ticket ID", ticket_id),
                         ("Old Claimer ID", str(original_claimer_id)),
-                        ("Error", str(e)),
                     ])
 
             # Update control panel
