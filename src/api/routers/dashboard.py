@@ -147,11 +147,12 @@ async def get_dashboard_stats(
     # Server Stats
     # =========================================================================
 
-    # Get guild for member counts
+    # Get guild for member counts (use main server, not mod server)
     guild = None
     total_members = 0
     online_members = 0
 
+    # logging_guild_id holds the main GUILD_ID
     if config.logging_guild_id:
         guild = bot.get_guild(config.logging_guild_id)
     elif config.mod_server_id:
@@ -159,12 +160,18 @@ async def get_dashboard_stats(
 
     if guild:
         total_members = guild.member_count or 0
-        # Count online members (requires members intent)
+        # Count online members
+        # For large guilds, use approximate_presence_count (from Discord API)
+        # Falls back to counting cached members with online status
         try:
-            online_members = sum(
-                1 for m in guild.members
-                if m.status.value in ("online", "idle", "dnd")
-            )
+            if hasattr(guild, 'approximate_presence_count') and guild.approximate_presence_count:
+                online_members = guild.approximate_presence_count
+            else:
+                # Count from cached members (may be incomplete for large guilds)
+                online_members = sum(
+                    1 for m in guild.members
+                    if m.status.value in ("online", "idle", "dnd")
+                )
         except Exception:
             online_members = 0
 
