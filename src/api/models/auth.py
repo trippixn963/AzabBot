@@ -75,6 +75,9 @@ class AuthenticatedUser(BaseModel):
     avatar_url: Optional[str] = None
     is_admin: bool = False
     permissions: list[str] = Field(default_factory=list)
+    last_login_at: Optional[datetime] = Field(None, description="Last login timestamp")
+    last_login_ip: Optional[str] = Field(None, description="Last login IP address")
+    last_login_agent: Optional[str] = Field(None, description="Last login browser/agent")
 
 
 class GuildInfo(BaseModel):

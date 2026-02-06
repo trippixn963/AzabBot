@@ -933,6 +933,8 @@ class SchemaMixin:
                 pin_hash TEXT NOT NULL,
                 created_at REAL NOT NULL,
                 last_login REAL,
+                last_login_ip TEXT,
+                last_login_agent TEXT,
                 permissions TEXT DEFAULT ''
             )
         """)

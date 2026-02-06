@@ -55,6 +55,8 @@ class RegisteredUser:
     pin_hash: str
     created_at: float
     last_login: Optional[float] = None
+    last_login_ip: Optional[str] = None
+    last_login_agent: Optional[str] = None
     permissions: list[str] = field(default_factory=list)
 
 
@@ -113,6 +115,8 @@ class AuthService:
                 pin_hash=row["pin_hash"],
                 created_at=row["created_at"],
                 last_login=row["last_login"],
+                last_login_ip=row["last_login_ip"],
+                last_login_agent=row["last_login_agent"],
                 permissions=permissions_str.split(",") if permissions_str else [],
             )
         except Exception as e:
@@ -132,13 +136,15 @@ class AuthService:
             db = get_db()
             db.execute(
                 """INSERT OR REPLACE INTO dashboard_users
-                   (discord_id, pin_hash, created_at, last_login, permissions)
-                   VALUES (?, ?, ?, ?, ?)""",
+                   (discord_id, pin_hash, created_at, last_login, last_login_ip, last_login_agent, permissions)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
                     user.discord_id,
                     user.pin_hash,
                     user.created_at,
                     user.last_login,
+                    user.last_login_ip,
+                    user.last_login_agent,
                     ",".join(user.permissions),
                 )
             )
@@ -406,7 +412,44 @@ class AuthService:
 
         return False, "Failed to save registration"
 
-    def login(self, discord_id: int, password: str) -> tuple[bool, Optional[str], Optional[datetime]]:
+    def _parse_user_agent(self, user_agent: str) -> str:
+        """Parse user agent string to extract browser name."""
+        if not user_agent:
+            return "Unknown"
+
+        ua_lower = user_agent.lower()
+
+        # Check for common browsers (order matters - check specific first)
+        if "edg" in ua_lower:
+            return "Edge"
+        elif "chrome" in ua_lower and "safari" in ua_lower:
+            return "Chrome"
+        elif "firefox" in ua_lower:
+            return "Firefox"
+        elif "safari" in ua_lower:
+            return "Safari"
+        elif "opera" in ua_lower or "opr" in ua_lower:
+            return "Opera"
+        elif "msie" in ua_lower or "trident" in ua_lower:
+            return "Internet Explorer"
+
+        # Check for mobile
+        if "mobile" in ua_lower:
+            if "android" in ua_lower:
+                return "Android Browser"
+            elif "iphone" in ua_lower or "ipad" in ua_lower:
+                return "iOS Browser"
+            return "Mobile Browser"
+
+        return "Unknown"
+
+    def login(
+        self,
+        discord_id: int,
+        password: str,
+        client_ip: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> tuple[bool, Optional[str], Optional[datetime]]:
         """
         Authenticate a user and generate tokens.
 
@@ -420,8 +463,10 @@ class AuthService:
         if not self._verify_pin(password, user.pin_hash):
             return False, None, None
 
-        # Update last login
+        # Update last login info
         user.last_login = time.time()
+        user.last_login_ip = client_ip
+        user.last_login_agent = self._parse_user_agent(user_agent) if user_agent else None
         self._save_user(user)
 
         # Generate token
@@ -429,6 +474,8 @@ class AuthService:
 
         logger.tree("Dashboard Login", [
             ("Discord ID", str(discord_id)),
+            ("IP", client_ip or "Unknown"),
+            ("Browser", user.last_login_agent or "Unknown"),
         ], emoji="🔐")
 
         return True, token, expires_at
@@ -534,6 +581,11 @@ class AuthService:
             user = await bot.fetch_user(discord_id)
             registered = self._get_user(discord_id)
 
+            # Convert last_login timestamp to datetime
+            last_login_at = None
+            if registered and registered.last_login:
+                last_login_at = datetime.fromtimestamp(registered.last_login)
+
             return AuthenticatedUser(
                 discord_id=discord_id,
                 username=user.name,
@@ -541,6 +593,9 @@ class AuthService:
                 avatar_url=str(user.display_avatar.url) if user.display_avatar else None,
                 is_admin=discord_id == bot.config.owner_id if hasattr(bot, 'config') else False,
                 permissions=registered.permissions if registered else [],
+                last_login_at=last_login_at,
+                last_login_ip=registered.last_login_ip if registered else None,
+                last_login_agent=registered.last_login_agent if registered else None,
             )
         except Exception:
             return None

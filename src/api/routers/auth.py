@@ -240,8 +240,16 @@ async def login(
     # Record the login attempt (for rate limiting)
     auth_service.record_login_attempt(discord_id)
 
+    # Get user agent for login tracking
+    user_agent = request.headers.get("User-Agent", "")
+
     # Attempt login
-    success, token, expires_at = auth_service.login(discord_id, request_body.password)
+    success, token, expires_at = auth_service.login(
+        discord_id,
+        request_body.password,
+        client_ip=client_ip,
+        user_agent=user_agent,
+    )
 
     if not success or not token:
         # Record failed login (for account lockout)
