@@ -20,6 +20,7 @@ from src.core.constants import (
 from src.core.logger import logger
 from src.utils.footer import set_footer
 from src.utils.snipe_blocker import block_from_snipe
+from src.utils.discord_rate_limit import log_http_error
 from src.views import CASE_EMOJI
 
 from .constants import (
@@ -72,12 +73,11 @@ class SpamHandlerMixin:
                 channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
             )
             await message.delete()
-        except discord.HTTPException:
-            logger.tree("Spam Message Delete Failed", [
+        except discord.HTTPException as e:
+            log_http_error(e, "Spam Message Delete", [
                 ("User", str(message.author)),
                 ("Channel", f"#{message.channel.name}" if hasattr(message.channel, 'name') else "Unknown"),
-                ("Reason", "Message already deleted or no permission"),
-            ], emoji="⚠️")
+            ])
 
         # Determine punishment
         mute_level = min(violation_count, 5)
@@ -134,12 +134,11 @@ class SpamHandlerMixin:
                 channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
             )
             await message.delete()
-        except discord.HTTPException:
-            logger.tree("Sticker Spam Message Delete Failed", [
+        except discord.HTTPException as e:
+            log_http_error(e, "Sticker Spam Message Delete", [
                 ("User", str(message.author)),
                 ("Channel", f"#{message.channel.name}" if hasattr(message.channel, 'name') else "Unknown"),
-                ("Reason", "Message already deleted or no permission"),
-            ], emoji="⚠️")
+            ])
 
         # Reduce reputation
         self.update_reputation(user_id, guild_id, -REP_LOSS_WARNING)  # type: ignore
@@ -294,7 +293,7 @@ class SpamHandlerMixin:
             except discord.Forbidden:
                 logger.debug("Sticker Spam Mute DM Blocked", [("User", str(member.id))])
             except discord.HTTPException as e:
-                logger.debug("Sticker Spam Mute DM Failed", [("User", str(member.id)), ("Error", str(e)[:50])])
+                log_http_error(e, "Sticker Spam Mute DM", [("User", str(member.id))])
 
             logger.tree("STICKER SPAM MUTE", [
                 ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
@@ -335,10 +334,9 @@ class SpamHandlerMixin:
                 ("User ID", str(member.id)),
             ])
         except discord.HTTPException as e:
-            logger.warning("Sticker Spam Mute Failed", [
+            log_http_error(e, "Sticker Spam Mute", [
                 ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
                 ("User ID", str(member.id)),
-                ("Error", str(e)[:50]),
             ])
         except Exception as e:
             logger.error("Sticker Spam Mute Exception", [
@@ -361,12 +359,11 @@ class SpamHandlerMixin:
                 channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
             )
             await message.delete()
-        except discord.HTTPException:
-            logger.tree("Webhook Spam Message Delete Failed", [
+        except discord.HTTPException as e:
+            log_http_error(e, "Webhook Spam Message Delete", [
                 ("Webhook ID", str(message.webhook_id)),
                 ("Channel", f"#{message.channel.name}" if hasattr(message.channel, 'name') else "Unknown"),
-                ("Reason", "Message already deleted or no permission"),
-            ], emoji="⚠️")
+            ])
 
         logger.tree("WEBHOOK SPAM DETECTED", [
             ("Webhook ID", str(message.webhook_id)),
@@ -423,11 +420,10 @@ class SpamHandlerMixin:
                 ("Channel", f"#{channel.name}" if hasattr(channel, 'name') else "Unknown"),
             ], emoji="⚠️")
         except discord.HTTPException as e:
-            logger.warning("Spam Warning Failed", [
+            log_http_error(e, "Spam Warning", [
                 ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
                 ("User ID", str(member.id)),
                 ("Type", spam_type),
-                ("Error", str(e)[:50]),
             ])
 
     async def _apply_mute(
@@ -526,7 +522,7 @@ class SpamHandlerMixin:
             except discord.Forbidden:
                 logger.debug("Auto-Mute DM Blocked", [("User", str(member.id))])
             except discord.HTTPException as e:
-                logger.debug("Auto-Mute DM Failed", [("User", str(member.id)), ("Error", str(e)[:50])])
+                log_http_error(e, "Auto-Mute DM", [("User", str(member.id))])
 
             logger.tree("AUTO-MUTE APPLIED", [
                 ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
@@ -544,11 +540,10 @@ class SpamHandlerMixin:
                 ("Type", spam_type),
             ])
         except discord.HTTPException as e:
-            logger.warning("Auto-Mute Failed", [
+            log_http_error(e, "Auto-Mute", [
                 ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
                 ("User ID", str(member.id)),
                 ("Type", spam_type),
-                ("Error", str(e)[:50]),
             ])
         except Exception as e:
             logger.error("Auto-Mute Exception", [

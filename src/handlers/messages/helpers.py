@@ -23,6 +23,7 @@ from src.core.constants import (
     DELETE_AFTER_SHORT,
     DELETE_AFTER_MEDIUM,
     LOG_TRUNCATE_SHORT,
+    LOG_TRUNCATE_MEDIUM,
     PARTNERSHIP_COOLDOWN,
     PRISONER_PING_WINDOW,
     PRISONER_PING_MAX,
@@ -32,6 +33,7 @@ from src.utils.footer import set_footer
 from src.utils.snipe_blocker import block_from_snipe
 from src.utils.dm_helpers import send_moderation_dm
 from src.utils.async_utils import create_safe_task
+from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
     from .cog import MessageEvents
@@ -82,10 +84,9 @@ class HelpersMixin:
             ])
             return
         except discord.HTTPException as e:
-            logger.warning("Prisoner Ping Delete Failed", [
+            log_http_error(e, "Prisoner Ping Delete", [
                 ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
                 ("ID", str(message.author.id)),
-                ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
             ])
             return
 
@@ -203,10 +204,9 @@ class HelpersMixin:
                     ("Reason", "Missing permissions"),
                 ])
             except discord.HTTPException as e:
-                logger.warning("Prisoner Timeout Failed", [
+                log_http_error(e, "Prisoner Timeout", [
                     ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
                     ("ID", str(message.author.id)),
-                    ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
                 ])
             return
 
@@ -376,12 +376,11 @@ class HelpersMixin:
                 ("Reason", "Missing permissions"),
             ], emoji="❌")
         except discord.HTTPException as e:
-            logger.tree("INVITE DELETE FAILED", [
+            log_http_error(e, "Invite Delete", [
                 ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
                 ("ID", str(member.id)),
                 ("Channel", f"#{message.channel.name}"),
-                ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
-            ], emoji="❌")
+            ])
 
         # -----------------------------------------------------------------
         # 2. Apply permanent mute role
@@ -408,11 +407,10 @@ class HelpersMixin:
             ], emoji="❌")
             return
         except discord.HTTPException as e:
-            logger.tree("INVITE MUTE FAILED", [
+            log_http_error(e, "Invite Mute", [
                 ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
                 ("ID", str(member.id)),
-                ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
-            ], emoji="❌")
+            ])
             return
 
         # Comprehensive success log
@@ -510,11 +508,10 @@ class HelpersMixin:
                     ("Channel", f"#{prison_channel.name}"),
                 ], emoji="📢")
             except discord.HTTPException as e:
-                logger.tree("PRISON NOTIFICATION FAILED", [
+                log_http_error(e, "Prison Notification", [
                     ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
                     ("ID", str(member.id)),
-                    ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
-                ], emoji="❌")
+                ])
         else:
             logger.tree("PRISON NOTIFICATION SKIPPED", [
                 ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),

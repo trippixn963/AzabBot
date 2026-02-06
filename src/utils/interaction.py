@@ -16,6 +16,7 @@ from typing import Any, Optional, Union
 import discord
 
 from src.core.logger import logger
+from src.utils.discord_rate_limit import log_http_error
 
 
 async def safe_respond(
@@ -132,10 +133,7 @@ async def safe_respond(
 
     except discord.HTTPException as e:
         # Log but don't raise - this is expected for expired interactions
-        logger.debug("safe_respond Failed", [
-            ("Status", str(e.status)),
-            ("Error", str(e)[:50]),
-        ])
+        log_http_error(e, "safe_respond", [("User", str(interaction.user))])
         return None
 
     except Exception as e:
@@ -213,10 +211,7 @@ async def safe_edit(
         await interaction.edit_original_response(**kwargs)
         return True
     except discord.HTTPException as e:
-        logger.debug("safe_edit Failed", [
-            ("Status", str(e.status)),
-            ("Error", str(e)[:50]),
-        ])
+        log_http_error(e, "safe_edit", [("User", str(interaction.user))])
         return False
 
 

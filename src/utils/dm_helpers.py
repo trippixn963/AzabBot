@@ -34,6 +34,7 @@ from typing import Optional, List, Tuple, Union
 from src.core.logger import logger
 from src.core.config import EmbedColors
 from src.utils.footer import set_footer
+from src.utils.discord_rate_limit import log_http_error
 
 
 async def safe_send_dm(
@@ -73,9 +74,8 @@ async def safe_send_dm(
             logger.debug("DM Blocked", [("Context", context), ("User", str(user))])
         return False
     except discord.HTTPException as e:
-        # Network/API error
-        if context:
-            logger.debug("DM Failed", [("Context", context), ("User", str(user)), ("Error", str(e)[:30])])
+        # Network/API error - use shared rate limit logger
+        log_http_error(e, "DM Send", [("User", str(user)), ("Context", context or "N/A")])
         return False
 
 
