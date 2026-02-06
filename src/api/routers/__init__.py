@@ -19,6 +19,7 @@ from .users import router as users_router
 from .stats import router as stats_router
 from .websocket import router as websocket_router
 from .server import router as server_router
+from .dashboard import router as dashboard_router
 
 __all__ = [
     "health_router",
@@ -32,4 +33,5 @@ __all__ = [
     "stats_router",
     "websocket_router",
     "server_router",
+    "dashboard_router",
 ]
