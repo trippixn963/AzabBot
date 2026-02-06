@@ -4,7 +4,7 @@ AzabBot - Content Moderation Constants
 
 Configuration values and prompts for AI content moderation.
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 

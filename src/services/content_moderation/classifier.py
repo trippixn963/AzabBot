@@ -4,7 +4,7 @@ AzabBot - Content Classifier
 
 OpenAI-powered content classification for rule violations.
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 

@@ -4,7 +4,7 @@ AzabBot - Content Moderation Service
 
 AI-powered content moderation for detecting religion discussions.
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 

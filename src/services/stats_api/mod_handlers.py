@@ -4,7 +4,7 @@ Moderation Dashboard Handlers
 
 Protected API endpoints for the moderation dashboard.
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 """
 
 from typing import TYPE_CHECKING, Optional

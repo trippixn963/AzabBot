@@ -19,7 +19,7 @@ from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, Dict, List, Optional, Any
+from typing import Callable, Dict, Generator, List, Optional, Any
 from functools import wraps
 
 from src.core.config import NY_TZ
@@ -213,7 +213,7 @@ class MetricsCollector:
         self._counters.clear()
 
     @contextmanager
-    def timer(self, name: str, metadata: Optional[Dict[str, Any]] = None):
+    def timer(self, name: str, metadata: Optional[Dict[str, Any]] = None) -> Generator[None, None, None]:
         """
         Context manager for timing operations.
 

@@ -7,7 +7,7 @@ from being saved to the snipe cache.
 
 Used by: content moderation, antispam, external invite deletion, etc.
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 

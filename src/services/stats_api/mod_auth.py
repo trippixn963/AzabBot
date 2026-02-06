@@ -5,7 +5,7 @@ Moderation Dashboard Authentication
 Per-user authentication for the moderation dashboard.
 Users must have the moderator role to register/login.
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 """
 
 import hashlib

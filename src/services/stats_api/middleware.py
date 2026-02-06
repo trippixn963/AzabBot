@@ -143,7 +143,7 @@ def get_client_ip(request: web.Request) -> str:
 # =============================================================================
 
 @web.middleware
-async def rate_limit_middleware(request: web.Request, handler):
+async def rate_limit_middleware(request: web.Request, handler) -> web.Response:
     """Enforce rate limiting on all endpoints except /health."""
     if request.path == "/health":
         return await handler(request)
@@ -165,7 +165,7 @@ async def rate_limit_middleware(request: web.Request, handler):
 
 
 @web.middleware
-async def security_headers_middleware(request: web.Request, handler):
+async def security_headers_middleware(request: web.Request, handler) -> web.Response:
     """Add security headers to all responses."""
     response = await handler(request)
     response.headers["X-Content-Type-Options"] = "nosniff"

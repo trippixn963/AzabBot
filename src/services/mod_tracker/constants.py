@@ -5,7 +5,7 @@ AzabBot - Constants
 Configuration constants for the mod tracker service.
 Imports shared constants from core and defines mod-tracker-specific values.
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 

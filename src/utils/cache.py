@@ -5,7 +5,7 @@ AzabBot - Shared Cache Utilities
 Provides reusable TTL-based caching classes to eliminate code duplication
 across services that implement similar caching patterns.
 
-Author: John Hamwi
+Author: حَـــــنَّـــــا
 """
 
 from datetime import datetime, timedelta
