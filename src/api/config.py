@@ -52,11 +52,19 @@ class APIConfig:
 
 def load_api_config() -> APIConfig:
     """Load API configuration from environment."""
+    # JWT secret - check multiple env var names for compatibility
+    jwt_secret = (
+        os.getenv("AZAB_JWT_SECRET") or
+        os.getenv("JWT_SECRET_KEY") or
+        os.getenv("AZAB_APPEAL_TOKEN_SECRET") or
+        ""
+    )
+
     return APIConfig(
         host=os.getenv("AZAB_API_HOST", "0.0.0.0"),
         port=int(os.getenv("AZAB_API_PORT", "8081")),
         debug=os.getenv("AZAB_API_DEBUG", "false").lower() == "true",
-        jwt_secret=os.getenv("AZAB_APPEAL_TOKEN_SECRET", ""),
+        jwt_secret=jwt_secret,
         jwt_expiry_hours=int(os.getenv("AZAB_JWT_EXPIRY_HOURS", "24")),
     )
 

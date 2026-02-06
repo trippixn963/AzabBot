@@ -28,7 +28,7 @@ MS_PER_SECOND = 1000
 
 import os
 
-# API port (serves /health and /api/v1/*)
+# API port (serves /health and /api/azab/*)
 # NOTE: OthmanBot=8080, AzabBot=8081, JawdatBot=8082, TahaBot=8083, SyriaBot=8084, TrippixnBot=8085
 API_PORT = int(os.getenv("AZAB_API_PORT", "8081"))
 

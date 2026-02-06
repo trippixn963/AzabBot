@@ -86,9 +86,9 @@ def create_app(bot: Optional[Any] = None) -> FastAPI:
         title="AzabBot API",
         description="Moderation dashboard API for AzabBot",
         version="1.0.0",
-        docs_url="/api/docs" if config.debug else None,
-        redoc_url="/api/redoc" if config.debug else None,
-        openapi_url="/api/openapi.json" if config.debug else None,
+        docs_url="/api/azab/docs" if config.debug else None,
+        redoc_url="/api/azab/redoc" if config.debug else None,
+        openapi_url="/api/azab/openapi.json" if config.debug else None,
         lifespan=lifespan,
     )
 
@@ -140,19 +140,16 @@ def create_app(bot: Optional[Any] = None) -> FastAPI:
     # Routers
     # ==========================================================================
 
-    # API v1 routes
-    api_prefix = "/api/v1"
-
-    app.include_router(health_router, prefix=api_prefix)
-    app.include_router(auth_router, prefix=api_prefix)
-    app.include_router(cases_router, prefix=api_prefix)
-    app.include_router(tickets_router, prefix=api_prefix)
-    app.include_router(transcripts_router, prefix=api_prefix)
-    app.include_router(appeals_router, prefix=api_prefix)
-    app.include_router(appeal_form_router, prefix=api_prefix)
-    app.include_router(users_router, prefix=api_prefix)
-    app.include_router(stats_router, prefix=api_prefix)
-    app.include_router(websocket_router, prefix=api_prefix)
+    app.include_router(health_router, prefix="/api/azab")
+    app.include_router(auth_router, prefix="/api/azab")
+    app.include_router(cases_router, prefix="/api/azab")
+    app.include_router(tickets_router, prefix="/api/azab")
+    app.include_router(transcripts_router, prefix="/api/azab")
+    app.include_router(appeals_router, prefix="/api/azab")
+    app.include_router(appeal_form_router, prefix="/api/azab")
+    app.include_router(users_router, prefix="/api/azab")
+    app.include_router(stats_router, prefix="/api/azab")
+    app.include_router(websocket_router, prefix="/api/azab")
 
     # Root health check (for load balancers)
     @app.get("/health")

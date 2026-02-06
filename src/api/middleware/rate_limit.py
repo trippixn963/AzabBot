@@ -197,7 +197,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Skip rate limiting for health checks
-        if request.url.path in ("/health", "/api/health", "/api/v1/health"):
+        if request.url.path in ("/health", "/api/azab/health"):
             return await call_next(request)
 
         # Get client info
@@ -290,12 +290,12 @@ def get_rate_limiter() -> RateLimiter:
         )
 
         # Set stricter limits for auth endpoints
-        rate_limiter_instance.set_limit("/api/v1/auth/login", 5, 60)
-        rate_limiter_instance.set_limit("/api/v1/auth/register", 3, 60)
+        rate_limiter_instance.set_limit("/api/azab/auth/login", 5, 60)
+        rate_limiter_instance.set_limit("/api/azab/auth/register", 3, 60)
 
         # More lenient for read operations
-        rate_limiter_instance.set_limit("/api/v1/stats", 120, 60)
-        rate_limiter_instance.set_limit("/api/v1/health", 300, 60)
+        rate_limiter_instance.set_limit("/api/azab/stats", 120, 60)
+        rate_limiter_instance.set_limit("/api/azab/health", 300, 60)
 
     return rate_limiter_instance
 

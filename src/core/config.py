@@ -126,7 +126,7 @@ class Config:
     ticket_partnership_user_id: Optional[int] = None  # User to assign partnership tickets
     ticket_suggestion_user_id: Optional[int] = None  # User to assign suggestion tickets
     ticket_support_user_ids: Set[int] = None  # Users to assign support tickets
-    transcript_base_url: Optional[str] = None  # Base URL for transcript viewer (e.g., https://example.com/api/v1/transcripts)
+    transcript_base_url: Optional[str] = None  # Base URL for transcript viewer (e.g., https://example.com/api/azab/transcripts)
     case_transcript_base_url: Optional[str] = None  # Base URL for case transcript viewer
     transcript_assets_thread_id: Optional[int] = None  # Thread/post for permanent attachment storage
     case_transcripts_thread_id: Optional[int] = None  # Thread/post for logging case transcripts

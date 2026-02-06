@@ -36,8 +36,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     # Paths to skip logging entirely (high-frequency, low-value)
     SKIP_PATHS = {
         "/health",
-        "/api/health",
-        "/api/v1/health",
+        "/api/azab/health",
     }
 
     # Path prefixes to skip (crawler noise)

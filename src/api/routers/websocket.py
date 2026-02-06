@@ -31,7 +31,7 @@ async def websocket_endpoint(
     WebSocket endpoint for real-time dashboard updates.
 
     Connect with optional token for authentication:
-        ws://host/api/v1/ws?token=<jwt_token>
+        ws://host/api/azab/ws?token=<jwt_token>
 
     Events:
     - connected: Initial connection acknowledgment

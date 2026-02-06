@@ -928,10 +928,12 @@ class SchemaMixin:
         # DESIGN: Stores credentials for web moderation dashboard
         # -----------------------------------------------------------------
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS mod_dashboard_users (
+            CREATE TABLE IF NOT EXISTS dashboard_users (
                 discord_id INTEGER PRIMARY KEY,
-                password_hash TEXT NOT NULL,
-                created_at REAL NOT NULL
+                pin_hash TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                last_login REAL,
+                permissions TEXT DEFAULT ''
             )
         """)
 

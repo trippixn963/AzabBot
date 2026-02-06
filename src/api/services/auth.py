@@ -15,13 +15,16 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 from dataclasses import dataclass, field
 
+import discord
 import jwt
 from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
 
 from src.core.logger import logger
+from src.core.config import get_config
 from src.core.database import get_db
 from src.api.config import get_api_config
-from src.api.models.auth import TokenPayload, AuthenticatedUser
+from src.api.models.auth import TokenPayload, AuthenticatedUser, DiscordUserInfo
+from src.utils.http import http_session, FAST_TIMEOUT
 
 
 # =============================================================================
@@ -30,6 +33,14 @@ from src.api.models.auth import TokenPayload, AuthenticatedUser
 
 TOKEN_TYPE_ACCESS = "access"
 TOKEN_TYPE_REFRESH = "refresh"
+
+# Login rate limiting
+LOGIN_RATE_LIMIT_ATTEMPTS = 5
+LOGIN_RATE_LIMIT_WINDOW = 300  # 5 minutes
+
+# Account lockout
+LOCKOUT_THRESHOLD = 5  # consecutive failed attempts
+LOCKOUT_DURATION = 900  # 15 minutes
 
 
 # =============================================================================
@@ -47,6 +58,22 @@ class RegisteredUser:
     permissions: list[str] = field(default_factory=list)
 
 
+@dataclass
+class LoginAttempt:
+    """Tracks login attempts for rate limiting."""
+
+    count: int = 0
+    window_start: float = field(default_factory=time.time)
+
+
+@dataclass
+class FailedLoginTracker:
+    """Tracks consecutive failed logins for account lockout."""
+
+    consecutive_failures: int = 0
+    locked_until: Optional[float] = None
+
+
 class AuthService:
     """
     Handles authentication for the moderation dashboard.
@@ -56,35 +83,48 @@ class AuthService:
     - JWT token generation and validation
     - Moderator role verification
     - Token blacklisting (for logout)
+    - Login rate limiting (per Discord ID)
+    - Account lockout after consecutive failures
     """
 
     def __init__(self):
         self._config = get_api_config()
-        self._users: dict[int, RegisteredUser] = {}  # discord_id -> user
         self._blacklisted_tokens: set[str] = set()
-        self._load_users()
+        self._login_attempts: dict[int, LoginAttempt] = {}  # discord_id -> attempts
+        self._failed_logins: dict[int, FailedLoginTracker] = {}  # discord_id -> tracker
 
     # =========================================================================
     # User Management
     # =========================================================================
 
-    def _load_users(self) -> None:
-        """Load registered users from database."""
+    def _get_user(self, discord_id: int) -> Optional[RegisteredUser]:
+        """Get a user from database by discord_id."""
         try:
             db = get_db()
-            rows = db.fetchall("SELECT * FROM dashboard_users")
-            for row in rows:
-                user = RegisteredUser(
-                    discord_id=row["discord_id"],
-                    pin_hash=row["pin_hash"],
-                    created_at=row["created_at"],
-                    last_login=row.get("last_login"),
-                    permissions=row.get("permissions", "").split(",") if row.get("permissions") else [],
-                )
-                self._users[user.discord_id] = user
-            logger.debug("Dashboard Users Loaded", [("Count", str(len(self._users)))])
+            row = db.fetchone(
+                "SELECT * FROM dashboard_users WHERE discord_id = ?",
+                (discord_id,)
+            )
+            if not row:
+                return None
+            permissions_str = row["permissions"] or ""
+            return RegisteredUser(
+                discord_id=row["discord_id"],
+                pin_hash=row["pin_hash"],
+                created_at=row["created_at"],
+                last_login=row["last_login"],
+                permissions=permissions_str.split(",") if permissions_str else [],
+            )
         except Exception as e:
-            logger.warning("Failed to Load Dashboard Users", [("Error", str(e)[:50])])
+            logger.warning("Failed to Get Dashboard User", [
+                ("User ID", str(discord_id)),
+                ("Error", str(e)[:50]),
+            ])
+            return None
+
+    def get_user(self, discord_id: int) -> Optional[RegisteredUser]:
+        """Public method to get a user from database."""
+        return self._get_user(discord_id)
 
     def _save_user(self, user: RegisteredUser) -> bool:
         """Save a user to database."""
@@ -112,7 +152,7 @@ class AuthService:
 
     def user_exists(self, discord_id: int) -> bool:
         """Check if a user is registered."""
-        return discord_id in self._users
+        return self._get_user(discord_id) is not None
 
     def _hash_pin(self, pin: str, salt: Optional[str] = None) -> str:
         """Hash a PIN with salt."""
@@ -132,44 +172,205 @@ class AuthService:
             return False
 
     # =========================================================================
+    # Login Rate Limiting
+    # =========================================================================
+
+    def check_login_rate_limit(self, discord_id: int) -> tuple[bool, Optional[int]]:
+        """
+        Check if login attempts are rate limited for a Discord ID.
+
+        Returns:
+            Tuple of (is_allowed, retry_after_seconds)
+        """
+        now = time.time()
+        attempt = self._login_attempts.get(discord_id)
+
+        if not attempt:
+            return True, None
+
+        # Check if window has expired
+        if now - attempt.window_start >= LOGIN_RATE_LIMIT_WINDOW:
+            # Reset the window
+            self._login_attempts[discord_id] = LoginAttempt(count=0, window_start=now)
+            return True, None
+
+        # Check if limit exceeded
+        if attempt.count >= LOGIN_RATE_LIMIT_ATTEMPTS:
+            retry_after = int(LOGIN_RATE_LIMIT_WINDOW - (now - attempt.window_start))
+            return False, max(1, retry_after)
+
+        return True, None
+
+    def record_login_attempt(self, discord_id: int) -> None:
+        """Record a login attempt for rate limiting."""
+        now = time.time()
+        attempt = self._login_attempts.get(discord_id)
+
+        if not attempt or now - attempt.window_start >= LOGIN_RATE_LIMIT_WINDOW:
+            # Start new window
+            self._login_attempts[discord_id] = LoginAttempt(count=1, window_start=now)
+        else:
+            attempt.count += 1
+
+    # =========================================================================
+    # Account Lockout
+    # =========================================================================
+
+    def check_account_locked(self, discord_id: int) -> tuple[bool, Optional[datetime]]:
+        """
+        Check if an account is locked.
+
+        Returns:
+            Tuple of (is_locked, locked_until)
+        """
+        tracker = self._failed_logins.get(discord_id)
+        if not tracker or not tracker.locked_until:
+            return False, None
+
+        now = time.time()
+        if now >= tracker.locked_until:
+            # Lock expired, clear it
+            tracker.locked_until = None
+            tracker.consecutive_failures = 0
+            return False, None
+
+        locked_until = datetime.utcfromtimestamp(tracker.locked_until)
+        return True, locked_until
+
+    def record_failed_login(self, discord_id: int) -> tuple[bool, Optional[datetime]]:
+        """
+        Record a failed login attempt.
+
+        Returns:
+            Tuple of (is_now_locked, locked_until)
+        """
+        tracker = self._failed_logins.get(discord_id)
+        if not tracker:
+            tracker = FailedLoginTracker()
+            self._failed_logins[discord_id] = tracker
+
+        tracker.consecutive_failures += 1
+
+        logger.debug("Failed Login Recorded", [
+            ("User ID", str(discord_id)),
+            ("Consecutive", str(tracker.consecutive_failures)),
+            ("Threshold", str(LOCKOUT_THRESHOLD)),
+        ])
+
+        # Check if lockout threshold reached
+        if tracker.consecutive_failures >= LOCKOUT_THRESHOLD:
+            tracker.locked_until = time.time() + LOCKOUT_DURATION
+            locked_until = datetime.utcfromtimestamp(tracker.locked_until)
+
+            logger.warning("Account Locked", [
+                ("User ID", str(discord_id)),
+                ("Failures", str(tracker.consecutive_failures)),
+                ("Locked Until", locked_until.isoformat()),
+            ])
+
+            return True, locked_until
+
+        return False, None
+
+    def clear_failed_logins(self, discord_id: int) -> None:
+        """Clear failed login tracking after successful login."""
+        if discord_id in self._failed_logins:
+            del self._failed_logins[discord_id]
+
+    # =========================================================================
+    # Discord User Fetch
+    # =========================================================================
+
+    async def fetch_discord_user(self, discord_id: int) -> Optional[DiscordUserInfo]:
+        """
+        Fetch user info from Discord API using bot token.
+
+        Returns:
+            DiscordUserInfo if found, None on error
+        """
+        config = get_config()
+
+        url = f"https://discord.com/api/v10/users/{discord_id}"
+        headers = {
+            "Authorization": f"Bot {config.discord_token}",
+        }
+
+        try:
+            async with http_session.get(url, headers=headers, timeout=FAST_TIMEOUT) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+
+                    # Build avatar URL if avatar hash exists
+                    avatar_url = None
+                    if data.get("avatar"):
+                        avatar_hash = data["avatar"]
+                        ext = "gif" if avatar_hash.startswith("a_") else "png"
+                        avatar_url = f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar_hash}.{ext}"
+
+                    user_info = DiscordUserInfo(
+                        discord_id=discord_id,
+                        username=data.get("username", "Unknown"),
+                        display_name=data.get("global_name"),
+                        avatar=avatar_url,
+                    )
+
+                    logger.debug("Discord User Fetched", [
+                        ("User ID", str(discord_id)),
+                        ("Username", user_info.username),
+                    ])
+
+                    return user_info
+
+                elif resp.status == 404:
+                    logger.warning("Discord User Not Found", [
+                        ("User ID", str(discord_id)),
+                    ])
+                    return None
+                else:
+                    logger.warning("Discord API Error", [
+                        ("User ID", str(discord_id)),
+                        ("Status", str(resp.status)),
+                    ])
+                    return None
+
+        except Exception as e:
+            logger.error("Discord User Fetch Failed", [
+                ("User ID", str(discord_id)),
+                ("Error", str(e)[:50]),
+            ])
+            return None
+
+    # =========================================================================
     # Registration & Login
     # =========================================================================
 
     async def check_is_moderator(self, bot: Any, discord_id: int) -> bool:
-        """Check if a Discord user has the moderator role."""
+        """Check if a Discord user is a member of the mod server."""
         try:
-            from src.core.config import get_config
             config = get_config()
 
-            if not config.logging_guild_id:
+            if not config.mod_server_id:
+                logger.warning("Mod Server ID Not Configured", [])
                 return False
 
-            guild = bot.get_guild(config.logging_guild_id)
+            guild = bot.get_guild(config.mod_server_id)
             if not guild:
+                logger.warning("Mod Guild Not Accessible", [
+                    ("Guild ID", str(config.mod_server_id)),
+                ])
                 return False
 
+            # Check if user is a member of the mod server
             member = guild.get_member(discord_id)
             if not member:
                 try:
                     member = await guild.fetch_member(discord_id)
-                except Exception:
+                except discord.NotFound:
+                    return False
+                except discord.HTTPException:
                     return False
 
-            # Check for mod role
-            if config.moderation_role_id:
-                for role in member.roles:
-                    if role.id == config.moderation_role_id:
-                        return True
-
-            # Check for admin permission
-            if member.guild_permissions.administrator:
-                return True
-
-            # Check owner
-            if discord_id == config.owner_id:
-                return True
-
-            return False
+            return member is not None
 
         except Exception as e:
             logger.warning("Mod Check Failed", [
@@ -185,7 +386,7 @@ class AuthService:
         Returns:
             Tuple of (success, message)
         """
-        if discord_id in self._users:
+        if self._get_user(discord_id) is not None:
             return False, "User already registered"
 
         if not pin or len(pin) < 4:
@@ -198,7 +399,6 @@ class AuthService:
         )
 
         if self._save_user(user):
-            self._users[discord_id] = user
             logger.tree("Dashboard User Registered", [
                 ("Discord ID", str(discord_id)),
             ], emoji="📝")
@@ -213,10 +413,9 @@ class AuthService:
         Returns:
             Tuple of (success, access_token, expires_at)
         """
-        if discord_id not in self._users:
+        user = self._get_user(discord_id)
+        if not user:
             return False, None, None
-
-        user = self._users[discord_id]
 
         if not self._verify_pin(pin, user.pin_hash):
             return False, None, None
@@ -254,7 +453,7 @@ class AuthService:
         expires_at = now + timedelta(hours=self._config.jwt_expiry_hours)
 
         payload = {
-            "sub": discord_id,
+            "sub": str(discord_id),  # JWT requires sub to be string
             "iat": now,
             "exp": expires_at,
             "type": token_type,
@@ -290,11 +489,12 @@ class AuthService:
             if payload.get("type") != TOKEN_TYPE_ACCESS:
                 return None
 
-            return payload.get("sub")
+            sub = payload.get("sub")
+            return int(sub) if sub else None
 
         except ExpiredSignatureError:
             return None
-        except InvalidTokenError:
+        except (InvalidTokenError, ValueError, TypeError):
             return None
 
     def get_token_payload(self, token: str) -> Optional[TokenPayload]:
@@ -310,14 +510,14 @@ class AuthService:
             )
 
             return TokenPayload(
-                sub=payload["sub"],
+                sub=int(payload["sub"]),  # Convert string back to int
                 exp=datetime.fromtimestamp(payload["exp"]),
                 iat=datetime.fromtimestamp(payload["iat"]),
                 type=payload.get("type", "access"),
                 permissions=payload.get("permissions", []),
             )
 
-        except (ExpiredSignatureError, InvalidTokenError):
+        except (ExpiredSignatureError, InvalidTokenError, ValueError, TypeError):
             return None
 
     # =========================================================================
@@ -332,7 +532,7 @@ class AuthService:
         """Get authenticated user info from Discord."""
         try:
             user = await bot.fetch_user(discord_id)
-            registered = self._users.get(discord_id)
+            registered = self._get_user(discord_id)
 
             return AuthenticatedUser(
                 discord_id=discord_id,

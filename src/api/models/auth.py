@@ -41,11 +41,21 @@ class LoginRequest(BaseModel):
 # Response Models
 # =============================================================================
 
+class DiscordUserInfo(BaseModel):
+    """Discord user information fetched from API."""
+
+    discord_id: int = Field(description="Discord user ID")
+    username: str = Field(description="Discord username")
+    display_name: Optional[str] = Field(None, description="Display name (global name)")
+    avatar: Optional[str] = Field(None, description="Avatar URL")
+
+
 class CheckModeratorResponse(BaseModel):
     """Response for moderator check."""
 
     is_moderator: bool = Field(description="Whether the user has mod role")
     is_registered: bool = Field(description="Whether the user has registered")
+    user: Optional[DiscordUserInfo] = Field(None, description="Discord user info")
 
 
 class AuthTokenResponse(BaseModel):
@@ -86,6 +96,7 @@ __all__ = [
     "RegisterRequest",
     "LoginRequest",
     "CheckModeratorResponse",
+    "DiscordUserInfo",
     "AuthTokenResponse",
     "AuthenticatedUser",
     "TokenPayload",
