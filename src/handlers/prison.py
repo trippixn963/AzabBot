@@ -176,6 +176,11 @@ class PrisonHandler:
             if sentence_text:
                 embed.add_field(name="Sentence", value=f"`{sentence_text}`", inline=True)
 
+            # Add unmute time in Discord timestamp format (shows in user's timezone)
+            if mute_record and mute_record["expires_at"]:
+                unmute_ts = int(mute_record["expires_at"])
+                embed.add_field(name="Unmutes", value=f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", inline=False)
+
             if mute_reason:
                 # Truncate long reasons
                 reason_display = mute_reason[:100] + "..." if len(mute_reason) > 100 else mute_reason

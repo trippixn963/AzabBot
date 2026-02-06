@@ -739,6 +739,8 @@ class ContentModerationService:
             ], emoji="🔇")
 
             # Fire-and-forget DM (no appeal button)
+            # Calculate unmute timestamp for Discord format
+            unmute_ts = int(time.time() + (duration_mins * 60))
             create_safe_task(send_moderation_dm(
                 user=member,
                 title="You have been muted",
@@ -746,7 +748,10 @@ class ContentModerationService:
                 guild=message.guild,
                 moderator=None,  # Auto-mute, no moderator
                 reason=reason,
-                fields=[("Duration", f"`{duration_mins} minutes`", True)],
+                fields=[
+                    ("Duration", f"`{duration_mins} minutes`", True),
+                    ("Unmutes", f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", False),
+                ],
                 context="Religion Auto-Mute DM",
             ))
 
