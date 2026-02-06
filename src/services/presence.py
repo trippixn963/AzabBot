@@ -91,10 +91,12 @@ class PresenceHandler(BasePresenceHandler):
             if row and row["count"] > 0:
                 stats.append(f"⚠️ {row['count']:,} warnings")
 
-            # Total tickets
-            row = self.bot.db.fetchone("SELECT COUNT(*) as count FROM tickets")
-            if row and row["count"] > 0:
-                stats.append(f"🎫 {row['count']:,} tickets")
+            # Total tickets opened (all-time counter)
+            total_tickets = 0
+            for guild in self.bot.guilds:
+                total_tickets += self.bot.db.get_total_tickets_opened(guild.id)
+            if total_tickets > 0:
+                stats.append(f"🎫 {total_tickets:,} tickets")
 
         except Exception as e:
             logger.debug("Stats Fetch Error", [("Error", str(e)[:50])])

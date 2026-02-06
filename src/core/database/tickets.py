@@ -68,6 +68,8 @@ class TicketsMixin:
             ) VALUES (?, ?, ?, ?, ?, ?, 'open', 'normal', ?, ?, ?)""",
             (ticket_id, user_id, guild_id, thread_id, category, subject, now, now, case_id)
         )
+        # Increment permanent counter for total tickets opened
+        self.increment_total_tickets_opened(guild_id)
         logger.tree("Ticket Created", [
             ("Ticket ID", ticket_id),
             ("Category", category),

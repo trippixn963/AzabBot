@@ -45,6 +45,14 @@ class StatsMixin:
         )
         return new_value
 
+    def get_total_tickets_opened(self: "DatabaseManager", guild_id: int) -> int:
+        """Get total tickets opened ever (permanent counter)."""
+        return self.get_permanent_counter("total_tickets_opened", guild_id)
+
+    def increment_total_tickets_opened(self: "DatabaseManager", guild_id: int) -> int:
+        """Increment total tickets opened counter."""
+        return self.increment_permanent_counter("total_tickets_opened", guild_id)
+
     def get_total_tickets_closed(self: "DatabaseManager", guild_id: int) -> int:
         """Get total tickets closed (permanent counter)."""
         return self.get_permanent_counter("total_tickets_closed", guild_id)
