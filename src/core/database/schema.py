@@ -939,4 +939,23 @@ class SchemaMixin:
             )
         """)
 
+        # -----------------------------------------------------------------
+        # Guild Daily Snapshots Table
+        # DESIGN: Stores daily member/online counts for dashboard charts
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS guild_daily_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                member_count INTEGER NOT NULL,
+                online_count INTEGER NOT NULL,
+                created_at REAL NOT NULL,
+                UNIQUE(guild_id, date)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_snapshots_guild_date ON guild_daily_snapshots(guild_id, date DESC)"
+        )
+
         conn.commit()

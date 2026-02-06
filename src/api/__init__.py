@@ -39,6 +39,11 @@ from src.api.app import create_app
 from src.api.dependencies import set_bot
 from src.api.services.websocket import get_ws_manager, WebSocketManager
 from src.api.services.auth import get_auth_service, AuthService
+from src.api.services.snapshots import (
+    get_snapshot_service,
+    init_snapshot_service,
+    SnapshotService,
+)
 
 
 # =============================================================================
@@ -65,6 +70,7 @@ class APIService:
         self._app = create_app(bot)
         self._server: Optional[uvicorn.Server] = None
         self._task: Optional[asyncio.Task] = None
+        self._snapshot_service = init_snapshot_service(bot)
 
     @property
     def is_running(self) -> bool:
@@ -80,6 +86,11 @@ class APIService:
     def auth_service(self) -> AuthService:
         """Get the auth service."""
         return get_auth_service()
+
+    @property
+    def snapshot_service(self) -> SnapshotService:
+        """Get the snapshot service."""
+        return self._snapshot_service
 
     async def start(self) -> None:
         """Start the API server in a background task."""
@@ -100,6 +111,9 @@ class APIService:
 
         # Run in background
         self._task = asyncio.create_task(self._run_server())
+
+        # Start snapshot service
+        await self._snapshot_service.start()
 
         logger.tree("API Service Started", [
             ("Host", self._config.host),
@@ -122,6 +136,9 @@ class APIService:
             return
 
         logger.tree("API Service Stopping", [], emoji="🛑")
+
+        # Stop snapshot service
+        await self._snapshot_service.stop()
 
         # Signal server to stop
         if self._server:
@@ -201,6 +218,8 @@ __all__ = [
     "WebSocketManager",
     "get_auth_service",
     "AuthService",
+    "get_snapshot_service",
+    "SnapshotService",
     # Dependencies
     "set_bot",
 ]

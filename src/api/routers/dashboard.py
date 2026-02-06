@@ -21,6 +21,7 @@ from src.core.database import get_db
 from src.api.dependencies import get_bot, require_auth
 from src.api.models.base import APIResponse
 from src.api.models.auth import TokenPayload
+from src.api.services.snapshots import get_snapshot_service
 
 
 # TrippixnBot API for guild stats (has accurate online count)
@@ -317,9 +318,13 @@ async def get_dashboard_stats(
         )[0]
         server_daily_tickets.append(day_tickets)
 
-    # Note: daily_members and daily_online require historical snapshots
-    # which we don't currently store. Leaving as empty arrays.
-    # TODO: Add a daily snapshot system to track member/online counts
+    # Get historical snapshots from snapshot service
+    daily_members = []
+    daily_online = []
+    snapshot_service = get_snapshot_service()
+    if snapshot_service and config.logging_guild_id:
+        daily_members = snapshot_service.get_daily_member_counts(config.logging_guild_id, 7)
+        daily_online = snapshot_service.get_daily_online_counts(config.logging_guild_id, 7)
 
     server_stats = ServerDashboardStats(
         total_members=total_members,
@@ -329,8 +334,8 @@ async def get_dashboard_stats(
         cases_this_week=server_cases_week,
         cases_last_week=server_cases_last_week,
         active_tickets=active_tickets,
-        daily_members=[],  # Requires historical snapshots
-        daily_online=[],   # Requires historical snapshots
+        daily_members=daily_members,
+        daily_online=daily_online,
         daily_cases=server_daily_cases,
         daily_tickets=server_daily_tickets,
     )
