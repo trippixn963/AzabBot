@@ -146,7 +146,7 @@ class OperationsMixin:
         channel_topic = f"Created: <t:{created_timestamp}:f> • {cat_info['label']} ticket by {user.display_name}"
 
         try:
-            # Build permission overwrites (person-specific only, no role-based)
+            # Build permission overwrites
             overwrites = {
                 # @everyone - hidden and no reactions
                 user.guild.default_role: discord.PermissionOverwrite(
@@ -174,6 +174,19 @@ class OperationsMixin:
                     add_reactions=True,
                 ),
             }
+
+            # Ticket staff role - can view, send, and react
+            if self.config.ticket_staff_role_id:
+                staff_role = user.guild.get_role(self.config.ticket_staff_role_id)
+                if staff_role:
+                    overwrites[staff_role] = discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        attach_files=True,
+                        embed_links=True,
+                        read_message_history=True,
+                        add_reactions=True,
+                    )
 
             # Create the ticket channel
             ticket_channel = await user.guild.create_text_channel(
