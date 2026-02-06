@@ -77,6 +77,15 @@ class AuthenticatedUser(BaseModel):
     permissions: list[str] = Field(default_factory=list)
 
 
+class GuildInfo(BaseModel):
+    """Discord guild information."""
+
+    id: int = Field(description="Guild ID")
+    name: str = Field(description="Guild name")
+    icon: Optional[str] = Field(None, description="Guild icon URL")
+    member_count: Optional[int] = Field(None, description="Member count")
+
+
 # =============================================================================
 # Token Models (Internal Use)
 # =============================================================================
@@ -99,5 +108,6 @@ __all__ = [
     "DiscordUserInfo",
     "AuthTokenResponse",
     "AuthenticatedUser",
+    "GuildInfo",
     "TokenPayload",
 ]
