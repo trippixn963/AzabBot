@@ -34,6 +34,7 @@ from typing import Any, Optional
 import uvicorn
 
 from src.core.logger import logger
+from src.utils.async_utils import create_safe_task
 from src.api.config import get_api_config, APIConfig
 from src.api.app import create_app
 from src.api.dependencies import set_bot
@@ -110,7 +111,7 @@ class APIService:
         self._server = uvicorn.Server(config)
 
         # Run in background
-        self._task = asyncio.create_task(self._run_server())
+        self._task = create_safe_task(self._run_server(), "API Server")
 
         # Start snapshot service
         await self._snapshot_service.start()
@@ -126,9 +127,12 @@ class APIService:
         try:
             await self._server.serve()
         except asyncio.CancelledError:
-            pass
+            logger.debug("API Server Cancelled", [])
         except Exception as e:
-            logger.error("API Server Error", [("Error", str(e)[:100])])
+            logger.error("API Server Error", [
+                ("Error Type", type(e).__name__),
+                ("Error", str(e)[:100]),
+            ])
 
     async def stop(self) -> None:
         """Stop the API server gracefully."""

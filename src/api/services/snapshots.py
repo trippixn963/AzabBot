@@ -18,6 +18,7 @@ import aiohttp
 from src.core.logger import logger
 from src.core.config import get_config
 from src.core.database import get_db
+from src.utils.async_utils import create_safe_task
 
 
 # TrippixnBot API for accurate online count
@@ -39,12 +40,16 @@ class SnapshotService:
     async def start(self) -> None:
         """Start the background snapshot loop."""
         if self._running:
+            logger.warning("Snapshot Service Already Running", [])
             return
 
         self._running = True
-        self._task = asyncio.create_task(self._snapshot_loop())
+        self._task = create_safe_task(self._snapshot_loop(), "Snapshot Loop")
 
-        logger.tree("Snapshot Service Started", [], emoji="📸")
+        logger.tree("Snapshot Service Started", [
+            ("Interval", "1 hour"),
+            ("Captures", "Daily at midnight UTC"),
+        ], emoji="📸")
 
     async def stop(self) -> None:
         """Stop the background snapshot loop."""
@@ -62,11 +67,19 @@ class SnapshotService:
 
     async def _snapshot_loop(self) -> None:
         """Background loop that checks hourly if a new snapshot is needed."""
+        # Initial delay to let bot fully connect
+        await asyncio.sleep(30)
+
+        logger.debug("Snapshot Loop Running", [
+            ("Check Interval", "1 hour"),
+        ])
+
         while self._running:
             try:
                 await self._check_and_snapshot()
             except Exception as e:
                 logger.error("Snapshot Loop Error", [
+                    ("Error Type", type(e).__name__),
                     ("Error", str(e)[:100]),
                 ])
 
@@ -133,8 +146,17 @@ class SnapshotService:
                         # Also update member count if TrippixnBot has it
                         if guild_data.get("member_count"):
                             member_count = guild_data.get("member_count")
+                    else:
+                        logger.warning("Snapshot TrippixnBot Bad Response", [
+                            ("Status", str(resp.status)),
+                        ])
+        except asyncio.TimeoutError:
+            logger.warning("Snapshot TrippixnBot Timeout", [
+                ("Timeout", "5s"),
+            ])
         except Exception as e:
             logger.warning("Snapshot TrippixnBot Fetch Failed", [
+                ("Error Type", type(e).__name__),
                 ("Error", str(e)[:50]),
             ])
 
@@ -149,16 +171,19 @@ class SnapshotService:
             )
             db.commit()
 
-            logger.debug("Daily Snapshot Captured", [
+            logger.tree("Daily Snapshot Captured", [
                 ("Date", date),
+                ("Guild", str(guild_id)),
                 ("Members", str(member_count)),
                 ("Online", str(online_count)),
-            ])
+            ], emoji="📊")
 
             return True
         except Exception as e:
             # Likely duplicate key if snapshot already exists
-            logger.debug("Snapshot Insert Failed", [
+            logger.warning("Snapshot Insert Failed", [
+                ("Date", date),
+                ("Error Type", type(e).__name__),
                 ("Error", str(e)[:50]),
             ])
             return False
