@@ -20,6 +20,7 @@ from starlette.websockets import WebSocketState
 from src.core.logger import logger
 from src.api.config import get_api_config
 from src.api.models.base import WSMessage, WSEventType
+from src.utils.async_utils import create_safe_task
 
 
 # =============================================================================
@@ -208,7 +209,7 @@ class WebSocketManager:
                 ("Error", str(e)[:50]),
             ])
             # Schedule disconnect
-            asyncio.create_task(self.disconnect(connection_id))
+            create_safe_task(self.disconnect(connection_id), "WS Disconnect")
         return False
 
     async def send_to_user(self, user_id: int, message: WSMessage) -> int:
@@ -341,7 +342,7 @@ class WebSocketManager:
     async def start_heartbeat(self) -> None:
         """Start the heartbeat task."""
         if self._heartbeat_task is None or self._heartbeat_task.done():
-            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            self._heartbeat_task = create_safe_task(self._heartbeat_loop(), "WS Heartbeat")
 
     async def stop_heartbeat(self) -> None:
         """Stop the heartbeat task."""

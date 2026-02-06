@@ -324,7 +324,11 @@ async def _get_user_info(bot: Any, user_id: int) -> dict:
             "name": user.name,
             "avatar": str(user.display_avatar.url) if user.display_avatar else None,
         }
-    except Exception:
+    except Exception as e:
+        logger.debug("User Info Fetch Failed", [
+            ("User ID", str(user_id)),
+            ("Error Type", type(e).__name__),
+        ])
         return {}
 
 

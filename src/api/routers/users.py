@@ -10,9 +10,10 @@ Server: discord.gg/syria
 
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, List, Optional
 
+import aiohttp
 import discord
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -71,6 +72,10 @@ _lookup_cache = LookupCache()
 # Lookup Models
 # =============================================================================
 
+# SyriaBot API for activity stats
+SYRIABOT_API_URL = "http://localhost:8088/api/syria/user"
+
+
 class UserPunishment(BaseModel):
     """A punishment/case in user's history."""
 
@@ -84,28 +89,217 @@ class UserPunishment(BaseModel):
     is_active: bool = Field(False, description="Whether punishment is currently active")
 
 
+class ChannelActivity(BaseModel):
+    """User's activity in a channel."""
+
+    channel_id: str = Field(description="Channel ID")
+    channel_name: str = Field(description="Channel name")
+    message_count: int = Field(0, description="Messages in this channel")
+
+
+class UserRole(BaseModel):
+    """User's role info."""
+
+    id: str = Field(description="Role ID")
+    name: str = Field(description="Role name")
+    color: str = Field(description="Role color hex")
+    position: int = Field(description="Role position")
+
+
 class UserLookupResult(BaseModel):
     """Full user lookup result."""
 
+    # Basic info
     discord_id: str = Field(description="Discord user ID as string")
     username: str = Field(description="Discord username")
     display_name: str = Field(description="Display name")
     avatar_url: Optional[str] = Field(None, description="Avatar URL")
+
+    # Account info
     joined_server_at: Optional[str] = Field(None, description="ISO timestamp")
     account_created_at: Optional[str] = Field(None, description="ISO timestamp")
+    account_age_days: int = Field(0, description="Account age in days")
+    server_tenure_days: int = Field(0, description="Days in server")
+    last_seen_at: Optional[str] = Field(None, description="Last activity timestamp")
+
+    # Moderation status
     is_muted: bool = Field(False, description="Currently muted")
     is_banned: bool = Field(False, description="Currently banned")
     mute_expires_at: Optional[str] = Field(None, description="ISO timestamp")
+
+    # Case stats
     total_cases: int = Field(0, description="Total cases")
     total_warns: int = Field(0, description="Total warnings")
     total_mutes: int = Field(0, description="Total mutes")
     total_bans: int = Field(0, description="Total bans")
+
+    # Activity stats (from SyriaBot)
+    total_messages: int = Field(0, description="Total messages")
+    messages_this_week: int = Field(0, description="Messages in last 7 days")
+    messages_this_month: int = Field(0, description="Messages in last 30 days")
+    voice_time_seconds: int = Field(0, description="Total voice time in seconds")
+    voice_time_formatted: str = Field("0h 0m", description="Formatted voice time")
+
+    # Risk assessment
+    risk_score: int = Field(0, description="Risk score 0-100")
+    risk_flags: List[str] = Field(default_factory=list, description="Risk indicators")
+
+    # Invite info
+    invite_code: Optional[str] = Field(None, description="Invite code used to join")
+    invited_by: Optional[str] = Field(None, description="Who invited them (username)")
+    invited_by_id: Optional[str] = Field(None, description="Inviter's Discord ID")
+
+    # Roles
+    roles: List[UserRole] = Field(default_factory=list, description="User's roles")
+
+    # History
+    previous_usernames: List[str] = Field(default_factory=list, description="Previous usernames")
+    most_active_channels: List[ChannelActivity] = Field(default_factory=list, description="Top channels")
+
+    # Punishment history
     punishments: List[UserPunishment] = Field(default_factory=list, description="Punishment history")
 
 
 # =============================================================================
 # Lookup Helpers
 # =============================================================================
+
+async def _fetch_syriabot_data(user_id: int) -> Optional[dict]:
+    """Fetch user activity data from SyriaBot API."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{SYRIABOT_API_URL}/{user_id}",
+                timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+    except Exception as e:
+        logger.warning("SyriaBot API Fetch Failed", [
+            ("User ID", str(user_id)),
+            ("Error Type", type(e).__name__),
+            ("Error", str(e)[:50]),
+        ])
+    return None
+
+
+def _get_previous_usernames(db, user_id: int, limit: int = 10) -> List[str]:
+    """Get user's previous usernames from history."""
+    rows = db.fetchall(
+        """
+        SELECT DISTINCT username FROM username_history
+        WHERE user_id = ? AND username IS NOT NULL
+        ORDER BY changed_at DESC
+        LIMIT ?
+        """,
+        (user_id, limit)
+    )
+    return [row[0] for row in rows if row[0]]
+
+
+def _get_invite_info(db, user_id: int, guild_id: int) -> tuple[Optional[str], Optional[int]]:
+    """Get invite code and inviter ID for a user."""
+    row = db.fetchone(
+        """
+        SELECT invite_code, inviter_id FROM user_join_info
+        WHERE user_id = ? AND guild_id = ?
+        """,
+        (user_id, guild_id)
+    )
+    if row:
+        return row[0], row[1]
+    return None, None
+
+
+def _get_user_roles(member: Optional[discord.Member]) -> List[UserRole]:
+    """Get user's roles sorted by position."""
+    if not member:
+        return []
+
+    roles = []
+    for role in sorted(member.roles, key=lambda r: r.position, reverse=True):
+        if role.name == "@everyone":
+            continue
+        color_hex = f"#{role.color.value:06x}" if role.color.value else "#99aab5"
+        roles.append(UserRole(
+            id=str(role.id),
+            name=role.name,
+            color=color_hex,
+            position=role.position,
+        ))
+    return roles
+
+
+def _calculate_risk_score(
+    user: discord.User,
+    member: Optional[discord.Member],
+    total_cases: int,
+    total_messages: int,
+    days_in_server: int,
+) -> tuple[int, List[str]]:
+    """
+    Calculate risk score (0-100) and flags for a user.
+
+    Risk factors:
+    - New account (<30 days): +20
+    - No avatar: +15
+    - New to server (<7 days): +15
+    - Low activity (<10 messages): +10
+    - Previous cases: +5 per case (max +30)
+    - No roles (besides @everyone): +10
+    """
+    score = 0
+    flags = []
+
+    now = datetime.utcnow()
+
+    # Account age
+    if user.created_at:
+        account_age = (now - user.created_at.replace(tzinfo=None)).days
+        if account_age < 7:
+            score += 25
+            flags.append("very_new_account")
+        elif account_age < 30:
+            score += 15
+            flags.append("new_account")
+
+    # No avatar
+    if user.avatar is None:
+        score += 15
+        flags.append("no_avatar")
+
+    # Server tenure
+    if days_in_server < 3:
+        score += 20
+        flags.append("just_joined")
+    elif days_in_server < 7:
+        score += 10
+        flags.append("new_member")
+
+    # Low activity
+    if total_messages < 5:
+        score += 15
+        flags.append("no_activity")
+    elif total_messages < 20:
+        score += 5
+        flags.append("low_activity")
+
+    # Previous cases
+    if total_cases > 0:
+        case_penalty = min(total_cases * 5, 30)
+        score += case_penalty
+        if total_cases >= 5:
+            flags.append("repeat_offender")
+        elif total_cases >= 2:
+            flags.append("previous_cases")
+
+    # No roles
+    if member and len([r for r in member.roles if r.name != "@everyone"]) == 0:
+        score += 10
+        flags.append("no_roles")
+
+    return min(score, 100), flags
+
 
 async def _batch_fetch_moderators(bot: Any, mod_ids: set[int]) -> dict[int, str]:
     """
@@ -219,13 +413,28 @@ async def lookup_user(
         )
 
     user_id = user.id
-    now = datetime.utcnow().timestamp()
+    now = datetime.utcnow()
+    now_ts = now.timestamp()
 
     # Get member from guild if not already fetched
-    if not member and config.logging_guild_id:
-        guild = bot.get_guild(config.logging_guild_id)
+    guild_id = config.logging_guild_id
+    if not member and guild_id:
+        guild = bot.get_guild(guild_id)
         if guild:
             member = guild.get_member(user_id)
+
+    # Calculate account and server tenure
+    account_age_days = 0
+    server_tenure_days = 0
+
+    if user.created_at:
+        account_age_days = (now - user.created_at.replace(tzinfo=None)).days
+
+    if member and member.joined_at:
+        server_tenure_days = (now - member.joined_at.replace(tzinfo=None)).days
+
+    # Fetch SyriaBot activity data (async)
+    syriabot_task = asyncio.create_task(_fetch_syriabot_data(user_id))
 
     # Get all case stats in one optimized query
     stats = db.fetchone(
@@ -254,7 +463,7 @@ async def lookup_user(
         AND (expires_at IS NULL OR expires_at > ?)
         ORDER BY muted_at DESC LIMIT 1
         """,
-        (user_id, now)
+        (user_id, now_ts)
     )
     is_muted = active_mute is not None
     mute_expires_at = None
@@ -263,8 +472,8 @@ async def lookup_user(
 
     # Check for active ban
     is_banned = False
-    if config.logging_guild_id:
-        guild = bot.get_guild(config.logging_guild_id)
+    if guild_id:
+        guild = bot.get_guild(guild_id)
         if guild:
             try:
                 ban_entry = await guild.fetch_ban(discord.Object(id=user_id))
@@ -307,7 +516,7 @@ async def lookup_user(
         if duration and created_ts:
             expires_ts = created_ts + duration
             expires_at = datetime.utcfromtimestamp(expires_ts).isoformat()
-            is_active = expires_ts > now and resolved_at is None
+            is_active = expires_ts > now_ts and resolved_at is None
         elif resolved_at is None and row[1] in ('mute', 'ban'):
             is_active = True
 
@@ -322,6 +531,59 @@ async def lookup_user(
             is_active=is_active,
         ))
 
+    # Get additional data from AzabBot database
+    previous_usernames = _get_previous_usernames(db, user_id)
+    invite_code, inviter_id = _get_invite_info(db, user_id, guild_id) if guild_id else (None, None)
+    roles = _get_user_roles(member)
+
+    # Fetch inviter username if we have an inviter ID
+    invited_by_name = None
+    if inviter_id:
+        try:
+            inviter = await bot.fetch_user(inviter_id)
+            invited_by_name = inviter.name if inviter else None
+        except Exception:
+            pass
+
+    # Await SyriaBot data
+    syriabot_data = await syriabot_task
+
+    # Extract activity stats from SyriaBot
+    # SyriaBot API returns fields at root level (no data wrapper)
+    total_messages = 0
+    messages_this_week = 0
+    messages_this_month = 0
+    voice_time_seconds = 0
+    last_seen_at = None
+    most_active_channels: List[ChannelActivity] = []
+
+    if syriabot_data:
+        total_messages = syriabot_data.get("total_messages", 0)
+        # SyriaBot tracks messages_per_day - estimate weekly/monthly
+        messages_per_day = syriabot_data.get("messages_per_day", 0)
+        messages_this_week = int(messages_per_day * 7)
+        messages_this_month = int(messages_per_day * 30)
+        # voice_minutes is in minutes, convert to seconds
+        voice_time_seconds = syriabot_data.get("voice_minutes", 0) * 60
+        # last_active_at is a Unix timestamp - convert to ISO format with Z suffix for UTC
+        last_active_ts = syriabot_data.get("last_active_at")
+        if last_active_ts and last_active_ts > 0:
+            last_seen_at = datetime.utcfromtimestamp(last_active_ts).isoformat() + "Z"
+
+    # Format voice time
+    voice_hours = voice_time_seconds // 3600
+    voice_minutes = (voice_time_seconds % 3600) // 60
+    voice_time_formatted = f"{voice_hours}h {voice_minutes}m"
+
+    # Calculate risk score
+    risk_score, risk_flags = _calculate_risk_score(
+        user=user,
+        member=member,
+        total_cases=total_cases,
+        total_messages=total_messages,
+        days_in_server=server_tenure_days,
+    )
+
     # Build result
     result = UserLookupResult(
         discord_id=str(user.id),
@@ -330,6 +592,9 @@ async def lookup_user(
         avatar_url=str(user.display_avatar.url) if user.display_avatar else None,
         joined_server_at=member.joined_at.isoformat() if member and member.joined_at else None,
         account_created_at=user.created_at.isoformat() if user.created_at else None,
+        account_age_days=account_age_days,
+        server_tenure_days=server_tenure_days,
+        last_seen_at=last_seen_at,
         is_muted=is_muted,
         is_banned=is_banned,
         mute_expires_at=mute_expires_at,
@@ -337,20 +602,37 @@ async def lookup_user(
         total_warns=total_warns,
         total_mutes=total_mutes,
         total_bans=total_bans,
+        total_messages=total_messages,
+        messages_this_week=messages_this_week,
+        messages_this_month=messages_this_month,
+        voice_time_seconds=voice_time_seconds,
+        voice_time_formatted=voice_time_formatted,
+        risk_score=risk_score,
+        risk_flags=risk_flags,
+        invite_code=invite_code,
+        invited_by=invited_by_name,
+        invited_by_id=str(inviter_id) if inviter_id else None,
+        roles=roles,
+        previous_usernames=previous_usernames,
+        most_active_channels=most_active_channels,
         punishments=punishments,
     )
 
     # Cache the result
     _lookup_cache.set(user_id, result.model_dump())
 
-    logger.debug("User Lookup", [
+    logger.tree("User Lookup", [
         ("Query", query[:20]),
         ("User ID", str(user_id)),
+        ("Username", user.name),
         ("Cases", str(total_cases)),
+        ("Messages", str(total_messages)),
+        ("Risk Score", str(risk_score)),
         ("Muted", str(is_muted)),
         ("Banned", str(is_banned)),
+        ("SyriaBot Data", "Yes" if syriabot_data else "No"),
         ("Requested By", str(payload.sub)),
-    ])
+    ], emoji="🔍")
 
     return APIResponse(success=True, data=result)
 

@@ -32,10 +32,34 @@ async def get_transcript(ticket_id: str):
     from src.core.config import NY_TZ
 
     ticket_id = ticket_id.upper()
-    db = get_db()
+
+    try:
+        db = get_db()
+    except Exception as e:
+        logger.error("Transcript DB Error", [
+            ("Ticket ID", ticket_id),
+            ("Error Type", type(e).__name__),
+            ("Error", str(e)[:50]),
+        ])
+        return HTMLResponse(
+            "<h1>500 - Internal Error</h1><p>Unable to retrieve transcript</p>",
+            status_code=500,
+        )
 
     # Get ticket
-    ticket = db.get_ticket(ticket_id)
+    try:
+        ticket = db.get_ticket(ticket_id)
+    except Exception as e:
+        logger.error("Transcript Fetch Error", [
+            ("Ticket ID", ticket_id),
+            ("Error Type", type(e).__name__),
+            ("Error", str(e)[:50]),
+        ])
+        return HTMLResponse(
+            "<h1>500 - Internal Error</h1><p>Unable to retrieve transcript</p>",
+            status_code=500,
+        )
+
     if not ticket:
         logger.debug("Transcript Not Found", [
             ("Ticket ID", ticket_id),

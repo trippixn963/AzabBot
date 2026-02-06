@@ -43,27 +43,30 @@ class DashboardCache:
     """Simple TTL cache for dashboard stats."""
 
     def __init__(self):
-        self._cache: dict[int, tuple[float, dict]] = {}  # mod_id -> (timestamp, data)
+        self._cache: dict[str, tuple[float, dict]] = {}  # cache_key -> (timestamp, data)
 
-    def get(self, moderator_id: int) -> Optional[dict]:
+    def get(self, cache_key: str) -> Optional[dict]:
         """Get cached data if still valid."""
-        if moderator_id not in self._cache:
+        if cache_key not in self._cache:
             return None
 
-        cached_at, data = self._cache[moderator_id]
+        cached_at, data = self._cache[cache_key]
         if time.time() - cached_at > CACHE_TTL_SECONDS:
-            del self._cache[moderator_id]
+            try:
+                del self._cache[cache_key]
+            except KeyError:
+                pass
             return None
 
         return data
 
-    def set(self, moderator_id: int, data: dict) -> None:
-        """Cache data for moderator."""
-        self._cache[moderator_id] = (time.time(), data)
+    def set(self, cache_key: str, data: dict) -> None:
+        """Cache data for the given key."""
+        self._cache[cache_key] = (time.time(), data)
 
-    def invalidate(self, moderator_id: int) -> None:
-        """Remove cached data for moderator."""
-        self._cache.pop(moderator_id, None)
+    def invalidate(self, cache_key: str) -> None:
+        """Remove cached data for the given key."""
+        self._cache.pop(cache_key, None)
 
     def clear(self) -> None:
         """Clear all cached data."""
@@ -293,13 +296,68 @@ def _get_server_daily_stats(db, now: datetime) -> dict:
     }
 
 
-def _get_activity_chart(db, now: datetime) -> list[DailyActivity]:
+def _get_activity_chart(db, now: datetime, time_range: str = "week") -> list[DailyActivity]:
     """
-    Get 14-day activity chart in a single query.
+    Get activity chart data based on the specified time range.
 
-    Returns list of DailyActivity objects.
+    Args:
+        db: Database instance
+        now: Current datetime
+        time_range: One of "today", "week", "month", "all"
+
+    Returns list of DailyActivity objects with appropriate date formatting.
     """
-    fourteen_days_ago = (now - timedelta(days=13)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    if time_range == "today":
+        return _get_hourly_activity(db, now)
+    elif time_range == "week":
+        return _get_daily_activity(db, now, days=7)
+    elif time_range == "month":
+        return _get_weekly_activity(db, now)
+    else:  # "all"
+        return _get_monthly_activity(db, now)
+
+
+def _get_hourly_activity(db, now: datetime) -> list[DailyActivity]:
+    """Get hourly activity for today (24 hours)."""
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+
+    rows = db.fetchall(
+        """
+        SELECT
+            CAST((created_at - ?) / 3600 AS INTEGER) as hour_index,
+            COUNT(*) as total
+        FROM cases
+        WHERE created_at >= ?
+        GROUP BY hour_index
+        """,
+        (today_start, today_start)
+    )
+
+    hour_counts = {int(row[0]): row[1] for row in rows}
+
+    activity = []
+    for hour in range(24):
+        # Format: "12am", "1am", ... "12pm", "1pm", ... "11pm"
+        if hour == 0:
+            label = "12am"
+        elif hour < 12:
+            label = f"{hour}am"
+        elif hour == 12:
+            label = "12pm"
+        else:
+            label = f"{hour - 12}pm"
+
+        activity.append(DailyActivity(
+            date=label,
+            cases=hour_counts.get(hour, 0),
+        ))
+
+    return activity
+
+
+def _get_daily_activity(db, now: datetime, days: int = 7) -> list[DailyActivity]:
+    """Get daily activity for the last N days."""
+    start = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
 
     rows = db.fetchall(
         """
@@ -310,20 +368,115 @@ def _get_activity_chart(db, now: datetime) -> list[DailyActivity]:
         WHERE created_at >= ?
         GROUP BY day_index
         """,
-        (fourteen_days_ago, fourteen_days_ago)
+        (start, start)
     )
 
-    # Build day index -> count map
     day_counts = {int(row[0]): row[1] for row in rows}
 
-    # Generate activity list
     activity = []
-    for i in range(14):
-        day = now - timedelta(days=13 - i)
+    for i in range(days):
+        day = now - timedelta(days=days - 1 - i)
+        # Format: "Mon", "Tue", etc.
         activity.append(DailyActivity(
-            date=day.strftime("%b %d"),
+            date=day.strftime("%a"),
             cases=day_counts.get(i, 0),
         ))
+
+    return activity
+
+
+def _get_weekly_activity(db, now: datetime) -> list[DailyActivity]:
+    """Get weekly activity for the last ~5 weeks (grouped by week)."""
+    # Start from 5 weeks ago, aligned to week start (Monday)
+    weeks_back = 5
+    week_start = now - timedelta(days=now.weekday())  # Start of current week (Monday)
+    start_date = (week_start - timedelta(weeks=weeks_back - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_ts = start_date.timestamp()
+
+    rows = db.fetchall(
+        """
+        SELECT
+            CAST((created_at - ?) / 604800 AS INTEGER) as week_index,
+            COUNT(*) as total
+        FROM cases
+        WHERE created_at >= ?
+        GROUP BY week_index
+        """,
+        (start_ts, start_ts)
+    )
+
+    week_counts = {int(row[0]): row[1] for row in rows}
+
+    activity = []
+    for i in range(weeks_back):
+        week_date = start_date + timedelta(weeks=i)
+        # Format: "Jan 7", "Jan 14", etc. (day without leading zero)
+        label = f"{week_date.strftime('%b')} {week_date.day}"
+        activity.append(DailyActivity(
+            date=label,
+            cases=week_counts.get(i, 0),
+        ))
+
+    return activity
+
+
+def _get_monthly_activity(db, now: datetime) -> list[DailyActivity]:
+    """Get monthly activity for all time (last 6 months or since first case)."""
+    # Get the timestamp of the earliest case
+    first_case = db.fetchone("SELECT MIN(created_at) FROM cases")
+    first_ts = first_case[0] if first_case and first_case[0] else now.timestamp()
+
+    # Determine how many months to show (up to 12)
+    first_date = datetime.utcfromtimestamp(first_ts)
+    months_diff = (now.year - first_date.year) * 12 + (now.month - first_date.month) + 1
+    months_to_show = min(max(months_diff, 1), 12)
+
+    # Calculate start of first month
+    start_month = now.month - months_to_show + 1
+    start_year = now.year
+    while start_month <= 0:
+        start_month += 12
+        start_year -= 1
+
+    start_date = datetime(start_year, start_month, 1)
+    start_ts = start_date.timestamp()
+
+    # Query cases per month (using SQLite date functions)
+    rows = db.fetchall(
+        """
+        SELECT
+            strftime('%Y-%m', datetime(created_at, 'unixepoch')) as month,
+            COUNT(*) as total
+        FROM cases
+        WHERE created_at >= ?
+        GROUP BY month
+        ORDER BY month
+        """,
+        (start_ts,)
+    )
+
+    month_counts = {row[0]: row[1] for row in rows}
+
+    activity = []
+    current = start_date
+    while current <= now:
+        month_key = current.strftime("%Y-%m")
+        # Format: "Oct", "Nov", or "Oct '24" if spanning years
+        if current.year != now.year:
+            label = current.strftime("%b '%y")
+        else:
+            label = current.strftime("%b")
+
+        activity.append(DailyActivity(
+            date=label,
+            cases=month_counts.get(month_key, 0),
+        ))
+
+        # Move to next month
+        if current.month == 12:
+            current = datetime(current.year + 1, 1, 1)
+        else:
+            current = datetime(current.year, current.month + 1, 1)
 
     return activity
 
@@ -337,22 +490,33 @@ async def get_dashboard_stats(
     bot: Any = Depends(get_bot),
     payload: TokenPayload = Depends(require_auth),
     refresh: bool = Query(False, description="Force refresh, bypass cache"),
+    time_range: str = Query("week", alias="range", description="Activity chart range: today, week, month, all"),
 ) -> APIResponse[DashboardStatsResponse]:
     """
     Get combined dashboard statistics.
 
     Returns both personal moderator stats and server-wide stats.
     Use ?refresh=true to bypass cache and get fresh data.
+    Use ?range=today|week|month|all to change the activity chart time range.
     """
+    # Validate range parameter
+    valid_ranges = ("today", "week", "month", "all")
+    if time_range not in valid_ranges:
+        time_range = "week"
+
     config = get_config()
     moderator_id = payload.sub
 
+    # Cache key includes range for different chart data
+    cache_key = f"{moderator_id}:{time_range}"
+
     # Check cache first (unless refresh requested)
     if not refresh:
-        cached_data = _dashboard_cache.get(moderator_id)
+        cached_data = _dashboard_cache.get(cache_key)
         if cached_data:
             logger.debug("Dashboard Cache Hit", [
                 ("Moderator", str(moderator_id)),
+                ("Range", time_range),
             ])
             # Mark as cached when returning from cache
             cached_data["cached"] = True
@@ -460,7 +624,7 @@ async def get_dashboard_stats(
     # Activity Chart (1 optimized query instead of 14)
     # =========================================================================
 
-    activity = _get_activity_chart(db, now)
+    activity = _get_activity_chart(db, now, time_range=time_range)
 
     # =========================================================================
     # Build Response & Cache
@@ -475,13 +639,15 @@ async def get_dashboard_stats(
         cached_at=cache_time,
     )
 
-    # Cache the response
-    _dashboard_cache.set(moderator_id, response_data.model_dump())
+    # Cache the response (key includes moderator_id and range)
+    _dashboard_cache.set(cache_key, response_data.model_dump())
 
     logger.debug("Dashboard Stats Fetched", [
         ("Moderator", str(moderator_id)),
+        ("Range", time_range),
         ("Mod Cases", str(mod_stats["total_cases"])),
         ("Server Cases", str(server_stats_data["total_cases"])),
+        ("Activity Points", str(len(activity))),
         ("Refresh", str(refresh)),
     ])
 

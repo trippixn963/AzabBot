@@ -388,42 +388,62 @@ async def get_activity_chart(
     Get daily activity data for charts.
 
     Returns data points for each day in the specified range.
+    Uses optimized queries to avoid N+1 problem.
     """
     db = get_db()
-
-    data = []
     now = datetime.utcnow()
+    start_date = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_ts = start_date.timestamp()
 
-    for i in range(days - 1, -1, -1):
-        day = now - timedelta(days=i)
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        day_end = day_start + 86400
+    # Optimized: Get all case counts in single query
+    case_rows = db.fetchall(
+        """
+        SELECT
+            CAST((created_at - ?) / 86400 AS INTEGER) as day_index,
+            COUNT(*) as total,
+            SUM(CASE WHEN action_type = 'mute' THEN 1 ELSE 0 END) as mutes,
+            SUM(CASE WHEN action_type = 'ban' THEN 1 ELSE 0 END) as bans
+        FROM cases
+        WHERE created_at >= ?
+        GROUP BY day_index
+        """,
+        (start_ts, start_ts)
+    )
+    case_data = {int(row[0]): {"total": row[1], "mutes": row[2], "bans": row[3]} for row in case_rows}
 
-        # Get counts for this day
-        cases = db.fetchone(
-            "SELECT COUNT(*) FROM cases WHERE created_at >= ? AND created_at < ?",
-            (day_start, day_end)
-        )[0]
+    # Optimized: Get all ticket counts in single query
+    ticket_rows = db.fetchall(
+        """
+        SELECT
+            CAST((created_at - ?) / 86400 AS INTEGER) as day_index,
+            COUNT(*) as total
+        FROM tickets
+        WHERE created_at >= ?
+        GROUP BY day_index
+        """,
+        (start_ts, start_ts)
+    )
+    ticket_data = {int(row[0]): row[1] for row in ticket_rows}
 
-        tickets = db.fetchone(
-            "SELECT COUNT(*) FROM tickets WHERE created_at >= ? AND created_at < ?",
-            (day_start, day_end)
-        )[0]
+    # Optimized: Get all appeal counts in single query
+    appeal_rows = db.fetchall(
+        """
+        SELECT
+            CAST((created_at - ?) / 86400 AS INTEGER) as day_index,
+            COUNT(*) as total
+        FROM appeals
+        WHERE created_at >= ?
+        GROUP BY day_index
+        """,
+        (start_ts, start_ts)
+    )
+    appeal_data = {int(row[0]): row[1] for row in appeal_rows}
 
-        appeals = db.fetchone(
-            "SELECT COUNT(*) FROM appeals WHERE created_at >= ? AND created_at < ?",
-            (day_start, day_end)
-        )[0]
-
-        mutes = db.fetchone(
-            "SELECT COUNT(*) FROM cases WHERE action_type = 'mute' AND created_at >= ? AND created_at < ?",
-            (day_start, day_end)
-        )[0]
-
-        bans = db.fetchone(
-            "SELECT COUNT(*) FROM cases WHERE action_type = 'ban' AND created_at >= ? AND created_at < ?",
-            (day_start, day_end)
-        )[0]
+    # Build activity data
+    data = []
+    for i in range(days):
+        day = now - timedelta(days=days - 1 - i)
+        case_info = case_data.get(i, {"total": 0, "mutes": 0, "bans": 0})
 
         # Format label based on range
         if days <= 7:
@@ -434,11 +454,11 @@ async def get_activity_chart(
         data.append(ActivityChartData(
             timestamp=day,
             label=label,
-            cases=cases,
-            tickets=tickets,
-            appeals=appeals,
-            mutes=mutes,
-            bans=bans,
+            cases=case_info["total"],
+            tickets=ticket_data.get(i, 0),
+            appeals=appeal_data.get(i, 0),
+            mutes=case_info["mutes"],
+            bans=case_info["bans"],
         ))
 
     logger.debug("Activity Chart Fetched", [

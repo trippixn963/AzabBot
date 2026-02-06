@@ -117,7 +117,7 @@ async def get_appeal_form(token: str, request: Request):
     case_id = payload["case_id"]
     user_id = payload["user_id"]
 
-    logger.info("Appeal Form Requested", [
+    logger.debug("Appeal Form Requested", [
         ("Case ID", case_id),
         ("User ID", str(user_id)),
         ("Client IP", client_ip),
