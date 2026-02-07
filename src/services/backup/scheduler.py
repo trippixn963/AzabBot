@@ -1,6 +1,6 @@
 """
-AzabBot - Database Backup System
-================================
+AzabBot - Database Backup Scheduler
+===================================
 
 Wrapper around unified backup system with AzabBot-specific configuration.
 
@@ -9,7 +9,6 @@ Server: discord.gg/syria
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional
 
 # Import from shared unified backup system
 from shared.services.backup import (
