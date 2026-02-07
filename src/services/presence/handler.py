@@ -11,6 +11,7 @@ Server: discord.gg/syria
 
 import asyncio
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Optional, List, TYPE_CHECKING
 
 import discord
@@ -107,7 +108,7 @@ class PresenceHandler(BasePresenceHandler):
         """Return AzabBot promo text."""
         return PROMO_TEXT
 
-    def get_timezone(self):
+    def get_timezone(self) -> ZoneInfo:
         """Return NY timezone for promo scheduling."""
         return NY_TZ
 
