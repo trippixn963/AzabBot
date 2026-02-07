@@ -131,6 +131,15 @@ class AutoCloseMixin:
         ticket_id = ticket["ticket_id"]
         channel_id = ticket["thread_id"]
 
+        # Safety check: only delete if ticket was manually closed by someone
+        # This prevents deleting channels for tickets incorrectly marked as closed
+        if not ticket.get("closed_by"):
+            logger.debug("Skipping Auto-Delete (No Closer)", [
+                ("Ticket", ticket_id),
+                ("Reason", ticket.get("close_reason", "Unknown")),
+            ])
+            return
+
         # Delete the channel
         channel = await self._get_ticket_channel(channel_id)
         if channel:

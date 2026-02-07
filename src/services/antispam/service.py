@@ -98,6 +98,21 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
     """
 
     def __init__(self, bot: "AzabBot") -> None:
+        """
+        Initialize the anti-spam service.
+
+        Sets up all spam detection systems including:
+        - User state tracking per guild
+        - Channel message tracking for auto-slowmode
+        - Webhook spam detection
+        - Image hash duplicate detection
+        - Reputation system
+        - Raid detection
+        - Background cleanup and reputation update tasks
+
+        Args:
+            bot: Main bot instance for Discord API access.
+        """
         self.bot = bot
         self.config = get_config()
         self.db = get_db()
@@ -153,7 +168,15 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
     # =========================================================================
 
     def _load_exemptions(self) -> None:
-        """Load exempt channels and roles from config."""
+        """
+        Load exempt channels and roles from config.
+
+        Exempts:
+        - Prison channels (prisoners can't spam)
+        - Mod/server log forums (bot-only)
+        - Moderation role members
+        - Server administrators
+        """
         if self.config.prison_channel_ids:
             self._exempt_channels.update(self.config.prison_channel_ids)
 
@@ -166,11 +189,31 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
             self._exempt_roles.add(self.config.moderation_role_id)
 
     def _load_channel_multipliers(self) -> None:
-        """Load per-channel threshold multipliers."""
+        """
+        Load per-channel threshold multipliers.
+
+        Currently a placeholder for future configuration.
+        Multipliers are calculated dynamically in _get_channel_multiplier.
+        """
         pass
 
     def _get_channel_multiplier(self, channel: discord.abc.GuildChannel) -> float:
-        """Get threshold multiplier for a channel."""
+        """
+        Get threshold multiplier for a channel based on its type/name.
+
+        Different channel types have different spam tolerance:
+        - Media channels: Higher tolerance (more images expected)
+        - Bot command channels: Higher tolerance (rapid commands normal)
+        - Vent/serious channels: Lower tolerance (quality over quantity)
+        - Meme channels: Higher tolerance (rapid posting expected)
+        - Counting channels: Much higher tolerance (one message per user)
+
+        Args:
+            channel: The channel to get multiplier for.
+
+        Returns:
+            Float multiplier (>1.0 = more lenient, <1.0 = stricter).
+        """
         if channel.id in self._channel_multipliers:
             return self._channel_multipliers[channel.id]
 
@@ -194,15 +237,41 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
     # =========================================================================
 
     def _start_cleanup_task(self) -> None:
-        """Start background task to clean old message records."""
+        """
+        Start background task to clean old message records.
+
+        Runs every MESSAGE_HISTORY_CLEANUP seconds to:
+        - Remove expired message records from memory
+        - Decay spam violations in database
+        - Evict excess users from cache (LRU)
+        - Clean image hash cache
+        - Clean webhook state cache
+        """
         create_safe_task(self._cleanup_loop(), "AntiSpam Cleanup Loop")
 
     def _start_reputation_task(self) -> None:
-        """Start background task to update reputation scores."""
+        """
+        Start background task to update reputation scores.
+
+        Runs every REPUTATION_UPDATE_INTERVAL seconds to clear
+        reputation cache, forcing recalculation from database.
+        """
         create_safe_task(self._reputation_loop(), "AntiSpam Reputation Loop")
 
     async def _cleanup_loop(self) -> None:
-        """Periodically clean up old message records and decay DB violations."""
+        """
+        Periodically clean up old message records and decay DB violations.
+
+        CLEANUP TASKS:
+        1. Remove message records older than detection windows
+        2. Decay spam violations in database (reduces punishment over time)
+        3. Evict excess users from cache (LRU eviction)
+        4. Clean image hash cache
+        5. Clean webhook state cache
+        6. Clean raid detection records
+
+        Runs every MESSAGE_HISTORY_CLEANUP seconds.
+        """
         while True:
             await asyncio.sleep(MESSAGE_HISTORY_CLEANUP)
             try:
@@ -216,7 +285,15 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
                 ])
 
     async def _reputation_loop(self) -> None:
-        """Periodically update reputation scores."""
+        """
+        Periodically update reputation scores.
+
+        Clears reputation cache to force recalculation from database.
+        This ensures reputation changes (from good behavior or violations)
+        are reflected in spam detection thresholds.
+
+        Runs every REPUTATION_UPDATE_INTERVAL seconds.
+        """
         while True:
             await asyncio.sleep(REPUTATION_UPDATE_INTERVAL)
             try:
@@ -227,7 +304,18 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
                 ])
 
     async def _cleanup_old_records(self) -> None:
-        """Remove old message records from memory."""
+        """
+        Remove old message records from memory.
+
+        MEMORY MANAGEMENT:
+        - Removes message records older than 2x the longest detection window
+        - Enforces MAX_TRACKED_USERS_PER_GUILD limit with LRU eviction
+        - Limits image hashes per user to MAX_IMAGE_HASHES_PER_USER
+        - Enforces max webhook states to prevent unbounded growth
+        - Cleans raid detection records
+
+        This prevents memory leaks in high-traffic servers.
+        """
         now = datetime.now(NY_TZ)
         cutoff = now - timedelta(seconds=max(
             FLOOD_TIME_WINDOW,
@@ -314,7 +402,21 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
     # =========================================================================
 
     def _is_exempt(self, message: discord.Message) -> bool:
-        """Check if message/user is exempt from spam detection."""
+        """
+        Check if message/user is exempt from spam detection.
+
+        EXEMPTIONS:
+        - Bots (except webhooks, which are checked separately)
+        - Messages in exempt channels (prison, logs, tickets)
+        - Users with exempt roles (moderators)
+        - Server administrators
+
+        Args:
+            message: Message to check for exemption.
+
+        Returns:
+            True if message should skip spam detection, False otherwise.
+        """
         if message.author.bot and not message.webhook_id:
             return True
 
@@ -337,7 +439,24 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
         return False
 
     def _is_new_member(self, member: discord.Member) -> bool:
-        """Check if member is new (stricter spam rules apply)."""
+        """
+        Check if member is new (stricter spam rules apply).
+
+        New members have:
+        - Lower flood limits
+        - Lower duplicate limits
+        - Lower mention limits
+
+        CRITERIA:
+        - Account age < NEW_MEMBER_ACCOUNT_AGE days, OR
+        - Server join age < NEW_MEMBER_SERVER_AGE days
+
+        Args:
+            member: Member to check.
+
+        Returns:
+            True if member is considered new, False otherwise.
+        """
         now = datetime.now(NY_TZ)
 
         if member.created_at:
@@ -359,7 +478,25 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
     async def _check_invite_spam(
         self, content: str, state: UserSpamState, now: datetime, guild_id: int
     ) -> bool:
-        """Check if message contains non-whitelisted invite spam."""
+        """
+        Check if message contains non-whitelisted invite spam.
+
+        LOGIC:
+        1. Extract all Discord invite codes from message
+        2. Filter out whitelisted invites (configured safe servers)
+        3. Fetch each invite to check if it's for the same server
+        4. Same-server invites are allowed (e.g., voice channel invites)
+        5. Count external/invalid invites against limit
+
+        Args:
+            content: Message content to check.
+            state: User's spam state for tracking invite count.
+            now: Current timestamp.
+            guild_id: Guild ID to check for same-server invites.
+
+        Returns:
+            True if invite spam detected (exceeded INVITE_LIMIT), False otherwise.
+        """
         invites = extract_invites(content)
         if not invites:
             return False
@@ -442,7 +579,25 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
     # =========================================================================
 
     def _check_image_duplicate(self, message: discord.Message, now: datetime) -> bool:
-        """Check if user is posting duplicate images."""
+        """
+        Check if user is posting duplicate images.
+
+        Uses perceptual hashing to detect identical or near-identical images.
+        Tracks hashes per user per guild with time window.
+
+        ALGORITHM:
+        1. Hash all image attachments in message
+        2. Compare against user's recent image hashes
+        3. Count matches within IMAGE_DUPLICATE_TIME_WINDOW
+        4. Trigger if matches >= IMAGE_DUPLICATE_LIMIT
+
+        Args:
+            message: Message with potential image attachments.
+            now: Current timestamp.
+
+        Returns:
+            True if duplicate image spam detected, False otherwise.
+        """
         if not message.attachments:
             return False
 
@@ -478,7 +633,22 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
     # =========================================================================
 
     def _check_webhook_spam(self, message: discord.Message, now: datetime) -> bool:
-        """Check if webhook is spamming."""
+        """
+        Check if webhook is spamming.
+
+        Webhooks can be abused for spam since they bypass user rate limits.
+        Tracks message timestamps per webhook ID.
+
+        EXEMPTIONS:
+        - Whitelisted webhook IDs (configured trusted webhooks)
+
+        Args:
+            message: Message from webhook.
+            now: Current timestamp.
+
+        Returns:
+            True if webhook spam detected (exceeded WEBHOOK_MESSAGE_LIMIT), False otherwise.
+        """
         if not message.webhook_id:
             return False
 
@@ -499,7 +669,20 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
     # =========================================================================
 
     async def _check_auto_slowmode(self, message: discord.Message) -> None:
-        """Check if channel needs auto-slowmode due to message flood."""
+        """
+        Check if channel needs auto-slowmode due to message flood.
+
+        AUTO-SLOWMODE LOGIC:
+        1. Track message timestamps per channel
+        2. If SLOWMODE_TRIGGER_MESSAGES messages in SLOWMODE_TIME_WINDOW seconds
+        3. Apply SLOWMODE_DURATION second slowmode
+        4. Cooldown prevents repeated slowmode triggers
+
+        This helps prevent spam waves without manual intervention.
+
+        Args:
+            message: Message that might trigger auto-slowmode.
+        """
         if not message.guild or not isinstance(message.channel, discord.TextChannel):
             return
 
@@ -529,7 +712,19 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
             await self._apply_slowmode(message.channel)
 
     async def _apply_slowmode(self, channel: discord.TextChannel) -> None:
-        """Apply temporary slowmode to a channel."""
+        """
+        Apply temporary slowmode to a channel.
+
+        WORKFLOW:
+        1. Save original slowmode delay
+        2. Apply SLOWMODE_DURATION second slowmode
+        3. Send notification embed
+        4. Wait for duration
+        5. Restore original slowmode
+
+        Args:
+            channel: Channel to apply slowmode to.
+        """
         try:
             original_slowmode = channel.slowmode_delay
             await channel.edit(slowmode_delay=SLOWMODE_DURATION)
@@ -584,13 +779,41 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
 
     async def check_message(self, message: discord.Message) -> Optional[str]:
         """
-        Check a message for spam.
+        Check a message for spam using all detection methods.
+
+        DETECTION PIPELINE (in order):
+        1. Exemption check (bots, mods, admins)
+        2. Webhook spam
+        3. Scam/phishing detection
+        4. Zalgo text detection
+        5. Invite spam (with same-server filtering)
+        6. Message flood
+        7. Duplicate message spam
+        8. Image duplicate spam
+        9. Mention spam
+        10. Emoji spam
+        11. Newline spam
+        12. Link flood
+        13. Attachment flood
+        14. Sticker spam
+
+        ADAPTIVE THRESHOLDS:
+        - New members have stricter limits
+        - Reputation multiplier adjusts thresholds
+        - Channel type multiplier adjusts thresholds
+        - Combined multiplier = reputation × channel type
+
+        REPUTATION SYSTEM:
+        - Good behavior increases reputation (higher thresholds)
+        - Spam violations decrease reputation (lower thresholds)
+        - Reputation decays over time in database
 
         Args:
-            message: The message to check.
+            message: Message to check for spam.
 
         Returns:
-            Spam type string if spam detected, None otherwise.
+            Spam type string if spam detected (e.g., "message_flood", "scam"),
+            None if message is clean.
         """
         if self._is_exempt(message):
             return None

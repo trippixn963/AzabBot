@@ -192,22 +192,20 @@ def format_relative_time(timestamp: float, now: Optional[float] = None) -> str:
 
 def calculate_case_status(
     status: str,
-    duration_seconds: Optional[int],
-    created_at: float,
+    duration_seconds: Optional[int] = None,
+    created_at: Optional[float] = None,
     now: Optional[float] = None
 ) -> str:
     """
-    Calculate effective case status, accounting for expiration.
+    Return case status from database.
 
-    If case is 'active' but has a duration that has passed, returns 'expired'.
+    The database status is kept accurate by the CaseArchiveScheduler,
+    which marks expired cases periodically. This function now just
+    returns the raw status.
+
+    Note: duration_seconds, created_at, and now params kept for
+    backwards compatibility but are no longer used.
     """
-    if now is None:
-        now = time.time()
-
-    if status == "active" and duration_seconds:
-        if created_at + duration_seconds <= now:
-            return "expired"
-
     return status
 
 

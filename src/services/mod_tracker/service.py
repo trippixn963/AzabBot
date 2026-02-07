@@ -69,8 +69,17 @@ class ModTrackerService(
         """
         Initialize the mod tracker service.
 
+        Sets up tracking systems for:
+        - Forum thread management per moderator
+        - Message caching and batching
+        - Bulk action detection (suspicious patterns)
+        - Ban history tracking (harassment detection)
+        - Permission change monitoring
+        - Target harassment detection
+        - Priority message queue for alerts
+
         Args:
-            bot: Main bot instance.
+            bot: Main bot instance for Discord API access.
         """
         self.bot = bot
         self.config = get_config()
@@ -119,7 +128,17 @@ class ModTrackerService(
 
     @property
     def enabled(self) -> bool:
-        """Check if mod tracking is enabled."""
+        """
+        Check if mod tracking is enabled.
+
+        Requires all three config values:
+        - mod_server_id: Server where tracking happens
+        - mod_logs_forum_id: Forum for mod tracking threads
+        - moderation_role_id: Role that identifies moderators
+
+        Returns:
+            True if all required config is present, False otherwise.
+        """
         return (
             self.config.mod_server_id is not None and
             self.config.mod_logs_forum_id is not None and
@@ -173,6 +192,7 @@ class ModTrackerService(
         """
         Invalidate all cached data.
 
+        Clears forum channel cache to force refresh on next access.
         Useful for recovery after errors or manual refresh.
         """
         self._forum = None

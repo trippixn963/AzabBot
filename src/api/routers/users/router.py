@@ -307,6 +307,14 @@ async def lookup_user(
         if last_active_ts and last_active_ts > 0:
             last_seen_at = datetime.utcfromtimestamp(last_active_ts).isoformat() + "Z"
 
+        # Build channel activity list from SyriaBot data
+        for ch in syriabot_data.get("channels", []):
+            most_active_channels.append(ChannelActivity(
+                channel_id=ch.get("channel_id", "0"),
+                channel_name=ch.get("channel_name", "Unknown"),
+                message_count=ch.get("message_count", 0),
+            ))
+
     # Format voice time
     voice_hours = voice_time_seconds // 3600
     voice_minutes = (voice_time_seconds % 3600) // 60

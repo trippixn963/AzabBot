@@ -163,6 +163,16 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
             ticket_id = ticket["ticket_id"]
             channel_id = ticket["thread_id"]
 
+            # Safety check: only delete if ticket was manually closed by someone
+            # This prevents deleting channels for tickets incorrectly marked as closed
+            # (e.g., false orphan detection during bot restarts)
+            if not ticket.get("closed_by"):
+                logger.debug("Skipping Recovery (No Closer)", [
+                    ("Ticket", ticket_id),
+                    ("Reason", ticket.get("close_reason", "Unknown")),
+                ])
+                continue
+
             # Check if channel still exists and delete it
             try:
                 channel = await self._get_ticket_channel(channel_id)

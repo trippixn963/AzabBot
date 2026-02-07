@@ -18,6 +18,7 @@ Server: discord.gg/syria
 """
 
 import asyncio
+import time
 import discord
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional
@@ -103,6 +104,13 @@ class CaseArchiveScheduler:
 
         # Auto-create assets thread if not configured
         await self._ensure_assets_thread()
+
+        # Mark any expired cases immediately on startup
+        expired_count = self._mark_expired_cases()
+        if expired_count > 0:
+            logger.info("Marked Expired Cases (Startup)", [
+                ("Count", str(expired_count)),
+            ])
 
         self.running = True
         self.task = create_safe_task(self._scheduler_loop(), "Case Archive Scheduler")
@@ -268,17 +276,53 @@ class CaseArchiveScheduler:
     # Case Processing
     # =========================================================================
 
+    def _mark_expired_cases(self) -> int:
+        """
+        Mark cases as 'expired' when their duration has passed.
+
+        This keeps the database status accurate without waiting for
+        the full archive process. Cases are marked expired when:
+        - status is 'active'
+        - duration_seconds is set
+        - created_at + duration_seconds <= now
+
+        Returns:
+            Number of cases marked as expired.
+        """
+        now = time.time()
+
+        result = self.db.execute(
+            """
+            UPDATE cases
+            SET status = 'expired'
+            WHERE status = 'active'
+            AND duration_seconds IS NOT NULL
+            AND (created_at + duration_seconds) <= ?
+            """,
+            (now,)
+        )
+
+        return result.rowcount if result else 0
+
     async def _process_old_cases(self) -> None:
         """
         Process old cases and delete their threads.
 
         DESIGN:
-            Auto-deletes cases based on creation time:
+            First marks expired cases in the database.
+            Then auto-deletes cases based on creation time:
             - Ban: 14 days after creation
             - Other (mute, warn, etc.): 7 days after creation
             Builds and saves transcript before deletion.
             Marks the case as resolved in the database.
         """
+        # First, mark any expired cases
+        expired_count = self._mark_expired_cases()
+        if expired_count > 0:
+            logger.info("Marked Expired Cases", [
+                ("Count", str(expired_count)),
+            ])
+
         now = datetime.now(NY_TZ)
 
         # Get old cases for each retention category

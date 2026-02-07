@@ -2,7 +2,7 @@
 AzabBot - Bans Router
 =====================
 
-Endpoint for fetching banned users list.
+Endpoint for fetching banned users list and managing bans.
 Uses cached ban data from database, synced via Discord events.
 
 Author: حَـــــنَّـــــا
@@ -15,6 +15,8 @@ from typing import Any, Optional
 import discord
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
 from src.core.logger import logger
 from src.core.config import get_config
@@ -24,6 +26,23 @@ from src.api.models.auth import TokenPayload
 
 
 router = APIRouter(prefix="/bans", tags=["Bans"])
+
+
+# =============================================================================
+# Permission Constants
+# =============================================================================
+
+# Permissions that allow unban action
+UNBAN_PERMISSIONS = {"admin", "unban", "manage_bans"}
+
+
+# =============================================================================
+# Request Models
+# =============================================================================
+
+class UnbanRequest(BaseModel):
+    """Request body for unban action."""
+    reason: Optional[str] = Field(None, max_length=500, description="Reason for unban")
 
 
 # =============================================================================
@@ -429,6 +448,126 @@ async def get_ban_details(
             "user": user_data,
             "is_banned": is_banned,
             "history": history_list,
+        },
+    })
+
+
+# =============================================================================
+# Unban User
+# =============================================================================
+
+def _has_unban_permission(auth: TokenPayload, config) -> bool:
+    """Check if user has permission to unban."""
+    # Owner always has permission
+    if auth.sub == config.owner_id:
+        return True
+
+    # Check if user has any of the required permissions
+    user_permissions = set(auth.permissions)
+    return bool(user_permissions & UNBAN_PERMISSIONS)
+
+
+@router.post("/{user_id}/unban")
+async def unban_user(
+    user_id: int,
+    body: UnbanRequest,
+    auth: TokenPayload = Depends(require_auth),
+    bot: Any = Depends(get_bot),
+) -> JSONResponse:
+    """
+    Unban a user from the server.
+
+    Requires one of: admin, unban, or manage_bans permission.
+    Owner always has permission.
+    """
+    config = get_config()
+    db = get_db()
+
+    # Permission check
+    if not _has_unban_permission(auth, config):
+        logger.warning("Unban Denied (No Permission)", [
+            ("User ID", str(user_id)),
+            ("Requested By", str(auth.sub)),
+            ("Permissions", ",".join(auth.permissions) or "none"),
+        ])
+        raise HTTPException(
+            status_code=HTTP_403_FORBIDDEN,
+            detail="You don't have permission to unban users",
+        )
+
+    guild_id = config.logging_guild_id
+    if not guild_id:
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Guild not configured",
+        )
+
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Guild not found",
+        )
+
+    # Check if user is actually banned
+    try:
+        ban_entry = await guild.fetch_ban(discord.Object(id=user_id))
+    except discord.NotFound:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="User is not banned",
+        )
+    except discord.HTTPException as e:
+        logger.error("Failed to fetch ban", [
+            ("User ID", str(user_id)),
+            ("Error", str(e)[:100]),
+        ])
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to check ban status",
+        )
+
+    # Perform unban
+    reason = body.reason or f"Unbanned via dashboard by {auth.sub}"
+    try:
+        await guild.unban(discord.Object(id=user_id), reason=reason)
+    except discord.HTTPException as e:
+        logger.error("Unban Failed", [
+            ("User ID", str(user_id)),
+            ("Error", str(e)[:100]),
+        ])
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to unban user",
+        )
+
+    # Record in ban_history
+    try:
+        db.execute(
+            """INSERT INTO ban_history
+               (user_id, guild_id, moderator_id, action, reason, timestamp)
+               VALUES (?, ?, ?, 'unban', ?, ?)""",
+            (user_id, guild_id, auth.sub, reason, time.time())
+        )
+    except Exception as e:
+        logger.warning("Failed to record unban in history", [
+            ("User ID", str(user_id)),
+            ("Error", str(e)[:50]),
+        ])
+
+    logger.tree("User Unbanned (Dashboard)", [
+        ("User ID", str(user_id)),
+        ("Unbanned By", str(auth.sub)),
+        ("Reason", reason[:50] if reason else "None"),
+    ], emoji="🔓")
+
+    return JSONResponse(content={
+        "success": True,
+        "message": "User has been unbanned",
+        "data": {
+            "user_id": str(user_id),
+            "unbanned_by": str(auth.sub),
+            "reason": reason,
         },
     })
 

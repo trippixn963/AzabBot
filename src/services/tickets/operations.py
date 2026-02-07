@@ -301,11 +301,23 @@ class OperationsMixin:
             # Try AI-powered greeting first
             ai_greeting = None
             if hasattr(self.bot, "ai_service") and self.bot.ai_service and self.bot.ai_service.enabled:
+                # Fetch case reason for appeal tickets
+                case_reason = None
+                if category == "appeal" and case_id:
+                    try:
+                        case_data = self.db.get_case(case_id)
+                        if case_data:
+                            case_reason = case_data.get("reason")
+                    except Exception:
+                        pass
+
                 ai_greeting = await self.bot.ai_service.generate_ticket_greeting(
                     ticket_id=ticket_id,
                     category=category,
                     subject=subject,
                     description=description,
+                    case_id=case_id,
+                    case_reason=case_reason,
                 )
 
             if ai_greeting:

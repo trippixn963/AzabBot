@@ -23,7 +23,7 @@ SYRIABOT_API_URL = "http://localhost:8088/api/syria/user"
 
 
 async def fetch_syriabot_data(user_id: int) -> Optional[dict]:
-    """Fetch user activity data from SyriaBot API."""
+    """Fetch user activity data from SyriaBot API (includes channels)."""
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(

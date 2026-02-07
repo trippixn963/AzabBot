@@ -352,6 +352,8 @@ class AIService:
         category: str,
         subject: str,
         description: str,
+        case_id: Optional[str] = None,
+        case_reason: Optional[str] = None,
     ) -> Optional[str]:
         """
         Generate an AI-powered greeting for a new ticket.
@@ -361,6 +363,8 @@ class AIService:
             category: The ticket category (support, partnership, etc.)
             subject: The ticket subject provided by user.
             description: The ticket description provided by user.
+            case_id: Optional case ID (for appeal tickets).
+            case_reason: Optional mute reason (for appeal tickets).
 
         Returns:
             Generated greeting message, or fallback if generation fails.
@@ -369,11 +373,17 @@ class AIService:
             logger.debug("AI greeting skipped (service disabled)")
             return None
 
+        # Build case context for appeal tickets
+        case_context = ""
+        if category == "appeal" and case_id and case_reason:
+            case_context = f"\n**Case Info:** Case `{case_id}` - Mute reason: \"{case_reason}\"\nIMPORTANT: You already know the mute reason above. Do NOT ask the user what they were muted for."
+
         # Build the user prompt from template
         user_prompt = TICKET_GREETING_TEMPLATE.format(
             category=category.title(),
             subject=subject,
             description=description,
+            case_context=case_context,
         )
 
         try:

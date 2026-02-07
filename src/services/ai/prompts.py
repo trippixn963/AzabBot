@@ -45,7 +45,7 @@ CATEGORY GUIDANCE:
 - Partnership: Ask about their server, type of partnership, what they offer
 - Suggestion: Ask for details, benefits, examples
 - Verification: Explain process, ask if they have a mic
-- Mute Appeal: Ask what happened, if they understand the rule"""
+- Mute Appeal: You already know the case number and mute reason from the context provided. Acknowledge the case (format case ID in backticks like `ABC123`) and the reason. Ask if they understand why this was wrong and give them a chance to explain their side. Do NOT ask them what the reason for their mute was - you already know it."""
 
 
 # =============================================================================
@@ -57,9 +57,10 @@ TICKET_GREETING_TEMPLATE = """A user just opened a new ticket. Generate a greeti
 **Category:** {category}
 **Subject:** {subject}
 **Description:** {description}
-
+{case_context}
 IMPORTANT: Start with "👋 **Azab Assistant**" as a header, then blank line, then content as block quotes.
 For blank lines between paragraphs, use an empty line (NO > character).
+For mute appeals: Format case IDs in backticks (e.g., `ABC123`). You already know the mute reason - do NOT ask them what they were muted for.
 
 Example:
 👋 **Azab Assistant**

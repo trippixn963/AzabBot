@@ -67,7 +67,15 @@ class CaseLogService(
     """
 
     def __init__(self, bot: "AzabBot") -> None:
-        """Initialize the case log service."""
+        """
+        Initialize the case log service.
+
+        Sets up forum caching, thread caching, pending reason scheduler,
+        and profile update debouncing. Initializes all mixin components.
+
+        Args:
+            bot: Main bot instance for Discord API access.
+        """
         self.bot = bot
         self.config = get_config()
         self.db = get_db()
@@ -105,18 +113,46 @@ class CaseLogService(
 
     @property
     def enabled(self) -> bool:
-        """Check if case logging is enabled."""
+        """
+        Check if case logging is enabled.
+
+        Returns:
+            True if case_log_forum_id is configured, False otherwise.
+        """
         return self.config.case_log_forum_id is not None
 
     def get_case_info(self, user_id: int) -> Optional[dict]:
-        """Get case info for a user without logging."""
+        """
+        Get case info for a user without logging or creating a case.
+
+        This is a lightweight lookup that doesn't trigger case creation
+        or any side effects. Used for checking if a case exists.
+
+        Args:
+            user_id: Discord user ID to look up.
+
+        Returns:
+            Dict with case_id and thread_id if case exists, None otherwise.
+        """
         case = self.db.get_case_log(user_id)
         if case:
             return {"case_id": case["case_id"], "thread_id": case["thread_id"]}
         return None
 
     async def prepare_case(self, user: discord.Member) -> Optional[dict]:
-        """Prepare a case for a user (get or create without logging)."""
+        """
+        Prepare a case for a user (get existing or create new without logging action).
+
+        This ensures a case exists for the user but doesn't log any specific
+        moderation action. Used when you need a case thread ready before
+        taking action.
+
+        Args:
+            user: Discord member to prepare case for.
+
+        Returns:
+            Dict with case_id and thread_id if successful, None if disabled or failed.
+        """
         if not self.enabled:
             return None
 
@@ -135,7 +171,16 @@ class CaseLogService(
     # =========================================================================
 
     async def _get_forum(self) -> Optional[discord.ForumChannel]:
-        """Get the case log forum channel with TTL-based caching."""
+        """
+        Get the case log forum channel with TTL-based caching.
+
+        Caches the forum channel reference to avoid repeated API calls.
+        Cache expires after THREAD_CACHE_TTL to ensure we detect channel
+        changes or deletions.
+
+        Returns:
+            ForumChannel if found and valid, None if not configured or not found.
+        """
         if not self.config.case_log_forum_id:
             return None
 
@@ -165,7 +210,18 @@ class CaseLogService(
         return None
 
     async def _get_case_thread(self, thread_id: int) -> Optional[discord.Thread]:
-        """Get a case thread by ID with TTL-based caching."""
+        """
+        Get a case thread by ID with TTL-based caching.
+
+        Maintains an LRU-style cache of thread objects with TTL expiration.
+        When cache exceeds THREAD_CACHE_MAX_SIZE, evicts oldest entry.
+
+        Args:
+            thread_id: Discord thread ID to fetch.
+
+        Returns:
+            Thread object if found and valid, None if not found or invalid type.
+        """
         now = datetime.now(NY_TZ)
 
         if thread_id in self._thread_cache:
@@ -216,7 +272,33 @@ class CaseLogService(
         evidence: Optional[str] = None,
         message_url: Optional[str] = None,
     ) -> dict:
-        """Create a new per-action case with its own forum thread."""
+        """
+        Create a new per-action case with its own forum thread.
+
+        DESIGN: Each moderation action (mute, ban, warn) gets its own case
+        and thread. This is the modern approach that replaced per-user cases.
+
+        Creates:
+        - Database case record with unique case_id
+        - Forum thread with user profile embed
+        - Control panel with action buttons
+        - Evidence request if needed
+
+        Args:
+            user: Target user for the moderation action.
+            moderator: Moderator taking the action.
+            action_type: Type of action (mute, ban, warn, timeout, etc).
+            reason: Optional reason for the action.
+            duration_seconds: Optional duration for timed actions.
+            evidence: Optional evidence URL or description.
+            message_url: Optional URL to the message that triggered action.
+
+        Returns:
+            Dict with case_id, thread_id, action_type, user_id, control_panel_message_id.
+
+        Raises:
+            RuntimeError: If thread creation fails.
+        """
         case_id = self.db.get_next_case_id()
         guild_id = moderator.guild.id
 
@@ -443,16 +525,20 @@ class CaseLogService(
         Send a message requesting evidence for a case.
 
         The moderator should reply to this message with media (image/video)
-        to provide evidence for the action.
+        to provide evidence for the action. The message ID is stored in the
+        database so we can detect replies to it.
+
+        DESIGN: Evidence requests are skipped for the bot owner to streamline
+        their workflow. All other moderators must provide evidence.
 
         Args:
-            case_id: The case ID.
-            thread: The case thread.
+            case_id: The case ID for tracking.
+            thread: The case thread where request will be posted.
             moderator: The moderator who took the action.
-            action_type: Type of action (mute, ban, warn, etc.)
+            action_type: Type of action (mute, ban, warn, etc.) for context.
 
         Returns:
-            The evidence request message, or None if failed.
+            The evidence request message if sent successfully, None if skipped or failed.
         """
         # Skip evidence request for developer/owner
         if self.config.owner_id and moderator.id == self.config.owner_id:
@@ -497,14 +583,22 @@ class CaseLogService(
         Handle a reply to an evidence request message.
 
         This method is called when a message is detected as a reply
-        to an evidence request. It captures the media and links it
-        to the case.
+        to an evidence request. It validates attachments, uploads them
+        to permanent storage (assets thread), and links them to the case.
+
+        WORKFLOW:
+        1. Check if reply is to an evidence request message
+        2. Validate attachments (images/videos only)
+        3. Upload to assets thread for permanent storage
+        4. Update case database with evidence URLs
+        5. Post reference in case thread
+        6. Delete the evidence request message
 
         Args:
             message: The reply message with attachments.
 
         Returns:
-            True if evidence was successfully captured.
+            True if evidence was successfully captured and stored, False otherwise.
         """
         if not message.reference or not message.reference.message_id:
             return False
@@ -612,7 +706,24 @@ class CaseLogService(
         duration: Optional[str] = None,
         moderator_id: Optional[int] = None,
     ) -> dict:
-        """LEGACY: Get existing case or create new one with forum thread."""
+        """
+        LEGACY: Get existing case or create new one with forum thread.
+
+        This is the old per-user case system where each user had one case
+        thread for all their moderation actions. Kept for backward compatibility
+        but new code should use _create_action_case instead.
+
+        Args:
+            user: Discord member to get/create case for.
+            duration: Optional duration string for the case.
+            moderator_id: Optional moderator ID who created the case.
+
+        Returns:
+            Dict with user_id, case_id, thread_id, and just_created flag.
+
+        Raises:
+            RuntimeError: If thread creation fails.
+        """
         case = self.db.get_case_log(user.id)
         if case:
             return case
@@ -646,7 +757,19 @@ class CaseLogService(
         user: discord.Member,
         case_id: str,
     ) -> Optional[discord.Thread]:
-        """LEGACY: Create a new forum thread for this case."""
+        """
+        LEGACY: Create a new forum thread for this case.
+
+        Creates a per-user case thread with user profile embed.
+        This is the old system - new code should use _create_action_thread.
+
+        Args:
+            user: Discord member to create thread for.
+            case_id: Unique case ID for the thread name.
+
+        Returns:
+            Thread object if created successfully, None if failed.
+        """
         forum = await self._get_forum()
         if not forum:
             logger.warning("Create Case Thread Failed", [
@@ -722,7 +845,31 @@ class CaseLogService(
     # =========================================================================
 
     async def handle_reason_reply(self, message: discord.Message) -> bool:
-        """Handle a reply message that might be a pending reason response."""
+        """
+        Handle a reply message that might be a pending reason response.
+
+        When a moderator takes action without providing a reason, the bot
+        sends a warning message. This method detects replies to that warning
+        and updates the case with the provided reason and optional evidence.
+
+        WORKFLOW:
+        1. Check if reply is to a pending reason warning
+        2. Validate reason text and optional evidence attachment
+        3. Handle special "voice chat" reason with activity lookup
+        4. Update the case embed with reason and evidence
+        5. Delete warning and reply messages
+        6. Mark pending reason as resolved
+
+        EVIDENCE REQUIREMENTS:
+        - Mute/ban/timeout actions require image/video evidence OR "voice chat"
+        - Other actions only require reason text
+
+        Args:
+            message: The reply message potentially containing reason/evidence.
+
+        Returns:
+            True if reason was successfully processed and case updated, False otherwise.
+        """
         if not message.reference or not message.reference.message_id:
             return False
 

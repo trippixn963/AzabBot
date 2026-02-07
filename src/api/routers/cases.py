@@ -100,12 +100,19 @@ async def list_cases(
     sort_direction = "ASC" if sort_dir and sort_dir.lower() == "asc" else "DESC"
 
     # Get page of results
+    # Sort by status (active first, then expired/resolved), then by requested column
     query = f"""
         SELECT id, case_id, user_id, moderator_id, action_type, status, reason,
                duration_seconds, created_at, resolved_at
         FROM cases
         WHERE {where_clause}
-        ORDER BY {sort_column} {sort_direction}
+        ORDER BY
+            CASE status
+                WHEN 'active' THEN 0
+                WHEN 'expired' THEN 1
+                ELSE 2
+            END,
+            {sort_column} {sort_direction}
         LIMIT ? OFFSET ?
     """
     params.extend([pagination.per_page, pagination.offset])
