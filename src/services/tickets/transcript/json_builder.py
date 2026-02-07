@@ -14,7 +14,8 @@ from typing import Optional, List
 import discord
 
 from src.core.logger import logger
-from ..constants import MAX_TRANSCRIPT_MESSAGES
+from src.utils.mention_resolver import collect_mentions_from_messages
+from ..constants import MAX_TRANSCRIPT_MESSAGES, MAX_TRANSCRIPT_USER_LOOKUPS
 from .models import TicketTranscript, TicketTranscriptMessage, TicketTranscriptAttachment
 
 
@@ -48,8 +49,11 @@ async def build_json_transcript(
         ], emoji="📝")
 
         messages: List[TicketTranscriptMessage] = []
+        raw_messages: List[discord.Message] = []
 
         async for msg in thread.history(limit=MAX_TRANSCRIPT_MESSAGES, oldest_first=True):
+            raw_messages.append(msg)
+
             # Build attachments
             attachments = []
             for att in msg.attachments:
@@ -77,6 +81,14 @@ async def build_json_transcript(
                 is_staff=is_staff,
             ))
 
+        # Use shared utility to collect and resolve mentions
+        mention_map = await collect_mentions_from_messages(
+            raw_messages,
+            thread.guild,
+            bot,
+            max_api_lookups=MAX_TRANSCRIPT_USER_LOOKUPS,
+        )
+
         transcript = TicketTranscript(
             ticket_id=ticket.get("ticket_id", ""),
             thread_id=thread.id,
@@ -94,6 +106,7 @@ async def build_json_transcript(
             claimed_by_name=claimed_by.display_name if claimed_by else None,
             closed_by_id=closed_by.id if closed_by else ticket.get("closed_by"),
             closed_by_name=closed_by.display_name if closed_by else None,
+            mention_map=mention_map,
         )
 
         logger.tree("Ticket JSON Transcript Built", [

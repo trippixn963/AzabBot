@@ -93,12 +93,27 @@ async def get_transcript(ticket_id: str):
 
     # Generate transcript
     from src.services.tickets.transcript import generate_html_transcript
+    import json as json_lib
 
     messages = []
     mention_map = {}
 
+    # Try to get mention_map from stored JSON transcript
+    try:
+        transcript_json = db.get_ticket_transcript_json(ticket_id)
+        if transcript_json:
+            transcript_data = json_lib.loads(transcript_json)
+            stored_mention_map = transcript_data.get("mention_map")
+            if stored_mention_map:
+                # Convert keys back to integers
+                mention_map = {int(k): v for k, v in stored_mention_map.items()}
+    except Exception:
+        pass  # Fall back to building from authors
+
     for msg in stored_messages:
-        mention_map[msg["author_id"]] = msg["author_display_name"]
+        # Add authors to mention_map as fallback
+        if msg["author_id"] not in mention_map:
+            mention_map[msg["author_id"]] = msg["author_display_name"]
 
         try:
             ts = datetime.fromtimestamp(msg["timestamp"], tz=NY_TZ)

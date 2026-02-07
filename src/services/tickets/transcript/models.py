@@ -69,9 +69,15 @@ class TicketTranscript:
     claimed_by_name: Optional[str] = None
     closed_by_id: Optional[int] = None
     closed_by_name: Optional[str] = None
+    mention_map: Optional[Dict[int, str]] = None  # user/channel/role ID -> name
 
     def to_json(self) -> str:
         """Serialize transcript to JSON string."""
+        # Convert mention_map keys to strings for JSON compatibility
+        mention_map_str = None
+        if self.mention_map:
+            mention_map_str = {str(k): v for k, v in self.mention_map.items()}
+
         data = {
             "ticket_id": self.ticket_id,
             "thread_id": self.thread_id,
@@ -89,6 +95,7 @@ class TicketTranscript:
             "claimed_by_name": self.claimed_by_name,
             "closed_by_id": self.closed_by_id,
             "closed_by_name": self.closed_by_name,
+            "mention_map": mention_map_str,
         }
         return json.dumps(data, ensure_ascii=False)
 
@@ -112,6 +119,11 @@ class TicketTranscript:
                 is_bot=m.get("is_bot", False),
                 is_staff=m.get("is_staff", False),
             ))
+        # Convert mention_map keys back to integers
+        mention_map = None
+        if data.get("mention_map"):
+            mention_map = {int(k): v for k, v in data["mention_map"].items()}
+
         return cls(
             ticket_id=data["ticket_id"],
             thread_id=data["thread_id"],
@@ -129,6 +141,7 @@ class TicketTranscript:
             claimed_by_name=data.get("claimed_by_name"),
             closed_by_id=data.get("closed_by_id"),
             closed_by_name=data.get("closed_by_name"),
+            mention_map=mention_map,
         )
 
 

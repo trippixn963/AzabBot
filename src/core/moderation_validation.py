@@ -537,10 +537,9 @@ def validate_evidence(
     warning = None
     if 'cdn.discordapp.com' in attachment.url or 'media.discordapp.net' in attachment.url:
         warning = "Discord CDN URLs may expire. Consider re-uploading to a permanent host."
-        logger.warning("Evidence URL May Expire", [
+        logger.debug("Evidence URL May Expire", [
             ("Action", action),
             ("Filename", attachment.filename),
-            ("Note", "Discord CDN URLs expire after message deletion"),
         ])
 
     logger.tree(f"{action.upper()} EVIDENCE VALIDATED", [

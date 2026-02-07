@@ -11,6 +11,7 @@ Server: discord.gg/syria
 
 import asyncio
 import json
+import re
 import time
 from typing import Any, Optional, Dict, List, Tuple
 
@@ -23,6 +24,7 @@ from src.core.logger import logger
 from src.api.dependencies import require_auth, get_bot
 from src.api.models.auth import TokenPayload
 from src.core.database import get_db
+from src.utils.mention_resolver import collect_mentions_from_messages, mention_map_to_json
 
 
 router = APIRouter(prefix="/case-transcripts", tags=["Case Transcripts"])
@@ -257,9 +259,14 @@ async def _fetch_live_transcript(
         # Cache for referenced messages (for reply threading)
         referenced_messages: Dict[int, discord.Message] = {}
 
+        # Collect raw messages for mention resolution
+        raw_messages: List[discord.Message] = []
+
         # Fetch all messages (we need full list for proper offset handling)
         messages = []
         async for message in thread.history(limit=1000, oldest_first=True):
+            raw_messages.append(message)
+
             avatar_url = None
             if message.author.display_avatar:
                 avatar_url = str(message.author.display_avatar.url)
@@ -358,6 +365,12 @@ async def _fetch_live_transcript(
                 "type": msg_type,
             })
 
+        # Use shared utility to collect and resolve mentions
+        mention_map = await collect_mentions_from_messages(
+            raw_messages, guild, bot, max_api_lookups=10
+        )
+        mention_map_str = mention_map_to_json(mention_map)
+
         # Build full transcript for caching
         full_transcript = {
             "case_id": case_id,
@@ -367,6 +380,7 @@ async def _fetch_live_transcript(
             "total_messages": len(messages),
             "message_count": len(messages),
             "messages": messages,
+            "mention_map": mention_map_str,
             "is_live": True,
         }
 
@@ -485,6 +499,14 @@ async def get_case_transcript(
             total_messages = len(all_messages)
             paginated_messages = all_messages[offset:offset + limit]
 
+            # Get stored mention_map or build from authors
+            stored_mention_map = transcript_data.get("mention_map", {})
+            if not stored_mention_map:
+                # Fallback: build from message authors
+                for msg in all_messages:
+                    if msg.get("author_id"):
+                        stored_mention_map[str(msg["author_id"])] = msg.get("author_display_name", msg.get("author_name", "Unknown"))
+
             transcript = {
                 "case_id": transcript_data.get("case_id"),
                 "thread_id": transcript_data.get("thread_id"),
@@ -493,6 +515,7 @@ async def get_case_transcript(
                 "total_messages": total_messages,
                 "message_count": len(paginated_messages),
                 "messages": paginated_messages,
+                "mention_map": stored_mention_map,
                 "offset": offset,
                 "has_more": offset + limit < total_messages,
                 "is_live": False,

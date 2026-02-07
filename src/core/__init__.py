@@ -4,7 +4,7 @@ AzabBot - Core Package
 
 Core components and utilities for the Azab Discord bot.
 This package contains essential services like database management,
-configuration, logging, and health monitoring.
+configuration, and logging.
 
 DESIGN:
     Core modules are designed as singletons or global instances
@@ -35,8 +35,6 @@ from .config import (
 from .database import Database, get_db
 
 from .logger import logger, Logger, TreeSymbols
-
-from .health import HealthCheckServer
 
 from .constants import (
     # Time
@@ -85,8 +83,6 @@ __all__ = [
     "logger",
     "Logger",
     "TreeSymbols",
-    # Health
-    "HealthCheckServer",
     # Constants (commonly used)
     "SECONDS_PER_MINUTE",
     "SECONDS_PER_HOUR",
