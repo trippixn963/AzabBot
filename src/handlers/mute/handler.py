@@ -70,85 +70,93 @@ class MuteHandler:
         Args:
             message: Discord message containing potential mute embeds.
         """
-        logger.tree("Processing Mute Embed", [
-            ("Message ID", str(message.id)),
-            ("Embed Count", str(len(message.embeds))),
-            ("Channel", message.channel.name if hasattr(message.channel, 'name') else str(message.channel.id)),
-        ], emoji="📝")
+        try:
+            logger.tree("Processing Mute Embed", [
+                ("Message ID", str(message.id)),
+                ("Embed Count", str(len(message.embeds))),
+                ("Channel", message.channel.name if hasattr(message.channel, 'name') else str(message.channel.id)),
+            ], emoji="📝")
 
-        for embed in message.embeds:
-            # Check if this is a mute embed
-            embed_text = (
-                str(embed.title or "")
-                + str(embed.author.name if embed.author else "")
-                + str(embed.description or "")
-            ).lower()
+            for embed in message.embeds:
+                # Check if this is a mute embed
+                embed_text = (
+                    str(embed.title or "")
+                    + str(embed.author.name if embed.author else "")
+                    + str(embed.description or "")
+                ).lower()
 
-            if "mute" not in embed_text and "timeout" not in embed_text:
-                continue
+                if "mute" not in embed_text and "timeout" not in embed_text:
+                    continue
 
-            user_id: Optional[int] = None
-            user_name: Optional[str] = None
-            reason: Optional[str] = None
+                user_id: Optional[int] = None
+                user_name: Optional[str] = None
+                reason: Optional[str] = None
 
-            # -----------------------------------------------------------------
-            # Extract User ID from Description
-            # -----------------------------------------------------------------
+                # -------------------------------------------------------------
+                # Extract User ID from Description
+                # -------------------------------------------------------------
 
-            if embed.description:
-                match = re.search(r"<@!?(\d+)>", embed.description)
-                if match:
-                    user_id = int(match.group(1))
+                if embed.description:
+                    match = re.search(r"<@!?(\d+)>", embed.description)
+                    if match:
+                        user_id = int(match.group(1))
 
-            # -----------------------------------------------------------------
-            # Parse Embed Fields
-            # -----------------------------------------------------------------
+                # -------------------------------------------------------------
+                # Parse Embed Fields
+                # -------------------------------------------------------------
 
-            for field in embed.fields:
-                field_name_lower = field.name.lower()
+                for field in embed.fields:
+                    field_name_lower = field.name.lower()
 
-                # User/Member/Target field
-                if any(x in field_name_lower for x in ["user", "member", "target", "offender"]):
-                    if "<@" in field.value:
-                        match = re.search(r"<@!?(\d+)>", field.value)
-                        if match:
-                            user_id = int(match.group(1))
+                    # User/Member/Target field
+                    if any(x in field_name_lower for x in ["user", "member", "target", "offender"]):
+                        if "<@" in field.value:
+                            match = re.search(r"<@!?(\d+)>", field.value)
+                            if match:
+                                user_id = int(match.group(1))
 
-                    # Extract username
-                    user_name_match = re.search(r"([^<>@]+?)(?:\s*<@|$)", field.value)
-                    if user_name_match:
-                        user_name = user_name_match.group(1).strip()
+                        # Extract username
+                        user_name_match = re.search(r"([^<>@]+?)(?:\s*<@|$)", field.value)
+                        if user_name_match:
+                            user_name = user_name_match.group(1).strip()
 
-                # Reason field
-                elif "reason" in field_name_lower:
-                    reason = field.value.strip()
+                    # Reason field
+                    elif "reason" in field_name_lower:
+                        reason = field.value.strip()
 
-            # -----------------------------------------------------------------
-            # Store Mute Reason (with lock for thread safety)
-            # -----------------------------------------------------------------
+                # -------------------------------------------------------------
+                # Store Mute Reason (with lock for thread safety)
+                # -------------------------------------------------------------
 
-            if reason:
-                async with self.prison._state_lock:
-                    # LRU eviction if at limit
-                    while len(self.prison.mute_reasons) >= self.prison._mute_reasons_limit:
-                        try:
-                            self.prison.mute_reasons.popitem(last=False)
-                        except KeyError:
-                            break
+                if reason:
+                    async with self.prison._state_lock:
+                        # LRU eviction if at limit
+                        while len(self.prison.mute_reasons) >= self.prison._mute_reasons_limit:
+                            try:
+                                self.prison.mute_reasons.popitem(last=False)
+                            except KeyError:
+                                break
 
-                    if user_id:
-                        self.prison.mute_reasons[user_id] = reason
-                        logger.tree("Mute Reason Captured", [
-                            ("User ID", str(user_id)),
-                            ("Reason", reason[:50] + "..." if len(reason) > 50 else reason),
-                        ], emoji="🔒")
+                        if user_id:
+                            self.prison.mute_reasons[user_id] = reason
+                            logger.tree("Mute Reason Captured", [
+                                ("User ID", str(user_id)),
+                                ("Reason", reason[:50] + "..." if len(reason) > 50 else reason),
+                            ], emoji="🔒")
 
-                    if user_name:
-                        self.prison.mute_reasons[user_name.lower()] = reason
-                        logger.tree("Mute Reason Captured", [
-                            ("Username", user_name),
-                            ("Reason", reason[:50] + "..." if len(reason) > 50 else reason),
-                        ], emoji="🔒")
+                        if user_name:
+                            self.prison.mute_reasons[user_name.lower()] = reason
+                            logger.tree("Mute Reason Captured", [
+                                ("Username", user_name),
+                                ("Reason", reason[:50] + "..." if len(reason) > 50 else reason),
+                            ], emoji="🔒")
+
+        except Exception as e:
+            logger.error("Mute Embed Processing Failed", [
+                ("Message ID", str(message.id)),
+                ("Error Type", type(e).__name__),
+                ("Error", str(e)[:50]),
+            ])
 
     # =========================================================================
     # Mute Status Check
