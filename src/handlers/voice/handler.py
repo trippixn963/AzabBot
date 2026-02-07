@@ -1,0 +1,347 @@
+"""
+AzabBot - Voice Handler
+=======================
+
+Handles voice-related events and enforcement.
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
+"""
+
+import asyncio
+from datetime import timedelta
+from typing import TYPE_CHECKING
+
+import discord
+
+from src.core.config import get_config, EmbedColors
+from src.core.database import get_db
+from src.core.logger import logger
+from src.core.constants import CASE_LOG_TIMEOUT
+from src.utils.dm_helpers import send_moderation_dm
+from src.utils.async_utils import create_safe_task
+
+if TYPE_CHECKING:
+    from src.bot import AzabBot
+
+
+class VoiceHandler:
+    """
+    Handles voice state changes and enforcement.
+
+    Responsibilities:
+    - Enforce VC restrictions for muted users
+    - Delegate voice logging to appropriate services
+    """
+
+    def __init__(self, bot: "AzabBot") -> None:
+        """Initialize the voice handler."""
+        self.bot = bot
+        self.config = get_config()
+        self.db = get_db()
+
+        logger.tree("Voice Handler Loaded", [
+            ("Features", "VC restriction, voice logging"),
+            ("Muted Penalty", "Disconnect + 1h timeout"),
+        ], emoji="🔊")
+
+    async def handle_voice_state_update(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        """
+        Main handler for voice state updates.
+
+        Args:
+            member: The member whose voice state changed.
+            before: Previous voice state.
+            after: New voice state.
+        """
+        # Track voice activity to database for verification
+        self._save_voice_activity(member, before, after)
+
+        # Check muted user VC restriction first
+        await self._enforce_muted_vc_restriction(member, before, after)
+
+        # Server logging service
+        await self._log_voice_to_server_logs(member, before, after)
+
+    def _save_voice_activity(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        """
+        Save voice activity to database for later verification.
+
+        Args:
+            member: The member whose voice state changed.
+            before: Previous voice state.
+            after: New voice state.
+        """
+        try:
+            # Joined a voice channel
+            if before.channel is None and after.channel is not None:
+                self.db.save_voice_activity(
+                    user_id=member.id,
+                    guild_id=member.guild.id,
+                    channel_id=after.channel.id,
+                    channel_name=after.channel.name,
+                    action="join",
+                )
+
+            # Left a voice channel
+            elif before.channel is not None and after.channel is None:
+                self.db.save_voice_activity(
+                    user_id=member.id,
+                    guild_id=member.guild.id,
+                    channel_id=before.channel.id,
+                    channel_name=before.channel.name,
+                    action="leave",
+                )
+
+            # Moved between voice channels (log both leave and join)
+            elif before.channel != after.channel and before.channel and after.channel:
+                self.db.save_voice_activity(
+                    user_id=member.id,
+                    guild_id=member.guild.id,
+                    channel_id=before.channel.id,
+                    channel_name=before.channel.name,
+                    action="leave",
+                )
+                self.db.save_voice_activity(
+                    user_id=member.id,
+                    guild_id=member.guild.id,
+                    channel_id=after.channel.id,
+                    channel_name=after.channel.name,
+                    action="join",
+                )
+        except Exception as e:
+            logger.warning("Voice Activity Save Failed", [
+                ("Member", str(member)),
+                ("Error", str(e)[:100]),
+            ])
+
+    async def _enforce_muted_vc_restriction(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        """
+        Enforce voice channel restriction for muted users.
+
+        If a muted user joins a voice channel:
+        1. Disconnect them immediately
+        2. Apply 1-hour Discord timeout
+        3. Log comprehensively (tree, server logs, case log)
+        """
+        # Only check when joining a voice channel
+        if before.channel is not None or after.channel is None:
+            return
+
+        # Check if user has the muted role
+        muted_role = member.guild.get_role(self.config.muted_role_id)
+        if not muted_role or muted_role not in member.roles:
+            return
+
+        channel_name = after.channel.name if after.channel else "Unknown"
+
+        # -----------------------------------------------------------------
+        # 1. Disconnect from voice channel
+        # -----------------------------------------------------------------
+        try:
+            await member.move_to(None, reason="Muted users are not allowed in voice channels")
+        except Exception as e:
+            logger.error("Failed to Disconnect Muted User from VC", [
+                ("User", str(member)),
+                ("Error", str(e)[:50]),
+            ])
+            return
+
+        # -----------------------------------------------------------------
+        # 2. Apply 1-hour Discord timeout
+        # -----------------------------------------------------------------
+        timeout_duration = timedelta(hours=1)
+
+        try:
+            await member.timeout(timeout_duration, reason="Attempted to join voice channel while muted")
+
+            # Record timeout to database
+            from datetime import datetime
+            until_ts = (datetime.now() + timeout_duration).timestamp()
+            self.db.add_timeout(
+                user_id=member.id,
+                guild_id=member.guild.id,
+                moderator_id=self.bot.user.id,
+                reason="Attempted to join voice channel while muted",
+                duration_seconds=3600,  # 1 hour
+                until_timestamp=until_ts,
+            )
+
+            # Log to permanent audit log
+            self.db.log_moderation_action(
+                user_id=member.id,
+                guild_id=member.guild.id,
+                moderator_id=self.bot.user.id,
+                action_type="timeout",
+                action_source="auto_vc",
+                reason="Attempted to join voice channel while muted",
+                duration_seconds=3600,
+                details={"vc_channel": channel_name, "violation_type": "muted_user_vc_join"},
+            )
+        except Exception as e:
+            logger.error("Failed to Timeout Muted User", [
+                ("User", str(member)),
+                ("Error", str(e)[:50]),
+            ])
+
+        # -----------------------------------------------------------------
+        # 3. Tree Logging
+        # -----------------------------------------------------------------
+        logger.tree("MUTED USER VC VIOLATION", [
+            ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
+            ("ID", str(member.id)),
+            ("Attempted Channel", channel_name),
+            ("Action", "Disconnected + 1h Timeout"),
+        ], emoji="🔇")
+
+        # -----------------------------------------------------------------
+        # 4. Server Logs - Mutes & Timeouts
+        # -----------------------------------------------------------------
+        if self.bot.logging_service and self.bot.logging_service.enabled:
+            await self.bot.logging_service.log_muted_vc_violation(
+                member=member,
+                channel_name=channel_name,
+                timeout_duration=timeout_duration,
+                channel_id=after.channel.id if after.channel else None,
+            )
+
+        # -----------------------------------------------------------------
+        # 5. Case Log
+        # -----------------------------------------------------------------
+        if self.bot.case_log_service:
+            try:
+                await asyncio.wait_for(
+                    self.bot.case_log_service.log_muted_vc_violation(
+                        user_id=member.id,
+                        display_name=member.display_name,
+                        channel_name=channel_name,
+                        avatar_url=member.display_avatar.url,
+                    ),
+                    timeout=CASE_LOG_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Case Log Timeout", [
+                    ("Action", "Muted VC Violation"),
+                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+            ("ID", str(member.id)),
+                ])
+            except Exception as e:
+                logger.error("Case Log Failed", [
+                    ("Action", "Muted VC Violation"),
+                    ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
+            ("ID", str(member.id)),
+                    ("Error", str(e)[:100]),
+                ])
+
+        # -----------------------------------------------------------------
+        # 6. Fire-and-forget DM (no appeal button)
+        # -----------------------------------------------------------------
+        create_safe_task(send_moderation_dm(
+            user=member,
+            title="You have been timed out",
+            color=EmbedColors.ERROR,
+            guild=member.guild,
+            moderator=None,
+            reason="Attempting to join a voice channel while muted",
+            fields=[("Duration", "`1 hour`", True)],
+            context="Muted VC Violation DM",
+        ))
+
+    async def _log_mod_voice_activity(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        """Log voice activity for tracked moderators."""
+        if not self.bot.mod_tracker or not self.bot.mod_tracker.is_tracked(member.id):
+            return
+
+        # Joined a voice channel
+        if before.channel is None and after.channel is not None:
+            await self.bot.mod_tracker.log_voice_activity(
+                mod=member,
+                action="Joined",
+                channel=after.channel,
+            )
+
+        # Left a voice channel
+        elif before.channel is not None and after.channel is None:
+            await self.bot.mod_tracker.log_voice_activity(
+                mod=member,
+                action="Left",
+                channel=before.channel,
+            )
+
+        # Moved between voice channels
+        elif before.channel != after.channel:
+            await self.bot.mod_tracker.log_voice_activity(
+                mod=member,
+                action="Moved",
+                from_channel=before.channel,
+                to_channel=after.channel,
+            )
+
+    async def _log_voice_to_server_logs(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        """Log voice activity to server logging service."""
+        if not self.bot.logging_service or not self.bot.logging_service.enabled:
+            return
+
+        if before.channel is None and after.channel is not None:
+            await self.bot.logging_service.log_voice_join(member, after.channel)
+        elif before.channel is not None and after.channel is None:
+            await self.bot.logging_service.log_voice_leave(member, before.channel)
+        elif before.channel != after.channel and before.channel and after.channel:
+            await self.bot.logging_service.log_voice_move(member, before.channel, after.channel)
+
+        # Stage speaker changes
+        if after.channel and isinstance(after.channel, discord.StageChannel):
+            # Became a speaker (suppress changed from True to False)
+            if before.suppress and not after.suppress:
+                await self.bot.logging_service.log_stage_speaker(member, after.channel, True)
+            # Stopped being a speaker (suppress changed from False to True)
+            elif not before.suppress and after.suppress:
+                await self.bot.logging_service.log_stage_speaker(member, after.channel, False)
+
+        # Self-mute changes (only if in a channel)
+        if after.channel and before.self_mute != after.self_mute:
+            await self.bot.logging_service.log_voice_self_mute(member, after.channel, after.self_mute)
+
+        # Self-deafen changes (only if in a channel)
+        if after.channel and before.self_deaf != after.self_deaf:
+            await self.bot.logging_service.log_voice_self_deafen(member, after.channel, after.self_deaf)
+
+        # Stream start/stop (only if in a channel)
+        if after.channel and before.self_stream != after.self_stream:
+            await self.bot.logging_service.log_voice_stream(member, after.channel, after.self_stream)
+
+        # Camera on/off (only if in a channel)
+        if after.channel and before.self_video != after.self_video:
+            await self.bot.logging_service.log_voice_video(member, after.channel, after.self_video)
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["VoiceHandler"]

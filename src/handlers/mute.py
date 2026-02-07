@@ -15,7 +15,7 @@ from typing import Optional, TYPE_CHECKING
 from src.core.logger import logger
 
 if TYPE_CHECKING:
-    from src.handlers.prison import PrisonHandler
+    from src.handlers.prison.handler import PrisonHandler
 
 
 # =============================================================================

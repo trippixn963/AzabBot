@@ -53,6 +53,7 @@ DESIGN:
 # =============================================================================
 
 from .prison import PrisonHandler
+from .voice import VoiceHandler
 from .mute import MuteHandler
 
 
@@ -63,5 +64,6 @@ from .mute import MuteHandler
 __all__ = [
     "EVENT_COGS",
     "PrisonHandler",
+    "VoiceHandler",
     "MuteHandler",
 ]
