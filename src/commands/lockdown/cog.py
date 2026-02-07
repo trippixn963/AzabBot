@@ -75,7 +75,7 @@ class LockdownCog(commands.Cog):
             return
 
         # Get target guild (cross-server support)
-        guild: Optional[discord.Guild] = get_target_guild(interaction, self.bot, self.config)
+        guild: Optional[discord.Guild] = get_target_guild(interaction, self.bot)
         if not guild:
             logger.warning("Lockdown Target Not Found", [
                 ("User", f"{interaction.user} ({interaction.user.id})"),
@@ -217,7 +217,7 @@ class LockdownCog(commands.Cog):
             return
 
         # Get target guild (cross-server support)
-        guild: Optional[discord.Guild] = get_target_guild(interaction, self.bot, self.config)
+        guild: Optional[discord.Guild] = get_target_guild(interaction, self.bot)
         if not guild:
             logger.warning("Unlock Target Not Found", [
                 ("User", f"{interaction.user} ({interaction.user.id})"),

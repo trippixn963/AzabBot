@@ -81,7 +81,7 @@ class QuarantineCog(commands.Cog):
             )
             return
 
-        guild = get_target_guild(interaction, self.bot, self.config)
+        guild = get_target_guild(interaction, self.bot)
         if not guild:
             await interaction.response.send_message(
                 "Could not find the target server.",
@@ -197,7 +197,7 @@ class QuarantineCog(commands.Cog):
             )
             return
 
-        guild = get_target_guild(interaction, self.bot, self.config)
+        guild = get_target_guild(interaction, self.bot)
         if not guild:
             await interaction.response.send_message(
                 "Could not find the target server.",
@@ -297,7 +297,7 @@ class QuarantineCog(commands.Cog):
             )
             return
 
-        guild = get_target_guild(interaction, self.bot, self.config)
+        guild = get_target_guild(interaction, self.bot)
         if not guild:
             await interaction.response.send_message(
                 "Could not find the target server.",

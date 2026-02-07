@@ -17,28 +17,12 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
+from src.core.moderation_validation import get_target_guild  # Re-export centralized function
 from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
-    from src.core.config import Config
-
-
-def get_target_guild(
-    interaction: discord.Interaction,
-    bot: "AzabBot",
-    config: "Config",
-) -> Optional[discord.Guild]:
-    """Get the target guild for quarantine (supports cross-server moderation)."""
-    if (config.mod_server_id and
-        config.logging_guild_id and
-        interaction.guild and
-        interaction.guild.id == config.mod_server_id):
-        main_guild = bot.get_guild(config.logging_guild_id)
-        if main_guild:
-            return main_guild
-    return interaction.guild
 
 
 async def log_quarantine_action(
