@@ -19,7 +19,11 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ, has_mod_role
 from src.core.database import get_db
-from src.core.moderation_validation import validate_moderation_target
+from src.core.moderation_validation import (
+    validate_moderation_target,
+    get_target_guild,
+    is_cross_server,
+)
 from src.utils.footer import set_footer
 from src.views import CaseButtonView
 from src.utils.duration import parse_duration, format_duration_short as format_duration
@@ -56,6 +60,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
         logger.tree("Forbid Cog Loaded", [
             ("Commands", "/forbid, /unforbid"),
             ("Restrictions", str(len(RESTRICTIONS))),
+            ("Cross-Server", "Enabled"),
             ("Startup Scan", "30s after ready"),
         ], emoji="🚫")
 
@@ -145,12 +150,12 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
     async def forbid(
         self,
         interaction: discord.Interaction,
-        user: discord.Member,
+        user: discord.User,
         restriction: str,
         duration: Optional[str] = None,
         reason: Optional[str] = None,
     ) -> None:
-        """Forbid a user from using a specific feature."""
+        """Forbid a user from using a specific feature (supports cross-server from mod server)."""
         if not interaction.guild:
             await interaction.response.send_message(
                 "This command can only be used in a server.",
@@ -161,8 +166,22 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
         try:
             await interaction.response.defer(ephemeral=True)
 
-            guild = interaction.guild
+            # Get target guild (for cross-server moderation)
+            target_guild = get_target_guild(interaction, self.bot)
+            cross_server = is_cross_server(interaction)
+            guild = target_guild  # Alias for existing code
             moderator = interaction.user
+
+            # Get member from target guild (required for role-based forbid)
+            target_member = target_guild.get_member(user.id)
+            if not target_member:
+                guild_name = target_guild.name if cross_server else "this server"
+                await interaction.followup.send(
+                    f"User is not a member of {guild_name}.",
+                    ephemeral=True,
+                )
+                return
+            user = target_member  # Use member for role operations
 
             # Validate restriction
             restriction = restriction.lower()
@@ -242,7 +261,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 return
 
             # Tree logging
-            logger.tree("USER FORBIDDEN", [
+            log_items = [
                 ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
                 ("Mod ID", str(moderator.id)),
                 ("Target", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
@@ -250,7 +269,10 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 ("Restrictions", ", ".join(applied) if applied else "None new"),
                 ("Duration", duration_display),
                 ("Reason", (reason or "None")[:50]),
-            ], emoji="🚫")
+            ]
+            if cross_server:
+                log_items.insert(2, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
+            logger.tree("USER FORBIDDEN", log_items, emoji="🚫")
 
             # Create case log FIRST (need case_info for public embed)
             case_info = None
@@ -371,11 +393,11 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
     async def unforbid(
         self,
         interaction: discord.Interaction,
-        user: discord.Member,
+        user: discord.User,
         restriction: str,
         reason: Optional[str] = None,
     ) -> None:
-        """Remove a restriction from a user."""
+        """Remove a restriction from a user (supports cross-server from mod server)."""
         if not interaction.guild:
             await interaction.response.send_message(
                 "This command can only be used in a server.",
@@ -386,8 +408,22 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
         try:
             await interaction.response.defer(ephemeral=True)
 
-            guild = interaction.guild
+            # Get target guild (for cross-server moderation)
+            target_guild = get_target_guild(interaction, self.bot)
+            cross_server = is_cross_server(interaction)
+            guild = target_guild  # Alias for existing code
             moderator = interaction.user
+
+            # Get member from target guild (required for role-based unforbid)
+            target_member = target_guild.get_member(user.id)
+            if not target_member:
+                guild_name = target_guild.name if cross_server else "this server"
+                await interaction.followup.send(
+                    f"User is not a member of {guild_name}.",
+                    ephemeral=True,
+                )
+                return
+            user = target_member  # Use member for role operations
 
             # Validate restriction
             restriction = restriction.lower()
@@ -441,14 +477,17 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 return
 
             # Tree logging
-            logger.tree("USER UNFORBIDDEN", [
+            log_items = [
                 ("Moderator", f"{moderator.name} ({moderator.nick})" if hasattr(moderator, 'nick') and moderator.nick else moderator.name),
                 ("Mod ID", str(moderator.id)),
                 ("Target", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
                 ("Target ID", str(user.id)),
                 ("Removed", ", ".join(removed)),
                 ("Reason", reason or "No reason provided"),
-            ], emoji="✅")
+            ]
+            if cross_server:
+                log_items.insert(2, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
+            logger.tree("USER UNFORBIDDEN", log_items, emoji="✅")
 
             # Create case log FIRST (need case_info for public embed)
             case_info = None
