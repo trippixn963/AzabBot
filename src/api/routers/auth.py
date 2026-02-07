@@ -128,22 +128,25 @@ async def check_moderator(
     )
 
 
-@router.post("/register", response_model=APIResponse[dict])
+@router.post("/register", response_model=APIResponse[AuthTokenResponse])
 async def register(
     request_body: RegisterRequest,
     request: Request,
     bot: Any = Depends(get_bot),
-) -> APIResponse[dict]:
+) -> APIResponse[AuthTokenResponse]:
     """
-    Register a new dashboard user.
+    Register a new dashboard user and return access token.
 
     Requires:
     - User must be a moderator in the Discord server
     - User must not already be registered
     - PIN must be at least 4 characters
+
+    Returns access token on successful registration (auto-login).
     """
     auth_service = get_auth_service()
     client_ip = _get_client_ip(request)
+    user_agent = request.headers.get("User-Agent", "")
 
     # Verify moderator status
     is_moderator = await auth_service.check_is_moderator(bot, request_body.discord_id)
@@ -172,15 +175,39 @@ async def register(
             detail=message,
         )
 
+    # Auto-login after successful registration
+    login_success, token, expires_at = auth_service.login(
+        request_body.discord_id,
+        request_body.password,
+        client_ip=client_ip,
+        user_agent=user_agent,
+    )
+
+    if not login_success or not token:
+        # Registration succeeded but auto-login failed (shouldn't happen)
+        logger.error("Auto-Login After Register Failed", [
+            ("User ID", str(request_body.discord_id)),
+            ("IP", client_ip),
+        ])
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Registration succeeded but auto-login failed",
+        )
+
     logger.tree("Dashboard User Registered", [
         ("User ID", str(request_body.discord_id)),
         ("IP", client_ip),
+        ("Auto-Login", "✅"),
     ], emoji="📝")
 
     return APIResponse(
         success=True,
         message=message,
-        data={"registered": True},
+        data=AuthTokenResponse(
+            access_token=token,
+            token_type="bearer",
+            expires_at=expires_at,
+        ),
     )
 
 

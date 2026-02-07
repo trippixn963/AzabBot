@@ -11,7 +11,7 @@ Server: discord.gg/syria
 import hashlib
 import secrets
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from dataclasses import dataclass, field
 
@@ -581,10 +581,10 @@ class AuthService:
             user = await bot.fetch_user(discord_id)
             registered = self._get_user(discord_id)
 
-            # Convert last_login timestamp to datetime
+            # Convert last_login timestamp to UTC datetime
             last_login_at = None
             if registered and registered.last_login:
-                last_login_at = datetime.fromtimestamp(registered.last_login)
+                last_login_at = datetime.fromtimestamp(registered.last_login, tz=timezone.utc)
 
             return AuthenticatedUser(
                 discord_id=discord_id,

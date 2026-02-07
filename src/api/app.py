@@ -37,6 +37,7 @@ from src.api.routers import (
     server_router,
     dashboard_router,
     bans_router,
+    frontend_logs_router,
 )
 
 
@@ -157,6 +158,7 @@ def create_app(bot: Optional[Any] = None) -> FastAPI:
     app.include_router(users_router, prefix="/api/azab")
     app.include_router(stats_router, prefix="/api/azab")
     app.include_router(bans_router, prefix="/api/azab")
+    app.include_router(frontend_logs_router, prefix="/api/azab")
     app.include_router(websocket_router, prefix="/api/azab")
 
     # Root health check (for load balancers)
