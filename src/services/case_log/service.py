@@ -391,7 +391,7 @@ class CaseLogService(
                         case=case_data,
                         user=user if isinstance(user, discord.Member) else None,
                         moderator=moderator,
-                        status="open",
+                        status="active",
                     )
 
                     # Build control panel view
@@ -401,7 +401,7 @@ class CaseLogService(
                         guild_id=guild_id,
                         case_id=case_id,
                         case_thread_id=thread.id,
-                        status="open",
+                        status="active",
                         is_mute=is_mute,
                         message_url=message_url,
                         has_evidence=has_evidence,

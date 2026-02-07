@@ -561,54 +561,14 @@ class SpamHandlerMixin:
         duration: int,
         violation_count: int,
     ) -> Optional[dict]:
-        """Open a case for the spam violation and return case info."""
-        bot: "AzabBot" = self.bot  # type: ignore
+        """
+        Open a case for the spam violation.
 
-        if not bot.case_log_service:
-            return None
-
-        if duration >= 3600:
-            duration_str = f"{duration // 3600} hour(s)"
-        else:
-            duration_str = f"{duration // 60} minute(s)"
-
-        # Get bot as guild member (log_mute expects Member, not User)
-        bot_member = member.guild.get_member(bot.user.id)
-        if not bot_member:
-            logger.warning("Auto-Spam Case Failed", [
-                ("Reason", "Bot not found as guild member"),
-                ("Guild", member.guild.name),
-            ])
-            return None
-
-        try:
-            case_info = await asyncio.wait_for(
-                bot.case_log_service.log_mute(
-                    user=member,
-                    moderator=bot_member,
-                    duration=duration_str,
-                    reason=f"Auto-spam detection: {spam_type} (violation #{violation_count})",
-                    is_extension=False,
-                    evidence=None,
-                ),
-                timeout=CASE_LOG_TIMEOUT,
-            )
-            return case_info
-        except asyncio.TimeoutError:
-            logger.warning("Case Log Timeout", [
-                ("Action", "Auto-Spam Mute"),
-                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
-                ("ID", str(member.id)),
-            ])
-            return None
-        except Exception as e:
-            logger.error("Case Log Failed", [
-                ("Action", "Auto-Spam Mute"),
-                ("User", f"{member.name} ({member.nick})" if member.nick else member.name),
-                ("ID", str(member.id)),
-                ("Error", str(e)[:100]),
-            ])
-            return None
+        NOTE: Automated mutes don't create case forum threads (too verbose).
+        They are logged to moderation_audit_log instead via _log_spam().
+        This method is kept for backwards compatibility but always returns None.
+        """
+        return None
 
     async def _log_spam(
         self,

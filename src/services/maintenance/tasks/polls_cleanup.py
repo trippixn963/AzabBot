@@ -35,7 +35,7 @@ class PollsCleanupTask(MaintenanceTask):
 
     async def should_run(self) -> bool:
         """Check if polls channels are configured."""
-        return bool(self.config.polls_only_channel_ids or self.config.permanent_polls_channel_ids)
+        return bool(self.config.polls_only_channel_ids)
 
     async def run(self) -> Dict[str, Any]:
         """Run polls cleanup scan."""

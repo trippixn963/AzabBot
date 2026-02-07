@@ -609,6 +609,19 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             return
 
         guild = channel.guild
+
+        # Check if the bot can manage permissions on this channel
+        bot_member = guild.me
+        if not bot_member:
+            return
+
+        # Get bot's permissions in the channel
+        bot_perms = channel.permissions_for(bot_member)
+        if not bot_perms.manage_permissions:
+            # Bot can't manage permissions here - skip silently
+            # (common for temporary VCs managed by other bots)
+            return
+
         applied_roles = []
         failed_roles = []
 
@@ -652,6 +665,10 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                     if perm_names & voice_perms or perm_names & text_perms:
                         await channel.set_permissions(role, overwrite=overwrite, reason="Forbid system: new channel")
                         applied_roles.append(restriction)
+            except discord.NotFound:
+                # Channel was deleted before we could apply overwrites (temp VC)
+                # Stop processing - channel no longer exists
+                return
             except (discord.Forbidden, discord.HTTPException):
                 failed_roles.append(restriction)
 
@@ -663,11 +680,11 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 ("Roles Applied", ", ".join(applied_roles)),
             ], emoji="🔒")
 
+        # Only log failures as debug (not warning) - common for temp VCs
         if failed_roles:
-            logger.warning("Forbid Overwrites Failed on New Channel", [
+            logger.debug("Forbid Overwrites Skipped", [
                 ("Channel", f"#{channel.name}"),
-                ("Guild", guild.name),
-                ("Failed Roles", ", ".join(failed_roles)),
+                ("Roles", ", ".join(failed_roles)),
             ])
 
 

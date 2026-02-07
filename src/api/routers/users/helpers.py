@@ -134,6 +134,12 @@ async def batch_fetch_moderators(bot: Any, mod_ids: set[int]) -> dict[int, str]:
                 if name:
                     result[uid] = name
 
+    if to_fetch:
+        logger.debug("Moderators Batch Fetched", [
+            ("Requested", str(len(to_fetch))),
+            ("Resolved", str(len([uid for uid in to_fetch if uid in result]))),
+        ])
+
     return result
 
 

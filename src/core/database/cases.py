@@ -89,7 +89,7 @@ class CasesMixin:
             """INSERT INTO cases
                (case_id, user_id, guild_id, thread_id, action_type, status,
                 moderator_id, reason, duration_seconds, evidence, created_at)
-               VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)""",
             (case_id, user_id, guild_id, thread_id, action_type,
              moderator_id, reason, duration_seconds, evidence, now)
         )
@@ -196,7 +196,7 @@ class CasesMixin:
         row = self.fetchone(
             """SELECT * FROM cases
                WHERE user_id = ? AND guild_id = ?
-               AND action_type = 'mute' AND status = 'open'
+               AND action_type = 'mute' AND status = 'active'
                ORDER BY created_at DESC LIMIT 1""",
             (user_id, guild_id)
         )
@@ -222,7 +222,7 @@ class CasesMixin:
         row = self.fetchone(
             """SELECT * FROM cases
                WHERE user_id = ? AND guild_id = ?
-               AND action_type = 'ban' AND status = 'open'
+               AND action_type = 'ban' AND status = 'active'
                ORDER BY created_at DESC LIMIT 1""",
             (user_id, guild_id)
         )
@@ -248,7 +248,7 @@ class CasesMixin:
         row = self.fetchone(
             """SELECT * FROM cases
                WHERE user_id = ? AND guild_id = ?
-               AND action_type = 'forbid' AND status = 'open'
+               AND action_type = 'forbid' AND status = 'active'
                ORDER BY created_at DESC LIMIT 1""",
             (user_id, guild_id)
         )
@@ -302,7 +302,7 @@ class CasesMixin:
         cursor = self.execute(
             """UPDATE cases
                SET status = 'resolved', resolved_at = ?, resolved_by = ?, resolved_reason = ?
-               WHERE case_id = ? AND status = 'open'""",
+               WHERE case_id = ? AND status = 'active'""",
             (now, resolved_by, reason, case_id)
         )
 
@@ -449,7 +449,7 @@ class CasesMixin:
             rows = self.fetchall(query, (user_id, guild_id, limit))
         else:
             query = """SELECT * FROM cases
-                       WHERE user_id = ? AND guild_id = ? AND status = 'open'
+                       WHERE user_id = ? AND guild_id = ? AND status = 'active'
                        ORDER BY created_at DESC LIMIT ?"""
             rows = self.fetchall(query, (user_id, guild_id, limit))
         return [dict(row) for row in rows]
@@ -499,7 +499,7 @@ class CasesMixin:
         """
         rows = self.fetchall(
             """SELECT * FROM cases
-               WHERE status != 'archived'
+               WHERE status = 'active'
                AND (
                    (action_type = 'ban' AND created_at < ?)
                    OR (action_type != 'ban' AND created_at < ?)
@@ -511,21 +511,21 @@ class CasesMixin:
 
     def archive_case(self: "DatabaseManager", case_id: str) -> bool:
         """
-        Mark a case as archived (thread was deleted).
+        Mark a case as resolved (thread was deleted/archived).
 
         Args:
-            case_id: The case ID to archive.
+            case_id: The case ID to resolve.
 
         Returns:
-            True if case was archived, False if not found.
+            True if case was resolved, False if not found.
         """
         cursor = self.execute(
-            "UPDATE cases SET status = 'archived' WHERE case_id = ?",
+            "UPDATE cases SET status = 'resolved' WHERE case_id = ?",
             (case_id,)
         )
 
         if cursor.rowcount > 0:
-            logger.debug("Case Archived", [
+            logger.debug("Case Resolved", [
                 ("Case ID", case_id),
             ])
 
@@ -597,6 +597,46 @@ class CasesMixin:
             (user_id, guild_id, action_type)
         )
         return dict(row) if row else None
+
+    def get_resolved_cases_with_threads(self: "DatabaseManager") -> List[Dict[str, Any]]:
+        """
+        Get all resolved cases that still have thread_ids set.
+
+        Used for one-time cleanup of legacy resolved cases whose
+        Discord threads should be deleted.
+
+        Returns:
+            List of resolved case dicts with non-null thread_ids.
+        """
+        rows = self.fetchall(
+            """SELECT * FROM cases
+               WHERE status = 'resolved'
+               AND thread_id IS NOT NULL
+               ORDER BY created_at ASC"""
+        )
+        return [dict(row) for row in rows]
+
+    def clear_case_thread_id(self: "DatabaseManager", case_id: str) -> bool:
+        """
+        Clear the thread_id for a case after thread deletion.
+
+        Args:
+            case_id: The case ID.
+
+        Returns:
+            True if updated, False if case not found.
+        """
+        cursor = self.execute(
+            "UPDATE cases SET thread_id = NULL WHERE case_id = ?",
+            (case_id,)
+        )
+
+        if cursor.rowcount > 0:
+            logger.debug("Case Thread ID Cleared", [
+                ("Case ID", case_id),
+            ])
+
+        return cursor.rowcount > 0
 
 
 __all__ = ["CasesMixin"]

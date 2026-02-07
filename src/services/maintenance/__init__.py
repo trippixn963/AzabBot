@@ -36,6 +36,10 @@ from .tasks import (
     CaseThreadValidationTask,
     JoinInfoCleanupTask,
     SnapshotCleanupTask,
+    AuthCleanupTask,
+    BanSyncTask,
+    WebSocketCleanupTask,
+    ResolvedCaseCleanupTask,
 )
 
 if TYPE_CHECKING:
@@ -76,7 +80,12 @@ class MaintenanceService:
             HistoryCleanupTask(bot),
             JoinInfoCleanupTask(bot),
             SnapshotCleanupTask(bot),
-            # Validation & optimization
+            # API tasks
+            AuthCleanupTask(bot),
+            BanSyncTask(bot),
+            WebSocketCleanupTask(bot),
+            # Case & validation
+            ResolvedCaseCleanupTask(bot),
             CaseThreadValidationTask(bot),
             InviteCacheRefreshTask(bot),
             DatabaseOptimizationTask(bot),  # Run last after all deletions

@@ -202,7 +202,7 @@ class CaseControlPanelView(discord.ui.View):
         guild_id: int,
         case_id: str,
         case_thread_id: int,
-        status: str = "open",
+        status: str = "active",
         is_mute: bool = False,
         message_url: Optional[str] = None,
         has_evidence: bool = False,

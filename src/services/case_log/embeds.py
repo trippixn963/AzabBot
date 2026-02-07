@@ -712,7 +712,7 @@ ACTION_DISPLAY = {
 
 # Status display info
 STATUS_DISPLAY = {
-    "open": ("🟢", "Active", EmbedColors.ERROR),
+    "active": ("🟢", "Active", EmbedColors.ERROR),
     "approved": ("✅", "Approved", EmbedColors.SUCCESS),
     "resolved": ("✅", "Resolved", EmbedColors.SUCCESS),
     "expired": ("⏰", "Expired", EmbedColors.INFO),
@@ -723,7 +723,7 @@ def build_control_panel_embed(
     case: dict,
     user: Optional[discord.Member] = None,
     moderator: Optional[discord.Member] = None,
-    status: str = "open",
+    status: str = "active",
     expires_at: Optional[datetime] = None,
 ) -> discord.Embed:
     """
@@ -780,7 +780,7 @@ def build_control_panel_embed(
             embed.add_field(name="Mod ID", value=f"`{mod_id}`", inline=True)
 
     # Duration/Expiry (for mutes/timeouts)
-    if action_type in ("mute", "timeout") and status == "open":
+    if action_type in ("mute", "timeout") and status == "active":
         if expires_at:
             embed.add_field(name="Expires", value=f"<t:{int(expires_at.timestamp())}:R>", inline=True)
         else:

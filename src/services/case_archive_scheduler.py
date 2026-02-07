@@ -5,9 +5,13 @@ AzabBot - Case Archive Scheduler
 Background service for automatic deletion of old case threads.
 
 DESIGN:
-    Runs as a background task checking for approved cases older than 7 days.
+    Runs as a background task checking for active cases older than retention period.
     Builds and saves transcripts before deleting threads.
-    Only approved cases are eligible for deletion.
+    Marks cases as resolved and clears thread_id after deletion.
+
+    Retention periods:
+    - Ban cases: 14 days after creation
+    - Other cases (mute, warn, forbid): 7 days after creation
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -50,15 +54,16 @@ class CaseArchiveScheduler:
     Background service for automatic case thread deletion.
 
     DESIGN:
-        Runs a loop every hour checking for approved case threads.
+        Runs a loop every hour checking for active case threads.
         Builds transcripts before deletion for permanent record.
-        Only deletes threads for approved cases (7 days after approval).
+        Deletes threads based on retention period (7d mute/warn, 14d ban).
+        Marks cases as resolved and clears thread_id after deletion.
 
     Attributes:
         bot: Reference to the main bot instance.
         config: Bot configuration.
         db: Database manager.
-        transcript_builder: Service for building transcripts.
+        assets_thread_id: Thread ID for storing transcript assets.
         task: Background task reference.
         running: Whether the scheduler is active.
     """
@@ -233,7 +238,7 @@ class CaseArchiveScheduler:
         Main scheduler loop.
 
         DESIGN:
-            Runs every hour checking for old approved case threads.
+            Runs every hour checking for old active case threads.
             Continues running even if individual deletions fail.
         """
         await self.bot.wait_until_ready()
@@ -272,7 +277,7 @@ class CaseArchiveScheduler:
             - Ban: 14 days after creation
             - Other (mute, warn, etc.): 7 days after creation
             Builds and saves transcript before deletion.
-            Marks the case as archived in the database.
+            Marks the case as resolved in the database.
         """
         now = datetime.now(NY_TZ)
 
@@ -304,17 +309,15 @@ class CaseArchiveScheduler:
                 if transcript_saved:
                     transcript_count += 1
 
-                # Mark case as archived (before Discord action)
-                self.db.archive_case(case_id)
+                # Delete the thread from Discord
+                thread_deleted = await self._delete_case_thread(case)
 
-                # Then delete the thread
-                success = await self._delete_case_thread(case)
-                if success:
-                    deleted_count += 1
-                else:
-                    # Thread deletion failed, but case is already archived
-                    # This is acceptable - thread may already be deleted
-                    deleted_count += 1
+                # Mark case as resolved and clear thread_id
+                self.db.archive_case(case_id)
+                if thread_deleted:
+                    self.db.clear_case_thread_id(case_id)
+
+                deleted_count += 1
 
             except Exception as e:
                 logger.error("Failed To Archive Case", [

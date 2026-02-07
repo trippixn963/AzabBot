@@ -144,33 +144,8 @@ class HelpersMixin:
                         ("Timeout", "1 hour"),
                     ], emoji="⏰")
 
-                    # Create case for the timeout
-                    if self.bot.case_log_service:
-                        try:
-                            bot_member = message.guild.get_member(self.bot.user.id)
-                            if bot_member:
-                                await asyncio.wait_for(
-                                    self.bot.case_log_service.log_mute(
-                                        user=message.author,
-                                        moderator=bot_member,
-                                        duration="1 hour",
-                                        reason=f"Auto-timeout: Ping spam in prison ({violation_count} pings in {PRISONER_PING_WINDOW}s)",
-                                        is_extension=False,
-                                        evidence=None,
-                                    ),
-                                    timeout=CASE_LOG_TIMEOUT,
-                                )
-                        except asyncio.TimeoutError:
-                            logger.warning("Case Log Timeout", [
-                                ("Action", "Prisoner Ping Spam"),
-                                ("User", str(message.author.id)),
-                            ])
-                        except Exception as e:
-                            logger.error("Case Log Failed", [
-                                ("Action", "Prisoner Ping Spam"),
-                                ("User", str(message.author.id)),
-                                ("Error", str(e)[:100]),
-                            ])
+                    # NOTE: Automated mutes don't create case forum threads (too verbose)
+                    # They are logged to moderation_audit_log instead (see below)
 
                     # Send DM to user (fire-and-forget, no appeal button)
                     create_safe_task(send_moderation_dm(
@@ -519,56 +494,11 @@ class HelpersMixin:
                 ("Reason", "No prison channel configured"),
             ], emoji="⚠️")
 
-        # -----------------------------------------------------------------
-        # 5. Create case log entry
-        # -----------------------------------------------------------------
-        if self.bot.case_log_service:
-            try:
-                case_result = await asyncio.wait_for(
-                    self.bot.case_log_service.log_mute(
-                        user=member,
-                        moderator=guild.me,  # Bot is the moderator
-                        duration="Permanent",
-                        reason="Auto-mute: Advertising external Discord server",
-                        evidence=f"Posted invite link: `discord.gg/{invite_code}` in #{message.channel.name}",
-                    ),
-                    timeout=CASE_LOG_TIMEOUT,
-                )
-                if case_result:
-                    logger.tree("CASE LOG CREATED", [
-                        ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
-                        ("ID", str(member.id)),
-                        ("Case Number", str(case_result.get("case_number", "N/A"))),
-                        ("Thread", case_result.get("thread_name", "N/A")),
-                    ], emoji="📋")
-                else:
-                    logger.tree("CASE LOG FAILED", [
-                        ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
-                        ("ID", str(member.id)),
-                        ("Reason", "log_mute returned None"),
-                    ], emoji="❌")
-            except asyncio.TimeoutError:
-                logger.warning("Case Log Timeout", [
-                    ("Action", "Auto-Mute (Invite Link)"),
-                    ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
-                    ("ID", str(member.id)),
-                ])
-            except Exception as e:
-                logger.error("Case Log Failed", [
-                    ("Action", "Auto-Mute (Invite Link)"),
-                    ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
-                    ("ID", str(member.id)),
-                    ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
-                ])
-        else:
-            logger.tree("CASE LOG SKIPPED", [
-                ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
-                ("ID", str(member.id)),
-                ("Reason", "Case log service not configured"),
-            ], emoji="⚠️")
+        # NOTE: Automated mutes don't create case forum threads (too verbose)
+        # They are logged to moderation_audit_log instead
 
         # -----------------------------------------------------------------
-        # 6. Send DM to user (no appeal button)
+        # 5. Send DM to user (no appeal button)
         # -----------------------------------------------------------------
         # Fire-and-forget DM (no appeal button)
         create_safe_task(send_moderation_dm(

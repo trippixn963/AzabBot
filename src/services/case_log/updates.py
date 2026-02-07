@@ -238,7 +238,7 @@ class CaseLogUpdatesMixin:
                 return False
 
             # Determine status
-            status = new_status or case.get("status", "open")
+            status = new_status or case.get("status", "active")
 
             # Build updated embed
             control_embed = build_control_panel_embed(

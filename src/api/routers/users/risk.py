@@ -13,6 +13,8 @@ from typing import List, Optional, Tuple
 
 import discord
 
+from src.core.logger import logger
+
 
 def calculate_risk_score(
     user: discord.User,
@@ -82,7 +84,19 @@ def calculate_risk_score(
         score += 10
         flags.append("no_roles")
 
-    return min(score, 100), flags
+    final_score = min(score, 100)
+
+    if final_score >= 50:
+        logger.debug("High Risk User Detected", [
+            ("User ID", str(user.id)),
+            ("Score", str(final_score)),
+            ("Flags", ", ".join(flags) if flags else "none"),
+            ("Cases", str(total_cases)),
+            ("Messages", str(total_messages)),
+            ("Days in Server", str(days_in_server)),
+        ])
+
+    return final_score, flags
 
 
 __all__ = ["calculate_risk_score"]

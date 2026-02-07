@@ -25,6 +25,10 @@ from .invite_cache_refresh import InviteCacheRefreshTask
 from .case_thread_validation import CaseThreadValidationTask
 from .join_info_cleanup import JoinInfoCleanupTask
 from .snapshot_cleanup import SnapshotCleanupTask
+from .auth_cleanup import AuthCleanupTask
+from .ban_sync import BanSyncTask
+from .websocket_cleanup import WebSocketCleanupTask
+from .resolved_case_cleanup import ResolvedCaseCleanupTask
 
 __all__ = [
     "GenderRoleTask",
@@ -44,4 +48,8 @@ __all__ = [
     "CaseThreadValidationTask",
     "JoinInfoCleanupTask",
     "SnapshotCleanupTask",
+    "AuthCleanupTask",
+    "BanSyncTask",
+    "WebSocketCleanupTask",
+    "ResolvedCaseCleanupTask",
 ]

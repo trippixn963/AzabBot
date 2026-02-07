@@ -110,12 +110,19 @@ class TicketsMixin:
 
     def claim_ticket(self: "DatabaseManager", ticket_id: str, staff_id: int) -> bool:
         """Claim a ticket for handling."""
+        # Get ticket info first for guild_id
+        ticket = self.get_ticket(ticket_id)
+        if not ticket:
+            return False
+
         cursor = self.execute(
             """UPDATE tickets SET status = 'claimed', claimed_by = ?, claimed_at = ?
                WHERE ticket_id = ? AND status = 'open'""",
             (staff_id, time.time(), ticket_id)
         )
         if cursor.rowcount > 0:
+            # Increment permanent counter for staff
+            self.increment_staff_tickets_claimed(staff_id, ticket["guild_id"])
             logger.tree("Ticket Claimed", [
                 ("Ticket ID", ticket_id),
                 ("Staff ID", str(staff_id)),
@@ -197,8 +204,9 @@ class TicketsMixin:
             (time.time(), closed_by, close_reason, ticket_id)
         )
         if cursor.rowcount > 0:
-            # Increment permanent counter
+            # Increment permanent counters
             self.increment_total_tickets_closed(ticket["guild_id"])
+            self.increment_staff_tickets_closed(closed_by, ticket["guild_id"])
             logger.tree("Ticket Closed", [
                 ("Ticket ID", ticket_id),
                 ("Closed By", str(closed_by)),
@@ -240,18 +248,13 @@ class TicketsMixin:
         }
 
     def get_staff_ticket_stats(self: "DatabaseManager", staff_id: int, guild_id: int) -> Dict[str, int]:
-        """Get ticket statistics for a specific staff member."""
-        claimed_count = self.fetchone(
-            "SELECT COUNT(*) as c FROM tickets WHERE guild_id = ? AND claimed_by = ?",
-            (guild_id, staff_id)
-        )
-        closed_count = self.fetchone(
-            "SELECT COUNT(*) as c FROM tickets WHERE guild_id = ? AND closed_by = ?",
-            (guild_id, staff_id)
-        )
+        """Get ticket statistics for a specific staff member.
+
+        Uses permanent counters that persist even when tickets are transferred/released.
+        """
         return {
-            "claimed": claimed_count["c"] if claimed_count else 0,
-            "closed": closed_count["c"] if closed_count else 0,
+            "claimed": self.get_staff_tickets_claimed(staff_id, guild_id),
+            "closed": self.get_staff_tickets_closed(staff_id, guild_id),
         }
 
     def get_average_response_time(self: "DatabaseManager", guild_id: int, days: int = 30) -> Optional[float]:

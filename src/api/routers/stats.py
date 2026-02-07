@@ -77,6 +77,7 @@ async def get_public_stats(
             uptime_str = f"{minutes}m"
 
     # Optimized: Single query for all case stats
+    # Status values: 'active' (thread exists), 'resolved' (thread deleted/archived)
     case_stats = db.fetchone(
         """
         SELECT
@@ -92,7 +93,9 @@ async def get_public_stats(
             SUM(CASE WHEN action_type = 'warn' AND created_at >= ? THEN 1 ELSE 0 END) as weekly_warns,
             SUM(CASE WHEN action_type = 'mute' AND status = 'active'
                 AND (duration_seconds IS NULL OR created_at + duration_seconds > ?)
-                THEN 1 ELSE 0 END) as active_prisoners
+                THEN 1 ELSE 0 END) as active_prisoners,
+            SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_cases,
+            SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved_cases
         FROM cases
         """,
         (today_start, today_start, today_start, week_start, week_start, week_start, now)
@@ -109,6 +112,8 @@ async def get_public_stats(
     weekly_bans = case_stats[8] or 0
     weekly_warns = case_stats[9] or 0
     active_prisoners = case_stats[10] or 0
+    active_cases = case_stats[11] or 0
+    resolved_cases = case_stats[12] or 0
 
     # Optimized: Single query for appeals stats
     appeal_stats = db.fetchone(
@@ -306,7 +311,8 @@ async def get_public_stats(
             },
             "active": {
                 "prisoners": active_prisoners,
-                "open_cases": total_cases,
+                "active_cases": active_cases,
+                "resolved_cases": resolved_cases,
             },
         },
         "appeals": {
@@ -680,6 +686,164 @@ async def get_leaderboard(
     ])
 
     return create_paginated_response(entries, total, pagination)
+
+
+# =============================================================================
+# Public User Summary (for leaderboard user cards)
+# =============================================================================
+
+@router.get("/user/{user_id}")
+async def get_public_user_summary(
+    user_id: int,
+    bot: Any = Depends(get_bot),
+) -> JSONResponse:
+    """
+    Get public user summary for leaderboard user cards.
+
+    Returns basic info, case stats, and moderation status.
+    No authentication required.
+    """
+    db = get_db()
+    config = None
+    try:
+        from src.core.config import get_config
+        config = get_config()
+    except Exception:
+        pass
+
+    now = time.time()
+    user = None
+    member = None
+
+    # Try to fetch user from Discord
+    try:
+        user = await bot.fetch_user(user_id)
+    except Exception:
+        pass
+
+    # Try to get member from guild
+    guild_id = config.logging_guild_id if config else None
+    if user and guild_id:
+        guild = bot.get_guild(guild_id)
+        if guild:
+            member = guild.get_member(user_id)
+
+    # Get case stats
+    stats = db.fetchone(
+        """
+        SELECT
+            COUNT(*) as total_cases,
+            SUM(CASE WHEN action_type = 'warn' THEN 1 ELSE 0 END) as total_warns,
+            SUM(CASE WHEN action_type = 'mute' THEN 1 ELSE 0 END) as total_mutes,
+            SUM(CASE WHEN action_type = 'ban' THEN 1 ELSE 0 END) as total_bans,
+            MIN(created_at) as first_case,
+            MAX(created_at) as last_case
+        FROM cases
+        WHERE user_id = ?
+        """,
+        (user_id,)
+    )
+
+    total_cases = stats[0] or 0
+    total_warns = stats[1] or 0
+    total_mutes = stats[2] or 0
+    total_bans = stats[3] or 0
+    first_case_at = stats[4]
+    last_case_at = stats[5]
+
+    # Check for active mute
+    active_mute = db.fetchone(
+        """
+        SELECT expires_at FROM active_mutes
+        WHERE user_id = ? AND unmuted = 0
+        AND (expires_at IS NULL OR expires_at > ?)
+        ORDER BY muted_at DESC LIMIT 1
+        """,
+        (user_id, now)
+    )
+    is_muted = active_mute is not None
+    mute_expires_at = None
+    if active_mute and active_mute[0]:
+        mute_expires_at = datetime.utcfromtimestamp(active_mute[0]).isoformat() + "Z"
+
+    # Check for active ban
+    is_banned = False
+    if guild_id:
+        guild = bot.get_guild(guild_id)
+        if guild:
+            try:
+                import discord
+                ban_entry = await guild.fetch_ban(discord.Object(id=user_id))
+                is_banned = ban_entry is not None
+            except Exception:
+                pass
+
+    # Get recent cases (last 5)
+    recent_rows = db.fetchall(
+        """
+        SELECT case_id, action_type, reason, moderator_id, created_at
+        FROM cases
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT 5
+        """,
+        (user_id,)
+    )
+
+    # Batch fetch moderator names
+    mod_ids = [row["moderator_id"] for row in recent_rows if row["moderator_id"]]
+    mod_info = await batch_fetch_users(bot, mod_ids)
+
+    recent_cases = []
+    for row in recent_rows:
+        mod_name, _ = mod_info.get(row["moderator_id"], (None, None))
+        recent_cases.append({
+            "case_id": row["case_id"],
+            "type": row["action_type"],
+            "reason": (row["reason"][:80] + "...") if row["reason"] and len(row["reason"]) > 80 else row["reason"],
+            "moderator": mod_name or f"Mod {row['moderator_id']}",
+            "time": format_relative_time(row["created_at"], now),
+        })
+
+    # Build response
+    response = {
+        "user_id": str(user_id),
+        "username": user.name if user else f"User {user_id}",
+        "display_name": user.display_name if user else None,
+        "avatar_url": str(user.display_avatar.url) if user and user.display_avatar else None,
+        "in_server": member is not None,
+
+        # Account info
+        "account_created_at": user.created_at.isoformat() + "Z" if user and user.created_at else None,
+        "joined_server_at": member.joined_at.isoformat() + "Z" if member and member.joined_at else None,
+        "account_age_days": (datetime.utcnow() - user.created_at.replace(tzinfo=None)).days if user and user.created_at else 0,
+        "server_tenure_days": (datetime.utcnow() - member.joined_at.replace(tzinfo=None)).days if member and member.joined_at else 0,
+
+        # Moderation status
+        "is_muted": is_muted,
+        "is_banned": is_banned,
+        "mute_expires_at": mute_expires_at,
+
+        # Case stats
+        "total_cases": total_cases,
+        "total_warns": total_warns,
+        "total_mutes": total_mutes,
+        "total_bans": total_bans,
+        "first_case_at": datetime.utcfromtimestamp(first_case_at).isoformat() + "Z" if first_case_at else None,
+        "last_case_at": datetime.utcfromtimestamp(last_case_at).isoformat() + "Z" if last_case_at else None,
+
+        # Recent history
+        "recent_cases": recent_cases,
+    }
+
+    logger.debug("Public User Summary Fetched", [
+        ("User ID", str(user_id)),
+        ("Username", response["username"]),
+        ("Cases", str(total_cases)),
+        ("In Server", str(member is not None)),
+    ])
+
+    return JSONResponse(content=response)
 
 
 # =============================================================================

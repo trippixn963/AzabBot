@@ -44,7 +44,7 @@ class CaseThreadValidationTask(MaintenanceTask):
         try:
             # Get recent case logs with thread IDs
             rows = self.bot.db.fetchall(
-                """SELECT case_id, thread_id, channel_id
+                """SELECT case_id, thread_id
                    FROM case_logs
                    WHERE thread_id IS NOT NULL
                    ORDER BY created_at DESC

@@ -711,33 +711,8 @@ class ContentModerationService:
                 details={"offense_count": offense_count, "window_minutes": window_mins},
             )
 
-            # Create case log entry
-            if self.bot.case_log_service:
-                try:
-                    bot_member = message.guild.get_member(self.bot.user.id)
-                    if bot_member:
-                        await asyncio.wait_for(
-                            self.bot.case_log_service.log_mute(
-                                user=member,
-                                moderator=bot_member,
-                                duration=f"{duration_mins} minute(s)",
-                                reason=reason,
-                                is_extension=False,
-                                evidence=None,
-                            ),
-                            timeout=10.0,
-                        )
-                except asyncio.TimeoutError:
-                    logger.warning("Case Log Timeout", [
-                        ("Action", "Religion Auto-Mute"),
-                        ("User", user_str),
-                    ])
-                except Exception as e:
-                    logger.error("Case Log Failed", [
-                        ("Action", "Religion Auto-Mute"),
-                        ("User", user_str),
-                        ("Error", str(e)[:100]),
-                    ])
+            # NOTE: Automated mutes don't create case forum threads (too verbose)
+            # They are logged to moderation_audit_log instead
 
             # Store reason in prison handler cache for welcome embed
             if self.bot.prison:

@@ -126,6 +126,14 @@ async def collect_transcript_messages(
     for role_id, name in role_map.items():
         mention_map[role_id] = f"@{name}"
 
+    logger.debug("Transcript Messages Collected", [
+        ("Thread", f"{thread.name} ({thread.id})"),
+        ("Messages", str(len(messages))),
+        ("Users Mapped", str(len(user_map))),
+        ("Channels Mapped", str(len(channel_map))),
+        ("Roles Mapped", str(len(role_map))),
+    ])
+
     return messages, mention_map
 
 

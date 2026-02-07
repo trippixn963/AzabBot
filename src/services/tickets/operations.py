@@ -370,8 +370,8 @@ class OperationsMixin:
         ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
         """Close a ticket."""
-        if ticket is None:
-            ticket = self.db.get_ticket(ticket_id)
+        # Always fetch fresh data for status check (passed ticket may be stale)
+        ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return (False, "Ticket not found.")
 
@@ -539,8 +539,8 @@ class OperationsMixin:
         ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
         """Reopen a closed ticket."""
-        if ticket is None:
-            ticket = self.db.get_ticket(ticket_id)
+        # Always fetch fresh data for status check (passed ticket may be stale)
+        ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return (False, "Ticket not found.")
 
@@ -608,8 +608,8 @@ class OperationsMixin:
         ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
         """Claim a ticket."""
-        if ticket is None:
-            ticket = self.db.get_ticket(ticket_id)
+        # Always fetch fresh data for status check (passed ticket may be stale)
+        ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return (False, "Ticket not found.")
 
@@ -733,8 +733,8 @@ class OperationsMixin:
         ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
         """Add a user to a ticket channel via permission overwrite."""
-        if ticket is None:
-            ticket = self.db.get_ticket(ticket_id)
+        # Always fetch fresh data for status check (passed ticket may be stale)
+        ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return (False, "Ticket not found.")
 
@@ -800,8 +800,8 @@ class OperationsMixin:
         ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
         """Transfer a ticket to another staff member."""
-        if ticket is None:
-            ticket = self.db.get_ticket(ticket_id)
+        # Always fetch fresh data for status check (passed ticket may be stale)
+        ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return (False, "Ticket not found.")
 
@@ -911,8 +911,8 @@ class OperationsMixin:
         ticket: Optional[dict] = None,
     ) -> Tuple[bool, str]:
         """Request to close a ticket (for ticket owner)."""
-        if ticket is None:
-            ticket = self.db.get_ticket(ticket_id)
+        # Always fetch fresh data for status check (passed ticket may be stale)
+        ticket = self.db.get_ticket(ticket_id)
         if not ticket:
             return (False, "Ticket not found.")
 

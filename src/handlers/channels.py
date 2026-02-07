@@ -18,6 +18,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config
+from src.core.database import get_db
 from src.core.constants import AUDIT_LOG_WAIT, QUERY_LIMIT_TINY
 from src.utils.discord_rate_limit import log_http_error
 
@@ -76,9 +77,36 @@ class ChannelEvents(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> None:
-        """Log channel deletions."""
+        """Log channel deletions and close orphaned tickets."""
         if self.bot.logging_service and self.bot.logging_service.enabled:
             await self.bot.logging_service.log_channel_delete(channel.name, str(channel.type), channel_id=channel.id)
+
+        # Check if this channel was a ticket channel and close the ticket
+        try:
+            db = get_db()
+            ticket = db.get_ticket_by_thread(channel.id)
+
+            if ticket and ticket.get("status") not in ("closed",):
+                # Close the orphaned ticket
+                import time
+                db.execute(
+                    """UPDATE tickets
+                       SET status = 'closed', closed_at = ?, close_reason = 'Channel deleted'
+                       WHERE ticket_id = ?""",
+                    (time.time(), ticket["ticket_id"])
+                )
+
+                logger.tree("Ticket Closed (Channel Deleted)", [
+                    ("Ticket ID", ticket["ticket_id"]),
+                    ("Channel ID", str(channel.id)),
+                    ("Channel Name", channel.name[:50] if hasattr(channel, 'name') else "Unknown"),
+                    ("User ID", str(ticket.get("user_id", "unknown"))),
+                ], emoji="🎫")
+        except Exception as e:
+            logger.error("Failed To Close Ticket On Channel Delete", [
+                ("Channel ID", str(channel.id)),
+                ("Error", str(e)[:100]),
+            ])
 
     # =========================================================================
     # Role Events
@@ -197,10 +225,37 @@ class ChannelEvents(commands.Cog):
 
     @commands.Cog.listener()
     async def on_thread_delete(self, thread: discord.Thread) -> None:
-        """Log thread deletions."""
+        """Log thread deletions and mark associated cases as resolved."""
+        # Log the deletion
         if self.bot.logging_service and self.bot.logging_service.enabled:
             parent_name = thread.parent.name if thread.parent else "Unknown"
             await self.bot.logging_service.log_thread_delete(thread.name, parent_name)
+
+        # Check if this thread belongs to a case and mark it as resolved
+        try:
+            db = get_db()
+            case = db.get_case_by_thread(thread.id)
+
+            if case and case.get("status") != "resolved":
+                # Mark case as resolved since thread is deleted
+                db.resolve_case(
+                    case_id=case["case_id"],
+                    resolved_by=None,  # System/unknown - thread was deleted
+                    reason="Thread deleted",
+                )
+
+                logger.tree("Case Resolved (Thread Deleted)", [
+                    ("Case ID", case["case_id"]),
+                    ("Thread ID", str(thread.id)),
+                    ("Thread Name", thread.name[:50] if thread.name else "Unknown"),
+                    ("Action Type", case.get("action_type", "unknown")),
+                    ("User ID", str(case.get("user_id", "unknown"))),
+                ], emoji="📁")
+        except Exception as e:
+            logger.error("Failed To Resolve Case On Thread Delete", [
+                ("Thread ID", str(thread.id)),
+                ("Error", str(e)[:100]),
+            ])
 
     @commands.Cog.listener()
     async def on_thread_update(self, before: discord.Thread, after: discord.Thread) -> None:

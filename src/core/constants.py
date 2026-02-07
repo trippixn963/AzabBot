@@ -248,6 +248,15 @@ MAX_EMBEDS_PER_REQUEST = 10           # Discord webhook limit
 MAX_AUTOCOMPLETE_RESULTS = 25         # Discord autocomplete limit
 
 # =============================================================================
+# API Maintenance Constants
+# =============================================================================
+
+AUTH_TOKEN_CLEANUP_AGE = SECONDS_PER_DAY  # Remove blacklisted tokens expired > 1 day ago
+AUTH_RATE_LIMIT_CLEANUP_AGE = SECONDS_PER_HOUR  # Clean rate limit trackers older than 1 hour
+AUTH_LOCKOUT_CLEANUP_AGE = SECONDS_PER_HOUR  # Clean expired lockout trackers older than 1 hour
+WS_STALE_CONNECTION_THRESHOLD = 300  # 5 minutes - connection stale if no heartbeat
+
+# =============================================================================
 # Data Retention Constants
 # =============================================================================
 
@@ -517,6 +526,11 @@ __all__ = [
     # Discord limits
     "MAX_EMBEDS_PER_REQUEST",
     "MAX_AUTOCOMPLETE_RESULTS",
+    # API Maintenance
+    "AUTH_TOKEN_CLEANUP_AGE",
+    "AUTH_RATE_LIMIT_CLEANUP_AGE",
+    "AUTH_LOCKOUT_CLEANUP_AGE",
+    "WS_STALE_CONNECTION_THRESHOLD",
     # Retention
     "LOG_RETENTION_DAYS",
     "HISTORY_RETENTION_DAYS",

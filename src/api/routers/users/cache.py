@@ -11,6 +11,8 @@ Server: discord.gg/syria
 import time
 from typing import Optional
 
+from src.core.logger import logger
+
 
 LOOKUP_CACHE_TTL = 60  # 1 minute cache
 
@@ -37,10 +39,17 @@ class LookupCache:
     def set(self, user_id: int, data: dict) -> None:
         """Cache lookup result."""
         self._cache[user_id] = (time.time(), data)
+        logger.debug("User Lookup Cached", [
+            ("User ID", str(user_id)),
+            ("TTL", f"{LOOKUP_CACHE_TTL}s"),
+        ])
 
     def invalidate(self, user_id: int) -> None:
         """Remove cached data."""
-        self._cache.pop(user_id, None)
+        if self._cache.pop(user_id, None):
+            logger.debug("User Lookup Cache Invalidated", [
+                ("User ID", str(user_id)),
+            ])
 
 
 # Module-level cache instance

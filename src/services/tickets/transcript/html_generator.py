@@ -17,6 +17,7 @@ from typing import Optional, List, Dict, Any
 import discord
 
 from src.core.config import NY_TZ
+from src.core.logger import logger
 from ..constants import TICKET_CATEGORIES
 from .collectors import resolve_mentions
 
@@ -705,6 +706,12 @@ def generate_html_transcript(
 </body>
 </html>'''
 
+    logger.debug("HTML Transcript Generated", [
+        ("Ticket ID", ticket["ticket_id"]),
+        ("Messages", str(len(messages))),
+        ("Status", ticket["status"]),
+    ])
+
     return html_output
 
 
@@ -870,6 +877,14 @@ def create_transcript_file(
         Discord File object
     """
     buffer = io.BytesIO(html_content.encode('utf-8'))
+    file_size = buffer.getbuffer().nbytes
+
+    logger.debug("Transcript File Created", [
+        ("Ticket ID", ticket_id),
+        ("Filename", f"transcript_{ticket_id}.html"),
+        ("Size", f"{file_size / 1024:.1f} KB"),
+    ])
+
     return discord.File(buffer, filename=f"transcript_{ticket_id}.html")
 
 

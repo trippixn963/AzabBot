@@ -267,11 +267,12 @@ class TransferSelectView(discord.ui.View):
 
         await interaction.response.defer(ephemeral=True)
 
+        # Always fetch fresh ticket data (don't use stale self.ticket)
         success, message = await bot.ticket_service.transfer_ticket(
             ticket_id=self.ticket_id,
             new_staff=target,
             transferred_by=interaction.user,
-            ticket=self.ticket,
+            ticket=None,  # Force fresh fetch
         )
 
         if success:

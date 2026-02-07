@@ -69,6 +69,132 @@ class StatsMixin:
         """Increment total appeals resolved counter."""
         return self.increment_permanent_counter("total_appeals_resolved", guild_id)
 
+    # Staff Ticket Counters (per-staff permanent counters)
+    # =========================================================================
+
+    def get_staff_tickets_claimed(self: "DatabaseManager", staff_id: int, guild_id: int) -> int:
+        """Get total tickets claimed by a staff member (permanent counter)."""
+        key = f"staff_tickets_claimed:{staff_id}:{guild_id}"
+        row = self.fetchone(
+            "SELECT value FROM bot_state WHERE key = ?",
+            (key,)
+        )
+        return int(row["value"]) if row and row["value"] else 0
+
+    def increment_staff_tickets_claimed(self: "DatabaseManager", staff_id: int, guild_id: int) -> int:
+        """Increment tickets claimed counter for a staff member."""
+        key = f"staff_tickets_claimed:{staff_id}:{guild_id}"
+        current = self.get_staff_tickets_claimed(staff_id, guild_id)
+        new_value = current + 1
+        self.execute(
+            """INSERT OR REPLACE INTO bot_state (key, value, updated_at)
+               VALUES (?, ?, ?)""",
+            (key, str(new_value), time.time())
+        )
+        return new_value
+
+    def get_staff_tickets_closed(self: "DatabaseManager", staff_id: int, guild_id: int) -> int:
+        """Get total tickets closed by a staff member (permanent counter)."""
+        key = f"staff_tickets_closed:{staff_id}:{guild_id}"
+        row = self.fetchone(
+            "SELECT value FROM bot_state WHERE key = ?",
+            (key,)
+        )
+        return int(row["value"]) if row and row["value"] else 0
+
+    def increment_staff_tickets_closed(self: "DatabaseManager", staff_id: int, guild_id: int) -> int:
+        """Increment tickets closed counter for a staff member."""
+        key = f"staff_tickets_closed:{staff_id}:{guild_id}"
+        current = self.get_staff_tickets_closed(staff_id, guild_id)
+        new_value = current + 1
+        self.execute(
+            """INSERT OR REPLACE INTO bot_state (key, value, updated_at)
+               VALUES (?, ?, ?)""",
+            (key, str(new_value), time.time())
+        )
+        return new_value
+
+    def initialize_staff_ticket_counters(self: "DatabaseManager") -> int:
+        """
+        Initialize permanent staff ticket counters from existing ticket data.
+
+        This should be called once to backfill counters for staff who claimed/closed
+        tickets before the permanent counter system was added.
+
+        Returns the number of staff members updated.
+        """
+        from src.core.logger import logger
+
+        # Get all unique claimed_by entries with their counts
+        claimed_rows = self.fetchall(
+            """SELECT claimed_by, guild_id, COUNT(*) as count
+               FROM tickets
+               WHERE claimed_by IS NOT NULL
+               GROUP BY claimed_by, guild_id"""
+        )
+
+        # Get all unique closed_by entries with their counts
+        closed_rows = self.fetchall(
+            """SELECT closed_by, guild_id, COUNT(*) as count
+               FROM tickets
+               WHERE closed_by IS NOT NULL
+               GROUP BY closed_by, guild_id"""
+        )
+
+        updated = 0
+        now = time.time()
+
+        # Set claimed counters (only if not already set or if existing data is higher)
+        for row in claimed_rows:
+            staff_id = row["claimed_by"]
+            guild_id = row["guild_id"]
+            count = row["count"]
+            key = f"staff_tickets_claimed:{staff_id}:{guild_id}"
+
+            current = self.get_staff_tickets_claimed(staff_id, guild_id)
+            if count > current:
+                self.execute(
+                    """INSERT OR REPLACE INTO bot_state (key, value, updated_at)
+                       VALUES (?, ?, ?)""",
+                    (key, str(count), now)
+                )
+                updated += 1
+                logger.debug("Staff Claimed Counter Initialized", [
+                    ("Staff ID", str(staff_id)),
+                    ("Guild ID", str(guild_id)),
+                    ("Count", str(count)),
+                ])
+
+        # Set closed counters (only if not already set or if existing data is higher)
+        for row in closed_rows:
+            staff_id = row["closed_by"]
+            guild_id = row["guild_id"]
+            count = row["count"]
+            key = f"staff_tickets_closed:{staff_id}:{guild_id}"
+
+            current = self.get_staff_tickets_closed(staff_id, guild_id)
+            if count > current:
+                self.execute(
+                    """INSERT OR REPLACE INTO bot_state (key, value, updated_at)
+                       VALUES (?, ?, ?)""",
+                    (key, str(count), now)
+                )
+                updated += 1
+                logger.debug("Staff Closed Counter Initialized", [
+                    ("Staff ID", str(staff_id)),
+                    ("Guild ID", str(guild_id)),
+                    ("Count", str(count)),
+                ])
+
+        if updated > 0:
+            logger.tree("Staff Ticket Counters Initialized", [
+                ("Staff Updated", str(updated)),
+                ("Claimed Entries", str(len(claimed_rows))),
+                ("Closed Entries", str(len(closed_rows))),
+            ], emoji="📊")
+
+        return updated
+
     # Stats API Helper Methods
     # =========================================================================
 
@@ -241,14 +367,14 @@ class StatsMixin:
         return row["count"] if row else 0
 
     def get_open_cases_count(self: "DatabaseManager", guild_id: Optional[int] = None) -> int:
-        """Get count of open cases."""
+        """Get count of active cases."""
         if guild_id:
             row = self.fetchone(
-                "SELECT COUNT(*) as count FROM cases WHERE status = 'open' AND guild_id = ?",
+                "SELECT COUNT(*) as count FROM cases WHERE status = 'active' AND guild_id = ?",
                 (guild_id,)
             )
         else:
-            row = self.fetchone("SELECT COUNT(*) as count FROM cases WHERE status = 'open'")
+            row = self.fetchone("SELECT COUNT(*) as count FROM cases WHERE status = 'active'")
         return row["count"] if row else 0
 
     def get_top_offenders(self: "DatabaseManager", limit: int = 10, guild_id: Optional[int] = None) -> List[Dict[str, Any]]:

@@ -171,7 +171,7 @@ async def build_history_embed(
         case_id_short = case_id[:4]
         reason = case.get("reason")
         action_type = case.get("action_type", "?")
-        status = case.get("status", "open")
+        status = case.get("status", "active")
 
         # Action emoji
         action_emoji = {
@@ -179,7 +179,7 @@ async def build_history_embed(
             "timeout": "⏰", "unmute": "🔊", "unban": "✅", "unforbid": "✅",
         }.get(action_type, "📋")
 
-        # Status emoji
+        # Status emoji (🔓 = resolved/closed, 🔒 = active/open)
         status_emoji = "🔓" if status == "resolved" else "🔒"
 
         # Build transcript URL - links to website transcript viewer
@@ -280,20 +280,20 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
                 case_id = case.get("case_id", "????")
                 action_type = case.get("action_type", "?")
                 thread_id = case.get("thread_id")
-                status = case.get("status", "open")
+                status = case.get("status", "active")
                 emoji = action_emoji.get(action_type, "📋")
-                status_indicator = "🟢" if status == "open" else "⚫"
+                status_indicator = "🟢" if status == "active" else "⚫"
 
                 # Build links
                 links = []
 
-                # Discord link - only show if NOT archived (thread still exists)
-                if thread_id and config.logging_guild_id and status != "archived":
+                # Discord link - only show if active (thread still exists)
+                if thread_id and config.logging_guild_id and status == "active":
                     discord_url = f"https://discord.com/channels/{config.logging_guild_id}/{thread_id}"
                     links.append(f"[Discord]({discord_url})")
 
-                # Website link - only show for archived cases (transcript saved after thread deleted)
-                if status == "archived" and config.case_transcript_base_url:
+                # Website link - only show for resolved cases (transcript saved after thread deleted)
+                if status == "resolved" and config.case_transcript_base_url:
                     website_url = f"{config.case_transcript_base_url}/{case_id}"
                     links.append(f"[Website]({website_url})")
 

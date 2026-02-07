@@ -988,3 +988,8 @@ class SchemaMixin:
         )
 
         conn.commit()
+
+        # Initialize staff ticket counters from existing data (runs once on startup)
+        # This backfills permanent counters for staff who claimed/closed tickets
+        # before the counter system was added
+        self.initialize_staff_ticket_counters()
