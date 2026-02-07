@@ -4,15 +4,6 @@ AzabBot - Case Archive Scheduler
 
 Background service for automatic deletion of old case threads.
 
-DESIGN:
-    Runs as a background task checking for active cases older than retention period.
-    Builds and saves transcripts before deleting threads.
-    Marks cases as resolved and clears thread_id after deletion.
-
-    Retention periods:
-    - Ban cases: 14 days after creation
-    - Other cases (mute, warn, forbid): 7 days after creation
-
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
@@ -31,19 +22,10 @@ from src.utils.async_utils import create_safe_task
 from src.utils.discord_rate_limit import log_http_error
 from src.services.case_log.transcript import TranscriptBuilder
 
+from .constants import RETENTION_DAYS_BAN, RETENTION_DAYS_DEFAULT, CHECK_INTERVAL_HOURS
+
 if TYPE_CHECKING:
     from src.bot import AzabBot
-
-
-# =============================================================================
-# Constants
-# =============================================================================
-
-# Action-type-based retention (days after creation)
-RETENTION_DAYS_BAN = 14
-RETENTION_DAYS_DEFAULT = 7
-
-CHECK_INTERVAL_HOURS = 1
 
 
 # =============================================================================

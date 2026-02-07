@@ -1,15 +1,8 @@
 """
-AzabBot - Auto Raid Lockdown Service
-====================================
+AzabBot - Raid Lockdown Service
+===============================
 
 Automatically locks server when raid is detected.
-
-Features:
-- Channel-by-channel permission overwrites
-- Concurrent channel locking for speed
-- Auto-unlock after configurable duration
-- Cooldown between lockdowns
-- Comprehensive logging and error handling
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -36,18 +29,12 @@ from src.utils.footer import set_footer
 from src.utils.async_utils import create_safe_task
 from src.utils.discord_rate_limit import log_http_error
 
+from .constants import MAX_CONCURRENT_OPS, LOG_TRUNCATE_SHORT, LOG_TRUNCATE_MEDIUM
+
 if TYPE_CHECKING:
     from src.bot import AzabBot
     from src.core.config import Config
     from src.core.database.manager import DatabaseManager
-
-
-# =============================================================================
-# Constants
-# =============================================================================
-
-# Maximum concurrent channel operations
-MAX_CONCURRENT_OPS: int = 10
 
 
 # =============================================================================
@@ -100,18 +87,7 @@ class RaidLockdownService:
         mod_role: Optional[discord.Role],
         reason: str,
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Lock a single text channel.
-
-        Args:
-            channel: The text channel to lock.
-            everyone_role: The @everyone role.
-            mod_role: The moderation role (or None).
-            reason: Audit log reason.
-
-        Returns:
-            Tuple of (success, error_message).
-        """
+        """Lock a single text channel."""
         try:
             current_overwrite: discord.PermissionOverwrite = channel.overwrites_for(everyone_role)
 
@@ -186,18 +162,7 @@ class RaidLockdownService:
         mod_role: Optional[discord.Role],
         reason: str,
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Lock a single voice channel.
-
-        Args:
-            channel: The voice channel to lock.
-            everyone_role: The @everyone role.
-            mod_role: The moderation role (or None).
-            reason: Audit log reason.
-
-        Returns:
-            Tuple of (success, error_message).
-        """
+        """Lock a single voice channel."""
         try:
             current_overwrite: discord.PermissionOverwrite = channel.overwrites_for(everyone_role)
 
@@ -268,19 +233,7 @@ class RaidLockdownService:
         saved_perms: Optional[Dict[str, Any]],
         reason: str,
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Unlock a single text channel.
-
-        Args:
-            channel: The text channel to unlock.
-            everyone_role: The @everyone role.
-            mod_role: The moderation role (or None).
-            saved_perms: Saved original permissions (or None).
-            reason: Audit log reason.
-
-        Returns:
-            Tuple of (success, error_message).
-        """
+        """Unlock a single text channel."""
         try:
             current_overwrite: discord.PermissionOverwrite = channel.overwrites_for(everyone_role)
 
@@ -350,19 +303,7 @@ class RaidLockdownService:
         saved_perms: Optional[Dict[str, Any]],
         reason: str,
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Unlock a single voice channel.
-
-        Args:
-            channel: The voice channel to unlock.
-            everyone_role: The @everyone role.
-            mod_role: The moderation role (or None).
-            saved_perms: Saved original permissions (or None).
-            reason: Audit log reason.
-
-        Returns:
-            Tuple of (success, error_message).
-        """
+        """Unlock a single voice channel."""
         try:
             current_overwrite: discord.PermissionOverwrite = channel.overwrites_for(everyone_role)
 
@@ -424,18 +365,7 @@ class RaidLockdownService:
         mod_role: Optional[discord.Role],
         reason: str,
     ) -> LockdownResult:
-        """
-        Lock all channels in a guild concurrently.
-
-        Args:
-            guild: The guild to lock.
-            everyone_role: The @everyone role.
-            mod_role: The moderation role (or None) - mods keep access.
-            reason: Audit log reason.
-
-        Returns:
-            LockdownResult with counts and errors.
-        """
+        """Lock all channels in a guild concurrently."""
         result = LockdownResult()
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_OPS)
 
@@ -488,18 +418,7 @@ class RaidLockdownService:
         mod_role: Optional[discord.Role],
         reason: str,
     ) -> LockdownResult:
-        """
-        Unlock all channels in a guild concurrently.
-
-        Args:
-            guild: The guild to unlock.
-            everyone_role: The @everyone role.
-            mod_role: The moderation role (or None) - clean up mod overwrites.
-            reason: Audit log reason.
-
-        Returns:
-            LockdownResult with counts and errors.
-        """
+        """Unlock all channels in a guild concurrently."""
         result = LockdownResult()
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_OPS)
 
@@ -561,17 +480,7 @@ class RaidLockdownService:
         join_count: int,
         time_window: int,
     ) -> bool:
-        """
-        Trigger automatic lockdown due to raid.
-
-        Args:
-            guild: The guild being raided.
-            join_count: Number of joins detected.
-            time_window: Time window in seconds.
-
-        Returns:
-            True if lockdown was triggered successfully.
-        """
+        """Trigger automatic lockdown due to raid."""
         # Check cooldown
         if self._last_auto_lockdown:
             elapsed: float = (datetime.now(NY_TZ) - self._last_auto_lockdown).total_seconds()
@@ -670,12 +579,7 @@ class RaidLockdownService:
             return False
 
     async def _auto_unlock(self, guild: discord.Guild) -> None:
-        """
-        Auto-unlock server after duration.
-
-        Args:
-            guild: The guild to unlock.
-        """
+        """Auto-unlock server after duration."""
         try:
             logger.debug("Auto-Unlock Scheduled", [
                 ("Guild", f"{guild.name} ({guild.id})"),
@@ -752,17 +656,7 @@ class RaidLockdownService:
         join_count: int,
         time_window: int,
     ) -> bool:
-        """
-        Send lockdown announcement to general channel.
-
-        Args:
-            guild: The guild.
-            join_count: Number of joins that triggered lockdown.
-            time_window: Time window in seconds.
-
-        Returns:
-            True if sent successfully.
-        """
+        """Send lockdown announcement to general channel."""
         if not self.config.general_channel_id:
             return False
 
@@ -821,15 +715,7 @@ class RaidLockdownService:
             return False
 
     async def _send_unlock_announcement(self, guild: discord.Guild) -> bool:
-        """
-        Send unlock announcement to general channel.
-
-        Args:
-            guild: The guild.
-
-        Returns:
-            True if sent successfully.
-        """
+        """Send unlock announcement to general channel."""
         if not self.config.general_channel_id:
             return False
 
@@ -877,17 +763,7 @@ class RaidLockdownService:
         join_count: int,
         time_window: int,
     ) -> bool:
-        """
-        Alert mods in alert channel about the raid.
-
-        Args:
-            guild: The guild.
-            join_count: Number of joins that triggered lockdown.
-            time_window: Time window in seconds.
-
-        Returns:
-            True if sent successfully.
-        """
+        """Alert mods in alert channel about the raid."""
         if not self.config.alert_channel_id:
             return False
 
@@ -966,4 +842,4 @@ class RaidLockdownService:
 # Module Export
 # =============================================================================
 
-__all__ = ["RaidLockdownService"]
+__all__ = ["RaidLockdownService", "LockdownResult"]
