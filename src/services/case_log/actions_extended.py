@@ -146,13 +146,13 @@ class CaseLogExtendedActionsMixin:
 
     async def log_ban(
         self,
-        user: discord.Member,
+        user: discord.User,
         moderator: discord.Member,
         reason: Optional[str] = None,
         evidence: Optional[str] = None,
         source_message_url: Optional[str] = None,
     ) -> Optional[dict]:
-        """Log a ban action - creates a NEW per-action case."""
+        """Log a ban action - creates a NEW per-action case. User can be a User (not in server) or Member."""
         if not self.enabled:
             return None
 
@@ -191,7 +191,9 @@ class CaseLogExtendedActionsMixin:
                         ("Error", str(e)[:100]),
                     ])
 
-            ban_count = self.db.get_user_ban_count(user.id, user.guild.id)
+            # Use moderator.guild since user may be a User (not Member) when banning by ID
+            guild_id = moderator.guild.id
+            ban_count = self.db.get_user_ban_count(user.id, guild_id)
 
             if ban_count > 0:
                 title = f"🔨 User Banned (Ban #{ban_count + 1})"
