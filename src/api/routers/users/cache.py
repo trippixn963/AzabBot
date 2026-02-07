@@ -9,7 +9,7 @@ Server: discord.gg/syria
 """
 
 import time
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 from src.core.logger import logger
 
@@ -20,8 +20,8 @@ LOOKUP_CACHE_TTL = 60  # 1 minute cache
 class LookupCache:
     """Simple TTL cache for user lookups."""
 
-    def __init__(self):
-        self._cache: dict[int, tuple[float, dict]] = {}  # user_id -> (timestamp, data)
+    def __init__(self) -> None:
+        self._cache: Dict[int, Tuple[float, dict]] = {}  # user_id -> (timestamp, data)
 
     def get(self, user_id: int) -> Optional[dict]:
         """Get cached data if still valid."""

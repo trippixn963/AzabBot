@@ -14,6 +14,8 @@ import discord
 
 from src.core.config import EmbedColors
 from src.core.database import get_db
+from ..categories import LogCategory
+from ..views import UserIdButton, CASE_EMOJI
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -33,9 +35,6 @@ class AppealsLogsMixin:
         """Log an appeal creation."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import UserIdButton, CASE_EMOJI
 
         emoji = "🔨" if action_type == "ban" else "🔇"
         embed = self._create_embed(
@@ -80,9 +79,6 @@ class AppealsLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-        from ..views import UserIdButton, CASE_EMOJI
-
         embed = self._create_embed(
             "✅ Appeal Approved",
             EmbedColors.SUCCESS,
@@ -125,9 +121,6 @@ class AppealsLogsMixin:
         """Log an appeal denial."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import UserIdButton, CASE_EMOJI
 
         embed = self._create_embed(
             "❌ Appeal Denied",

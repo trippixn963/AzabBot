@@ -12,7 +12,7 @@ import hashlib
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, Set
 from dataclasses import dataclass, field
 
 import discord
@@ -57,7 +57,7 @@ class RegisteredUser:
     last_login: Optional[float] = None
     last_login_ip: Optional[str] = None
     last_login_agent: Optional[str] = None
-    permissions: list[str] = field(default_factory=list)
+    permissions: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -89,11 +89,11 @@ class AuthService:
     - Account lockout after consecutive failures
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._config = get_api_config()
-        self._blacklisted_tokens: set[str] = set()
-        self._login_attempts: dict[int, LoginAttempt] = {}  # discord_id -> attempts
-        self._failed_logins: dict[int, FailedLoginTracker] = {}  # discord_id -> tracker
+        self._blacklisted_tokens: Set[str] = set()
+        self._login_attempts: Dict[int, LoginAttempt] = {}  # discord_id -> attempts
+        self._failed_logins: Dict[int, FailedLoginTracker] = {}  # discord_id -> tracker
 
     # =========================================================================
     # User Management
@@ -492,7 +492,7 @@ class AuthService:
     def _generate_token(
         self,
         discord_id: int,
-        permissions: list[str],
+        permissions: List[str],
         token_type: str = TOKEN_TYPE_ACCESS,
     ) -> tuple[str, datetime]:
         """Generate a JWT token."""

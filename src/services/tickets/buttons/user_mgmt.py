@@ -19,6 +19,7 @@ from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 from ..constants import EXTEND_EMOJI, DENY_EMOJI
 from .helpers import _is_ticket_staff
+from ..modals import TicketAddUserModal
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -48,8 +49,6 @@ class AddUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_ad
         return cls(match.group("ticket_id"))
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        from ..modals import TicketAddUserModal
-
         logger.tree("Add User Button Clicked", [
             ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
             ("Ticket ID", self.ticket_id),

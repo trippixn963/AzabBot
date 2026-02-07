@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.config import EmbedColors
+from ..categories import LogCategory
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -33,8 +34,6 @@ class ServerLogsMixin:
         """Log an emoji creation."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         user_id = moderator.id if moderator else None
         embed = self._create_embed("😀 Emoji Created", EmbedColors.SUCCESS, category="Emoji Create", user_id=user_id)
@@ -58,8 +57,6 @@ class ServerLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         user_id = moderator.id if moderator else None
         embed = self._create_embed("😀 Emoji Deleted", EmbedColors.LOG_NEGATIVE, category="Emoji Delete", user_id=user_id)
         embed.add_field(name="Emoji", value=f"`:{emoji_name}:`", inline=True)
@@ -78,8 +75,6 @@ class ServerLogsMixin:
         """Log a sticker creation."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         user_id = moderator.id if moderator else None
         embed = self._create_embed("🎨 Sticker Created", EmbedColors.SUCCESS, category="Sticker Create", user_id=user_id)
@@ -105,8 +100,6 @@ class ServerLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         user_id = moderator.id if moderator else None
         embed = self._create_embed("🎨 Sticker Deleted", EmbedColors.LOG_NEGATIVE, category="Sticker Delete", user_id=user_id)
         embed.add_field(name="Sticker", value=f"`{sticker_name}`", inline=True)
@@ -130,8 +123,6 @@ class ServerLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("⚙️ Server Updated", EmbedColors.WARNING, category="Server Update")
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
@@ -149,8 +140,6 @@ class ServerLogsMixin:
         """Log server icon change with images."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🖼️ Server Icon Changed", EmbedColors.WARNING, category="Icon Change")
         embed.add_field(name="Server", value=guild.name, inline=True)
@@ -180,8 +169,6 @@ class ServerLogsMixin:
         """Log server banner change with images."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🎨 Server Banner Changed", EmbedColors.WARNING, category="Banner Change")
         embed.add_field(name="Server", value=guild.name, inline=True)
@@ -214,8 +201,6 @@ class ServerLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("🤖 Bot Added", EmbedColors.WARNING, category="Bot Add", user_id=bot.id)
         embed.add_field(name="Bot", value=self._format_user_field(bot), inline=True)
         if moderator:
@@ -233,8 +218,6 @@ class ServerLogsMixin:
         """Log a bot being removed."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🤖 Bot Removed", EmbedColors.LOG_NEGATIVE, category="Bot Remove", user_id=bot_id)
         embed.add_field(name="Bot", value=f"`{bot_name}`", inline=True)

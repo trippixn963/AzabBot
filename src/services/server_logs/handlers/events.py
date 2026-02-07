@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.config import EmbedColors
+from ..categories import LogCategory
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -29,8 +30,6 @@ class EventsLogsMixin:
         """Log a scheduled event creation."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("📅 Event Created", EmbedColors.SUCCESS, category="Event Create")
         embed.add_field(name="Event", value=f"`{event.name}`", inline=True)
@@ -66,8 +65,6 @@ class EventsLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("📅 Event Updated", EmbedColors.WARNING, category="Event Update")
         embed.add_field(name="Event", value=f"`{event.name}`", inline=True)
         if moderator:
@@ -85,8 +82,6 @@ class EventsLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("📅 Event Deleted", EmbedColors.LOG_NEGATIVE, category="Event Delete")
         embed.add_field(name="Event", value=f"`{event_name}`", inline=True)
         if moderator:
@@ -101,8 +96,6 @@ class EventsLogsMixin:
         """Log a scheduled event starting."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("📅 Event Started", EmbedColors.SUCCESS, category="Event Start")
         embed.add_field(name="Event", value=f"`{event.name}`", inline=True)
@@ -122,8 +115,6 @@ class EventsLogsMixin:
         """Log a scheduled event ending."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("📅 Event Ended", EmbedColors.INFO, category="Event End")
         embed.add_field(name="Event", value=f"`{event.name}`", inline=True)

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.config import EmbedColors
+from ..categories import LogCategory
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -29,8 +30,6 @@ class InvitesLogsMixin:
         """Log an invite being created."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🔗 Invite Created", EmbedColors.SUCCESS, category="Invite Create")
         embed.add_field(name="Code", value=f"`{invite.code}`", inline=True)
@@ -78,8 +77,6 @@ class InvitesLogsMixin:
         """Log an invite being deleted."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🔗 Invite Deleted", EmbedColors.LOG_NEGATIVE, category="Invite Delete")
         embed.add_field(name="Code", value=f"`{invite_code}`", inline=True)

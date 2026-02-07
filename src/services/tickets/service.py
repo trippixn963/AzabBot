@@ -9,6 +9,7 @@ Server: discord.gg/syria
 """
 
 import asyncio
+import time
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, Dict, List, Any
 
@@ -143,8 +144,6 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         Returns:
             Number of tickets recovered (channels deleted).
         """
-        import time
-
         if not self.config.logging_guild_id:
             return 0
 
@@ -338,8 +337,6 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
             message: The Discord message sent in the ticket channel
             ticket: The ticket dict from database
         """
-        import time
-
         # Skip bot messages
         if message.author.bot:
             return

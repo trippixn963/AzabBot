@@ -29,9 +29,12 @@ Standalone (for development):
 """
 
 import asyncio
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 import uvicorn
+
+if TYPE_CHECKING:
+    from src.bot import AzabBot
 
 from src.core.logger import logger
 from src.utils.async_utils import create_safe_task
@@ -59,7 +62,7 @@ class APIService:
     the bot and API to run concurrently.
     """
 
-    def __init__(self, bot: Any):
+    def __init__(self, bot: "AzabBot") -> None:
         """
         Initialize the API service.
 
@@ -203,6 +206,10 @@ class APIService:
     async def broadcast_mod_action(self, action_data: dict) -> int:
         """Broadcast a general moderation action event."""
         return await self.ws_manager.broadcast_mod_action(action_data)
+
+    async def broadcast_stats_updated(self, stats_data: dict = None) -> int:
+        """Broadcast a stats update event to trigger dashboard refresh."""
+        return await self.ws_manager.broadcast_stats_updated(stats_data)
 
 
 # =============================================================================

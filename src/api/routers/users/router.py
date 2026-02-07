@@ -8,7 +8,6 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-import asyncio
 from datetime import datetime
 from typing import Any, List, Optional
 
@@ -19,6 +18,7 @@ from starlette.status import HTTP_404_NOT_FOUND
 from src.core.logger import logger
 from src.core.config import get_config
 from src.api.dependencies import get_bot, require_auth, get_pagination, PaginationParams
+from src.utils.async_utils import create_safe_task
 from src.api.models.base import APIResponse, PaginatedResponse
 from src.api.models.users import UserProfile, UserSearchResult, ModerationNote
 from src.api.models.cases import CaseBrief, CaseType, CaseStatus
@@ -168,8 +168,8 @@ async def lookup_user(
         joined_dt = datetime.utcfromtimestamp(snapshot["joined_at"])
         server_tenure_days = (now - joined_dt).days
 
-    # Fetch SyriaBot activity data (async)
-    syriabot_task = asyncio.create_task(fetch_syriabot_data(user_id))
+    # Fetch SyriaBot activity data (async - fire and forget with safe task)
+    syriabot_task = create_safe_task(fetch_syriabot_data(user_id), "SyriaBot Data Fetch")
 
     # Get all case stats in one optimized query
     stats = db.fetchone(

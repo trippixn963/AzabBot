@@ -8,9 +8,12 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from fastapi import Depends, HTTPException, Request
+
+if TYPE_CHECKING:
+    from src.bot import AzabBot
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
 
@@ -29,16 +32,16 @@ security = HTTPBearer(auto_error=False)
 # Bot Reference
 # =============================================================================
 
-_bot_instance: Optional[Any] = None
+_bot_instance: Optional["AzabBot"] = None
 
 
-def set_bot(bot: Any) -> None:
+def set_bot(bot: "AzabBot") -> None:
     """Set the bot instance for dependency injection."""
     global _bot_instance
     _bot_instance = bot
 
 
-def get_bot() -> Any:
+def get_bot() -> "AzabBot":
     """Get the bot instance."""
     if _bot_instance is None:
         raise HTTPException(

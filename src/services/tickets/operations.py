@@ -17,6 +17,7 @@ from src.core.logger import logger
 from src.core.constants import TICKET_CATEGORY_COOLDOWN, CLOSE_REQUEST_COOLDOWN
 from src.utils.retry import safe_send
 from src.utils.discord_rate_limit import log_http_error
+from src.utils.async_utils import create_safe_task
 
 from .constants import TICKET_CATEGORIES, MAX_OPEN_TICKETS_PER_USER, TRANSCRIPT_EMOJI
 from .embeds import (
@@ -350,6 +351,19 @@ class OperationsMixin:
                 ("Channel", str(ticket_channel.id)),
             ], emoji="🎫")
 
+            # Broadcast WebSocket event for real-time dashboard updates (fire-and-forget)
+            if hasattr(self.bot, 'api_service') and self.bot.api_service:
+                async def broadcast_ticket_created_event():
+                    await self.bot.api_service.broadcast_ticket_created({
+                        'ticket_id': ticket_id,
+                        'user_id': user.id,
+                        'category': category,
+                        'subject': subject,
+                        'channel_id': ticket_channel.id,
+                    })
+                    await self.bot.api_service.broadcast_stats_updated()
+                create_safe_task(broadcast_ticket_created_event(), "Ticket Created WebSocket Broadcast")
+
             # Log to server logs
             if hasattr(self.bot, "logging_service") and self.bot.logging_service:
                 await self.bot.logging_service.log_ticket_created(
@@ -506,6 +520,21 @@ class OperationsMixin:
             ("Staff ID", str(closed_by.id)),
             ("Reason", reason or "None"),
         ], emoji="🔒")
+
+        # Broadcast WebSocket event for real-time dashboard updates (fire-and-forget)
+        if hasattr(self.bot, 'api_service') and self.bot.api_service:
+            ticket_user_id = ticket['user_id']
+            ticket_category = ticket['category']
+            async def broadcast_ticket_closed_event():
+                await self.bot.api_service.broadcast_ticket_closed({
+                    'ticket_id': ticket_id,
+                    'user_id': ticket_user_id,
+                    'closed_by_id': closed_by.id,
+                    'reason': reason,
+                    'category': ticket_category,
+                })
+                await self.bot.api_service.broadcast_stats_updated()
+            create_safe_task(broadcast_ticket_closed_event(), "Ticket Closed WebSocket Broadcast")
 
         # Log to server logs
         if hasattr(self.bot, "logging_service") and self.bot.logging_service:
@@ -715,6 +744,20 @@ class OperationsMixin:
             ("Claimed By", f"{staff.name} ({staff.nick})" if hasattr(staff, 'nick') and staff.nick else staff.name),
             ("Staff ID", str(staff.id)),
         ], emoji="✋")
+
+        # Broadcast WebSocket event for real-time dashboard updates (fire-and-forget)
+        if hasattr(self.bot, 'api_service') and self.bot.api_service:
+            ticket_user_id = ticket['user_id']
+            ticket_category = ticket['category']
+            async def broadcast_ticket_claimed_event():
+                await self.bot.api_service.broadcast_ticket_claimed({
+                    'ticket_id': ticket_id,
+                    'user_id': ticket_user_id,
+                    'staff_id': staff.id,
+                    'category': ticket_category,
+                })
+                await self.bot.api_service.broadcast_stats_updated()
+            create_safe_task(broadcast_ticket_claimed_event(), "Ticket Claimed WebSocket Broadcast")
 
         # Log to server logs
         if hasattr(self.bot, "logging_service") and self.bot.logging_service:

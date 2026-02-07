@@ -122,6 +122,33 @@ class HelpersMixin:
                 case_id=case_id,
             )
 
+    async def _broadcast_case_event(
+        self: "MuteCog",
+        case_info: Optional[dict],
+        user_id: int,
+        moderator_id: int,
+        action_type: str,
+        reason: Optional[str] = None,
+        duration: Optional[str] = None,
+        is_extension: bool = False,
+    ) -> None:
+        """Broadcast case creation event via WebSocket for dashboard updates."""
+        if not case_info:
+            return
+        if not hasattr(self.bot, 'api_service') or not self.bot.api_service:
+            return
+
+        await self.bot.api_service.broadcast_case_created({
+            'case_id': case_info['case_id'],
+            'user_id': user_id,
+            'moderator_id': moderator_id,
+            'action_type': action_type,
+            'reason': reason,
+            'duration': duration,
+            'is_extension': is_extension,
+        })
+        await self.bot.api_service.broadcast_stats_updated()
+
     async def _post_mod_log(
         self: "MuteCog",
         action: str,

@@ -540,8 +540,10 @@ class CaseLogService(
         Returns:
             The evidence request message if sent successfully, None if skipped or failed.
         """
-        # Skip evidence request for developer/owner
+        # Skip evidence request for developer/owner or bot auto-actions
         if self.config.owner_id and moderator.id == self.config.owner_id:
+            return None
+        if moderator.bot:
             return None
 
         try:

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.config import EmbedColors
+from ..categories import LogCategory
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -29,8 +30,6 @@ class ThreadsLogsMixin:
         """Log a thread being created."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🧵 Thread Created", EmbedColors.SUCCESS, category="Thread Create")
         embed.add_field(name="Thread", value=f"#{thread.name}" if thread.name else "#unknown-thread", inline=True)
@@ -51,8 +50,6 @@ class ThreadsLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("🧵 Thread Deleted", EmbedColors.LOG_NEGATIVE, category="Thread Delete")
         embed.add_field(name="Thread", value=f"`{thread_name}`", inline=True)
         embed.add_field(name="Parent", value=f"`{parent_name}`", inline=True)
@@ -70,8 +67,6 @@ class ThreadsLogsMixin:
         """Log a thread being archived/unarchived."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         if archived:
             embed = self._create_embed("🧵 Thread Archived", EmbedColors.WARNING, category="Thread Archive")
@@ -96,8 +91,6 @@ class ThreadsLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         if locked:
             embed = self._create_embed("🔒 Thread Locked", EmbedColors.WARNING, category="Thread Lock")
         else:
@@ -121,8 +114,6 @@ class ThreadsLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         user_id = member.id if member else None
         embed = self._create_embed("🧵 Member Added to Thread", EmbedColors.SUCCESS, category="Thread Member Add", user_id=user_id)
         embed.add_field(name="Thread", value=f"<#{thread.id}>", inline=True)
@@ -143,8 +134,6 @@ class ThreadsLogsMixin:
         """Log a member being removed from a thread."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         user_id = member.id if member else None
         embed = self._create_embed("🧵 Member Removed from Thread", EmbedColors.LOG_NEGATIVE, category="Thread Member Remove", user_id=user_id)

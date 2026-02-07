@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.config import EmbedColors
+from ..categories import LogCategory
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -33,8 +34,6 @@ class AutoModLogsMixin:
         """Log an AutoMod action."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🛡️ AutoMod Action", EmbedColors.WARNING, category="AutoMod", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
@@ -66,8 +65,6 @@ class AutoModLogsMixin:
         """Log a message blocked by AutoMod."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🛡️ Message Blocked", EmbedColors.LOG_NEGATIVE, category="AutoMod Block", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)

@@ -19,6 +19,7 @@ from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 from ..constants import LOCK_EMOJI, APPROVE_EMOJI, DENY_EMOJI
 from .helpers import _is_ticket_staff
+from ..modals import TicketCloseModal
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -48,8 +49,6 @@ class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clos
         return cls(match.group("ticket_id"))
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        from ..modals import TicketCloseModal
-
         logger.tree("Close Button Clicked", [
             ("Clicked By", f"{interaction.user.name} ({interaction.user.id})"),
             ("Ticket ID", self.ticket_id),

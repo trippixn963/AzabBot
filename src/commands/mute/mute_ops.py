@@ -337,6 +337,15 @@ class MuteOpsMixin:
                 reason=reason,
                 case_id=case_info["case_id"] if case_info else None,
             )),
+            ("WebSocket Broadcast", self._broadcast_case_event(
+                case_info=case_info,
+                user_id=user.id,
+                moderator_id=interaction.user.id,
+                action_type="mute",
+                reason=reason,
+                duration=duration_display,
+                is_extension=is_extension,
+            )),
             context="Mute Command",
         )
 

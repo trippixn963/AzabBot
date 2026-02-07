@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.config import EmbedColors
+from ..categories import LogCategory
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -31,8 +32,6 @@ class IntegrationsLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("🔗 Integration Added", EmbedColors.INFO, category="Integration Add")
         embed.add_field(name="Name", value=name, inline=True)
         embed.add_field(name="Type", value=int_type, inline=True)
@@ -50,8 +49,6 @@ class IntegrationsLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("🔗 Integration Removed", EmbedColors.LOG_NEGATIVE, category="Integration Remove")
         embed.add_field(name="Name", value=name, inline=True)
         if moderator:
@@ -68,8 +65,6 @@ class IntegrationsLogsMixin:
         """Log a webhook being created."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🪝 Webhook Created", EmbedColors.SUCCESS, category="Webhook Create")
         embed.add_field(name="Name", value=f"`{webhook_name}`", inline=True)
@@ -89,8 +84,6 @@ class IntegrationsLogsMixin:
         """Log a webhook being deleted."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🪝 Webhook Deleted", EmbedColors.LOG_NEGATIVE, category="Webhook Delete")
         embed.add_field(name="Name", value=f"`{webhook_name}`", inline=True)

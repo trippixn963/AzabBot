@@ -163,6 +163,9 @@ class WSEventType:
     USER_BANNED = "user.banned"
     USER_UNBANNED = "user.unbanned"
 
+    # Stats events
+    STATS_UPDATED = "stats.updated"
+
 
 __all__ = [
     "APIResponse",

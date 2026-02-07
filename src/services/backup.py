@@ -26,6 +26,7 @@ from shared.services.backup import (
 DATABASE_PATH = Path("data/azab.db")
 BACKUP_DIR = Path("data/backups")
 BACKUP_PREFIX = "azab"
+LOCAL_RETENTION_DAYS = 3  # Local VPS retention (R2 keeps 7 days)
 
 
 # =============================================================================
@@ -36,6 +37,7 @@ _backup_system = create_backup_system(
     database_path=str(DATABASE_PATH),
     backup_prefix=BACKUP_PREFIX,
     backup_dir=str(BACKUP_DIR),
+    retention_days=LOCAL_RETENTION_DAYS,
 )
 
 # Export configured functions
@@ -57,6 +59,7 @@ class BackupScheduler(_BackupScheduler):
             database_path=str(DATABASE_PATH),
             backup_prefix=BACKUP_PREFIX,
             backup_dir=str(BACKUP_DIR),
+            retention_days=LOCAL_RETENTION_DAYS,
         )
 
 

@@ -16,6 +16,8 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors
 from src.core.database import get_db
+from ..categories import LogCategory
+from ..views import ModActionLogView
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -35,9 +37,6 @@ class MutesLogsMixin:
         """Log a timeout."""
         if not self._should_log(user.guild.id):
             return
-
-        from ..categories import LogCategory
-        from ..views import ModActionLogView
 
         logger.tree("Server Logs: log_timeout Called", [
             ("User", f"{user.name} ({user.id})"),
@@ -90,9 +89,6 @@ class MutesLogsMixin:
         if not self._should_log(user.guild.id):
             return
 
-        from ..categories import LogCategory
-        from ..views import ModActionLogView
-
         logger.tree("Server Logs: log_timeout_remove Called", [
             ("User", f"{user.name} ({user.id})"),
             ("Moderator", f"{moderator.name} ({moderator.id})" if moderator else "System"),
@@ -121,9 +117,6 @@ class MutesLogsMixin:
         """Log a mute (role-based)."""
         if not self._should_log(user.guild.id):
             return
-
-        from ..categories import LogCategory
-        from ..views import ModActionLogView
 
         logger.tree("Server Logs: log_mute Called", [
             ("User", f"{user.name} ({user.id})"),
@@ -164,9 +157,6 @@ class MutesLogsMixin:
         if not self._should_log(user.guild.id):
             return
 
-        from ..categories import LogCategory
-        from ..views import ModActionLogView
-
         logger.tree("Server Logs: log_unmute Called", [
             ("User", f"{user.name} ({user.id})"),
             ("Moderator", f"{moderator.name} ({moderator.id})" if moderator else "System"),
@@ -197,8 +187,6 @@ class MutesLogsMixin:
         """Log when a muted user attempts to join voice and gets timed out."""
         if not self._should_log(member.guild.id):
             return
-
-        from ..categories import LogCategory
 
         logger.tree("Server Logs: log_muted_vc_violation Called", [
             ("Member", f"{member.name} ({member.id})"),

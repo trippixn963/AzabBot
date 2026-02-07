@@ -16,6 +16,8 @@ import discord
 from src.core.config import EmbedColors
 from src.core.database import get_db
 from src.core.logger import logger
+from ..categories import LogCategory
+from ..views import MessageLogView
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -35,9 +37,6 @@ class MiscLogsMixin:
         """Log a message being pinned or unpinned."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import MessageLogView
 
         user_id = message.author.id if message else None
 
@@ -83,8 +82,6 @@ class MiscLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         if muted:
             embed = self._create_embed("🔇 Server Voice Muted", EmbedColors.WARNING, category="Voice Mute", user_id=member.id)
         else:
@@ -111,8 +108,6 @@ class MiscLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         if deafened:
             embed = self._create_embed("🔇 Server Voice Deafened", EmbedColors.WARNING, category="Voice Deafen", user_id=member.id)
         else:
@@ -134,8 +129,6 @@ class MiscLogsMixin:
         member: discord.Member,
     ) -> None:
         """Edit the original join embed to add [Verified] when member passes screening."""
-        from ..categories import LogCategory
-
         if not self._initialized or LogCategory.JOINS not in self._threads:
             return
 
@@ -168,8 +161,6 @@ class MiscLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("✏️ Nickname Force Changed", EmbedColors.WARNING, category="Nickname Force", user_id=target.id)
         embed.add_field(name="Target", value=self._format_user_field(target), inline=True)
         if moderator:
@@ -192,8 +183,6 @@ class MiscLogsMixin:
         """Log when a mod disconnects a user from voice."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🔌 Voice Disconnected", EmbedColors.LOG_NEGATIVE, category="Voice Disconnect", user_id=target.id)
         embed.add_field(name="User", value=self._format_user_field(target), inline=True)
@@ -221,8 +210,6 @@ class MiscLogsMixin:
         """Log when a mod deletes someone else's message."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🗑️ Message Deleted by Mod", EmbedColors.LOG_NEGATIVE, category="Mod Delete", user_id=author.id)
         embed.add_field(name="Author", value=self._format_user_field(author), inline=True)
@@ -285,8 +272,6 @@ class MiscLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("🐌 Slowmode Changed", EmbedColors.WARNING, category="Slowmode")
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         if moderator:
@@ -318,8 +303,6 @@ class MiscLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("📂 Channel Moved", EmbedColors.WARNING, category="Category Move")
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         if moderator:
@@ -348,8 +331,6 @@ class MiscLogsMixin:
         """Log when a role's position in hierarchy changes."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         if new_position > old_position:
             embed = self._create_embed("⬆️ Role Moved Up", EmbedColors.SUCCESS, category="Role Position")

@@ -83,20 +83,16 @@ class ActivityMixin:
             The member's total join count (including this one).
         """
         now = time.time()
-        # Insert or update the member activity record
-        self.execute(
+        # Insert or update the member activity record and return join_count in single query
+        row = self.fetchone(
             """INSERT INTO member_activity (user_id, guild_id, join_count, first_joined_at, last_joined_at, join_message_id)
                VALUES (?, ?, 1, ?, ?, ?)
                ON CONFLICT(user_id, guild_id) DO UPDATE SET
                    join_count = join_count + 1,
                    last_joined_at = ?,
-                   join_message_id = ?""",
+                   join_message_id = ?
+               RETURNING join_count""",
             (user_id, guild_id, now, now, join_message_id, now, join_message_id)
-        )
-        # Get the updated count
-        row = self.fetchone(
-            "SELECT join_count FROM member_activity WHERE user_id = ? AND guild_id = ?",
-            (user_id, guild_id)
         )
         return row["join_count"] if row else 1
 

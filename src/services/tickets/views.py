@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 class TicketCategorySelect(discord.ui.Select):
     """Dropdown select menu for ticket category selection."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         options = [
             discord.SelectOption(
                 label=info["label"],
@@ -59,6 +59,13 @@ class TicketCategorySelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        if not self.values:
+            await interaction.response.send_message(
+                "No category selected. Please try again.",
+                ephemeral=True,
+            )
+            return
+
         category = self.values[0]
         logger.tree("Ticket Category Selected", [
             ("User", f"{interaction.user.name} ({interaction.user.id})"),
@@ -73,7 +80,7 @@ class TicketPanelView(discord.ui.View):
     Displays a dropdown menu for selecting ticket category.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(timeout=None)
         self.add_item(TicketCategorySelect())
 
@@ -81,7 +88,7 @@ class TicketPanelView(discord.ui.View):
 class TicketPanelSelect(discord.ui.DynamicItem[discord.ui.Select], template=r"tkt_select"):
     """Dynamic item for ticket panel select menu (persistence)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         options = [
             discord.SelectOption(
                 label=info["label"],

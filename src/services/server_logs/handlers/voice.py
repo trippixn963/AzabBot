@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.config import EmbedColors, has_mod_role
+from ..categories import LogCategory
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -29,8 +30,6 @@ class VoiceLogsMixin:
         """Log a voice channel join."""
         if not self._should_log(member.guild.id, member.id):
             return
-
-        from ..categories import LogCategory
 
         if has_mod_role(member):
             return
@@ -50,8 +49,6 @@ class VoiceLogsMixin:
         """Log a voice channel leave."""
         if not self._should_log(member.guild.id, member.id):
             return
-
-        from ..categories import LogCategory
 
         if has_mod_role(member):
             return
@@ -73,8 +70,6 @@ class VoiceLogsMixin:
         if not self._should_log(member.guild.id):
             return
 
-        from ..categories import LogCategory
-
         if has_mod_role(member):
             return
 
@@ -94,8 +89,6 @@ class VoiceLogsMixin:
         """Log a server mute/unmute."""
         if not self._should_log(member.guild.id):
             return
-
-        from ..categories import LogCategory
 
         if muted:
             embed = self._create_embed("🔇 Server Muted", EmbedColors.WARNING, category="Voice Mute", user_id=member.id)
@@ -119,8 +112,6 @@ class VoiceLogsMixin:
         if not self._should_log(member.guild.id):
             return
 
-        from ..categories import LogCategory
-
         if deafened:
             embed = self._create_embed("🔇 Server Deafened", EmbedColors.WARNING, category="Voice Deafen", user_id=member.id)
         else:
@@ -142,8 +133,6 @@ class VoiceLogsMixin:
         """Log a user self-muting/unmuting."""
         if not self._should_log(member.guild.id, member.id):
             return
-
-        from ..categories import LogCategory
 
         if has_mod_role(member):
             return
@@ -168,8 +157,6 @@ class VoiceLogsMixin:
         if not self._should_log(member.guild.id, member.id):
             return
 
-        from ..categories import LogCategory
-
         if has_mod_role(member):
             return
 
@@ -193,8 +180,6 @@ class VoiceLogsMixin:
         if not self._should_log(member.guild.id, member.id):
             return
 
-        from ..categories import LogCategory
-
         if streaming:
             embed = self._create_embed("📺 Started Streaming", EmbedColors.SUCCESS, category="Stream Start", user_id=member.id)
         else:
@@ -214,8 +199,6 @@ class VoiceLogsMixin:
         """Log a user turning camera on/off."""
         if not self._should_log(member.guild.id, member.id):
             return
-
-        from ..categories import LogCategory
 
         if video_on:
             embed = self._create_embed("📹 Camera On", EmbedColors.SUCCESS, category="Camera On", user_id=member.id)

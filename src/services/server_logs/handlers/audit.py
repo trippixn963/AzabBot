@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.config import EmbedColors
+from ..categories import LogCategory
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -32,8 +33,6 @@ class AuditLogsMixin:
         """Log an uncategorized audit log event."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed(
             f"🔍 {action}",

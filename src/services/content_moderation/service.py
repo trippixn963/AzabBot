@@ -30,6 +30,7 @@ from src.utils.footer import set_footer
 from src.utils.dm_helpers import send_moderation_dm
 from src.utils.snipe_blocker import block_from_snipe
 from src.utils.discord_rate_limit import log_http_error
+from src.services.server_logs.categories import LogCategory
 
 from .classifier import ContentClassifier, ClassificationResult
 from .constants import (
@@ -821,7 +822,6 @@ class ContentModerationService:
         set_footer(embed)
 
         try:
-            from src.services.server_logs.categories import LogCategory
             await self.bot.logging_service._send_log(
                 LogCategory.AUTOMOD,
                 embed,
@@ -924,7 +924,6 @@ class ContentModerationService:
         set_footer(embed)
 
         try:
-            from src.services.server_logs.categories import LogCategory
             await self.bot.logging_service._send_log(
                 LogCategory.AUTOMOD,
                 embed,

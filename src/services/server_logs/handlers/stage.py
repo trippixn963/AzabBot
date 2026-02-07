@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.config import EmbedColors
+from ..categories import LogCategory
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -29,8 +30,6 @@ class StageLogsMixin:
         """Log a stage instance starting."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🎤 Stage Started", EmbedColors.SUCCESS, category="Stage Start")
         embed.add_field(name="Topic", value=f"`{stage.topic}`", inline=True)
@@ -54,8 +53,6 @@ class StageLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("🎤 Stage Ended", EmbedColors.LOG_NEGATIVE, category="Stage End")
         embed.add_field(name="Topic", value=f"`{topic}`", inline=True)
         channel_value = f"🔊 <#{channel_id}>" if channel_id else f"🔊 `{channel_name}`"
@@ -74,8 +71,6 @@ class StageLogsMixin:
         """Log a stage instance being updated."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🎤 Stage Updated", EmbedColors.WARNING, category="Stage Update")
         embed.add_field(name="Topic", value=f"`{stage.topic}`", inline=True)
@@ -96,8 +91,6 @@ class StageLogsMixin:
         """Log a member becoming/stopping being a speaker."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         if became_speaker:
             embed = self._create_embed("🎤 Speaker Added", EmbedColors.SUCCESS, category="Speaker Add", user_id=member.id)

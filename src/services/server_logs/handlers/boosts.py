@@ -15,6 +15,8 @@ import discord
 
 from src.core.config import EmbedColors
 from src.core.constants import QUERY_LIMIT_SMALL
+from ..categories import LogCategory
+from ..views import MESSAGE_EMOJI
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -30,9 +32,6 @@ class BoostsLogsMixin:
         """Log a member boosting the server."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import MESSAGE_EMOJI
 
         embed = self._create_embed("💎 Server Boosted", EmbedColors.SUCCESS, category="Boost", user_id=member.id)
         embed.add_field(name="Booster", value=self._format_user_field(member), inline=True)
@@ -79,8 +78,6 @@ class BoostsLogsMixin:
         """Log a member removing their server boost."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("💔 Boost Removed", EmbedColors.LOG_NEGATIVE, category="Unboost", user_id=member.id)
         embed.add_field(name="Former Booster", value=self._format_user_field(member), inline=True)

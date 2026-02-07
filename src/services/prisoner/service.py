@@ -260,11 +260,12 @@ class PrisonerService:
             return 0
 
         # Get all currently muted user IDs across all guilds
+        # Use role.members for O(muted_users) instead of O(all_members)
         muted_user_ids: Set[int] = set()
         for guild in self.bot.guilds:
-            for member in guild.members:
-                if any(r.id == self.config.muted_role_id for r in member.roles):
-                    muted_user_ids.add(member.id)
+            muted_role = guild.get_role(self.config.muted_role_id)
+            if muted_role:
+                muted_user_ids.update(m.id for m in muted_role.members)
 
         cleaned = 0
 

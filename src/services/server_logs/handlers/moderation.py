@@ -15,6 +15,8 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors
 from src.core.database import get_db
+from ..categories import LogCategory
+from ..views import ModActionLogView
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -33,9 +35,6 @@ class ModerationLogsMixin:
         """Log a ban."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import ModActionLogView
 
         logger.tree("Server Logs: log_ban Called", [
             ("User", f"{user.name} ({user.id})"),
@@ -75,9 +74,6 @@ class ModerationLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-        from ..views import ModActionLogView
-
         logger.tree("Server Logs: log_unban Called", [
             ("User", f"{user.name} ({user.id})"),
             ("Moderator", f"{moderator.name} ({moderator.id})" if moderator else "System"),
@@ -106,9 +102,6 @@ class ModerationLogsMixin:
         """Log a kick."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import ModActionLogView
 
         logger.tree("Server Logs: log_kick Called", [
             ("User", f"{user.name} ({user.id})"),

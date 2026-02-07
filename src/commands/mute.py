@@ -11,6 +11,7 @@ Server: discord.gg/syria
 from typing import TYPE_CHECKING
 
 from src.commands.mute.cog import MuteCog, mute_author_context, unmute_author_context
+from src.core.logger import logger
 from src.utils.duration import parse_duration, format_duration
 
 if TYPE_CHECKING:
@@ -26,6 +27,11 @@ async def setup(bot: "AzabBot") -> None:
     await bot.add_cog(MuteCog(bot))
     bot.tree.add_command(mute_author_context)
     bot.tree.add_command(unmute_author_context)
+
+    logger.tree("Mute Context Menus Registered", [
+        ("Mute Author", "Message context menu"),
+        ("Unmute Author", "Message context menu"),
+    ], emoji="🔇")
 
 
 # =============================================================================

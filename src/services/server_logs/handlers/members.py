@@ -18,6 +18,8 @@ from src.core.logger import logger
 from src.core.config import EmbedColors
 from src.core.database import get_db
 from src.utils.http import http_session, DOWNLOAD_TIMEOUT
+from ..categories import LogCategory
+from ..views import UserIdButton, OldAvatarButton, NewAvatarButton
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -36,7 +38,6 @@ class MemberLogsMixin:
         if not self._should_log(member.guild.id, member.id):
             return
 
-        from ..categories import LogCategory
 
         db = get_db()
         activity = db.get_member_activity(member.id, member.guild.id)
@@ -73,7 +74,6 @@ class MemberLogsMixin:
         was_banned: bool,
     ) -> None:
         """Edit the original join embed to show they left."""
-        from ..categories import LogCategory
 
         logger.debug("Editing Join Message", [("Message", str(message_id)), ("Member", str(member.id))])
         try:
@@ -110,7 +110,6 @@ class MemberLogsMixin:
         was_banned: bool = False,
     ) -> None:
         """Log a member leave with detailed info."""
-        from ..categories import LogCategory
 
         db = get_db()
 
@@ -172,7 +171,6 @@ class MemberLogsMixin:
         if not self._should_log(member.guild.id, member.id):
             return
 
-        from ..categories import LogCategory
 
         embed = self._create_embed("➕ Role Added", EmbedColors.SUCCESS, category="Role Add", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
@@ -193,7 +191,6 @@ class MemberLogsMixin:
         if not self._should_log(member.guild.id, member.id):
             return
 
-        from ..categories import LogCategory
 
         embed = self._create_embed("➖ Role Removed", EmbedColors.LOG_NEGATIVE, category="Role Remove", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
@@ -214,7 +211,6 @@ class MemberLogsMixin:
         if not self._should_log(member.guild.id, member.id):
             return
 
-        from ..categories import LogCategory
 
         embed = self._create_embed("✨ Nickname Changed", EmbedColors.INFO, category="Nickname", user_id=member.id)
         embed.add_field(name="User", value=self._format_user_field(member), inline=True)
@@ -234,7 +230,6 @@ class MemberLogsMixin:
         if not self.enabled or (self.config.ignored_bot_ids and user.id in self.config.ignored_bot_ids):
             return
 
-        from ..categories import LogCategory
 
         embed = self._create_embed("✨ Username Changed", EmbedColors.INFO, category="Username", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
@@ -254,8 +249,6 @@ class MemberLogsMixin:
         if not self.enabled or (self.config.ignored_bot_ids and user.id in self.config.ignored_bot_ids):
             return
 
-        from ..categories import LogCategory
-        from ..views import UserIdButton, OldAvatarButton, NewAvatarButton
 
         embed = self._create_embed("🖼️ Avatar Changed", EmbedColors.INFO, category="Avatar", user_id=user.id)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)

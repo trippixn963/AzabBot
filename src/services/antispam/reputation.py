@@ -44,34 +44,40 @@ class ReputationMixin:
         return reputation
 
     def _calculate_reputation(self, user_id: int, guild_id: int) -> float:
-        """Calculate reputation score from database."""
+        """Calculate reputation score from database using single query."""
         db: "Database" = self.db  # type: ignore
         reputation = 0.0
 
-        # Base reputation from account/server age
         try:
-            user_info = db.get_user_join_info(user_id, guild_id)
-            if user_info:
-                join_timestamp = user_info.get("joined_at", 0)
+            # Single query to get all reputation factors
+            row = db.fetchone(
+                """SELECT
+                    (SELECT joined_at FROM user_join_info
+                     WHERE user_id = ? AND guild_id = ?) as joined_at,
+                    (SELECT COALESCE(violation_count, 0) FROM spam_violations
+                     WHERE user_id = ? AND guild_id = ?) as violation_count,
+                    (SELECT COUNT(*) FROM warnings
+                     WHERE user_id = ? AND guild_id = ?) as warning_count""",
+                (user_id, guild_id, user_id, guild_id, user_id, guild_id)
+            )
+
+            if row:
+                # Base reputation from server tenure
+                join_timestamp = row["joined_at"]
                 if join_timestamp:
                     days_in_server = (time.time() - join_timestamp) / 86400
                     reputation += min(days_in_server * 0.5, 50)  # Max 50 from tenure
-        except Exception as e:
-            logger.debug("Reputation Calc Join Info Error", [("Error", str(e)[:50])])
 
-        # Subtract for violations
-        violations = db.get_spam_violations(user_id, guild_id)
-        if violations:
-            total_violations = violations.get("total_violations", 0)
-            reputation -= total_violations * REP_LOSS_WARNING
+                # Subtract for spam violations
+                violation_count = row["violation_count"] or 0
+                reputation -= violation_count * REP_LOSS_WARNING
 
-        # Get warning count
-        try:
-            warnings = db.get_user_warnings(user_id, guild_id)
-            if warnings:
-                reputation -= len(warnings) * REP_LOSS_WARNING
+                # Subtract for warnings
+                warning_count = row["warning_count"] or 0
+                reputation -= warning_count * REP_LOSS_WARNING
+
         except Exception as e:
-            logger.debug("Reputation Calc Warnings Error", [("Error", str(e)[:50])])
+            logger.debug("Reputation Calc Error", [("Error", str(e)[:50])])
 
         # Clamp to reasonable range
         return max(0, min(reputation, REPUTATION_VETERAN * 2))

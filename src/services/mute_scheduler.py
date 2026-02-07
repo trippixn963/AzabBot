@@ -9,9 +9,11 @@ Server: discord.gg/syria
 """
 
 import asyncio
-import discord
+from collections import defaultdict
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
+
+import discord
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
@@ -77,6 +79,11 @@ class MuteScheduler:
         self.running: bool = False
         self._consecutive_errors: int = 0
         self._current_backoff: int = BACKOFF_MIN
+
+    @property
+    def _bot_user_id(self) -> int:
+        """Get bot user ID with null safety."""
+        return self._bot_user_id if self.bot.user else 0
 
     # =========================================================================
     # Lifecycle Management
@@ -192,7 +199,6 @@ class MuteScheduler:
         total_count = len(expired_mutes)
 
         # Group mutes by guild_id to cache role lookups
-        from collections import defaultdict
         mutes_by_guild: dict[int, list] = defaultdict(list)
         for mute in expired_mutes:
             mutes_by_guild[mute["guild_id"]].append(mute)
@@ -219,7 +225,7 @@ class MuteScheduler:
                     self.db.remove_mute(
                         user_id=mute["user_id"],
                         guild_id=guild_id,
-                        moderator_id=self.bot.user.id,
+                        moderator_id=self._bot_user_id,
                         reason="Auto-unmute (guild not accessible)",
                     )
                 skipped_guild += len(guild_mutes)
@@ -295,7 +301,7 @@ class MuteScheduler:
             self.db.remove_mute(
                 user_id=mute["user_id"],
                 guild_id=mute["guild_id"],
-                moderator_id=self.bot.user.id,
+                moderator_id=self._bot_user_id,
                 reason="Auto-unmute (guild not accessible)",
             )
             return
@@ -306,7 +312,7 @@ class MuteScheduler:
             self.db.remove_mute(
                 user_id=mute["user_id"],
                 guild_id=mute["guild_id"],
-                moderator_id=self.bot.user.id,
+                moderator_id=self._bot_user_id,
                 reason="Auto-unmute (user left server)",
             )
             return
@@ -316,7 +322,7 @@ class MuteScheduler:
             self.db.remove_mute(
                 user_id=mute["user_id"],
                 guild_id=mute["guild_id"],
-                moderator_id=self.bot.user.id,
+                moderator_id=self._bot_user_id,
                 reason="Auto-unmute (role not found)",
             )
             return
@@ -341,7 +347,7 @@ class MuteScheduler:
         self.db.remove_mute(
             user_id=mute["user_id"],
             guild_id=mute["guild_id"],
-            moderator_id=self.bot.user.id,
+            moderator_id=self._bot_user_id,
             reason="Auto-unmute: Mute duration expired",
         )
 
@@ -438,7 +444,6 @@ class MuteScheduler:
             return
 
         # Group mutes by guild_id for efficient batch processing
-        from collections import defaultdict
         mutes_by_guild: dict[int, list] = defaultdict(list)
         for mute in active_mutes:
             mutes_by_guild[mute["guild_id"]].append(mute)
@@ -459,7 +464,7 @@ class MuteScheduler:
                     self.db.remove_mute(
                         user_id=mute["user_id"],
                         guild_id=guild_id,
-                        moderator_id=self.bot.user.id,
+                        moderator_id=self._bot_user_id,
                         reason="Sync: Guild not accessible",
                     )
                 removed_guild_inaccessible += len(guild_mutes)
@@ -479,7 +484,7 @@ class MuteScheduler:
                     self.db.remove_mute(
                         user_id=mute["user_id"],
                         guild_id=guild_id,
-                        moderator_id=self.bot.user.id,
+                        moderator_id=self._bot_user_id,
                         reason="Sync: Role not found",
                     )
                 removed_role_missing += len(guild_mutes)
@@ -492,7 +497,7 @@ class MuteScheduler:
                     self.db.remove_mute(
                         user_id=mute["user_id"],
                         guild_id=guild_id,
-                        moderator_id=self.bot.user.id,
+                        moderator_id=self._bot_user_id,
                         reason="Sync: User left server",
                     )
                     removed_user_left += 1
@@ -502,7 +507,7 @@ class MuteScheduler:
                     self.db.remove_mute(
                         user_id=mute["user_id"],
                         guild_id=guild_id,
-                        moderator_id=self.bot.user.id,
+                        moderator_id=self._bot_user_id,
                         reason="Sync: Role manually removed",
                     )
                     removed_role_removed += 1

@@ -8,12 +8,14 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import time
 from datetime import datetime
 from typing import Optional
 
 import discord
 
 from src.core.config import EmbedColors, NY_TZ
+from src.core.constants import THREAD_DELETE_DELAY
 from src.utils.footer import set_footer
 
 from .constants import (
@@ -208,9 +210,6 @@ def build_close_notification(
     stats: Optional[dict] = None,
 ) -> discord.Embed:
     """Build notification when ticket is closed."""
-    import time
-    from src.core.constants import THREAD_DELETE_DELAY
-
     # Calculate deletion timestamp (1 hour from now)
     deletion_timestamp = int(time.time()) + THREAD_DELETE_DELAY
 

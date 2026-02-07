@@ -11,7 +11,7 @@ Server: discord.gg/syria
 import asyncio
 import json
 from datetime import datetime
-from typing import Any, Optional, Set
+from typing import Any, Dict, Optional, Set
 from dataclasses import dataclass, field
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -63,9 +63,9 @@ class WebSocketManager:
         await get_ws_manager().broadcast_case_created(case_data)
     """
 
-    def __init__(self):
-        self._connections: dict[str, WSConnection] = {}
-        self._user_connections: dict[int, Set[str]] = {}  # user_id -> connection_ids
+    def __init__(self) -> None:
+        self._connections: Dict[str, WSConnection] = {}
+        self._user_connections: Dict[int, Set[str]] = {}  # user_id -> connection_ids
         self._lock = asyncio.Lock()
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._config = get_api_config()
@@ -195,21 +195,22 @@ class WebSocketManager:
 
     async def _send_to_connection(self, connection_id: str, message: WSMessage) -> bool:
         """Send a message to a specific connection."""
-        if connection_id not in self._connections:
-            return False
+        async with self._lock:
+            if connection_id not in self._connections:
+                return False
 
-        connection = self._connections[connection_id]
-        try:
-            if connection.websocket.client_state == WebSocketState.CONNECTED:
-                await connection.websocket.send_json(message.model_dump(mode="json"))
-                return True
-        except Exception as e:
-            logger.debug("WebSocket Send Failed", [
-                ("Connection", connection_id[:8]),
-                ("Error", str(e)[:50]),
-            ])
-            # Schedule disconnect
-            create_safe_task(self.disconnect(connection_id), "WS Disconnect")
+            connection = self._connections[connection_id]
+            try:
+                if connection.websocket.client_state == WebSocketState.CONNECTED:
+                    await connection.websocket.send_json(message.model_dump(mode="json"))
+                    return True
+            except Exception as e:
+                logger.debug("WebSocket Send Failed", [
+                    ("Connection", connection_id[:8]),
+                    ("Error", str(e)[:50]),
+                ])
+                # Schedule disconnect (outside lock to avoid deadlock)
+                create_safe_task(self.disconnect(connection_id), "WS Disconnect")
         return False
 
     async def send_to_user(self, user_id: int, message: WSMessage) -> int:
@@ -267,49 +268,49 @@ class WebSocketManager:
     # Event Broadcasting Helpers
     # =========================================================================
 
-    async def broadcast_case_created(self, case_data: dict[str, Any]) -> int:
+    async def broadcast_case_created(self, case_data: Dict[str, Any]) -> int:
         """Broadcast a new case event."""
         return await self.broadcast(WSMessage(
             event=WSEventType.CASE_CREATED,
             data=case_data,
         ), channel="cases")
 
-    async def broadcast_case_updated(self, case_data: dict[str, Any]) -> int:
+    async def broadcast_case_updated(self, case_data: Dict[str, Any]) -> int:
         """Broadcast a case update event."""
         return await self.broadcast(WSMessage(
             event=WSEventType.CASE_UPDATED,
             data=case_data,
         ), channel="cases")
 
-    async def broadcast_case_resolved(self, case_data: dict[str, Any]) -> int:
+    async def broadcast_case_resolved(self, case_data: Dict[str, Any]) -> int:
         """Broadcast a case resolved event."""
         return await self.broadcast(WSMessage(
             event=WSEventType.CASE_RESOLVED,
             data=case_data,
         ), channel="cases")
 
-    async def broadcast_ticket_created(self, ticket_data: dict[str, Any]) -> int:
+    async def broadcast_ticket_created(self, ticket_data: Dict[str, Any]) -> int:
         """Broadcast a new ticket event."""
         return await self.broadcast(WSMessage(
             event=WSEventType.TICKET_CREATED,
             data=ticket_data,
         ), channel="tickets")
 
-    async def broadcast_ticket_claimed(self, ticket_data: dict[str, Any]) -> int:
+    async def broadcast_ticket_claimed(self, ticket_data: Dict[str, Any]) -> int:
         """Broadcast a ticket claimed event."""
         return await self.broadcast(WSMessage(
             event=WSEventType.TICKET_CLAIMED,
             data=ticket_data,
         ), channel="tickets")
 
-    async def broadcast_ticket_closed(self, ticket_data: dict[str, Any]) -> int:
+    async def broadcast_ticket_closed(self, ticket_data: Dict[str, Any]) -> int:
         """Broadcast a ticket closed event."""
         return await self.broadcast(WSMessage(
             event=WSEventType.TICKET_CLOSED,
             data=ticket_data,
         ), channel="tickets")
 
-    async def broadcast_appeal_submitted(self, appeal_data: dict[str, Any]) -> int:
+    async def broadcast_appeal_submitted(self, appeal_data: Dict[str, Any]) -> int:
         """Broadcast a new appeal event."""
         return await self.broadcast(WSMessage(
             event=WSEventType.APPEAL_SUBMITTED,
@@ -318,7 +319,7 @@ class WebSocketManager:
 
     async def broadcast_appeal_resolved(
         self,
-        appeal_data: dict[str, Any],
+        appeal_data: Dict[str, Any],
         approved: bool,
     ) -> int:
         """Broadcast an appeal resolution event."""
@@ -328,12 +329,19 @@ class WebSocketManager:
             data=appeal_data,
         ), channel="appeals")
 
-    async def broadcast_mod_action(self, action_data: dict[str, Any]) -> int:
+    async def broadcast_mod_action(self, action_data: Dict[str, Any]) -> int:
         """Broadcast a moderation action event."""
         return await self.broadcast(WSMessage(
             event=WSEventType.MOD_ACTION,
             data=action_data,
         ), channel="moderation")
+
+    async def broadcast_stats_updated(self, stats_data: Dict[str, Any] = None) -> int:
+        """Broadcast a stats update event to trigger dashboard refresh."""
+        return await self.broadcast(WSMessage(
+            event=WSEventType.STATS_UPDATED,
+            data=stats_data or {},
+        ), channel="stats")
 
     # =========================================================================
     # Heartbeat
@@ -381,7 +389,7 @@ class WebSocketManager:
         """Get number of authenticated connections."""
         return sum(1 for c in self._connections.values() if c.is_authenticated)
 
-    def get_stats(self) -> dict[str, Any]:
+    def get_stats(self) -> Dict[str, Any]:
         """Get WebSocket statistics."""
         return {
             "total_connections": len(self._connections),

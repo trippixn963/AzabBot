@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.config import EmbedColors
+from ..categories import LogCategory
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -30,8 +31,6 @@ class ForumLogsMixin:
         """Log a forum post creation."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         user_id = creator.id if creator else None
         embed = self._create_embed("📝 Forum Post Created", EmbedColors.SUCCESS, category="Forum Post", user_id=user_id)
@@ -64,8 +63,6 @@ class ForumLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("🏷️ Forum Tag Created", EmbedColors.SUCCESS, category="Forum Tag Create")
         embed.add_field(name="Tag", value=f"`{tag_name}`", inline=True)
         embed.add_field(name="Forum", value=self._format_channel(forum), inline=True)
@@ -83,8 +80,6 @@ class ForumLogsMixin:
         """Log a forum tag deletion."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🏷️ Forum Tag Deleted", EmbedColors.LOG_NEGATIVE, category="Forum Tag Delete")
         embed.add_field(name="Tag", value=f"`{tag_name}`", inline=True)
@@ -104,8 +99,6 @@ class ForumLogsMixin:
         """Log a forum tag update."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🏷️ Forum Tag Updated", EmbedColors.WARNING, category="Forum Tag Update")
         embed.add_field(name="Old Name", value=f"`{old_name}`", inline=True)

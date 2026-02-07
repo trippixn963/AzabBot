@@ -10,7 +10,7 @@ Server: discord.gg/syria
 
 import time
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import aiohttp
 from fastapi import APIRouter, Depends, Query
@@ -42,8 +42,8 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 class DashboardCache:
     """Simple TTL cache for dashboard stats."""
 
-    def __init__(self):
-        self._cache: dict[str, tuple[float, dict]] = {}  # cache_key -> (timestamp, data)
+    def __init__(self) -> None:
+        self._cache: Dict[str, Tuple[float, dict]] = {}  # cache_key -> (timestamp, data)
 
     def get(self, cache_key: str) -> Optional[dict]:
         """Get cached data if still valid."""

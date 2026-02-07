@@ -9,6 +9,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 import time
 from collections import defaultdict
 from datetime import datetime
@@ -34,6 +35,7 @@ APPEAL_RATE_LIMIT = 3  # Max appeals per IP per hour
 APPEAL_RATE_WINDOW = 3600  # 1 hour
 
 _appeal_submissions: Dict[str, List[float]] = defaultdict(list)
+_rate_limit_lock = asyncio.Lock()  # Lock for thread-safe dict access
 
 
 def _get_client_ip(request: Request) -> str:
@@ -46,26 +48,28 @@ def _get_client_ip(request: Request) -> str:
     return "unknown"
 
 
-def _check_appeal_rate_limit(client_ip: str) -> tuple[bool, int]:
+async def _check_appeal_rate_limit(client_ip: str) -> tuple[bool, int]:
     """Check if IP is allowed to submit another appeal."""
     now = time.time()
     window_start = now - APPEAL_RATE_WINDOW
 
-    _appeal_submissions[client_ip] = [
-        ts for ts in _appeal_submissions[client_ip] if ts > window_start
-    ]
+    async with _rate_limit_lock:
+        _appeal_submissions[client_ip] = [
+            ts for ts in _appeal_submissions[client_ip] if ts > window_start
+        ]
 
-    if len(_appeal_submissions[client_ip]) >= APPEAL_RATE_LIMIT:
-        oldest = min(_appeal_submissions[client_ip])
-        retry_after = int(oldest + APPEAL_RATE_WINDOW - now) + 1
-        return False, retry_after
+        if len(_appeal_submissions[client_ip]) >= APPEAL_RATE_LIMIT:
+            oldest = min(_appeal_submissions[client_ip])
+            retry_after = int(oldest + APPEAL_RATE_WINDOW - now) + 1
+            return False, retry_after
 
-    return True, 0
+        return True, 0
 
 
-def _record_appeal_submission(client_ip: str) -> None:
+async def _record_appeal_submission(client_ip: str) -> None:
     """Record a successful appeal submission."""
-    _appeal_submissions[client_ip].append(time.time())
+    async with _rate_limit_lock:
+        _appeal_submissions[client_ip].append(time.time())
 
 
 # =============================================================================
@@ -209,7 +213,7 @@ async def submit_appeal_form(token: str, request: Request):
     client_ip = _get_client_ip(request)
 
     # Check rate limit
-    allowed, retry_after = _check_appeal_rate_limit(client_ip)
+    allowed, retry_after = await _check_appeal_rate_limit(client_ip)
     if not allowed:
         logger.warning("Appeal Rate Limited", [
             ("Client IP", client_ip),
@@ -304,7 +308,7 @@ async def submit_appeal_form(token: str, request: Request):
                 status_code=400,
             )
 
-        _record_appeal_submission(client_ip)
+        await _record_appeal_submission(client_ip)
 
         logger.tree("Appeal Submitted", [
             ("Case ID", case_id),

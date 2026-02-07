@@ -9,7 +9,7 @@ Server: discord.gg/syria
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, List, Optional
 
 from src.core.logger import logger
@@ -132,7 +132,6 @@ class MaintenanceService:
 
                 # If past midnight, schedule for tomorrow
                 if now >= target:
-                    from datetime import timedelta
                     target = target + timedelta(days=1)
 
                 seconds_until = (target - now).total_seconds()

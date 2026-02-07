@@ -15,6 +15,8 @@ import discord
 from src.core.config import EmbedColors
 from src.core.database import get_db
 from src.core.logger import logger
+from ..categories import LogCategory
+from ..views import UserIdButton, CASE_EMOJI
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -34,9 +36,6 @@ class WarningsLogsMixin:
         """Log a warning issued to a user."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import UserIdButton, CASE_EMOJI
 
         logger.tree("Server Logs: log_warning_issued Called", [
             ("User", f"{user.name} ({user.id})"),
@@ -81,9 +80,6 @@ class WarningsLogsMixin:
         """Log a warning removal."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import UserIdButton, CASE_EMOJI
 
         logger.tree("Server Logs: log_warning_removed Called", [
             ("User", f"{user.name} ({user.id})"),

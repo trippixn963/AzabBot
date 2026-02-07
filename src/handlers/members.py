@@ -16,8 +16,10 @@ import discord
 from discord.ext import commands
 
 from src.core.logger import logger
-from src.core.config import get_config
+from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.utils.footer import set_footer
+from src.services.server_logs.categories import LogCategory
 from src.core.constants import CASE_LOG_TIMEOUT, QUERY_LIMIT_TINY, LOG_TRUNCATE_SHORT
 from src.utils.async_utils import create_safe_task
 from src.utils.discord_rate_limit import log_http_error
@@ -453,10 +455,6 @@ class MemberEvents(commands.Cog):
 
     async def _delete_linked_messages(self, member: discord.Member) -> None:
         """Delete all messages linked to a leaving member."""
-        from datetime import datetime
-        from src.core.config import EmbedColors, NY_TZ
-        from src.utils.footer import set_footer
-
         db = get_db()
 
         linked_messages = db.get_linked_messages_by_member(member.id, member.guild.id)
@@ -511,10 +509,6 @@ class MemberEvents(commands.Cog):
         message_ids: list,
     ) -> None:
         """Log linked message deletion to server logs."""
-        from datetime import datetime
-        from src.core.config import EmbedColors, NY_TZ
-        from src.utils.footer import set_footer
-
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
             return
 
@@ -803,10 +797,6 @@ class MemberEvents(commands.Cog):
             return
 
         try:
-            from src.core.config import EmbedColors, NY_TZ
-            from src.services.server_logs.categories import LogCategory
-            from datetime import datetime
-
             embed = discord.Embed(
                 title="🔄 Gender Role Conflict Resolved",
                 color=EmbedColors.LOG_INFO,
@@ -866,4 +856,7 @@ class MemberEvents(commands.Cog):
 async def setup(bot: "AzabBot") -> None:
     """Add the member events cog to the bot."""
     await bot.add_cog(MemberEvents(bot))
-    logger.debug("Member Events Loaded")
+    logger.tree("Member Events Loaded", [
+        ("Events", "join, leave, update, ban, unban"),
+        ("Features", "mute detection, mod tracking, gender roles"),
+    ], emoji="👤")

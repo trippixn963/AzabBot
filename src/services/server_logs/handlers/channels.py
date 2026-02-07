@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 
 from src.core.config import EmbedColors
+from ..categories import LogCategory
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -29,8 +30,6 @@ class ChannelLogsMixin:
         """Log a channel creation."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("📁 Channel Created", EmbedColors.SUCCESS, category="Channel Create")
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
@@ -51,8 +50,6 @@ class ChannelLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("📁 Channel Deleted", EmbedColors.LOG_NEGATIVE, category="Channel Delete")
         channel_value = f"<#{channel_id}> · `{channel_name}`" if channel_id else f"`{channel_name}`"
         embed.add_field(name="Channel", value=channel_value, inline=True)
@@ -72,8 +69,6 @@ class ChannelLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("📁 Channel Updated", EmbedColors.WARNING, category="Channel Update")
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
         if moderator:
@@ -91,8 +86,6 @@ class ChannelLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("🎭 Role Created", EmbedColors.SUCCESS, category="Role Create")
         embed.add_field(name="Role", value=self._format_role(role), inline=True)
         embed.add_field(name="Color", value=str(role.color), inline=True)
@@ -109,8 +102,6 @@ class ChannelLogsMixin:
         """Log a role deletion."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🎭 Role Deleted", EmbedColors.LOG_NEGATIVE, category="Role Delete")
         role_display = f"`{role_name}`" if role_name else "unknown role"
@@ -130,8 +121,6 @@ class ChannelLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("🎭 Role Updated", EmbedColors.WARNING, category="Role Update")
         embed.add_field(name="Role", value=self._format_role(role), inline=True)
         if moderator:
@@ -150,8 +139,6 @@ class ChannelLogsMixin:
         """Log permission overwrite changes."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed(f"🔐 Permission {action.title()}", EmbedColors.WARNING, category=f"Permission {action.title()}")
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)

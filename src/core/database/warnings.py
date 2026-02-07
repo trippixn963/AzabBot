@@ -102,7 +102,7 @@ class WarningsMixin:
 
     def get_warn_counts(self: "DatabaseManager", user_id: int, guild_id: int) -> tuple:
         """
-        Get both active and total warning counts for a user.
+        Get both active and total warning counts for a user in single query.
 
         Args:
             user_id: Discord user ID.
@@ -111,9 +111,18 @@ class WarningsMixin:
         Returns:
             Tuple of (active_count, total_count).
         """
-        total = self.get_user_warn_count(user_id, guild_id)
-        active = self.get_active_warn_count(user_id, guild_id)
-        return (active, total)
+        decay_cutoff = time.time() - (self.WARNING_DECAY_DAYS * 86400)
+        row = self.fetchone(
+            """SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) as active
+               FROM warnings
+               WHERE user_id = ? AND guild_id = ?""",
+            (decay_cutoff, user_id, guild_id)
+        )
+        if row:
+            return (row["active"] or 0, row["total"] or 0)
+        return (0, 0)
 
     def get_user_warnings(
         self,

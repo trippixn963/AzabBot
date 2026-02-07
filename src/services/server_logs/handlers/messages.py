@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Optional, List, Tuple
 import discord
 
 from src.core.config import EmbedColors
+from ..categories import LogCategory
+from ..views import MessageLogView
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -30,9 +32,6 @@ class MessageLogsMixin:
         """Log a message deletion."""
         if not self._should_log(message.guild.id if message.guild else None, message.author.id):
             return
-
-        from ..categories import LogCategory
-        from ..views import MessageLogView
 
         embed = self._create_embed("🗑️ Message Deleted", EmbedColors.LOG_NEGATIVE, category="Message Delete", user_id=message.author.id)
         embed.add_field(name="Author", value=self._format_user_field(message.author), inline=True)
@@ -79,9 +78,6 @@ class MessageLogsMixin:
         if before.content == after.content:
             return
 
-        from ..categories import LogCategory
-        from ..views import MessageLogView
-
         embed = self._create_embed("✏️ Message Edited", EmbedColors.WARNING, category="Message Edit", user_id=after.author.id)
         embed.add_field(name="Author", value=self._format_user_field(after.author), inline=True)
         embed.add_field(name="Channel", value=self._format_channel(after.channel), inline=True)
@@ -108,8 +104,6 @@ class MessageLogsMixin:
         """Log a bulk message delete."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🗑️ Bulk Delete", EmbedColors.LOG_NEGATIVE, category="Bulk Delete")
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)

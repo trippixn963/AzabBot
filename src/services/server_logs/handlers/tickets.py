@@ -10,7 +10,9 @@ Server: discord.gg/syria
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
+import html as html_lib
 import io
+import time
 
 import discord
 
@@ -18,6 +20,8 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.core.logger import logger
 from src.utils.footer import set_footer
+from ..categories import LogCategory
+from ..views import TicketLogView, UserIdButton, TranscriptLinkView, TRANSCRIPT_EMOJI, CASE_EMOJI
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -38,9 +42,6 @@ class TicketsLogsMixin:
         """Log a ticket creation."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import TicketLogView, UserIdButton
 
         embed = self._create_embed(
             "🎫 Ticket Created",
@@ -72,10 +73,6 @@ class TicketsLogsMixin:
         """Log a ticket claim."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import TicketLogView, UserIdButton
-        import time
 
         response_seconds = int(time.time() - created_at)
         if response_seconds < 60:
@@ -122,9 +119,6 @@ class TicketsLogsMixin:
         """Log a ticket close."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import TicketLogView, UserIdButton, TRANSCRIPT_EMOJI, CASE_EMOJI
 
         embed = self._create_embed(
             "🔒 Ticket Closed",
@@ -177,9 +171,6 @@ class TicketsLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-        from ..views import TicketLogView, UserIdButton
-
         embed = self._create_embed(
             "🔓 Ticket Reopened",
             EmbedColors.SUCCESS,
@@ -209,9 +200,6 @@ class TicketsLogsMixin:
         """Log a user being added to a ticket."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import TicketLogView, UserIdButton
 
         embed = self._create_embed(
             "👤 User Added to Ticket",
@@ -243,9 +231,6 @@ class TicketsLogsMixin:
         """Log a ticket transfer."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import TicketLogView, UserIdButton
 
         embed = self._create_embed(
             "↔️ Ticket Transferred",
@@ -279,9 +264,6 @@ class TicketsLogsMixin:
         """Log a ticket priority change."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import TicketLogView, UserIdButton
 
         priority_colors = {
             "low": 0x808080,
@@ -324,16 +306,12 @@ class TicketsLogsMixin:
             logger.warning("Logging Service Disabled For Transcript", [("Ticket ID", ticket_id)])
             return
 
-        from ..categories import LogCategory
-        from ..views import TranscriptLinkView
-
         logger.tree("Logging Ticket Transcript", [
             ("Ticket ID", ticket_id),
             ("User", f"{user.name} ({user.id})"),
             ("Messages", str(len(messages))),
         ], emoji="📜")
 
-        import html as html_lib
         created_dt = datetime.fromtimestamp(created_at, tz=NY_TZ)
         closed_dt = datetime.fromtimestamp(closed_at, tz=NY_TZ)
         duration = closed_dt - created_dt
@@ -415,9 +393,6 @@ class TicketsLogsMixin:
         """Log a case transcript when approved."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
-        from ..views import CASE_EMOJI
 
         action_emoji = {
             "mute": "🔇", "ban": "🔨", "warn": "⚠️", "forbid": "🚫",

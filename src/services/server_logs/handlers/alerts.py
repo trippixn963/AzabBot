@@ -14,6 +14,7 @@ import discord
 
 from src.core.config import EmbedColors
 from src.core.logger import logger
+from ..categories import LogCategory
 
 if TYPE_CHECKING:
     from ..service import LoggingService
@@ -31,8 +32,6 @@ class AlertsLogsMixin:
         """Log a potential raid alert."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         logger.tree("Server Logs: log_raid_alert Called", [
             ("Join Count", str(join_count)),
@@ -81,8 +80,6 @@ class AlertsLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         logger.tree("Server Logs: log_lockdown Called", [
             ("Moderator", f"{moderator.name} ({moderator.id})"),
             ("Action", action),
@@ -119,8 +116,6 @@ class AlertsLogsMixin:
         if not self.enabled:
             return
 
-        from ..categories import LogCategory
-
         embed = self._create_embed("🚨 AUTO-LOCKDOWN TRIGGERED", 0xFF0000, category="Lockdown")
         embed.add_field(name="Status", value="**Server automatically locked - RAID DETECTED**", inline=False)
         embed.add_field(name="Trigger", value=f"`{join_count}` joins in `{time_window}s`", inline=True)
@@ -141,8 +136,6 @@ class AlertsLogsMixin:
         """Log an automatic unlock after raid lockdown expires."""
         if not self.enabled:
             return
-
-        from ..categories import LogCategory
 
         embed = self._create_embed("🔓 AUTO-UNLOCK", EmbedColors.SUCCESS, category="Lockdown")
         embed.add_field(name="Status", value="**Raid lockdown has expired**", inline=False)
