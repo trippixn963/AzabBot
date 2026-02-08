@@ -17,5 +17,6 @@ jobs:
           script: |
             cd /root/AzabBot
             git pull origin main
+            git rev-parse --short HEAD > VERSION
             systemctl restart azabbot.service
-            echo "Deployed $(git rev-parse --short HEAD)"
+            echo "Deployed $(cat VERSION)"
