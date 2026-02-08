@@ -176,8 +176,12 @@ class MemberEvents(commands.Cog):
                 removed_roles = [r for r in before.roles if r not in after.roles]
                 for role in added_roles:
                     await self.bot.logging_service.log_role_add(after, role)
+                    # Log to dashboard events (fallback, no moderator info)
+                    event_logger.log_role_add(after.guild, after, role)
                 for role in removed_roles:
                     await self.bot.logging_service.log_role_remove(after, role)
+                    # Log to dashboard events (fallback, no moderator info)
+                    event_logger.log_role_remove(after.guild, after, role)
 
         # -----------------------------------------------------------------
         # Logging Service: Other Member Updates (always run)
@@ -185,6 +189,13 @@ class MemberEvents(commands.Cog):
         if self.bot.logging_service and self.bot.logging_service.enabled:
             if before.nick != after.nick:
                 await self.bot.logging_service.log_nickname_change(after, before.nick, after.nick)
+                # Log to dashboard events (self-change, no moderator)
+                event_logger.log_nick_change(
+                    guild=after.guild,
+                    target=after,
+                    old_nick=before.nick,
+                    new_nick=after.nick,
+                )
                 self.bot.db.save_nickname_change(
                     user_id=after.id,
                     guild_id=after.guild.id,

@@ -24,6 +24,7 @@ from src.utils.async_utils import create_safe_task
 from src.utils.retry import safe_fetch_channel
 from src.utils.dm_helpers import send_moderation_dm
 from src.services.appeals.constants import MIN_APPEALABLE_MUTE_DURATION
+from src.api.services.event_logger import event_logger
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -420,6 +421,15 @@ class PrisonHandler:
                         ("Duration", f"{timeout_minutes}min"),
                         ("Offense #", str(kick_count)),
                     ], emoji="⏱️")
+
+                    # Log to dashboard events
+                    event_logger.log_timeout(
+                        guild=member.guild,
+                        target=member,
+                        moderator=None,
+                        reason=f"Prisoner VC violation #{kick_count} (joined #{vc_name})",
+                        duration_seconds=timeout_minutes * 60,
+                    )
 
                     # Create case for the timeout
                     if self.bot.case_log_service and member.guild:

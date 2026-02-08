@@ -15,6 +15,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.constants import CASE_LOG_TIMEOUT
+from src.api.services.event_logger import event_logger
 
 if TYPE_CHECKING:
     from .cog import AuditLogEvents
@@ -47,6 +48,13 @@ class LoggingMixin:
                 if entry.target and not entry.target.bot:
                     await self.bot.logging_service.log_kick(
                         entry.target, moderator=moderator, reason=entry.reason,
+                    )
+                    # Log to dashboard events
+                    event_logger.log_kick(
+                        guild=entry.guild,
+                        target=entry.target,
+                        moderator=moderator,
+                        reason=entry.reason,
                     )
                     # Record kick to database
                     self.bot.db.add_kick(
@@ -84,6 +92,14 @@ class LoggingMixin:
                                 target=entry.target, channel_name=channel_name,
                                 moderator=moderator, channel_id=channel_id,
                             )
+                            # Log to dashboard events
+                            event_logger.log_voice_disconnect(
+                                guild=entry.guild,
+                                target=entry.target,
+                                channel_name=channel_name,
+                                moderator=moderator,
+                                channel_id=channel_id,
+                            )
 
             # Mod message delete
             elif entry.action == discord.AuditLogAction.message_delete:
@@ -96,6 +112,14 @@ class LoggingMixin:
                     await self.bot.logging_service.log_bulk_delete(
                         entry.target, count=count, moderator=moderator,
                     )
+                    # Log to dashboard events
+                    if isinstance(entry.target, discord.TextChannel):
+                        event_logger.log_bulk_delete(
+                            guild=entry.guild,
+                            channel=entry.target,
+                            count=count,
+                            moderator=moderator,
+                        )
 
             # Permission overwrites
             elif entry.action == discord.AuditLogAction.overwrite_create:
@@ -135,6 +159,13 @@ class LoggingMixin:
             elif entry.action == discord.AuditLogAction.bot_add:
                 if entry.target and entry.target.bot:
                     await self.bot.logging_service.log_bot_add(entry.target, moderator=moderator)
+                    # Log to dashboard events
+                    if isinstance(entry.target, discord.Member):
+                        event_logger.log_bot_add(
+                            guild=entry.guild,
+                            bot=entry.target,
+                            moderator=moderator,
+                        )
 
             elif entry.action == discord.AuditLogAction.integration_create:
                 name = getattr(entry.target, 'name', 'Unknown')
@@ -202,6 +233,16 @@ class LoggingMixin:
                     if duration_seconds < 0:
                         duration_seconds = None
 
+                # Log to dashboard events
+                event_logger.log_timeout(
+                    guild=entry.guild,
+                    target=entry.target,
+                    moderator=moderator,
+                    reason=entry.reason,
+                    until=str(entry.after.timed_out_until),
+                    duration_seconds=duration_seconds,
+                )
+
                 # Record timeout to database
                 self.bot.db.add_timeout(
                     user_id=entry.target.id,
@@ -256,6 +297,12 @@ class LoggingMixin:
                 await self.bot.logging_service.log_timeout_remove(
                     entry.target, moderator=moderator,
                 )
+                # Log to dashboard events
+                event_logger.log_timeout_remove(
+                    guild=entry.guild,
+                    target=entry.target,
+                    moderator=moderator,
+                )
                 # Record timeout removal to database
                 self.bot.db.remove_timeout(
                     user_id=entry.target.id,
@@ -279,11 +326,25 @@ class LoggingMixin:
                     await self.bot.logging_service.log_server_voice_mute(
                         member=entry.target, muted=entry.after.mute, moderator=moderator,
                     )
+                    # Log to dashboard events
+                    event_logger.log_voice_mute(
+                        guild=entry.guild,
+                        target=entry.target,
+                        muted=entry.after.mute,
+                        moderator=moderator,
+                    )
 
             if hasattr(entry.before, 'deaf') and hasattr(entry.after, 'deaf'):
                 if entry.before.deaf != entry.after.deaf:
                     await self.bot.logging_service.log_server_voice_deafen(
                         member=entry.target, deafened=entry.after.deaf, moderator=moderator,
+                    )
+                    # Log to dashboard events
+                    event_logger.log_voice_deafen(
+                        guild=entry.guild,
+                        target=entry.target,
+                        deafened=entry.after.deaf,
+                        moderator=moderator,
                     )
 
             if hasattr(entry.before, 'nick') and hasattr(entry.after, 'nick'):
@@ -292,6 +353,14 @@ class LoggingMixin:
                         await self.bot.logging_service.log_nickname_force_change(
                             target=entry.target, old_nick=entry.before.nick,
                             new_nick=entry.after.nick, moderator=moderator,
+                        )
+                        # Log to dashboard events
+                        event_logger.log_nick_change(
+                            guild=entry.guild,
+                            target=entry.target,
+                            old_nick=entry.before.nick,
+                            new_nick=entry.after.nick,
+                            moderator=moderator,
                         )
                         self.bot.db.save_nickname_change(
                             user_id=entry.target.id, guild_id=entry.guild.id,

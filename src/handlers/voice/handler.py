@@ -20,6 +20,7 @@ from src.core.logger import logger
 from src.core.constants import CASE_LOG_TIMEOUT
 from src.utils.dm_helpers import send_moderation_dm
 from src.utils.async_utils import create_safe_task
+from src.api.services.event_logger import event_logger
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -208,6 +209,15 @@ class VoiceHandler:
             ("Attempted Channel", channel_name),
             ("Action", "Disconnected + 1h Timeout"),
         ], emoji="🔇")
+
+        # Log to dashboard events
+        event_logger.log_timeout(
+            guild=member.guild,
+            target=member,
+            moderator=None,
+            reason="Attempted to join voice channel while muted",
+            duration_seconds=3600,
+        )
 
         # -----------------------------------------------------------------
         # 4. Server Logs - Mutes & Timeouts

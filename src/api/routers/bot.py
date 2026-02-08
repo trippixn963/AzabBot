@@ -10,7 +10,7 @@ Server: discord.gg/syria
 
 import platform
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import discord
@@ -21,8 +21,9 @@ from fastapi.responses import JSONResponse
 from src.core.logger import logger
 from src.api.dependencies import get_bot, require_auth
 from src.api.models.auth import TokenPayload
-from src.api.services.log_buffer import get_log_buffer
+from src.api.services.log_storage import get_log_storage
 from src.api.services.health_tracker import get_health_tracker
+from src.api.services.latency_storage import get_latency_storage
 
 
 router = APIRouter(prefix="/bot", tags=["Bot Status"])
@@ -50,7 +51,9 @@ async def get_bot_status(
     started_at = None
     if bot and hasattr(bot, 'start_time') and bot.start_time:
         uptime_seconds = int(now - bot.start_time.timestamp())
-        started_at = bot.start_time.isoformat() + "Z"
+        # Convert to UTC for frontend
+        start_utc = bot.start_time.astimezone(timezone.utc)
+        started_at = start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Get latency
     latency_ms = int(bot.latency * 1000) if bot and bot_online else 0
@@ -142,21 +145,30 @@ async def get_bot_logs(
     limit: int = Query(100, ge=1, le=500, description="Maximum number of logs"),
     level: str = Query("all", description="Filter by level: all, info, warning, error"),
     offset: int = Query(0, ge=0, description="Number of entries to skip"),
+    search: Optional[str] = Query(None, description="Search in log messages"),
+    module: Optional[str] = Query(None, description="Filter by module"),
     payload: TokenPayload = Depends(require_auth),
 ) -> JSONResponse:
     """
-    Get paginated bot logs from the in-memory buffer.
+    Get paginated bot logs from persistent SQLite storage.
 
-    Returns recent log entries with optional level filtering.
+    Returns recent log entries with optional level filtering and search.
+    Logs persist for 7 days across bot restarts.
     """
-    log_buffer = get_log_buffer()
-    logs = log_buffer.get_logs(limit=limit, level=level, offset=offset)
+    log_storage = get_log_storage()
+    logs, total = log_storage.get_logs(
+        limit=limit,
+        offset=offset,
+        level=level if level.lower() != "all" else None,
+        search=search,
+        module=module,
+    )
 
     response = {
         "success": True,
         "data": {
-            "logs": logs,
-            "total": log_buffer.size,
+            "logs": [log.to_dict() for log in logs],
+            "total": total,
             "limit": limit,
             "offset": offset,
             "level": level,
@@ -177,23 +189,131 @@ async def get_bot_logs(
 # Latency History
 # =============================================================================
 
-@router.get("/latency-history")
-async def get_latency_history(
+@router.get("/latency")
+async def get_latency(
+    period: str = Query("live", description="Time period: live, 24h, 7d, 30d"),
     payload: TokenPayload = Depends(require_auth),
 ) -> JSONResponse:
     """
     Get latency history for graphing.
 
-    Returns up to 60 latency measurements (last ~1 hour).
+    Periods:
+    - live: Last 60 raw measurements (~1 minute at 1s intervals)
+    - 24h: Hourly aggregates for last 24 hours
+    - 7d: Hourly aggregates for last 7 days
+    - 30d: Daily aggregates for last 30 days
     """
-    health_tracker = get_health_tracker()
-    history = health_tracker.get_latency_history()
+    latency_storage = get_latency_storage()
+
+    if period == "live":
+        points = latency_storage.get_live(60)
+        return JSONResponse(content={
+            "success": True,
+            "data": {
+                "period": "live",
+                "points": [p.to_dict() for p in points],
+                "count": len(points),
+                "aggregated": False,
+            },
+        })
+
+    elif period == "24h":
+        points = latency_storage.get_hourly(24)
+        return JSONResponse(content={
+            "success": True,
+            "data": {
+                "period": "24h",
+                "points": [p.to_dict() for p in points],
+                "count": len(points),
+                "aggregated": True,
+            },
+        })
+
+    elif period == "7d":
+        points = latency_storage.get_hourly(24 * 7)
+        return JSONResponse(content={
+            "success": True,
+            "data": {
+                "period": "7d",
+                "points": [p.to_dict() for p in points],
+                "count": len(points),
+                "aggregated": True,
+            },
+        })
+
+    elif period == "30d":
+        points = latency_storage.get_daily(30)
+        return JSONResponse(content={
+            "success": True,
+            "data": {
+                "period": "30d",
+                "points": [p.to_dict() for p in points],
+                "count": len(points),
+                "aggregated": True,
+            },
+        })
+
+    else:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": "Invalid period. Use: live, 24h, 7d, 30d",
+            },
+        )
+
+
+@router.get("/latency/stats")
+async def get_latency_stats(
+    payload: TokenPayload = Depends(require_auth),
+) -> JSONResponse:
+    """Get latency statistics."""
+    latency_storage = get_latency_storage()
+    stats = latency_storage.get_stats()
+
+    return JSONResponse(content={
+        "success": True,
+        "data": stats,
+    })
+
+
+@router.post("/latency/report")
+async def report_api_latency(
+    api_ms: int = Query(..., ge=0, le=10000, description="API response time in ms"),
+    discord_ms: int = Query(..., ge=0, le=10000, description="Discord latency in ms"),
+    payload: TokenPayload = Depends(require_auth),
+) -> JSONResponse:
+    """
+    Report both API and Discord latency measurements from the frontend.
+
+    The frontend measures API round-trip time and pairs it with the
+    current Discord latency for synchronized historical tracking.
+    """
+    latency_storage = get_latency_storage()
+
+    # Store both latencies together in the same record
+    record_id = latency_storage.record(discord_ms=discord_ms, api_ms=api_ms)
+
+    return JSONResponse(content={
+        "success": True,
+        "data": {"recorded": True, "id": record_id, "discord_ms": discord_ms, "api_ms": api_ms},
+    })
+
+
+# Keep old endpoint for backwards compatibility
+@router.get("/latency-history")
+async def get_latency_history_legacy(
+    payload: TokenPayload = Depends(require_auth),
+) -> JSONResponse:
+    """Legacy endpoint - redirects to new latency endpoint."""
+    latency_storage = get_latency_storage()
+    points = latency_storage.get_live(60)
 
     return JSONResponse(content={
         "success": True,
         "data": {
-            "history": history,
-            "count": len(history),
+            "history": [{"timestamp": p.timestamp.timestamp(), "latency_ms": p.discord_ms} for p in points],
+            "count": len(points),
         },
     })
 

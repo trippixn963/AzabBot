@@ -53,7 +53,7 @@ from src.api.services.status_broadcaster import (
     init_status_broadcaster,
     StatusBroadcaster,
 )
-from src.api.services.log_buffer import get_log_buffer, LogBuffer
+from src.api.services.log_storage import get_log_storage, LogStorage
 
 
 # =============================================================================
@@ -82,6 +82,8 @@ class APIService:
         self._task: Optional[asyncio.Task] = None
         self._snapshot_service = init_snapshot_service(bot)
         self._status_broadcaster = init_status_broadcaster(bot)
+        # Initialize log storage early so it captures logs from startup
+        self._log_storage = get_log_storage()
 
     @property
     def is_running(self) -> bool:
@@ -109,9 +111,9 @@ class APIService:
         return self._status_broadcaster
 
     @property
-    def log_buffer(self) -> LogBuffer:
-        """Get the log buffer."""
-        return get_log_buffer()
+    def log_storage(self) -> LogStorage:
+        """Get the persistent log storage."""
+        return self._log_storage
 
     async def start(self) -> None:
         """Start the API server in a background task."""
@@ -268,8 +270,8 @@ __all__ = [
     "SnapshotService",
     "get_status_broadcaster",
     "StatusBroadcaster",
-    "get_log_buffer",
-    "LogBuffer",
+    "get_log_storage",
+    "LogStorage",
     # Dependencies
     "set_bot",
 ]

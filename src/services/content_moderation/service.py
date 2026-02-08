@@ -25,6 +25,7 @@ from src.core.constants import (
     RELIGION_MUTE_MSG_DELETE_AFTER,
 )
 from src.core.logger import logger
+from src.api.services.event_logger import event_logger
 from src.utils.async_utils import create_safe_task
 from src.utils.footer import set_footer
 from src.utils.dm_helpers import send_moderation_dm
@@ -727,6 +728,15 @@ class ContentModerationService:
                 ("Duration", f"{duration_mins} minutes"),
                 ("Method", "Muted Role"),
             ], emoji="🔇")
+
+            # Log to dashboard events
+            event_logger.log_timeout(
+                guild=message.guild,
+                target=member,
+                moderator=None,  # Auto-action
+                reason=reason,
+                duration_seconds=duration_mins * 60 if duration_mins else None,
+            )
 
             # Fire-and-forget DM (no appeal button)
             # Build fields - include unmute time if we have expires_at

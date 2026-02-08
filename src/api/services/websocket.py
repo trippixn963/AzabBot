@@ -121,9 +121,9 @@ class WebSocketManager:
                 ("Total Connections", str(len(self._connections))),
             ], emoji="🔌")
 
-            # Send welcome message
-            await self._send_to_connection(connection_id, WSMessage(
-                event=WSEventType.CONNECTED,
+            # Send welcome message (use unlocked version since we already hold the lock)
+            await self._send_to_connection_unlocked(connection_id, WSMessage(
+                type=WSEventType.CONNECTED,
                 data={
                     "connection_id": connection_id,
                     "authenticated": user_id is not None,
@@ -196,25 +196,33 @@ class WebSocketManager:
     # Message Sending
     # =========================================================================
 
+    async def _send_to_connection_unlocked(
+        self,
+        connection_id: str,
+        message: WSMessage,
+    ) -> bool:
+        """Send a message to a specific connection. Caller must hold the lock."""
+        if connection_id not in self._connections:
+            return False
+
+        connection = self._connections[connection_id]
+        try:
+            if connection.websocket.client_state == WebSocketState.CONNECTED:
+                await connection.websocket.send_json(message.model_dump(mode="json"))
+                return True
+        except Exception as e:
+            logger.debug("WebSocket Send Failed", [
+                ("Connection", connection_id[:8]),
+                ("Error", str(e)[:50]),
+            ])
+            # Schedule disconnect (outside lock to avoid deadlock)
+            create_safe_task(self.disconnect(connection_id), "WS Disconnect")
+        return False
+
     async def _send_to_connection(self, connection_id: str, message: WSMessage) -> bool:
         """Send a message to a specific connection."""
         async with self._lock:
-            if connection_id not in self._connections:
-                return False
-
-            connection = self._connections[connection_id]
-            try:
-                if connection.websocket.client_state == WebSocketState.CONNECTED:
-                    await connection.websocket.send_json(message.model_dump(mode="json"))
-                    return True
-            except Exception as e:
-                logger.debug("WebSocket Send Failed", [
-                    ("Connection", connection_id[:8]),
-                    ("Error", str(e)[:50]),
-                ])
-                # Schedule disconnect (outside lock to avoid deadlock)
-                create_safe_task(self.disconnect(connection_id), "WS Disconnect")
-        return False
+            return await self._send_to_connection_unlocked(connection_id, message)
 
     async def send_to_user(self, user_id: int, message: WSMessage) -> int:
         """
@@ -274,49 +282,49 @@ class WebSocketManager:
     async def broadcast_case_created(self, case_data: Dict[str, Any]) -> int:
         """Broadcast a new case event."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.CASE_CREATED,
+            type=WSEventType.CASE_CREATED,
             data=case_data,
         ), channel="cases")
 
     async def broadcast_case_updated(self, case_data: Dict[str, Any]) -> int:
         """Broadcast a case update event."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.CASE_UPDATED,
+            type=WSEventType.CASE_UPDATED,
             data=case_data,
         ), channel="cases")
 
     async def broadcast_case_resolved(self, case_data: Dict[str, Any]) -> int:
         """Broadcast a case resolved event."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.CASE_RESOLVED,
+            type=WSEventType.CASE_RESOLVED,
             data=case_data,
         ), channel="cases")
 
     async def broadcast_ticket_created(self, ticket_data: Dict[str, Any]) -> int:
         """Broadcast a new ticket event."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.TICKET_CREATED,
+            type=WSEventType.TICKET_CREATED,
             data=ticket_data,
         ), channel="tickets")
 
     async def broadcast_ticket_claimed(self, ticket_data: Dict[str, Any]) -> int:
         """Broadcast a ticket claimed event."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.TICKET_CLAIMED,
+            type=WSEventType.TICKET_CLAIMED,
             data=ticket_data,
         ), channel="tickets")
 
     async def broadcast_ticket_closed(self, ticket_data: Dict[str, Any]) -> int:
         """Broadcast a ticket closed event."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.TICKET_CLOSED,
+            type=WSEventType.TICKET_CLOSED,
             data=ticket_data,
         ), channel="tickets")
 
     async def broadcast_appeal_submitted(self, appeal_data: Dict[str, Any]) -> int:
         """Broadcast a new appeal event."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.APPEAL_SUBMITTED,
+            type=WSEventType.APPEAL_SUBMITTED,
             data=appeal_data,
         ), channel="appeals")
 
@@ -326,51 +334,51 @@ class WebSocketManager:
         approved: bool,
     ) -> int:
         """Broadcast an appeal resolution event."""
-        event = WSEventType.APPEAL_APPROVED if approved else WSEventType.APPEAL_DENIED
+        event_type = WSEventType.APPEAL_APPROVED if approved else WSEventType.APPEAL_DENIED
         return await self.broadcast(WSMessage(
-            event=event,
+            type=event_type,
             data=appeal_data,
         ), channel="appeals")
 
     async def broadcast_mod_action(self, action_data: Dict[str, Any]) -> int:
         """Broadcast a moderation action event."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.MOD_ACTION,
+            type=WSEventType.MOD_ACTION,
             data=action_data,
         ), channel="moderation")
 
     async def broadcast_stats_updated(self, stats_data: Dict[str, Any] = None) -> int:
         """Broadcast a stats update event to trigger dashboard refresh."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.STATS_UPDATED,
+            type=WSEventType.STATS_UPDATED,
             data=stats_data or {},
         ), channel="stats")
 
     async def broadcast_bot_status(self, status_data: Dict[str, Any]) -> int:
         """Broadcast bot status update (latency, CPU, memory)."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.BOT_STATUS,
+            type=WSEventType.BOT_STATUS,
             data=status_data,
         ), channel="bot")
 
     async def broadcast_bot_log(self, log_data: Dict[str, Any]) -> int:
         """Broadcast a new log entry."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.BOT_LOG,
+            type=WSEventType.BOT_LOG,
             data=log_data,
         ), channel="bot")
 
     async def broadcast_command_executed(self, command_data: Dict[str, Any]) -> int:
         """Broadcast a command execution event."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.COMMAND_EXECUTED,
+            type=WSEventType.COMMAND_EXECUTED,
             data=command_data,
         ), channel="bot")
 
     async def broadcast_discord_event(self, event_data: Dict[str, Any]) -> int:
         """Broadcast a Discord event (ban, kick, timeout, etc.) for dashboard."""
         return await self.broadcast(WSMessage(
-            event=WSEventType.DISCORD_EVENT,
+            type=WSEventType.DISCORD_EVENT,
             data=event_data,
         ), channel="events")
 
@@ -398,7 +406,7 @@ class WebSocketManager:
             try:
                 await asyncio.sleep(self._config.ws_heartbeat_interval)
                 await self.broadcast(WSMessage(
-                    event=WSEventType.HEARTBEAT,
+                    type=WSEventType.HEARTBEAT,
                     data={"connections": len(self._connections)},
                 ))
             except asyncio.CancelledError:

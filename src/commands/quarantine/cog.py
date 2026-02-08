@@ -19,6 +19,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ, is_owner
+from src.api.services.event_logger import event_logger
 from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 
@@ -130,6 +131,14 @@ class QuarantineCog(commands.Cog):
 
                 await interaction.followup.send(embed=embed, ephemeral=True)
 
+                # Log to dashboard events
+                if isinstance(interaction.user, discord.Member):
+                    event_logger.log_quarantine(
+                        guild=guild,
+                        moderator=interaction.user,
+                        reason=reason,
+                    )
+
                 # Log to server logs
                 await log_quarantine_action(self.bot, interaction.user, guild, "activate", reason)
             else:
@@ -237,6 +246,13 @@ class QuarantineCog(commands.Cog):
                 set_footer(embed)
 
                 await interaction.followup.send(embed=embed, ephemeral=True)
+
+                # Log to dashboard events
+                if isinstance(interaction.user, discord.Member):
+                    event_logger.log_unquarantine(
+                        guild=guild,
+                        moderator=interaction.user,
+                    )
 
                 # Log to server logs
                 await log_quarantine_action(self.bot, interaction.user, guild, "lift", None)

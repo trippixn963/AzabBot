@@ -40,6 +40,7 @@ from .tasks import (
     BanSyncTask,
     WebSocketCleanupTask,
     ResolvedCaseCleanupTask,
+    LatencyCleanupTask,
 )
 
 if TYPE_CHECKING:
@@ -84,6 +85,7 @@ class MaintenanceService:
             AuthCleanupTask(bot),
             BanSyncTask(bot),
             WebSocketCleanupTask(bot),
+            LatencyCleanupTask(bot),
             # Case & validation
             ResolvedCaseCleanupTask(bot),
             CaseThreadValidationTask(bot),

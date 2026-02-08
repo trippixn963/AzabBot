@@ -15,6 +15,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors
+from src.api.services.event_logger import event_logger
 from src.core.moderation_validation import (
     validate_moderation_target,
     get_target_guild,
@@ -206,6 +207,15 @@ class MuteOpsMixin:
             if cross_server:
                 log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
             logger.tree(f"USER {action}", log_items, emoji="🔇")
+
+            # Log to dashboard events
+            event_logger.log_timeout(
+                guild=target_guild,
+                target=target_member,
+                moderator=interaction.user,
+                reason=reason,
+                duration_seconds=duration_seconds,
+            )
 
         except discord.Forbidden:
             logger.warning("Mute Failed (Forbidden)", [

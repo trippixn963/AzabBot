@@ -21,6 +21,7 @@ from src.core.constants import (
     DELETE_AFTER_LONG,
 )
 from src.core.logger import logger
+from src.api.services.event_logger import event_logger
 from src.utils.footer import set_footer
 from src.utils.snipe_blocker import block_from_snipe
 from src.utils.discord_rate_limit import log_http_error
@@ -247,6 +248,15 @@ class SpamHandlerMixin:
                 reason="Auto-spam: Sticker Spam",
                 duration_seconds=mute_duration,
                 details={"spam_type": "sticker_spam", "violation_count": violation_count},
+            )
+
+            # Log to dashboard events
+            event_logger.log_timeout(
+                guild=message.guild,
+                target=member,
+                moderator=None,
+                reason="Auto-spam: Sticker Spam",
+                duration_seconds=mute_duration,
             )
 
             # Open case
@@ -479,6 +489,15 @@ class SpamHandlerMixin:
                 details={"spam_type": spam_type, "violation_count": violation_count},
             )
 
+            # Log to dashboard events
+            event_logger.log_timeout(
+                guild=member.guild,
+                target=member,
+                moderator=None,
+                reason=f"Auto-spam: {spam_type}",
+                duration_seconds=duration,
+            )
+
             case_info = await self._open_spam_case(member, spam_type, duration, violation_count)
 
             embed = discord.Embed(
@@ -535,6 +554,15 @@ class SpamHandlerMixin:
                 ("Violation", f"#{violation_count}"),
                 ("DM Sent", "Yes" if dm_sent else "No (DMs disabled)"),
             ], emoji="🔇")
+
+            # Log to dashboard events
+            event_logger.log_timeout(
+                guild=member.guild,
+                target=member,
+                moderator=None,  # Auto-action
+                reason=f"Auto-mute: {spam_type} (violation #{violation_count})",
+                duration_seconds=duration_minutes * 60 if duration_minutes else None,
+            )
 
         except discord.Forbidden:
             logger.warning("Auto-Mute Permission Denied", [

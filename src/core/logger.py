@@ -643,6 +643,9 @@ class Logger:
         # Also send to dedicated error webhook
         self._send_error_webhook(title, items, emoji)
 
+        # Notify WebSocket log callbacks
+        self._notify_log_callbacks("ERROR", title, formatted)
+
     # =========================================================================
     # Public Methods - Log Levels
     # =========================================================================
@@ -774,6 +777,9 @@ class Logger:
         # Send to live logs Discord webhook
         formatted = self._format_tree_for_live(title, items, emoji)
         self._send_live_log(formatted)
+
+        # Notify WebSocket log callbacks
+        self._notify_log_callbacks("INFO", title, formatted)
 
     def tree_nested(
         self,

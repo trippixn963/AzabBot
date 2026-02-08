@@ -10,11 +10,10 @@ Server: discord.gg/syria
 
 import sqlite3
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
-from zoneinfo import ZoneInfo
 
 from src.core.logger import logger
 
@@ -22,8 +21,6 @@ from src.core.logger import logger
 # =============================================================================
 # Constants
 # =============================================================================
-
-TIMEZONE = ZoneInfo("America/New_York")
 DB_PATH = Path("data/logs.db")
 DEFAULT_RETENTION_DAYS = 7
 MAX_QUERY_LIMIT = 500
@@ -164,7 +161,8 @@ class LogStorage:
         Returns:
             The ID of the inserted log entry.
         """
-        timestamp = datetime.now(TIMEZONE).replace(tzinfo=None).isoformat()
+        # Store as UTC so frontend can convert to user's local time
+        timestamp = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
         with self._lock:
             conn = self._get_connection()
@@ -189,7 +187,7 @@ class LogStorage:
         Returns:
             Number of deleted logs.
         """
-        cutoff = datetime.now(TIMEZONE) - timedelta(days=self._retention_days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=self._retention_days)
         cutoff_str = cutoff.replace(tzinfo=None).isoformat()
 
         with self._lock:
@@ -333,7 +331,7 @@ class LogStorage:
                 by_module = {row["module"]: row["count"] for row in cursor.fetchall()}
 
                 # Recent activity (last 24h by hour)
-                yesterday = (datetime.now(TIMEZONE) - timedelta(days=1)).replace(tzinfo=None).isoformat()
+                yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).replace(tzinfo=None).isoformat()
                 cursor.execute("""
                     SELECT strftime('%H', timestamp) as hour, COUNT(*) as count
                     FROM logs

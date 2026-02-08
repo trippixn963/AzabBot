@@ -19,6 +19,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config, has_mod_role, EmbedColors
+from src.api.services.event_logger import event_logger
 from src.core.database import get_db
 from src.core.moderation_validation import (
     validate_moderation_target,
@@ -166,6 +167,16 @@ class WarnCog(commands.Cog):
             if cross_server:
                 log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
             logger.tree("USER WARNED", log_items, emoji="👮")
+
+            # Log to dashboard events
+            event_logger.log_warn(
+                guild=target_guild,
+                target=user,
+                moderator=interaction.user,
+                reason=reason,
+                active_warns=active_warns,
+                total_warns=total_warns,
+            )
 
             # Log to Case Forum (creates per-action case)
             case_info = None

@@ -481,6 +481,123 @@ class EventLogger:
             details={"old_nick": old_nick, "new_nick": new_nick},
         )
 
+    @_safe_log
+    def log_warn(
+        self,
+        guild: discord.Guild,
+        target: Union[discord.User, discord.Member],
+        moderator: discord.Member,
+        reason: Optional[str] = None,
+        active_warns: Optional[int] = None,
+        total_warns: Optional[int] = None,
+    ) -> int:
+        """Log a warning event."""
+        fields = [
+            ("Target", _user_str(target)),
+            ("Moderator", _user_str(moderator)),
+        ]
+        if reason:
+            fields.append(("Reason", _truncate(reason, 80)))
+        if active_warns is not None:
+            fields.append(("Active Warnings", str(active_warns)))
+
+        details = {}
+        if active_warns is not None:
+            details["active_warns"] = active_warns
+        if total_warns is not None:
+            details["total_warns"] = total_warns
+
+        return self._log(
+            title="USER WARNED",
+            emoji="⚠️",
+            fields=fields,
+            event_type=EventType.MEMBER_WARN,
+            guild_id=guild.id,
+            actor_id=moderator.id,
+            actor_name=_get_display_name(moderator),
+            actor_avatar=_get_avatar_url(moderator),
+            target_id=target.id,
+            target_name=_get_display_name(target),
+            target_avatar=_get_avatar_url(target),
+            reason=reason,
+            details=details if details else None,
+        )
+
+    @_safe_log
+    def log_forbid(
+        self,
+        guild: discord.Guild,
+        target: discord.Member,
+        moderator: discord.Member,
+        restrictions: list,
+        reason: Optional[str] = None,
+        duration: Optional[str] = None,
+    ) -> int:
+        """Log a forbid (restriction) event."""
+        fields = [
+            ("Target", _user_str(target)),
+            ("Moderator", _user_str(moderator)),
+            ("Restrictions", ", ".join(restrictions)),
+        ]
+        if duration:
+            fields.append(("Duration", duration))
+        if reason:
+            fields.append(("Reason", _truncate(reason, 80)))
+
+        details = {"restrictions": restrictions}
+        if duration:
+            details["duration"] = duration
+
+        return self._log(
+            title="USER RESTRICTED",
+            emoji="🚫",
+            fields=fields,
+            event_type=EventType.MEMBER_FORBID,
+            guild_id=guild.id,
+            actor_id=moderator.id,
+            actor_name=_get_display_name(moderator),
+            actor_avatar=_get_avatar_url(moderator),
+            target_id=target.id,
+            target_name=_get_display_name(target),
+            target_avatar=_get_avatar_url(target),
+            reason=reason,
+            details=details,
+        )
+
+    @_safe_log
+    def log_unforbid(
+        self,
+        guild: discord.Guild,
+        target: discord.Member,
+        moderator: discord.Member,
+        restrictions: list,
+        reason: Optional[str] = None,
+    ) -> int:
+        """Log an unforbid (restriction removal) event."""
+        fields = [
+            ("Target", _user_str(target)),
+            ("Moderator", _user_str(moderator)),
+            ("Removed", ", ".join(restrictions)),
+        ]
+        if reason:
+            fields.append(("Reason", _truncate(reason, 80)))
+
+        return self._log(
+            title="RESTRICTIONS REMOVED",
+            emoji="✅",
+            fields=fields,
+            event_type=EventType.MEMBER_UNFORBID,
+            guild_id=guild.id,
+            actor_id=moderator.id,
+            actor_name=_get_display_name(moderator),
+            actor_avatar=_get_avatar_url(moderator),
+            target_id=target.id,
+            target_name=_get_display_name(target),
+            target_avatar=_get_avatar_url(target),
+            reason=reason,
+            details={"restrictions": restrictions},
+        )
+
     # =========================================================================
     # Message Events
     # =========================================================================
@@ -558,6 +675,45 @@ class EventLogger:
             channel_id=channel.id,
             channel_name=channel.name,
             details={"count": count},
+        )
+
+    @_safe_log
+    def log_message_edit(
+        self,
+        guild: discord.Guild,
+        channel: discord.TextChannel,
+        author: Union[discord.User, discord.Member],
+        before_content: Optional[str] = None,
+        after_content: Optional[str] = None,
+    ) -> int:
+        """Log a message edit event."""
+        fields = [
+            ("Author", _user_str(author)),
+            ("Channel", f"#{channel.name}"),
+        ]
+        if before_content:
+            fields.append(("Before", _truncate(before_content, 40)))
+        if after_content:
+            fields.append(("After", _truncate(after_content, 40)))
+
+        details = {}
+        if before_content:
+            details["before"] = before_content[:500]
+        if after_content:
+            details["after"] = after_content[:500]
+
+        return self._log(
+            title="MESSAGE EDITED",
+            emoji="✏️",
+            fields=fields,
+            event_type=EventType.MESSAGE_EDIT,
+            guild_id=guild.id,
+            target_id=author.id,
+            target_name=_get_display_name(author),
+            target_avatar=_get_avatar_url(author),
+            channel_id=channel.id,
+            channel_name=channel.name,
+            details=details if details else None,
         )
 
     # =========================================================================
@@ -723,6 +879,108 @@ class EventLogger:
             target_id=bot.id,
             target_name=_get_display_name(bot),
             target_avatar=_get_avatar_url(bot),
+        )
+
+    @_safe_log
+    def log_lockdown(
+        self,
+        guild: discord.Guild,
+        moderator: discord.Member,
+        channel_count: int,
+        reason: Optional[str] = None,
+    ) -> int:
+        """Log a server lockdown event."""
+        fields = [
+            ("Moderator", _user_str(moderator)),
+            ("Channels Locked", str(channel_count)),
+        ]
+        if reason:
+            fields.append(("Reason", _truncate(reason, 80)))
+
+        return self._log(
+            title="SERVER LOCKED",
+            emoji="🔒",
+            fields=fields,
+            event_type=EventType.SERVER_LOCKDOWN,
+            guild_id=guild.id,
+            actor_id=moderator.id,
+            actor_name=_get_display_name(moderator),
+            actor_avatar=_get_avatar_url(moderator),
+            reason=reason,
+            details={"channel_count": channel_count},
+        )
+
+    @_safe_log
+    def log_unlock(
+        self,
+        guild: discord.Guild,
+        moderator: discord.Member,
+        channel_count: int,
+    ) -> int:
+        """Log a server unlock event."""
+        fields = [
+            ("Moderator", _user_str(moderator)),
+            ("Channels Unlocked", str(channel_count)),
+        ]
+
+        return self._log(
+            title="SERVER UNLOCKED",
+            emoji="🔓",
+            fields=fields,
+            event_type=EventType.SERVER_UNLOCK,
+            guild_id=guild.id,
+            actor_id=moderator.id,
+            actor_name=_get_display_name(moderator),
+            actor_avatar=_get_avatar_url(moderator),
+            details={"channel_count": channel_count},
+        )
+
+    @_safe_log
+    def log_quarantine(
+        self,
+        guild: discord.Guild,
+        moderator: discord.Member,
+        reason: Optional[str] = None,
+    ) -> int:
+        """Log a quarantine activation event."""
+        fields = [
+            ("Moderator", _user_str(moderator)),
+        ]
+        if reason:
+            fields.append(("Reason", _truncate(reason, 80)))
+
+        return self._log(
+            title="QUARANTINE ACTIVATED",
+            emoji="🛡️",
+            fields=fields,
+            event_type=EventType.SERVER_QUARANTINE,
+            guild_id=guild.id,
+            actor_id=moderator.id,
+            actor_name=_get_display_name(moderator),
+            actor_avatar=_get_avatar_url(moderator),
+            reason=reason,
+        )
+
+    @_safe_log
+    def log_unquarantine(
+        self,
+        guild: discord.Guild,
+        moderator: discord.Member,
+    ) -> int:
+        """Log a quarantine lift event."""
+        fields = [
+            ("Moderator", _user_str(moderator)),
+        ]
+
+        return self._log(
+            title="QUARANTINE LIFTED",
+            emoji="✅",
+            fields=fields,
+            event_type=EventType.SERVER_UNQUARANTINE,
+            guild_id=guild.id,
+            actor_id=moderator.id,
+            actor_name=_get_display_name(moderator),
+            actor_avatar=_get_avatar_url(moderator),
         )
 
     # =========================================================================

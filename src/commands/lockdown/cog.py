@@ -19,6 +19,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
+from src.api.services.event_logger import event_logger
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
@@ -176,6 +177,15 @@ class LockdownCog(commands.Cog):
                 ("Failed", str(result.failed_count)),
                 ("Reason", reason or "None"),
             ], emoji="🔒")
+
+            # Log to dashboard events
+            if isinstance(interaction.user, discord.Member):
+                event_logger.log_lockdown(
+                    guild=guild,
+                    moderator=interaction.user,
+                    channel_count=result.success_count,
+                    reason=reason,
+                )
 
             # Log to server logs service
             if self.bot.logging_service and self.bot.logging_service.enabled:
@@ -339,6 +349,14 @@ class LockdownCog(commands.Cog):
                 ("Failed", str(result.failed_count)),
                 ("Duration", f"{int(duration_seconds)}s"),
             ], emoji="🔓")
+
+            # Log to dashboard events
+            if isinstance(interaction.user, discord.Member):
+                event_logger.log_unlock(
+                    guild=guild,
+                    moderator=interaction.user,
+                    channel_count=result.success_count,
+                )
 
             # Log to server logs service
             if self.bot.logging_service and self.bot.logging_service.enabled:

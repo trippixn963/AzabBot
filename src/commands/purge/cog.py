@@ -19,6 +19,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config, has_mod_role, EmbedColors, NY_TZ
+from src.api.services.event_logger import event_logger
 from src.core.constants import MAX_PURGE_AMOUNT, BULK_DELETE_LIMIT
 from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
@@ -222,6 +223,15 @@ class PurgeCog(commands.Cog):
             ("Scanned", str(scanned)),
             ("Reason", reason or "None"),
         ], emoji="🗑️")
+
+        # Log to dashboard events
+        if total_deleted > 0 and isinstance(interaction.user, discord.Member):
+            event_logger.log_bulk_delete(
+                guild=interaction.guild,
+                channel=channel,
+                count=total_deleted,
+                moderator=interaction.user,
+            )
 
         # Log to server logs (embed)
         await log_purge_usage(

@@ -49,6 +49,9 @@ class EventType:
     MEMBER_ROLE_ADD = "member.role_add"
     MEMBER_ROLE_REMOVE = "member.role_remove"
     MEMBER_NICK_CHANGE = "member.nick_change"
+    MEMBER_WARN = "member.warn"
+    MEMBER_FORBID = "member.forbid"
+    MEMBER_UNFORBID = "member.unforbid"
 
     # Message events
     MESSAGE_DELETE = "message.delete"
@@ -72,6 +75,10 @@ class EventType:
 
     # Server events
     SERVER_UPDATE = "server.update"
+    SERVER_LOCKDOWN = "server.lockdown"
+    SERVER_UNLOCK = "server.unlock"
+    SERVER_QUARANTINE = "server.quarantine"
+    SERVER_UNQUARANTINE = "server.unquarantine"
 
     # Bot events
     BOT_ADD = "bot.add"
@@ -95,7 +102,8 @@ class EventType:
                 cls.MEMBER_TIMEOUT, cls.MEMBER_TIMEOUT_REMOVE,
                 cls.MEMBER_JOIN, cls.MEMBER_LEAVE,
                 cls.MEMBER_ROLE_ADD, cls.MEMBER_ROLE_REMOVE,
-                cls.MEMBER_NICK_CHANGE,
+                cls.MEMBER_NICK_CHANGE, cls.MEMBER_WARN,
+                cls.MEMBER_FORBID, cls.MEMBER_UNFORBID,
             ],
             "message": [
                 cls.MESSAGE_DELETE, cls.MESSAGE_BULK_DELETE, cls.MESSAGE_EDIT,
@@ -112,6 +120,8 @@ class EventType:
             "server": [
                 cls.SERVER_UPDATE, cls.BOT_ADD,
                 cls.WEBHOOK_CREATE, cls.WEBHOOK_DELETE,
+                cls.SERVER_LOCKDOWN, cls.SERVER_UNLOCK,
+                cls.SERVER_QUARANTINE, cls.SERVER_UNQUARANTINE,
             ],
         }
 
@@ -150,7 +160,7 @@ class StoredEvent:
         """Convert to API response dict."""
         return {
             "id": self.id,
-            "timestamp": self.timestamp.isoformat() + "Z",
+            "timestamp": self.timestamp.isoformat(),
             "event_type": self.event_type,
             "guild_id": str(self.guild_id),
             "actor": {

@@ -16,6 +16,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors
+from src.api.services.event_logger import event_logger
 from src.core.moderation_validation import get_target_guild, is_cross_server
 from src.utils.footer import set_footer
 from src.views import CaseButtonView
@@ -131,6 +132,13 @@ class UnmuteOpsMixin:
             if cross_server:
                 log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
             logger.tree("USER UNMUTED", log_items, emoji="🔊")
+
+            # Log to dashboard events
+            event_logger.log_timeout_remove(
+                guild=target_guild,
+                target=target_member,
+                moderator=interaction.user,
+            )
 
         except discord.Forbidden:
             logger.warning("Unmute Failed (Forbidden)", [

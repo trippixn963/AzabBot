@@ -599,16 +599,15 @@ class MessageEvents(HelpersMixin, commands.Cog):
             # Add to front of deque (most recent first)
             self.bot._editsnipe_cache[channel_id].appendleft(edit_data)
 
-        # Tree logging for message edits
-        before_preview = (before.content[:30] + "...") if len(before.content) > 30 else (before.content or "(empty)")
-        after_preview = (after.content[:30] + "...") if len(after.content) > 30 else (after.content or "(empty)")
-
-        logger.tree("MESSAGE EDITED", [
-            ("Author", f"{before.author} ({before.author.id})"),
-            ("Channel", f"#{before.channel.name}" if hasattr(before.channel, 'name') else "DM"),
-            ("Before", before_preview),
-            ("After", after_preview),
-        ], emoji="✏️")
+        # Log to dashboard events (handles console logging too)
+        if before.guild and hasattr(before.channel, 'name'):
+            event_logger.log_message_edit(
+                guild=before.guild,
+                channel=before.channel,
+                author=before.author,
+                before_content=before.content,
+                after_content=after.content,
+            )
 
         # -----------------------------------------------------------------
         # Logging Service: Message Edit

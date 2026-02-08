@@ -306,6 +306,21 @@ class AzabBot(commands.Bot):
         ], emoji="🔥")
 
     # =========================================================================
+    # Health Tracking
+    # =========================================================================
+
+    async def on_disconnect(self) -> None:
+        """Track disconnection for health monitoring."""
+        from src.api.services.health_tracker import get_health_tracker
+        health_tracker = get_health_tracker()
+        health_tracker.record_reconnect()
+        logger.debug("Bot Disconnected", [("Reconnects", str(health_tracker.reconnect_count))])
+
+    async def on_resumed(self) -> None:
+        """Track resume after disconnect."""
+        logger.info("Bot Connection Resumed")
+
+    # =========================================================================
     # Guild Protection
     # =========================================================================
 

@@ -21,7 +21,8 @@ from src.api.services.auth import get_auth_service
 from src.api.models.base import WSMessage, WSEventType
 
 # Timeout for receiving messages (seconds)
-RECEIVE_TIMEOUT = 60
+# Short timeout to detect dead connections quickly
+RECEIVE_TIMEOUT = 15
 
 
 router = APIRouter(tags=["WebSocket"])
@@ -83,7 +84,7 @@ async def websocket_endpoint(
                 # Send a ping to check if connection is alive
                 try:
                     await ws_manager._send_to_connection(connection_id, WSMessage(
-                        event=WSEventType.HEARTBEAT,
+                        type=WSEventType.HEARTBEAT,
                         data={},
                     ))
                     continue
@@ -98,7 +99,7 @@ async def websocket_endpoint(
                 if channel:
                     await ws_manager.subscribe(connection_id, channel)
                     await ws_manager._send_to_connection(connection_id, WSMessage(
-                        event=WSEventType.SUBSCRIBED,
+                        type=WSEventType.SUBSCRIBED,
                         data={"channel": channel},
                     ))
 
@@ -107,7 +108,7 @@ async def websocket_endpoint(
                 if channel:
                     await ws_manager.unsubscribe(connection_id, channel)
                     await ws_manager._send_to_connection(connection_id, WSMessage(
-                        event=WSEventType.UNSUBSCRIBED,
+                        type=WSEventType.UNSUBSCRIBED,
                         data={"channel": channel},
                     ))
 
@@ -120,19 +121,19 @@ async def websocket_endpoint(
                     if payload:
                         await ws_manager.authenticate(connection_id, payload.sub)
                         await ws_manager._send_to_connection(connection_id, WSMessage(
-                            event=WSEventType.AUTHENTICATED,
+                            type=WSEventType.AUTHENTICATED,
                             data={"user_id": payload.sub},
                         ))
                     else:
                         await ws_manager._send_to_connection(connection_id, WSMessage(
-                            event=WSEventType.ERROR,
+                            type=WSEventType.ERROR,
                             data={"message": "Invalid token"},
                         ))
 
             elif action == "ping":
                 # Client ping - respond with pong
                 await ws_manager._send_to_connection(connection_id, WSMessage(
-                    event=WSEventType.PONG,
+                    type=WSEventType.PONG,
                     data={},
                 ))
 

@@ -18,6 +18,7 @@ from discord import app_commands
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
+from src.api.services.event_logger import event_logger
 from src.core.database import get_db
 from src.core.moderation_validation import (
     validate_evidence,
@@ -177,6 +178,14 @@ class UnbanOpsMixin:
         if cross_server:
             log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
         logger.tree("USER UNBANNED", log_items, emoji="🔓")
+
+        # Log to dashboard events
+        event_logger.log_unban(
+            guild=target_guild,
+            target=target_user,
+            moderator=interaction.user,
+            reason=reason,
+        )
 
         # -----------------------------------------------------------------
         # Log to Case Forum (finds active ban case and resolves it)

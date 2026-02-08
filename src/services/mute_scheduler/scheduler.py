@@ -17,6 +17,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
+from src.api.services.event_logger import event_logger
 from src.core.database import get_db
 from src.utils.footer import set_footer
 from src.views import CASE_EMOJI
@@ -362,6 +363,13 @@ class MuteScheduler:
             ("Guild", guild.name),
             ("Reason", "Mute duration expired"),
         ], emoji="⏰")
+
+        # Log to dashboard events
+        event_logger.log_timeout_remove(
+            guild=guild,
+            target=member,
+            moderator=None,  # Auto-action
+        )
 
         # Log to case forum (includes guild_id for per-action case lookup)
         if self.bot.case_log_service:

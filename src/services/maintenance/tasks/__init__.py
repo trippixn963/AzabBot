@@ -29,6 +29,7 @@ from .auth_cleanup import AuthCleanupTask
 from .ban_sync import BanSyncTask
 from .websocket_cleanup import WebSocketCleanupTask
 from .resolved_case_cleanup import ResolvedCaseCleanupTask
+from .latency_cleanup import LatencyCleanupTask
 
 __all__ = [
     "GenderRoleTask",
@@ -52,4 +53,5 @@ __all__ = [
     "BanSyncTask",
     "WebSocketCleanupTask",
     "ResolvedCaseCleanupTask",
+    "LatencyCleanupTask",
 ]

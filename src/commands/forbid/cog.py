@@ -18,6 +18,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ, has_mod_role
+from src.api.services.event_logger import event_logger
 from src.core.database import get_db
 from src.core.moderation_validation import (
     validate_moderation_target,
@@ -274,6 +275,17 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 log_items.insert(2, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
             logger.tree("USER FORBIDDEN", log_items, emoji="🚫")
 
+            # Log to dashboard events
+            if applied:
+                event_logger.log_forbid(
+                    guild=target_guild,
+                    target=user,
+                    moderator=moderator,
+                    restrictions=applied,
+                    reason=reason,
+                    duration=duration_display,
+                )
+
             # Create case log FIRST (need case_info for public embed)
             case_info = None
             if applied and self.bot.case_log_service:
@@ -488,6 +500,16 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             if cross_server:
                 log_items.insert(2, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
             logger.tree("USER UNFORBIDDEN", log_items, emoji="✅")
+
+            # Log to dashboard events
+            if removed:
+                event_logger.log_unforbid(
+                    guild=target_guild,
+                    target=user,
+                    moderator=moderator,
+                    restrictions=removed,
+                    reason=reason,
+                )
 
             # Create case log FIRST (need case_info for public embed)
             case_info = None

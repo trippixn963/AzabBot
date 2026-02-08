@@ -15,6 +15,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import is_owner, has_mod_role, EmbedColors
+from src.api.services.event_logger import event_logger
 from src.core.moderation_validation import (
     validate_moderation_target,
     get_target_guild,
@@ -300,6 +301,14 @@ class BanOpsMixin:
         if cross_server:
             log_items.insert(2, ("Cross-Server", f"From {interaction.guild.name}"))
         logger.tree(log_type, log_items, emoji="🔨")
+
+        # Log to dashboard events
+        event_logger.log_ban(
+            guild=target_guild,
+            target=user,
+            moderator=interaction.user,
+            reason=reason,
+        )
 
         # Server logs (uses case_id from earlier logging)
         if self.bot.logging_service and self.bot.logging_service.enabled:

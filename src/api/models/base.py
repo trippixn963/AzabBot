@@ -171,6 +171,9 @@ class WSEventType:
     BOT_LOG = "bot_log"
     COMMAND_EXECUTED = "command_executed"
 
+    # Discord events (for events panel)
+    DISCORD_EVENT = "discord_event"
+
 
 __all__ = [
     "APIResponse",

@@ -18,6 +18,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
+from src.api.services.event_logger import event_logger
 from src.core.constants import (
     CASE_LOG_TIMEOUT,
     DELETE_AFTER_SHORT,
@@ -143,6 +144,15 @@ class HelpersMixin:
                         ("Violations", f"{violation_count} in {PRISONER_PING_WINDOW}s"),
                         ("Timeout", "1 hour"),
                     ], emoji="⏰")
+
+                    # Log to dashboard events
+                    event_logger.log_timeout(
+                        guild=message.guild,
+                        target=message.author,
+                        moderator=None,
+                        reason=f"Ping spam in prison ({violation_count} pings in {PRISONER_PING_WINDOW}s)",
+                        duration_seconds=3600,
+                    )
 
                     # NOTE: Automated mutes don't create case forum threads (too verbose)
                     # They are logged to moderation_audit_log instead (see below)
@@ -399,6 +409,15 @@ class HelpersMixin:
             ("Mute Applied", "Yes" if mute_applied else "No"),
             ("Duration", "Permanent"),
         ], emoji="🔗")
+
+        # Log to dashboard events
+        if mute_applied:
+            event_logger.log_timeout(
+                guild=guild,
+                target=member,
+                moderator=None,  # Auto-action
+                reason="Auto-mute: Advertising external Discord server",
+            )
 
         # -----------------------------------------------------------------
         # 3. Record mute in database
