@@ -514,7 +514,11 @@ class AzabBot(commands.Bot):
             ], emoji="🚀")
 
         except Exception as e:
-            logger.error("Service Initialization Failed", [("Error", str(e))])
+            import traceback
+            logger.error("Service Initialization Failed", [
+                ("Error", str(e)),
+                ("Traceback", traceback.format_exc()[:500]),
+            ])
 
     # =========================================================================
     # Helper Methods

@@ -88,7 +88,7 @@ class MuteScheduler:
     @property
     def _bot_user_id(self) -> int:
         """Get bot user ID with null safety."""
-        return self._bot_user_id if self.bot.user else 0
+        return self.bot.user.id if self.bot.user else 0
 
     # =========================================================================
     # Lifecycle Management

@@ -3,6 +3,9 @@ AzabBot - Anti-Spam Raid Detection
 ==================================
 
 Enhanced raid detection and handling.
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
 """
 
 import asyncio

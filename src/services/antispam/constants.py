@@ -3,6 +3,9 @@ AzabBot - Anti-Spam Constants
 =============================
 
 All thresholds, patterns, limits, and configuration for spam detection.
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
 """
 
 import re

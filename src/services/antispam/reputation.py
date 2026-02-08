@@ -3,6 +3,9 @@ AzabBot - Anti-Spam Reputation System
 =====================================
 
 User reputation tracking for dynamic spam thresholds.
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
 """
 
 import time

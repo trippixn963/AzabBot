@@ -59,6 +59,7 @@ from .constants import (
     STICKER_SPAM_LIMIT,
     STICKER_SPAM_TIME_WINDOW,
     VIOLATION_DECAY_TIME,
+    WEBHOOK_MESSAGE_LIMIT,
     WEBHOOK_TIME_WINDOW,
 )
 from .detectors import (
@@ -664,7 +665,6 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
         state.messages = [t for t in state.messages if t > cutoff]
         state.messages.append(now)
 
-        from .constants import WEBHOOK_MESSAGE_LIMIT
         return len(state.messages) > WEBHOOK_MESSAGE_LIMIT
 
     # =========================================================================

@@ -366,6 +366,9 @@ class MemberEvents(commands.Cog):
         if self.bot.prisoner_service:
             await self.bot.prisoner_service.cleanup_for_user(member.id)
 
+        # Auto-close any open tickets where this user is the OP
+        await self._handle_ticket_op_left(member)
+
         # Delete linked messages (alliance channel posts)
         await self._delete_linked_messages(member)
 
@@ -451,6 +454,11 @@ class MemberEvents(commands.Cog):
                     ("ID", str(member.id)),
                     ("Error", str(e)[:100]),
                 ])
+
+    async def _handle_ticket_op_left(self, member: discord.Member) -> None:
+        """Auto-close any open tickets where the leaving member is the opener."""
+        if self.bot.ticket_service and self.bot.ticket_service.enabled:
+            await self.bot.ticket_service.handle_op_left(member)
 
     async def _delete_linked_messages(self, member: discord.Member) -> None:
         """Delete all messages linked to a leaving member."""

@@ -3,6 +3,9 @@ AzabBot - Anti-Spam Data Models
 ===============================
 
 Dataclasses for tracking message records, user states, and join records.
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
 """
 
 from dataclasses import dataclass, field

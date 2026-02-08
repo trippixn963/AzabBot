@@ -281,7 +281,10 @@ class AuthService:
     def clear_failed_logins(self, discord_id: int) -> None:
         """Clear failed login tracking after successful login."""
         if discord_id in self._failed_logins:
-            del self._failed_logins[discord_id]
+            try:
+                del self._failed_logins[discord_id]
+            except KeyError:
+                pass  # Already removed by another coroutine
 
     # =========================================================================
     # Discord User Fetch

@@ -196,6 +196,148 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         return recovered
 
     # =========================================================================
+    # Event Handlers (called by cogs)
+    # =========================================================================
+
+    async def handle_op_left(self, member: discord.Member) -> int:
+        """
+        Handle when a ticket opener leaves the server.
+
+        Auto-closes any open/claimed tickets and notifies the claimer
+        (if claimed) or all ticket staff (if unclaimed).
+
+        Args:
+            member: The member who left the server
+
+        Returns:
+            Number of tickets closed
+        """
+        if not self.enabled:
+            return 0
+
+        # Get all tickets for this user in this guild
+        user_tickets = self.db.get_user_tickets(member.id, member.guild.id)
+        if not user_tickets:
+            return 0
+
+        # Filter to only open or claimed tickets
+        open_tickets = [t for t in user_tickets if t["status"] in ("open", "claimed")]
+        if not open_tickets:
+            return 0
+
+        closed_count = 0
+        notified_users = set()
+
+        for ticket in open_tickets:
+            try:
+                # Close the ticket using bot as the closer
+                success, _ = await self.close_ticket(
+                    ticket_id=ticket["ticket_id"],
+                    closed_by=member.guild.me,
+                    reason="Ticket opener left the server",
+                    ticket=ticket,
+                )
+
+                if not success:
+                    continue
+
+                closed_count += 1
+
+                # Determine who to notify
+                users_to_notify = []
+
+                if ticket["status"] == "claimed" and ticket.get("claimed_by"):
+                    # Ticket was claimed - notify the claimer
+                    claimer = member.guild.get_member(ticket["claimed_by"])
+                    if claimer:
+                        users_to_notify.append(claimer)
+                else:
+                    # Ticket was unclaimed - notify all ticket staff
+                    if self.config.ticket_support_user_ids:
+                        for user_id in self.config.ticket_support_user_ids:
+                            staff = member.guild.get_member(user_id)
+                            if staff:
+                                users_to_notify.append(staff)
+
+                    if self.config.ticket_partnership_user_id:
+                        staff = member.guild.get_member(self.config.ticket_partnership_user_id)
+                        if staff and staff not in users_to_notify:
+                            users_to_notify.append(staff)
+
+                    if self.config.ticket_suggestion_user_id:
+                        staff = member.guild.get_member(self.config.ticket_suggestion_user_id)
+                        if staff and staff not in users_to_notify:
+                            users_to_notify.append(staff)
+
+                # Send DM notifications to staff
+                for staff in users_to_notify:
+                    if staff.id in notified_users:
+                        continue
+
+                    await self._notify_staff_op_left(staff, ticket, member)
+                    notified_users.add(staff.id)
+
+            except Exception as e:
+                logger.error("Ticket Auto-Close Failed (OP Left)", [
+                    ("Ticket", ticket["ticket_id"]),
+                    ("User", str(member.id)),
+                    ("Error", str(e)[:100]),
+                ])
+
+        if closed_count > 0:
+            logger.tree("TICKETS AUTO-CLOSED (OP Left)", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Tickets Closed", str(closed_count)),
+                ("Staff Notified", str(len(notified_users))),
+            ], emoji="🎫")
+
+        return closed_count
+
+    async def _notify_staff_op_left(
+        self,
+        staff: discord.Member,
+        ticket: dict,
+        member: discord.Member,
+    ) -> bool:
+        """Send DM notification to staff that ticket OP left."""
+        try:
+            from src.core.config import EmbedColors, NY_TZ
+            from src.utils.footer import set_footer
+
+            embed = discord.Embed(
+                title="🎫 Ticket Auto-Closed",
+                description=(
+                    "A ticket has been automatically closed because the "
+                    "opener left the server."
+                ),
+                color=EmbedColors.WARNING,
+                timestamp=datetime.now(NY_TZ),
+            )
+            embed.add_field(
+                name="Ticket",
+                value=f"`{ticket['ticket_id']}` - {ticket['category'].title()}",
+                inline=True,
+            )
+            embed.add_field(
+                name="Opener",
+                value=f"{member.name} (`{member.id}`)",
+                inline=True,
+            )
+            embed.add_field(
+                name="Subject",
+                value=ticket.get("subject", "No subject")[:100],
+                inline=False,
+            )
+            status_text = "Was claimed by you" if ticket["status"] == "claimed" else "Was unclaimed"
+            embed.add_field(name="Status", value=status_text, inline=True)
+            set_footer(embed)
+
+            await staff.send(embed=embed)
+            return True
+        except (discord.Forbidden, discord.HTTPException):
+            return False
+
+    # =========================================================================
     # Activity Tracking & Message Storage
     # =========================================================================
 
@@ -414,8 +556,11 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         async with self._cooldowns_lock:
             keys_to_remove = [k for k in self._claim_reminder_cooldowns if k.startswith(prefix)]
             for key in keys_to_remove:
-                del self._claim_reminder_cooldowns[key]
-                cleared += 1
+                try:
+                    del self._claim_reminder_cooldowns[key]
+                    cleared += 1
+                except KeyError:
+                    pass  # Already removed by another coroutine
 
         if cleared > 0:
             logger.debug("Claim Cooldowns Cleared", [("Ticket", ticket_id), ("Cleared", str(cleared))])

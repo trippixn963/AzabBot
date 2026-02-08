@@ -145,7 +145,10 @@ class WebSocketManager:
             if connection.user_id and connection.user_id in self._user_connections:
                 self._user_connections[connection.user_id].discard(connection_id)
                 if not self._user_connections[connection.user_id]:
-                    del self._user_connections[connection.user_id]
+                    try:
+                        del self._user_connections[connection.user_id]
+                    except KeyError:
+                        pass  # Already removed by another coroutine
 
             logger.tree("WebSocket Disconnected", [
                 ("Connection ID", connection_id[:8]),

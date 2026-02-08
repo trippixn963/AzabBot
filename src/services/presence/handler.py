@@ -20,8 +20,8 @@ from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
 from src.core.constants import PRESENCE_UPDATE_INTERVAL, PROMO_DURATION_MINUTES, PRESENCE_RETRY_DELAY
 
-# Import from shared unified presence system
-from shared.services.presence import BasePresenceHandler
+# Import from local presence base module
+from src.services.presence.base import BasePresenceHandler
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
