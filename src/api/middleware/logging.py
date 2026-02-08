@@ -87,11 +87,9 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             # Log error
             duration_ms = (time.time() - start_time) * 1000
-            logger.error("API Error", [
+            logger.error(f"API Error {method} {path[:30]}", [
                 ("ID", request_id),
-                ("Method", method),
-                ("Path", path[:50]),
-                ("Error", str(e)[:50]),
+                ("Error", str(e)[:100]),
                 ("Duration", f"{duration_ms:.0f}ms"),
             ])
             raise
@@ -113,14 +111,14 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         ]
 
         if status >= 500:
-            # Server errors - always log as error
-            logger.error("API Response", log_data)
+            # Server errors - log with path for context
+            logger.error(f"API {status} {method} {path[:30]}", log_data)
         elif status in (401, 403):
-            # Auth failures - log as warning (potential security concern)
-            logger.warning("API Response", log_data)
+            # Auth failures - log with path for context
+            logger.warning(f"API {status} {method} {path[:30]}", log_data)
         else:
-            # Everything else (2xx, 3xx, 404, 400, etc.) - debug level
-            logger.debug("API Response", log_data)
+            # Everything else - debug only (won't appear in dashboard)
+            logger.debug(f"API {status} {method} {path[:30]}", log_data)
 
         return response
 
