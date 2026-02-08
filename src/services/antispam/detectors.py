@@ -257,3 +257,44 @@ def hash_attachment(attachment: discord.Attachment) -> str:
     """Generate a hash for an attachment based on URL and size."""
     data = f"{attachment.filename}:{attachment.size}:{attachment.content_type}"
     return hashlib.md5(data.encode()).hexdigest()[:16]
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = [
+    # Patterns
+    "LINK_PATTERN",
+    "EMOJI_PATTERN",
+    "CHAR_REPEAT_PATTERN",
+    "CRYPTO_WALLET_REGEX",
+    # Basic Content Analysis
+    "count_emojis",
+    "count_links",
+    "count_newlines",
+    "extract_domain",
+    "is_safe_link",
+    "has_links",
+    "has_unsafe_links",
+    # Arabic Text Detection
+    "is_arabic_char",
+    "strip_arabic_tashkeel",
+    "is_exempt_greeting",
+    "is_mostly_arabic",
+    # Spam Pattern Detection
+    "is_emoji_only",
+    "has_char_repeat",
+    "get_caps_percentage",
+    "is_similar",
+    "count_combining_chars",
+    "is_zalgo",
+    # Scam/Phishing Detection
+    "is_scam",
+    # Invite Detection
+    "extract_invites",
+    "is_whitelisted_invite",
+    "has_non_whitelisted_invites",
+    # Image/Attachment Hashing
+    "hash_attachment",
+]

@@ -976,3 +976,10 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
             self.update_reputation(user_id, guild_id, REP_GAIN_MESSAGE)
 
         return spam_type
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["AntiSpamService"]

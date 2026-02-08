@@ -129,3 +129,10 @@ class ModerationLogsMixin:
 
         view = ModActionLogView(user.id, self.config.logging_guild_id or 0, case_id=case_id)
         await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id, view=view)
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["ModerationLogsMixin"]

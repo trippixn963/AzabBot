@@ -225,3 +225,10 @@ class ServerLogsMixin:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.BOTS_INTEGRATIONS, embed, user_id=bot_id)
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["ServerLogsMixin"]

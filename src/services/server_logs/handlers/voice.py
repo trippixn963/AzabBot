@@ -209,3 +209,10 @@ class VoiceLogsMixin:
         embed.add_field(name="Channel", value=self._format_channel(channel), inline=True)
 
         await self._send_log(LogCategory.VOICE, embed, user_id=member.id)
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["VoiceLogsMixin"]

@@ -215,3 +215,10 @@ class MutesLogsMixin:
         self._set_user_thumbnail(embed, member)
 
         await self._send_log(LogCategory.MUTES_TIMEOUTS, embed, user_id=member.id)
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["MutesLogsMixin"]

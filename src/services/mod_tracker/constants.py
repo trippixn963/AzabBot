@@ -77,3 +77,50 @@ BAN_HISTORY_MAX_ENTRIES = 500     # Max ban records per mod
 PERMISSION_CHANGES_MAX = 100      # Max permission change records per mod
 TARGET_ACTIONS_MAX_ENTRIES = 100  # Max targets tracked per mod
 CACHE_CLEANUP_INTERVAL = 3600     # Run cleanup every hour
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = [
+    # From core.constants (re-exported)
+    "CACHE_TTL",
+    "MESSAGE_CACHE_TTL",
+    "MESSAGE_CACHE_SIZE",
+    "MESSAGE_CACHE_MAX_MODS",
+    "BULK_ACTION_WINDOW",
+    "BULK_DELETE_THRESHOLD",
+    "SUSPICIOUS_UNBAN_WINDOW",
+    "BAN_HISTORY_TTL",
+    "MASS_PERMISSION_WINDOW",
+    "TARGET_HARASSMENT_WINDOW",
+    "TARGET_HARASSMENT_THRESHOLD",
+    "TARGET_HARASSMENT_TTL",
+    "QUEUE_MAX_SIZE",
+    "SECONDS_PER_HOUR",
+    # Retry Configuration
+    "MAX_RETRIES",
+    "BASE_RETRY_DELAY",
+    "RATE_LIMIT_DELAY",
+    # Inactivity Alerts
+    "INACTIVITY_DAYS",
+    # Bulk Action Detection
+    "BULK_BAN_THRESHOLD",
+    "BULK_TIMEOUT_THRESHOLD",
+    # Mass Permission Change Detection
+    "MASS_PERMISSION_THRESHOLD",
+    # Priority Queue Configuration
+    "PRIORITY_CRITICAL",
+    "PRIORITY_HIGH",
+    "PRIORITY_NORMAL",
+    "PRIORITY_LOW",
+    "QUEUE_PROCESS_INTERVAL",
+    "QUEUE_BATCH_SIZE",
+    # Cache Limits
+    "ACTION_HISTORY_MAX_ENTRIES",
+    "BAN_HISTORY_MAX_ENTRIES",
+    "PERMISSION_CHANGES_MAX",
+    "TARGET_ACTIONS_MAX_ENTRIES",
+    "CACHE_CLEANUP_INTERVAL",
+]

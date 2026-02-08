@@ -285,3 +285,10 @@ class MemberLogsMixin:
                 await message.edit(view=view)
             except Exception:
                 pass
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["MemberLogsMixin"]

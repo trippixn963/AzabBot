@@ -220,3 +220,10 @@ class RaidDetectionMixin:
                         del self._recent_joins[guild_id]
                     except KeyError:
                         pass
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["RaidDetectionMixin"]

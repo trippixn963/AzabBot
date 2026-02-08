@@ -48,3 +48,10 @@ class JoinRecord:
 class WebhookState:
     """Tracks webhook message state."""
     messages: List[datetime] = field(default_factory=list)
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["MessageRecord", "UserSpamState", "JoinRecord", "WebhookState"]

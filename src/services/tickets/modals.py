@@ -290,3 +290,10 @@ class TicketAddUserModal(discord.ui.Modal, title="Add User to Ticket"):
                 ("Reason", message),
             ])
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["TicketCreateModal", "TicketCloseModal", "TicketAddUserModal"]

@@ -125,3 +125,16 @@ async def retry_async(
             last_exception = e
             await asyncio.sleep(base_delay * (2 ** attempt))
     raise last_exception
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = [
+    "CachedMessage",
+    "QueueItem",
+    "EMOJI_PATTERN",
+    "strip_emojis",
+    "retry_async",
+]

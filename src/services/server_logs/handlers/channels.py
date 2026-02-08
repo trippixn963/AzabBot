@@ -147,3 +147,10 @@ class ChannelLogsMixin:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
         await self._send_log(LogCategory.PERMISSIONS, embed)
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["ChannelLogsMixin"]

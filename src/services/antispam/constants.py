@@ -441,3 +441,105 @@ SPAM_DISPLAY_NAMES: Dict[str, str] = {
     "zalgo": "Zalgo/Unicode Abuse",
     "webhook_spam": "Webhook Spam",
 }
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = [
+    # Message Flood
+    "FLOOD_MESSAGE_LIMIT",
+    "FLOOD_TIME_WINDOW",
+    # Duplicate Spam
+    "DUPLICATE_LIMIT",
+    "DUPLICATE_TIME_WINDOW",
+    "DUPLICATE_SIMILARITY_THRESHOLD",
+    "DUPLICATE_MIN_LENGTH",
+    # Mention Spam
+    "MENTION_LIMIT",
+    # Emoji Spam
+    "EMOJI_LIMIT",
+    # Link Flood
+    "LINK_LIMIT",
+    "LINK_TIME_WINDOW",
+    "SAFE_LINK_DOMAINS",
+    # Invite Spam
+    "INVITE_LIMIT",
+    "INVITE_TIME_WINDOW",
+    "DISCORD_INVITE_PATTERN",
+    "WHITELISTED_INVITE_CODES",
+    # Caps Spam
+    "CAPS_PERCENTAGE",
+    "CAPS_MIN_LENGTH",
+    # Newline Spam
+    "NEWLINE_LIMIT",
+    # Character Spam
+    "CHAR_REPEAT_LIMIT",
+    # Sticker Spam
+    "STICKER_SPAM_LIMIT",
+    "STICKER_SPAM_TIME_WINDOW",
+    # Image Duplicate
+    "IMAGE_DUPLICATE_LIMIT",
+    "IMAGE_DUPLICATE_TIME_WINDOW",
+    # Attachment Flood
+    "ATTACHMENT_LIMIT",
+    "ATTACHMENT_TIME_WINDOW",
+    # Webhook Spam
+    "WEBHOOK_MESSAGE_LIMIT",
+    "WEBHOOK_TIME_WINDOW",
+    # Zalgo Detection
+    "ZALGO_COMBINING_LIMIT",
+    # Memory Bounds
+    "MAX_TRACKED_USERS_PER_GUILD",
+    "MAX_IMAGE_HASHES_PER_USER",
+    # Arabic Text Handling
+    "ARABIC_RANGE",
+    "ARABIC_TASHKEEL",
+    "EXEMPT_ARABIC_GREETINGS",
+    # Scam Detection
+    "SCAM_PHRASES",
+    "PHISHING_DOMAINS",
+    "CRYPTO_WALLET_PATTERN",
+    # Reputation System
+    "REPUTATION_NEW",
+    "REPUTATION_REGULAR",
+    "REPUTATION_TRUSTED",
+    "REPUTATION_VETERAN",
+    "REP_GAIN_MESSAGE",
+    "REP_GAIN_DAY_ACTIVE",
+    "REP_GAIN_WEEK_NO_VIOLATION",
+    "REP_LOSS_WARNING",
+    "REP_LOSS_MUTE",
+    "REP_LOSS_KICK",
+    "REP_LOSS_BAN",
+    "REPUTATION_MULTIPLIERS",
+    # Channel Type Multipliers
+    "CHANNEL_TYPE_MULTIPLIERS",
+    # Raid Detection
+    "RAID_JOIN_LIMIT",
+    "RAID_TIME_WINDOW",
+    "RAID_SIMILAR_NAME_THRESHOLD",
+    "RAID_ACCOUNT_AGE_HOURS",
+    "RAID_DEFAULT_AVATAR_WEIGHT",
+    "RAID_SIMILAR_CREATION_WINDOW",
+    "NEW_ACCOUNT_DAYS",
+    "NEW_MEMBER_ACCOUNT_AGE",
+    "NEW_MEMBER_SERVER_AGE",
+    "NEW_MEMBER_FLOOD_LIMIT",
+    "NEW_MEMBER_DUPLICATE_LIMIT",
+    "NEW_MEMBER_MENTION_LIMIT",
+    # Auto-Slowmode
+    "SLOWMODE_TRIGGER_MESSAGES",
+    "SLOWMODE_TIME_WINDOW",
+    "SLOWMODE_DURATION",
+    "SLOWMODE_COOLDOWN",
+    # Cleanup Intervals
+    "MESSAGE_HISTORY_CLEANUP",
+    "VIOLATION_DECAY_TIME",
+    "REPUTATION_UPDATE_INTERVAL",
+    # Punishment Durations
+    "MUTE_DURATIONS",
+    # Spam Type Display Names
+    "SPAM_DISPLAY_NAMES",
+]

@@ -78,3 +78,10 @@ THREAD_DESCRIPTIONS = {
     LogCategory.WARNINGS: "Logs for user warnings issued by moderators",
     LogCategory.AUDIT_RAW: "Catch-all for uncategorized audit log events",
 }
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["LogCategory", "THREAD_DESCRIPTIONS"]

@@ -104,3 +104,10 @@ class ReputationMixin:
     def clear_reputation_cache(self) -> None:
         """Clear the reputation cache (called periodically)."""
         self._reputation_cache.clear()
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["ReputationMixin"]

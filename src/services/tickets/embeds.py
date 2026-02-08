@@ -457,3 +457,23 @@ def build_panel_embed() -> discord.Embed:
     embed.description += "\n*Only one open ticket per user is allowed.*"
     set_footer(embed)
     return embed
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = [
+    "build_control_panel_embed",
+    "build_welcome_embed",
+    "build_claim_notification",
+    "build_close_notification",
+    "build_reopen_notification",
+    "build_user_added_notification",
+    "build_transfer_notification",
+    "build_inactivity_warning",
+    "build_close_request_embed",
+    "build_ticket_closed_dm",
+    "build_ticket_claimed_dm",
+    "build_panel_embed",
+]

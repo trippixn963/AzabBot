@@ -946,3 +946,10 @@ class ContentModerationService:
         """Clean up resources."""
         await self.classifier.close()
         logger.debug("Content Moderation Service closed")
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["ContentModerationService"]

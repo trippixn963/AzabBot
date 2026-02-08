@@ -510,3 +510,10 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
                 log_http_error(e, "Send AI Follow-up", [
                     ("Ticket ID", ticket["ticket_id"]),
                 ])
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["TicketService"]

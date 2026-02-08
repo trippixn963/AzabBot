@@ -325,3 +325,10 @@ class ModTrackerService(
 
         logger.debug("Mod Tracker Log Queued", [("Mod", str(mod_id)), ("Action", action_name)])
         return True
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["ModTrackerService"]

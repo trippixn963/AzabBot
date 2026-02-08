@@ -564,3 +564,21 @@ def setup_appeal_views(bot: "AzabBot") -> None:
         OpenAppealTicketButton,
     )
     logger.debug("Appeal Views Registered")
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = [
+    "AppealActionView",
+    "ApproveAppealButton",
+    "DenyAppealButton",
+    "OpenAppealTicketButton",
+    "AppealReasonModal",
+    "SubmitAppealButton",
+    "SubmitAppealModal",
+    "AppealApprovedView",
+    "AppealDeniedView",
+    "setup_appeal_views",
+]

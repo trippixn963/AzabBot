@@ -150,3 +150,26 @@ VIOLATION_TYPE: str = "Religion Discussion"
 
 VIOLATION_EMOJI: str = "🕌"
 """Emoji used for this violation type in embeds and logs."""
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = [
+    "CONFIDENCE_THRESHOLD_DELETE",
+    "CONFIDENCE_THRESHOLD_ALERT",
+    "MIN_MESSAGE_LENGTH",
+    "MAX_MESSAGE_LENGTH",
+    "MAX_API_CALLS_PER_MINUTE",
+    "USER_CHECK_COOLDOWN",
+    "CLASSIFICATION_CACHE_SIZE",
+    "CLASSIFICATION_CACHE_TTL",
+    "OPENAI_MODEL",
+    "MAX_TOKENS",
+    "TEMPERATURE",
+    "SYSTEM_PROMPT",
+    "USER_PROMPT_TEMPLATE",
+    "VIOLATION_TYPE",
+    "VIOLATION_EMOJI",
+]
