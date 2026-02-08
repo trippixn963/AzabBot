@@ -24,6 +24,7 @@ from src.core.constants import CASE_LOG_TIMEOUT, QUERY_LIMIT_TINY, LOG_TRUNCATE_
 from src.utils.async_utils import create_safe_task
 from src.utils.discord_rate_limit import log_http_error
 from src.services.user_snapshots import save_member_snapshot, update_snapshot_reason
+from src.api.services.event_logger import event_logger
 
 from .constants import VERIFICATION_DELAY
 
@@ -159,6 +160,12 @@ class MemberEvents(commands.Cog):
                     for role in removed_roles:
                         await self.bot.logging_service.log_role_remove(after, role, moderator=changed_by_member)
 
+                # Log to dashboard events
+                for role in added_roles:
+                    event_logger.log_role_add(after.guild, after, role, moderator=changed_by_member)
+                for role in removed_roles:
+                    event_logger.log_role_remove(after.guild, after, role, moderator=changed_by_member)
+
         # -----------------------------------------------------------------
         # Logging Service: Role Changes (fallback for when mod_tracker is disabled)
         # -----------------------------------------------------------------
@@ -234,13 +241,8 @@ class MemberEvents(commands.Cog):
             age_days = (discord.utils.utcnow() - member.created_at).days
             account_age = f"{age_days} days"
 
-        logger.tree("MEMBER JOINED", [
-            ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
-            ("ID", str(member.id)),
-            ("Account Age", account_age),
-            ("Invite", invite_code or "Unknown"),
-            ("Inviter", str(inviter) if inviter else "Unknown"),
-        ], emoji="📥")
+        # Log to dashboard (handles console logging too)
+        event_logger.log_join(member, invite_code=invite_code, inviter=inviter)
 
         if self.bot.logging_service and self.bot.logging_service.enabled:
             await self.bot._check_raid_detection(member)
@@ -403,13 +405,10 @@ class MemberEvents(commands.Cog):
                 ("Guild", member.guild.name),
             ])
 
-        leave_type = "BANNED" if was_banned else "MEMBER LEFT"
-        logger.tree(leave_type, [
-            ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
-            ("ID", str(member.id)),
-            ("Membership", membership_duration),
-            ("Roles", str(role_count)),
-        ], emoji="🔨" if was_banned else "📤")
+        # Log to dashboard (handles console logging too)
+        # Ban is logged separately in on_member_ban
+        if not was_banned:
+            event_logger.log_leave(member, roles=member.roles, membership_duration=membership_duration)
 
         if self.bot.logging_service and self.bot.logging_service.enabled:
             await self.bot.logging_service.log_member_leave(member, was_banned=was_banned)
@@ -601,12 +600,6 @@ class MemberEvents(commands.Cog):
         # but we update the reason to 'ban' to indicate this wasn't just a leave
         update_snapshot_reason(user.id, guild.id, "ban")
 
-        logger.tree("MEMBER BANNED", [
-            ("User", user.name),
-            ("ID", str(user.id)),
-            ("Guild", guild.name),
-        ], emoji="🔨")
-
         # Try to get moderator and reason from audit log
         moderator = None
         reason = None
@@ -627,6 +620,9 @@ class MemberEvents(commands.Cog):
                 ("Guild", guild.name),
             ])
 
+        # Log to dashboard (handles console logging too)
+        event_logger.log_ban(guild=guild, target=user, moderator=moderator, reason=reason)
+
         # Log to server logs
         if self.bot.logging_service and self.bot.logging_service.enabled:
             await self.bot.logging_service.log_ban(user, moderator, reason)
@@ -641,12 +637,6 @@ class MemberEvents(commands.Cog):
         """
         if self.bot.disabled:
             return
-
-        logger.tree("MEMBER UNBANNED", [
-            ("User", user.name),
-            ("ID", str(user.id)),
-            ("Guild", guild.name),
-        ], emoji="🔓")
 
         # Try to get moderator and reason from audit log
         moderator = None
@@ -667,6 +657,9 @@ class MemberEvents(commands.Cog):
                 ("Action", "unban_moderator_lookup"),
                 ("Guild", guild.name),
             ])
+
+        # Log to dashboard (handles console logging too)
+        event_logger.log_unban(guild=guild, target=user, moderator=moderator, reason=reason)
 
         # Log to server logs
         if self.bot.logging_service and self.bot.logging_service.enabled:

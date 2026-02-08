@@ -367,6 +367,13 @@ class WebSocketManager:
             data=command_data,
         ), channel="bot")
 
+    async def broadcast_discord_event(self, event_data: Dict[str, Any]) -> int:
+        """Broadcast a Discord event (ban, kick, timeout, etc.) for dashboard."""
+        return await self.broadcast(WSMessage(
+            event=WSEventType.DISCORD_EVENT,
+            data=event_data,
+        ), channel="events")
+
     # =========================================================================
     # Heartbeat
     # =========================================================================

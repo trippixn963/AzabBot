@@ -21,6 +21,7 @@ from src.api.config import get_api_config
 from src.api.middleware.rate_limit import RateLimitMiddleware, get_rate_limiter
 from src.api.middleware.logging import LoggingMiddleware
 from src.api.services.websocket import get_ws_manager
+from src.api.services.event_storage import get_event_storage
 from src.api.dependencies import set_bot
 from src.api.routers import (
     health_router,
@@ -39,6 +40,7 @@ from src.api.routers import (
     bans_router,
     frontend_logs_router,
     bot_router,
+    events_router,
 )
 
 
@@ -61,6 +63,22 @@ async def lifespan(app: FastAPI):
     # Start WebSocket heartbeat
     ws_manager = get_ws_manager()
     await ws_manager.start_heartbeat()
+
+    # Wire up event storage to WebSocket for real-time updates
+    event_storage = get_event_storage()
+
+    def broadcast_event(event_data: dict):
+        """Callback to broadcast events via WebSocket."""
+        from src.utils.async_utils import create_safe_task
+        try:
+            create_safe_task(
+                ws_manager.broadcast_discord_event(event_data),
+                "WS Event Broadcast"
+            )
+        except RuntimeError:
+            pass  # No event loop running
+
+    event_storage.set_on_event(broadcast_event)
 
     yield
 
@@ -161,6 +179,7 @@ def create_app(bot: Optional[Any] = None) -> FastAPI:
     app.include_router(bans_router, prefix="/api/azab")
     app.include_router(frontend_logs_router, prefix="/api/azab")
     app.include_router(bot_router, prefix="/api/azab")
+    app.include_router(events_router, prefix="/api/azab")
     app.include_router(websocket_router, prefix="/api/azab")
 
     # Root health check (for load balancers)

@@ -22,6 +22,7 @@ from src.core.database import get_db
 from src.utils.async_utils import create_safe_task
 from src.utils.snipe_blocker import should_block_snipe
 from src.utils.discord_rate_limit import log_http_error
+from src.api.services.event_logger import event_logger
 
 from .helpers import HelpersMixin, INVITE_PATTERN
 
@@ -383,16 +384,15 @@ class MessageEvents(HelpersMixin, commands.Cog):
         # -----------------------------------------------------------------
         skip_snipe, block_reason = await should_block_snipe(message.id)
         if skip_snipe:
-            content_preview = "(empty)"
-            if message.content:
-                content_preview = (message.content[:40] + "...") if len(message.content) > 40 else message.content
-
-            logger.tree("MESSAGE DELETED (NO SNIPE)", [
-                ("Author", f"{message.author} ({message.author.id})"),
-                ("Channel", f"#{message.channel.name}" if hasattr(message.channel, 'name') else "DM"),
-                ("Content", content_preview),
-                ("Reason", block_reason or "Bot auto-delete"),
-            ], emoji="🗑️")
+            # Log to dashboard (handles console logging too)
+            if message.guild and hasattr(message.channel, 'name'):
+                event_logger.log_message_delete(
+                    guild=message.guild,
+                    channel=message.channel,
+                    author=message.author,
+                    content=message.content,
+                    moderator=message.guild.me,  # Bot is the moderator for auto-deletes
+                )
 
             # Still run logging service and mod tracker
             if self.bot.logging_service and self.bot.logging_service.enabled:
@@ -484,20 +484,15 @@ class MessageEvents(HelpersMixin, commands.Cog):
             attachment_data=attachment_data,
         )
 
-        # Tree logging for message deletions
-        content_preview = "(empty)"
-        if message.content:
-            content_preview = (message.content[:40] + "...") if len(message.content) > 40 else message.content
-
-        attachment_info = ""
-        if message.attachments:
-            attachment_info = f" +{len(message.attachments)} attachment(s)"
-
-        logger.tree("MESSAGE DELETED", [
-            ("Author", f"{message.author} ({message.author.id})"),
-            ("Channel", f"#{message.channel.name}" if hasattr(message.channel, 'name') else "DM"),
-            ("Content", content_preview + attachment_info),
-        ], emoji="🗑️")
+        # Log to dashboard (handles console logging too)
+        if message.guild and hasattr(message.channel, 'name'):
+            event_logger.log_message_delete(
+                guild=message.guild,
+                channel=message.channel,
+                author=message.author,
+                content=message.content,
+                attachments=attachment_names if attachment_names else None,
+            )
 
         # -----------------------------------------------------------------
         # Logging Service: Message Delete

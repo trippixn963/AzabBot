@@ -24,6 +24,7 @@ from .dashboard import router as dashboard_router
 from .bans import router as bans_router
 from .frontend_logs import router as frontend_logs_router
 from .bot import router as bot_router
+from .events import router as events_router
 
 __all__ = [
     "health_router",
@@ -42,4 +43,5 @@ __all__ = [
     "bans_router",
     "frontend_logs_router",
     "bot_router",
+    "events_router",
 ]
