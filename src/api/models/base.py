@@ -166,6 +166,11 @@ class WSEventType:
     # Stats events
     STATS_UPDATED = "stats.updated"
 
+    # Bot status events (for dashboard)
+    BOT_STATUS = "bot_status"
+    BOT_LOG = "bot_log"
+    COMMAND_EXECUTED = "command_executed"
+
 
 __all__ = [
     "APIResponse",

@@ -346,6 +346,27 @@ class WebSocketManager:
             data=stats_data or {},
         ), channel="stats")
 
+    async def broadcast_bot_status(self, status_data: Dict[str, Any]) -> int:
+        """Broadcast bot status update (latency, CPU, memory)."""
+        return await self.broadcast(WSMessage(
+            event=WSEventType.BOT_STATUS,
+            data=status_data,
+        ), channel="bot")
+
+    async def broadcast_bot_log(self, log_data: Dict[str, Any]) -> int:
+        """Broadcast a new log entry."""
+        return await self.broadcast(WSMessage(
+            event=WSEventType.BOT_LOG,
+            data=log_data,
+        ), channel="bot")
+
+    async def broadcast_command_executed(self, command_data: Dict[str, Any]) -> int:
+        """Broadcast a command execution event."""
+        return await self.broadcast(WSMessage(
+            event=WSEventType.COMMAND_EXECUTED,
+            data=command_data,
+        ), channel="bot")
+
     # =========================================================================
     # Heartbeat
     # =========================================================================

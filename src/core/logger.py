@@ -158,6 +158,9 @@ class Logger:
         # Track last log type for spacing between trees
         self._last_was_tree: bool = False
 
+        # API log callbacks (for log buffer integration)
+        self._log_callbacks: List[Any] = []
+
         # Live logs Discord webhook streaming (from env var with bot prefix)
         bot_name = os.getenv("BOT_NAME", "").upper()
         self._live_logs_webhook_url: str = os.getenv(f"{bot_name}_LOGS_WEBHOOK_URL", "")
@@ -516,6 +519,32 @@ class Logger:
             await self._webhook_session.close()
             self._webhook_session = None
 
+    # =========================================================================
+    # API Log Buffer Integration
+    # =========================================================================
+
+    def on_log(self, callback: Any) -> None:
+        """
+        Register a callback to receive log entries.
+
+        Callback signature: callback(level: str, message: str, module: str)
+        Used by the API log buffer to capture logs for the dashboard.
+        """
+        self._log_callbacks.append(callback)
+
+    def _notify_log_callbacks(
+        self,
+        level: str,
+        message: str,
+        module: str = "bot",
+    ) -> None:
+        """Notify all registered log callbacks."""
+        for callback in self._log_callbacks:
+            try:
+                callback(level, message, module)
+            except Exception:
+                pass  # Don't let callback errors break logging
+
     def _format_tree_for_live(
         self,
         title: str,
@@ -576,6 +605,7 @@ class Logger:
         else:
             self._write(message, "ℹ️")
             self._last_was_tree = False
+        self._notify_log_callbacks("INFO", message)
 
     def success(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log a success message."""
@@ -584,6 +614,7 @@ class Logger:
         else:
             self._write(message, "✅")
             self._last_was_tree = False
+        self._notify_log_callbacks("INFO", message)
 
     def error(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log an error message (also writes to error log and live logs)."""
@@ -592,6 +623,7 @@ class Logger:
         else:
             self._write_error(message, "❌")
             self._last_was_tree = False
+        self._notify_log_callbacks("ERROR", message)
 
     def warning(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log a warning message (also writes to error log and live logs)."""
@@ -600,6 +632,7 @@ class Logger:
         else:
             self._write_error(message, "⚠️")
             self._last_was_tree = False
+        self._notify_log_callbacks("WARNING", message)
 
     def debug(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log a debug message (only if DEBUG env var is set)."""
@@ -617,6 +650,7 @@ class Logger:
         else:
             self._write_error(message, "🚨")
             self._last_was_tree = False
+        self._notify_log_callbacks("ERROR", message)
 
     def exception(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log an exception with full traceback (also writes to error log and live logs)."""
@@ -634,6 +668,7 @@ class Logger:
                 f.write("\n")
         except (OSError, IOError):
             pass
+        self._notify_log_callbacks("ERROR", message)
 
     # =========================================================================
     # Public Methods - Tree Formatting

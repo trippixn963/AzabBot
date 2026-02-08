@@ -48,6 +48,12 @@ from src.api.services.snapshots import (
     init_snapshot_service,
     SnapshotService,
 )
+from src.api.services.status_broadcaster import (
+    get_status_broadcaster,
+    init_status_broadcaster,
+    StatusBroadcaster,
+)
+from src.api.services.log_buffer import get_log_buffer, LogBuffer
 
 
 # =============================================================================
@@ -75,6 +81,7 @@ class APIService:
         self._server: Optional[uvicorn.Server] = None
         self._task: Optional[asyncio.Task] = None
         self._snapshot_service = init_snapshot_service(bot)
+        self._status_broadcaster = init_status_broadcaster(bot)
 
     @property
     def is_running(self) -> bool:
@@ -95,6 +102,16 @@ class APIService:
     def snapshot_service(self) -> SnapshotService:
         """Get the snapshot service."""
         return self._snapshot_service
+
+    @property
+    def status_broadcaster(self) -> StatusBroadcaster:
+        """Get the status broadcaster."""
+        return self._status_broadcaster
+
+    @property
+    def log_buffer(self) -> LogBuffer:
+        """Get the log buffer."""
+        return get_log_buffer()
 
     async def start(self) -> None:
         """Start the API server in a background task."""
@@ -118,6 +135,9 @@ class APIService:
 
         # Start snapshot service
         await self._snapshot_service.start()
+
+        # Start status broadcaster
+        await self._status_broadcaster.start()
 
         logger.tree("API Service Started", [
             ("Host", self._config.host),
@@ -143,6 +163,9 @@ class APIService:
             return
 
         logger.tree("API Service Stopping", [], emoji="🛑")
+
+        # Stop status broadcaster
+        await self._status_broadcaster.stop()
 
         # Stop snapshot service
         await self._snapshot_service.stop()
@@ -211,6 +234,18 @@ class APIService:
         """Broadcast a stats update event to trigger dashboard refresh."""
         return await self.ws_manager.broadcast_stats_updated(stats_data)
 
+    async def broadcast_bot_status(self, status_data: dict) -> int:
+        """Broadcast bot status update (latency, CPU, memory)."""
+        return await self.ws_manager.broadcast_bot_status(status_data)
+
+    async def broadcast_bot_log(self, log_data: dict) -> int:
+        """Broadcast a new log entry."""
+        return await self.ws_manager.broadcast_bot_log(log_data)
+
+    async def broadcast_command_executed(self, command_data: dict) -> int:
+        """Broadcast a command execution event."""
+        return await self.ws_manager.broadcast_command_executed(command_data)
+
 
 # =============================================================================
 # Exports
@@ -231,6 +266,10 @@ __all__ = [
     "AuthService",
     "get_snapshot_service",
     "SnapshotService",
+    "get_status_broadcaster",
+    "StatusBroadcaster",
+    "get_log_buffer",
+    "LogBuffer",
     # Dependencies
     "set_bot",
 ]
