@@ -169,7 +169,7 @@ class SnapshotService:
                 """,
                 (guild_id, date, member_count, online_count, datetime.utcnow().timestamp())
             )
-            db.commit()
+            # Note: execute() commits by default, no separate commit needed
 
             logger.tree("Daily Snapshot Captured", [
                 ("Date", date),
