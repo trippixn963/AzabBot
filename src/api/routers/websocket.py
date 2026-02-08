@@ -8,15 +8,20 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 import uuid
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from starlette.websockets import WebSocketState
 
 from src.core.logger import logger
 from src.api.services.websocket import get_ws_manager
 from src.api.services.auth import get_auth_service
 from src.api.models.base import WSMessage, WSEventType
+
+# Timeout for receiving messages (seconds)
+RECEIVE_TIMEOUT = 60
 
 
 router = APIRouter(tags=["WebSocket"])
@@ -64,8 +69,26 @@ async def websocket_endpoint(
 
     try:
         while True:
-            # Wait for messages from client
-            data = await websocket.receive_json()
+            # Check if connection is still open
+            if websocket.client_state != WebSocketState.CONNECTED:
+                break
+
+            # Wait for messages from client with timeout
+            try:
+                data = await asyncio.wait_for(
+                    websocket.receive_json(),
+                    timeout=RECEIVE_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                # Send a ping to check if connection is alive
+                try:
+                    await ws_manager._send_to_connection(connection_id, WSMessage(
+                        event=WSEventType.HEARTBEAT,
+                        data={},
+                    ))
+                    continue
+                except Exception:
+                    break  # Connection dead
 
             # Handle client actions
             action = data.get("action")
@@ -107,7 +130,7 @@ async def websocket_endpoint(
                         ))
 
             elif action == "ping":
-                # Client ping
+                # Client ping - respond with pong
                 await ws_manager._send_to_connection(connection_id, WSMessage(
                     event=WSEventType.PONG,
                     data={},
