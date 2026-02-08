@@ -114,16 +114,18 @@ async def websocket_endpoint(
                 ))
 
     except WebSocketDisconnect:
-        logger.debug("WebSocket Client Disconnected", [
-            ("Connection ID", connection_id[:8]),
-        ])
+        pass  # Normal disconnect, handled in finally
     except Exception as e:
-        logger.debug("WebSocket Error", [
+        logger.warning("WebSocket Error", [
             ("Connection ID", connection_id[:8]),
-            ("Error", str(e)[:50]),
+            ("Error", f"{type(e).__name__}: {str(e)[:100]}"),
         ])
     finally:
         await ws_manager.disconnect(connection_id)
+        logger.tree("WebSocket Disconnected", [
+            ("Connection ID", connection_id[:8]),
+            ("Remaining", str(len(ws_manager._connections))),
+        ], emoji="🔌")
 
 
 __all__ = ["router"]
