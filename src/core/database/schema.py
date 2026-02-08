@@ -993,3 +993,10 @@ class SchemaMixin:
         # This backfills permanent counters for staff who claimed/closed tickets
         # before the counter system was added
         self.initialize_staff_ticket_counters()
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["SchemaMixin"]

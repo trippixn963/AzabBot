@@ -654,3 +654,10 @@ class TicketsMixin:
             "DELETE FROM ai_conversations WHERE ticket_id = ?",
             (ticket_id,)
         )
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["TicketsMixin"]

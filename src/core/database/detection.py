@@ -399,3 +399,10 @@ class DetectionMixin:
         intersection = len(set1 & set2)
         union = len(set1 | set2)
         return intersection / union if union > 0 else 0.0
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["DetectionMixin"]

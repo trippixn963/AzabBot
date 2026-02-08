@@ -27,3 +27,10 @@ def _safe_json_loads(value: Optional[str], default: Any = None) -> Any:
     except (json.JSONDecodeError, ValueError):
         logger.warning("Corrupted JSON In Database", [("Value", value[:50] if len(value) > 50 else value)])
         return default if default is not None else []
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["_safe_json_loads"]

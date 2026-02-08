@@ -125,3 +125,21 @@ class TicketRecord(TypedDict, total=False):
     closed_at: Optional[float]
     closed_by: Optional[int]
     close_reason: Optional[str]
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = [
+    "MuteRecord",
+    "CaseLogRecord",
+    "TrackedModRecord",
+    "JoinInfoRecord",
+    "ModNoteRecord",
+    "UsernameHistoryRecord",
+    "AppealRecord",
+    "MemberActivityRecord",
+    "PendingReasonRecord",
+    "TicketRecord",
+]
