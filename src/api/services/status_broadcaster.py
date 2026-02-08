@@ -116,7 +116,13 @@ class StatusBroadcaster:
 
         await self._ws_manager.broadcast_bot_status(status_data)
 
-    def _on_log(self, level: str, message: str, module: str) -> None:
+    def _on_log(
+        self,
+        level: str,
+        message: str,
+        module: str,
+        formatted: Optional[str] = None,
+    ) -> None:
         """Callback from logger - streams logs to WebSocket."""
         # Only stream if there are connected clients
         if self._ws_manager.connection_count == 0:
@@ -124,11 +130,17 @@ class StatusBroadcaster:
 
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(self._broadcast_log(level, message, module))
+            loop.create_task(self._broadcast_log(level, message, module, formatted))
         except RuntimeError:
             pass  # No event loop
 
-    async def _broadcast_log(self, level: str, message: str, module: str) -> None:
+    async def _broadcast_log(
+        self,
+        level: str,
+        message: str,
+        module: str,
+        formatted: Optional[str] = None,
+    ) -> None:
         """Broadcast a log entry to WebSocket clients."""
         log_data = {
             "timestamp": datetime.now(TIMEZONE).replace(tzinfo=None).isoformat() + "Z",
@@ -136,6 +148,8 @@ class StatusBroadcaster:
             "message": message,
             "module": module,
         }
+        if formatted:
+            log_data["formatted"] = formatted
         await self._ws_manager.broadcast_bot_log(log_data)
 
     async def broadcast_command(

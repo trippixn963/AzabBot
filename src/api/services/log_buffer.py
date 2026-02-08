@@ -35,15 +35,19 @@ class LogEntry:
     level: str
     message: str
     module: str = "bot"
+    formatted: Optional[str] = None  # Full tree-formatted string
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API response."""
-        return {
+        result = {
             "timestamp": self.timestamp.isoformat() + "Z",
             "level": self.level,
             "message": self.message,
             "module": self.module,
         }
+        if self.formatted:
+            result["formatted"] = self.formatted
+        return result
 
 
 # =============================================================================
@@ -63,13 +67,20 @@ class LogBuffer:
         self._buffer: Deque[LogEntry] = deque(maxlen=max_size)
         self._registered = False
 
-    def add(self, level: str, message: str, module: str = "bot") -> LogEntry:
+    def add(
+        self,
+        level: str,
+        message: str,
+        module: str = "bot",
+        formatted: Optional[str] = None,
+    ) -> LogEntry:
         """Add a log entry to the buffer."""
         entry = LogEntry(
             timestamp=datetime.now(TIMEZONE).replace(tzinfo=None),
             level=level,
             message=message,
             module=module,
+            formatted=formatted,
         )
         self._buffer.append(entry)
         return entry
@@ -105,7 +116,7 @@ class LogBuffer:
             return
 
         from src.core.logger import logger
-        logger.on_log(lambda level, msg, module: self.add(level, msg, module))
+        logger.on_log(lambda level, msg, module, formatted=None: self.add(level, msg, module, formatted))
         self._registered = True
 
     @property
