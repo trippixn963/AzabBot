@@ -118,7 +118,7 @@ class ModeratorBrief(BaseModel):
 class WSMessage(BaseModel):
     """WebSocket message format."""
 
-    event: str = Field(description="Event type")
+    type: str = Field(description="Event type")
     data: dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
