@@ -69,6 +69,10 @@ class CaseArchiveScheduler:
         self.task: Optional[asyncio.Task] = None
         self.running: bool = False
 
+        logger.tree("Case Archive Scheduler Initialized", [
+            ("Forum ID", str(self.config.case_log_forum_id) if self.config.case_log_forum_id else "Not configured"),
+        ], emoji="📦")
+
     # =========================================================================
     # Lifecycle Management
     # =========================================================================

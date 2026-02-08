@@ -3,6 +3,9 @@ AzabBot - Anti-Spam Service
 ===========================
 
 Main service class that combines all spam detection and handling.
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
 """
 
 import asyncio

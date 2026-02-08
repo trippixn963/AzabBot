@@ -80,6 +80,11 @@ class MuteScheduler:
         self._consecutive_errors: int = 0
         self._current_backoff: int = BACKOFF_MIN
 
+        logger.tree("Mute Scheduler Initialized", [
+            ("Check Interval", f"{MUTE_CHECK_INTERVAL}s"),
+            ("Backoff Range", f"{BACKOFF_MIN}-{BACKOFF_MAX}s"),
+        ], emoji="⏰")
+
     @property
     def _bot_user_id(self) -> int:
         """Get bot user ID with null safety."""

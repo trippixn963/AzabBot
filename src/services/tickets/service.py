@@ -78,6 +78,14 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         self._cooldowns_lock = asyncio.Lock()
         self._deletions_lock = asyncio.Lock()
 
+        if self.enabled:
+            logger.tree("Ticket Service Initialized", [
+                ("Channel ID", str(self.config.ticket_channel_id)),
+                ("Auto-Close", f"{INACTIVE_CLOSE_DAYS} days"),
+            ], emoji="🎫")
+        else:
+            logger.debug("Ticket Service Disabled (no channel configured)")
+
     # =========================================================================
     # Properties
     # =========================================================================
