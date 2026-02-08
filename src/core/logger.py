@@ -532,13 +532,50 @@ class Logger:
         """
         self._log_callbacks.append(callback)
 
-    def _notify_log_callbacks(
-        self,
-        level: str,
-        message: str,
-        module: str = "bot",
-    ) -> None:
+    def _get_caller_module(self) -> str:
+        """
+        Detect the calling module from the stack.
+
+        Returns a short module name like 'moderation', 'tickets', 'api'.
+        """
+        import inspect
+
+        # Walk up the stack to find the first non-logger frame
+        for frame_info in inspect.stack():
+            module = frame_info.frame.f_globals.get("__name__", "")
+
+            # Skip logger module itself
+            if "logger" in module:
+                continue
+
+            # Extract meaningful module name
+            if "src.cogs." in module or "src.handlers." in module:
+                # e.g., src.cogs.moderation.mute -> moderation
+                parts = module.split(".")
+                if len(parts) >= 3:
+                    return parts[2]
+            elif "src.services." in module:
+                # e.g., src.services.tickets.service -> tickets
+                parts = module.split(".")
+                if len(parts) >= 3:
+                    return parts[2]
+            elif "src.api." in module:
+                return "api"
+            elif "src.core." in module:
+                return "core"
+            elif module.startswith("src."):
+                parts = module.split(".")
+                if len(parts) >= 2:
+                    return parts[1]
+
+        return "bot"
+
+    def _notify_log_callbacks(self, level: str, message: str) -> None:
         """Notify all registered log callbacks."""
+        if not self._log_callbacks:
+            return
+
+        module = self._get_caller_module()
         for callback in self._log_callbacks:
             try:
                 callback(level, message, module)
@@ -600,39 +637,39 @@ class Logger:
 
     def info(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log an informational message."""
+        self._notify_log_callbacks("INFO", message)
         if details:
             self.tree(message, details, emoji="ℹ️")
         else:
             self._write(message, "ℹ️")
             self._last_was_tree = False
-        self._notify_log_callbacks("INFO", message)
 
     def success(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log a success message."""
+        self._notify_log_callbacks("INFO", message)
         if details:
             self.tree(message, details, emoji="✅")
         else:
             self._write(message, "✅")
             self._last_was_tree = False
-        self._notify_log_callbacks("INFO", message)
 
     def error(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log an error message (also writes to error log and live logs)."""
+        self._notify_log_callbacks("ERROR", message)
         if details:
             self._tree_error(message, details, emoji="❌")
         else:
             self._write_error(message, "❌")
             self._last_was_tree = False
-        self._notify_log_callbacks("ERROR", message)
 
     def warning(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log a warning message (also writes to error log and live logs)."""
+        self._notify_log_callbacks("WARNING", message)
         if details:
             self._tree_error(message, details, emoji="⚠️")
         else:
             self._write_error(message, "⚠️")
             self._last_was_tree = False
-        self._notify_log_callbacks("WARNING", message)
 
     def debug(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log a debug message (only if DEBUG env var is set)."""
@@ -645,15 +682,16 @@ class Logger:
 
     def critical(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log a critical/fatal error message (also writes to error log and live logs)."""
+        self._notify_log_callbacks("ERROR", message)
         if details:
             self._tree_error(message, details, emoji="🚨")
         else:
             self._write_error(message, "🚨")
             self._last_was_tree = False
-        self._notify_log_callbacks("ERROR", message)
 
     def exception(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log an exception with full traceback (also writes to error log and live logs)."""
+        self._notify_log_callbacks("ERROR", message)
         if details:
             self._tree_error(message, details, emoji="💥")
         else:
@@ -668,7 +706,6 @@ class Logger:
                 f.write("\n")
         except (OSError, IOError):
             pass
-        self._notify_log_callbacks("ERROR", message)
 
     # =========================================================================
     # Public Methods - Tree Formatting

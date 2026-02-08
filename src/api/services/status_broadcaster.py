@@ -10,14 +10,15 @@ Server: discord.gg/syria
 
 import asyncio
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from datetime import datetime
+from typing import TYPE_CHECKING, Optional
+from zoneinfo import ZoneInfo
 
 import psutil
 
 from src.core.logger import logger
 from src.utils.async_utils import create_safe_task
 from src.api.services.websocket import get_ws_manager
-from src.api.services.log_buffer import get_log_buffer, LogEntry
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
 # =============================================================================
 
 STATUS_BROADCAST_INTERVAL = 5  # seconds
+TIMEZONE = ZoneInfo("America/New_York")
 
 
 # =============================================================================
@@ -39,7 +41,7 @@ class StatusBroadcaster:
     Background service that broadcasts bot status to WebSocket clients.
 
     Features:
-    - Periodic status broadcasts (every 5 seconds)
+    - Periodic status broadcasts (every 5 seconds, only when clients connected)
     - Real-time log streaming to WebSocket
     - Command execution notifications
     """
@@ -49,7 +51,6 @@ class StatusBroadcaster:
         self._task: Optional[asyncio.Task] = None
         self._running = False
         self._ws_manager = get_ws_manager()
-        self._log_buffer = get_log_buffer()
 
     async def start(self) -> None:
         """Start the status broadcaster."""
@@ -58,8 +59,8 @@ class StatusBroadcaster:
 
         self._running = True
 
-        # Register log callback for real-time streaming
-        self._log_buffer.on_log(self._on_log_entry)
+        # Register directly with logger for WebSocket streaming
+        logger.on_log(self._on_log)
 
         # Start background task
         self._task = create_safe_task(self._broadcast_loop(), "Status Broadcaster")
@@ -86,7 +87,10 @@ class StatusBroadcaster:
         while self._running:
             try:
                 await asyncio.sleep(STATUS_BROADCAST_INTERVAL)
-                await self._broadcast_status()
+
+                # Only broadcast if there are connected clients
+                if self._ws_manager.connection_count > 0:
+                    await self._broadcast_status()
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -99,7 +103,6 @@ class StatusBroadcaster:
         if not self._bot.is_ready():
             return
 
-        # Gather status data
         cpu_percent = psutil.cpu_percent(interval=None)
         memory = psutil.virtual_memory()
         memory_used_mb = memory.used / (1024 * 1024)
@@ -113,18 +116,26 @@ class StatusBroadcaster:
 
         await self._ws_manager.broadcast_bot_status(status_data)
 
-    def _on_log_entry(self, entry: LogEntry) -> None:
-        """Callback when a log entry is added to the buffer."""
-        # Schedule async broadcast in the event loop
+    def _on_log(self, level: str, message: str, module: str) -> None:
+        """Callback from logger - streams logs to WebSocket."""
+        # Only stream if there are connected clients
+        if self._ws_manager.connection_count == 0:
+            return
+
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(self._broadcast_log(entry))
+            loop.create_task(self._broadcast_log(level, message, module))
         except RuntimeError:
-            pass  # No event loop running
+            pass  # No event loop
 
-    async def _broadcast_log(self, entry: LogEntry) -> None:
+    async def _broadcast_log(self, level: str, message: str, module: str) -> None:
         """Broadcast a log entry to WebSocket clients."""
-        log_data = entry.to_dict()
+        log_data = {
+            "timestamp": datetime.now(TIMEZONE).replace(tzinfo=None).isoformat() + "Z",
+            "level": level,
+            "message": message,
+            "module": module,
+        }
         await self._ws_manager.broadcast_bot_log(log_data)
 
     async def broadcast_command(
