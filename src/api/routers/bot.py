@@ -9,12 +9,27 @@ Server: discord.gg/syria
 """
 
 import platform
+import subprocess
 import time
 from datetime import datetime
 from typing import Any, Optional
 
 import discord
 import psutil
+
+
+def get_git_commit() -> str:
+    """Get current git commit hash."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.stdout.strip() if result.returncode == 0 else "unknown"
+    except Exception:
+        return "unknown"
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
@@ -61,10 +76,11 @@ async def get_bot_status(
         for guild in bot.guilds:
             user_count += guild.member_count or 0
 
-    # Get version from bot config or default
+    # Get version and commit
     version = "2.0.0"
     if bot and hasattr(bot, 'config') and hasattr(bot.config, 'version'):
         version = bot.config.version
+    commit = get_git_commit()
 
     # System information
     cpu_percent = psutil.cpu_percent(interval=None)
@@ -91,6 +107,7 @@ async def get_bot_status(
             "guild_count": guild_count,
             "user_count": user_count,
             "version": version,
+            "commit": commit,
             "system": {
                 "cpu_percent": round(cpu_percent, 1),
                 "memory_used_mb": round(memory_used_mb, 1),
