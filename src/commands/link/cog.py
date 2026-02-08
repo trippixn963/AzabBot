@@ -20,6 +20,7 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
+from src.core.moderation_validation import get_target_guild, is_cross_server
 from src.utils.footer import set_footer
 from src.utils.interaction import safe_respond
 from src.utils.discord_rate_limit import log_http_error
@@ -43,31 +44,6 @@ class LinkCog(commands.Cog):
             ("Alliances Channel", str(self.config.alliances_channel_id) if self.config.alliances_channel_id else "Not configured"),
             ("Cross-Server", "Enabled"),
         ], emoji="🔗")
-
-    # =========================================================================
-    # Cross-Server Helpers
-    # =========================================================================
-
-    def _get_target_guild(self, interaction: discord.Interaction) -> discord.Guild:
-        """
-        Get the target guild for the link command.
-
-        If command is run from mod server, targets the main server.
-        Otherwise, targets the current server.
-        """
-        if (self.config.mod_server_id and
-            self.config.logging_guild_id and
-            interaction.guild.id == self.config.mod_server_id):
-            main_guild = self.bot.get_guild(self.config.logging_guild_id)
-            if main_guild:
-                return main_guild
-        return interaction.guild
-
-    def _is_cross_server(self, interaction: discord.Interaction) -> bool:
-        """Check if this is a cross-server action."""
-        return (self.config.mod_server_id and
-                self.config.logging_guild_id and
-                interaction.guild.id == self.config.mod_server_id)
 
     # =========================================================================
     # Link Command
@@ -151,8 +127,8 @@ class LinkCog(commands.Cog):
                 return
 
             # Get target guild (supports cross-server)
-            target_guild = self._get_target_guild(interaction)
-            is_cross_server = self._is_cross_server(interaction)
+            target_guild = get_target_guild(interaction, self.bot)
+            cross_server = is_cross_server(interaction)
 
             # Fetch member from target guild
             member = target_guild.get_member(parsed_member_id)
@@ -175,7 +151,7 @@ class LinkCog(commands.Cog):
                 ("Message ID", str(msg_id)),
                 ("Target Member", f"{member} ({member.id})"),
                 ("Target Guild", target_guild.name),
-                ("Cross-Server", "Yes" if is_cross_server else "No"),
+                ("Cross-Server", "Yes" if cross_server else "No"),
             ], emoji="🔗")
 
             # Get the alliances channel from target guild
@@ -251,7 +227,7 @@ class LinkCog(commands.Cog):
                 inline=True,
             )
 
-            if is_cross_server:
+            if cross_server:
                 confirm_embed.add_field(
                     name="Server",
                     value=target_guild.name,
@@ -290,7 +266,7 @@ class LinkCog(commands.Cog):
                 member=member,
                 moderator=interaction.user,
                 target_guild=target_guild,
-                is_cross_server=is_cross_server,
+                cross_server=cross_server,
             )
 
             await interaction.response.send_message(

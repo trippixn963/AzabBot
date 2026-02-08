@@ -27,6 +27,7 @@ from src.core.moderation_validation import (
     is_cross_server,
 )
 from src.utils.footer import set_footer
+from src.utils.discord_rate_limit import log_http_error
 from src.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
 from src.core.constants import CASE_LOG_TIMEOUT, MODERATION_REASONS
@@ -114,183 +115,212 @@ class WarnCog(commands.Cog):
         Supports cross-server moderation: when run from mod server,
         the warning is recorded for the main server.
         """
-        # Get Target Guild (for cross-server moderation)
-        target_guild = get_target_guild(interaction, self.bot)
-        if not target_guild:
-            await interaction.followup.send(
-                "❌ Could not find target guild.",
-                ephemeral=True,
-            )
-            return
-
-        cross_server = is_cross_server(interaction)
-
-        # Try to get member from target guild for role checks
-        target_member = target_guild.get_member(user.id)
-
-        # Validation (using centralized validation module)
-        result = await validate_moderation_target(
-            interaction=interaction,
-            target=user,
-            bot=self.bot,
-            action="warn",
-            require_member=False,
-            check_bot_hierarchy=False,
-        )
-
-        if not result.is_valid:
-            await interaction.followup.send(result.error_message, ephemeral=True)
-            return
-
-        # Record Warning
-        self.db.add_warning(
-            user_id=user.id,
-            guild_id=target_guild.id,
-            moderator_id=interaction.user.id,
-            reason=reason,
-            evidence=evidence,
-        )
-
-        active_warns, total_warns = self.db.get_warn_counts(user.id, target_guild.id)
-
-        log_items = [
-            ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
-            ("ID", str(user.id)),
-            ("Moderator", str(interaction.user)),
-            ("Active Warnings", str(active_warns)),
-            ("Total Warnings", str(total_warns)),
-            ("Reason", (reason or "None")[:50]),
-        ]
-        if cross_server:
-            log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
-        logger.tree("USER WARNED", log_items, emoji="👮")
-
-        # Log to Case Forum (creates per-action case)
-        case_info = None
-        if self.bot.case_log_service:
-            try:
-                case_info = await asyncio.wait_for(
-                    self.bot.case_log_service.log_warn(
-                        user=target_member or user,
-                        moderator=interaction.user,
-                        reason=reason,
-                        evidence=evidence,
-                        active_warns=active_warns,
-                        total_warns=total_warns,
-                    ),
-                    timeout=CASE_LOG_TIMEOUT,
-                )
-            except asyncio.TimeoutError:
-                logger.warning("Case Log Timeout", [
-                    ("Action", "Warn"),
-                    ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
-                    ("ID", str(user.id)),
-                ])
-                if self.bot.webhook_alert_service:
-                    await self.bot.webhook_alert_service.send_error_alert(
-                        "Case Log Timeout",
-                        f"Warn case logging timed out for {user} ({user.id})"
-                    )
-            except Exception as e:
-                logger.error("Case Log Failed", [
-                    ("Action", "Warn"),
-                    ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
-                    ("ID", str(user.id)),
-                    ("Error", str(e)[:100]),
-                ])
-                if self.bot.webhook_alert_service:
-                    await self.bot.webhook_alert_service.send_error_alert(
-                        "Case Log Failed",
-                        f"Warn case logging failed for {user} ({user.id}): {str(e)[:200]}"
-                    )
-
-        # Log to Permanent Audit Log
-        self.db.log_moderation_action(
-            user_id=user.id,
-            guild_id=target_guild.id,
-            moderator_id=interaction.user.id,
-            action_type="warn",
-            action_source="manual",
-            reason=reason,
-            details={"evidence": evidence, "cross_server": cross_server, "active_warns": active_warns, "total_warns": total_warns},
-            case_id=case_info["case_id"] if case_info else None,
-        )
-
-        # Build & Send Embed
-        display_name = target_member.display_name if target_member else user.name
-        avatar_url = target_member.display_avatar.url if target_member else user.display_avatar.url
-
-        embed = discord.Embed(
-            title="⚠️ User Warned",
-            color=EmbedColors.GOLD,
-        )
-        embed.add_field(name="User", value=user.mention, inline=True)
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
-
-        # Show active warnings with total in parentheses if different
-        if active_warns != total_warns:
-            embed.add_field(name="Warnings", value=f"`{active_warns}` active\n(`{total_warns}` total)", inline=True)
-        else:
-            embed.add_field(name="Warning #", value=f"`{active_warns}`", inline=True)
-
-        if case_info:
-            embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
-
-        embed.set_thumbnail(url=avatar_url)
-        set_footer(embed)
-
-        sent_message = None
         try:
-            if case_info:
-                view = CaseButtonView(target_guild.id, case_info["thread_id"], user.id)
-                sent_message = await interaction.followup.send(embed=embed, view=view)
-            else:
-                sent_message = await interaction.followup.send(embed=embed)
-        except Exception as e:
-            logger.error("Warn Followup Failed", [
-                ("User", f"{user.name} ({user.id})"),
-                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
-                ("Error", str(e)[:100]),
-            ])
+            # Get Target Guild (for cross-server moderation)
+            target_guild = get_target_guild(interaction, self.bot)
+            if not target_guild:
+                await interaction.followup.send(
+                    "❌ Could not find target guild.",
+                    ephemeral=True,
+                )
+                return
 
-        # Concurrent Post-Response Operations
-        await gather_with_logging(
-            ("DM User", send_warn_dm(
-                user=user,
-                guild=target_guild,
-                moderator=interaction.user,
-                reason=reason,
-                evidence=evidence,
-                active_warns=active_warns,
-                total_warns=total_warns,
-                avatar_url=avatar_url,
-            )),
-            ("Post Mod Logs", post_mod_log(
+            cross_server = is_cross_server(interaction)
+
+            # Try to get member from target guild for role checks
+            target_member = target_guild.get_member(user.id)
+
+            # Validation (using centralized validation module)
+            result = await validate_moderation_target(
+                interaction=interaction,
+                target=user,
                 bot=self.bot,
-                action="Warn",
-                user=target_member or user,
-                moderator=interaction.user,
-                reason=reason,
-                active_warns=active_warns,
-                total_warns=total_warns,
-            )),
-            ("Mod Tracker", log_warn_to_tracker(
-                bot=self.bot,
-                moderator=interaction.user,
-                target=target_member or user,
-                reason=reason,
-            )),
-            ("WebSocket Broadcast", broadcast_case_event(
-                bot=self.bot,
-                case_info=case_info,
+                action="warn",
+                require_member=False,
+                check_bot_hierarchy=False,
+            )
+
+            if not result.is_valid:
+                await interaction.followup.send(result.error_message, ephemeral=True)
+                return
+
+            # Record Warning
+            self.db.add_warning(
                 user_id=user.id,
+                guild_id=target_guild.id,
                 moderator_id=interaction.user.id,
                 reason=reason,
-                active_warns=active_warns,
-                total_warns=total_warns,
-            )),
-            context="Warn Command",
-        )
+                evidence=evidence,
+            )
+
+            active_warns, total_warns = self.db.get_warn_counts(user.id, target_guild.id)
+
+            log_items = [
+                ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                ("ID", str(user.id)),
+                ("Moderator", str(interaction.user)),
+                ("Active Warnings", str(active_warns)),
+                ("Total Warnings", str(total_warns)),
+                ("Reason", (reason or "None")[:50]),
+            ]
+            if cross_server:
+                log_items.insert(1, ("Cross-Server", f"From {interaction.guild.name} → {target_guild.name}"))
+            logger.tree("USER WARNED", log_items, emoji="👮")
+
+            # Log to Case Forum (creates per-action case)
+            case_info = None
+            if self.bot.case_log_service:
+                try:
+                    case_info = await asyncio.wait_for(
+                        self.bot.case_log_service.log_warn(
+                            user=target_member or user,
+                            moderator=interaction.user,
+                            reason=reason,
+                            evidence=evidence,
+                            active_warns=active_warns,
+                            total_warns=total_warns,
+                        ),
+                        timeout=CASE_LOG_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("Case Log Timeout", [
+                        ("Action", "Warn"),
+                        ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                        ("ID", str(user.id)),
+                    ])
+                    if self.bot.webhook_alert_service:
+                        await self.bot.webhook_alert_service.send_error_alert(
+                            "Case Log Timeout",
+                            f"Warn case logging timed out for {user} ({user.id})"
+                        )
+                except Exception as e:
+                    logger.error("Case Log Failed", [
+                        ("Action", "Warn"),
+                        ("User", f"{user.name} ({user.nick})" if hasattr(user, 'nick') and user.nick else user.name),
+                        ("ID", str(user.id)),
+                        ("Error", str(e)[:100]),
+                    ])
+                    if self.bot.webhook_alert_service:
+                        await self.bot.webhook_alert_service.send_error_alert(
+                            "Case Log Failed",
+                            f"Warn case logging failed for {user} ({user.id}): {str(e)[:200]}"
+                        )
+
+            # Log to Permanent Audit Log
+            self.db.log_moderation_action(
+                user_id=user.id,
+                guild_id=target_guild.id,
+                moderator_id=interaction.user.id,
+                action_type="warn",
+                action_source="manual",
+                reason=reason,
+                details={"evidence": evidence, "cross_server": cross_server, "active_warns": active_warns, "total_warns": total_warns},
+                case_id=case_info["case_id"] if case_info else None,
+            )
+
+            # Build & Send Embed
+            display_name = target_member.display_name if target_member else user.name
+            avatar_url = target_member.display_avatar.url if target_member else user.display_avatar.url
+
+            embed = discord.Embed(
+                title="⚠️ User Warned",
+                color=EmbedColors.GOLD,
+            )
+            embed.add_field(name="User", value=user.mention, inline=True)
+            embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+
+            # Show active warnings with total in parentheses if different
+            if active_warns != total_warns:
+                embed.add_field(name="Warnings", value=f"`{active_warns}` active\n(`{total_warns}` total)", inline=True)
+            else:
+                embed.add_field(name="Warning #", value=f"`{active_warns}`", inline=True)
+
+            if case_info:
+                embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
+
+            embed.set_thumbnail(url=avatar_url)
+            set_footer(embed)
+
+            sent_message = None
+            try:
+                if case_info:
+                    view = CaseButtonView(target_guild.id, case_info["thread_id"], user.id)
+                    sent_message = await interaction.followup.send(embed=embed, view=view)
+                else:
+                    sent_message = await interaction.followup.send(embed=embed)
+            except Exception as e:
+                logger.error("Warn Followup Failed", [
+                    ("User", f"{user.name} ({user.id})"),
+                    ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                    ("Error", str(e)[:100]),
+                ])
+
+            # Concurrent Post-Response Operations
+            await gather_with_logging(
+                ("DM User", send_warn_dm(
+                    user=user,
+                    guild=target_guild,
+                    moderator=interaction.user,
+                    reason=reason,
+                    evidence=evidence,
+                    active_warns=active_warns,
+                    total_warns=total_warns,
+                    avatar_url=avatar_url,
+                )),
+                ("Post Mod Logs", post_mod_log(
+                    bot=self.bot,
+                    action="Warn",
+                    user=target_member or user,
+                    moderator=interaction.user,
+                    reason=reason,
+                    active_warns=active_warns,
+                    total_warns=total_warns,
+                )),
+                ("Mod Tracker", log_warn_to_tracker(
+                    bot=self.bot,
+                    moderator=interaction.user,
+                    target=target_member or user,
+                    reason=reason,
+                )),
+                ("WebSocket Broadcast", broadcast_case_event(
+                    bot=self.bot,
+                    case_info=case_info,
+                    user_id=user.id,
+                    moderator_id=interaction.user.id,
+                    reason=reason,
+                    active_warns=active_warns,
+                    total_warns=total_warns,
+                )),
+                context="Warn Command",
+            )
+
+        except discord.HTTPException as e:
+            log_http_error(e, "Warn Command", [
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Target", f"{user.name} ({user.id})"),
+            ])
+            try:
+                await interaction.followup.send(
+                    "An error occurred while issuing the warning.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.error("Warn Command Failed", [
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Target", f"{user.name} ({user.id})"),
+                ("Error Type", type(e).__name__),
+                ("Error", str(e)[:100]),
+            ])
+            try:
+                await interaction.followup.send(
+                    "An unexpected error occurred.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass
 
     # =========================================================================
     # Warn Command

@@ -21,6 +21,7 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.utils.footer import set_footer
+from src.utils.discord_rate_limit import log_http_error
 
 from .constants import MAX_CONCURRENT_OPS, LockdownResult
 from .lock_ops import lock_all_channels
@@ -107,90 +108,119 @@ class LockdownCog(commands.Cog):
         # Defer response (this may take a while for large servers)
         await interaction.response.defer(ephemeral=True)
 
-        # Get mod role so they keep access during lockdown
-        mod_role: Optional[discord.Role] = None
-        if self.config.moderation_role_id:
-            mod_role = guild.get_role(self.config.moderation_role_id)
+        try:
+            # Get mod role so they keep access during lockdown
+            mod_role: Optional[discord.Role] = None
+            if self.config.moderation_role_id:
+                mod_role = guild.get_role(self.config.moderation_role_id)
 
-        logger.tree("LOCKDOWN INITIATED", [
-            ("Guild", f"{guild.name} ({guild.id})"),
-            ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
-            ("Text Channels", str(len(guild.text_channels))),
-            ("Voice Channels", str(len(guild.voice_channels))),
-            ("Mod Role", f"{mod_role.name} ({mod_role.id})" if mod_role else "None"),
-            ("Reason", reason or "None"),
-        ], emoji="🔒")
+            logger.tree("LOCKDOWN INITIATED", [
+                ("Guild", f"{guild.name} ({guild.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Text Channels", str(len(guild.text_channels))),
+                ("Voice Channels", str(len(guild.voice_channels))),
+                ("Mod Role", f"{mod_role.name} ({mod_role.id})" if mod_role else "None"),
+                ("Reason", reason or "None"),
+            ], emoji="🔒")
 
-        everyone_role: discord.Role = guild.default_role
-        audit_reason: str = f"Lockdown by {interaction.user}: {reason or 'Emergency'}"
+            everyone_role: discord.Role = guild.default_role
+            audit_reason: str = f"Lockdown by {interaction.user}: {reason or 'Emergency'}"
 
-        # Lock all channels concurrently (mods keep access)
-        result: LockdownResult = await lock_all_channels(guild, everyone_role, mod_role, audit_reason, self.db)
+            # Lock all channels concurrently (mods keep access)
+            result: LockdownResult = await lock_all_channels(guild, everyone_role, mod_role, audit_reason, self.db)
 
-        # Save lockdown state
-        self.db.start_lockdown(
-            guild_id=guild.id,
-            locked_by=interaction.user.id,
-            reason=reason,
-            channel_count=result.success_count,
-        )
+            # Save lockdown state
+            self.db.start_lockdown(
+                guild_id=guild.id,
+                locked_by=interaction.user.id,
+                reason=reason,
+                channel_count=result.success_count,
+            )
 
-        # Build response embed
-        embed = discord.Embed(
-            title="🔒 Server Locked",
-            description="**Server is now in lockdown mode.**\nMembers cannot send messages or join voice channels.",
-            color=EmbedColors.ERROR,
-            timestamp=datetime.now(NY_TZ),
-        )
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
-        embed.add_field(name="Channels Locked", value=f"`{result.success_count}`", inline=True)
+            # Build response embed
+            embed = discord.Embed(
+                title="🔒 Server Locked",
+                description="**Server is now in lockdown mode.**\nMembers cannot send messages or join voice channels.",
+                color=EmbedColors.ERROR,
+                timestamp=datetime.now(NY_TZ),
+            )
+            embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Channels Locked", value=f"`{result.success_count}`", inline=True)
 
-        if result.failed_count > 0:
-            embed.add_field(name="Failed", value=f"`{result.failed_count}`", inline=True)
-            # Add first few errors if any
-            if result.errors:
-                error_preview = "\n".join(result.errors[:3])
-                if len(result.errors) > 3:
-                    error_preview += f"\n... and {len(result.errors) - 3} more"
-                embed.add_field(name="Errors", value=f"```{error_preview}```", inline=False)
+            if result.failed_count > 0:
+                embed.add_field(name="Failed", value=f"`{result.failed_count}`", inline=True)
+                # Add first few errors if any
+                if result.errors:
+                    error_preview = "\n".join(result.errors[:3])
+                    if len(result.errors) > 3:
+                        error_preview += f"\n... and {len(result.errors) - 3} more"
+                    embed.add_field(name="Errors", value=f"```{error_preview}```", inline=False)
 
-        if reason:
-            embed.add_field(name="Reason", value=reason, inline=False)
+            if reason:
+                embed.add_field(name="Reason", value=reason, inline=False)
 
-        embed.add_field(
-            name="Restore",
-            value="Use `/unlock` to restore permissions",
-            inline=False,
-        )
-        set_footer(embed)
+            embed.add_field(
+                name="Restore",
+                value="Use `/unlock` to restore permissions",
+                inline=False,
+            )
+            set_footer(embed)
 
-        await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
-        # Log the action
-        logger.tree("SERVER LOCKED", [
-            ("Guild", f"{guild.name} ({guild.id})"),
-            ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
-            ("Channels Locked", str(result.success_count)),
-            ("Failed", str(result.failed_count)),
-            ("Reason", reason or "None"),
-        ], emoji="🔒")
+            # Log the action
+            logger.tree("SERVER LOCKED", [
+                ("Guild", f"{guild.name} ({guild.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Channels Locked", str(result.success_count)),
+                ("Failed", str(result.failed_count)),
+                ("Reason", reason or "None"),
+            ], emoji="🔒")
 
-        # Log to server logs service
-        if self.bot.logging_service and self.bot.logging_service.enabled:
+            # Log to server logs service
+            if self.bot.logging_service and self.bot.logging_service.enabled:
+                try:
+                    await self.bot.logging_service.log_lockdown(
+                        moderator=interaction.user,
+                        reason=reason,
+                        channel_count=result.success_count,
+                        action="lock",
+                    )
+                except Exception as e:
+                    logger.warning("Server Log Failed", [
+                        ("Error", str(e)[:100]),
+                    ])
+
+            # Send public announcement
+            await send_public_announcement(guild, "lock", self.config)
+
+        except discord.HTTPException as e:
+            log_http_error(e, "Lockdown Command", [
+                ("Guild", f"{guild.name} ({guild.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+            ])
             try:
-                await self.bot.logging_service.log_lockdown(
-                    moderator=interaction.user,
-                    reason=reason,
-                    channel_count=result.success_count,
-                    action="lock",
+                await interaction.followup.send(
+                    "An error occurred during lockdown.",
+                    ephemeral=True,
                 )
-            except Exception as e:
-                logger.warning("Server Log Failed", [
-                    ("Error", str(e)[:100]),
-                ])
+            except Exception:
+                pass
 
-        # Send public announcement
-        await send_public_announcement(guild, "lock", self.config)
+        except Exception as e:
+            logger.error("Lockdown Command Failed", [
+                ("Guild", f"{guild.name} ({guild.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Error Type", type(e).__name__),
+                ("Error", str(e)[:100]),
+            ])
+            try:
+                await interaction.followup.send(
+                    "An unexpected error occurred.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass
 
     # =========================================================================
     # Unlock Command
@@ -244,87 +274,116 @@ class LockdownCog(commands.Cog):
         # Defer response
         await interaction.response.defer(ephemeral=True)
 
-        # Get lockdown info for duration calculation
-        lockdown_state = self.db.get_lockdown_state(guild.id)
-        locked_at: float = lockdown_state.get("locked_at", 0) if lockdown_state else 0
-        duration_seconds: float = datetime.now(NY_TZ).timestamp() - locked_at if locked_at else 0
+        try:
+            # Get lockdown info for duration calculation
+            lockdown_state = self.db.get_lockdown_state(guild.id)
+            locked_at: float = lockdown_state.get("locked_at", 0) if lockdown_state else 0
+            duration_seconds: float = datetime.now(NY_TZ).timestamp() - locked_at if locked_at else 0
 
-        # Get mod role to clean up mod overwrites we added during lockdown
-        mod_role: Optional[discord.Role] = None
-        if self.config.moderation_role_id:
-            mod_role = guild.get_role(self.config.moderation_role_id)
+            # Get mod role to clean up mod overwrites we added during lockdown
+            mod_role: Optional[discord.Role] = None
+            if self.config.moderation_role_id:
+                mod_role = guild.get_role(self.config.moderation_role_id)
 
-        logger.tree("UNLOCK INITIATED", [
-            ("Guild", f"{guild.name} ({guild.id})"),
-            ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
-            ("Locked Duration", f"{int(duration_seconds)}s"),
-            ("Mod Role", f"{mod_role.name} ({mod_role.id})" if mod_role else "None"),
-        ], emoji="🔓")
+            logger.tree("UNLOCK INITIATED", [
+                ("Guild", f"{guild.name} ({guild.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Locked Duration", f"{int(duration_seconds)}s"),
+                ("Mod Role", f"{mod_role.name} ({mod_role.id})" if mod_role else "None"),
+            ], emoji="🔓")
 
-        everyone_role: discord.Role = guild.default_role
-        audit_reason: str = f"Lockdown ended by {interaction.user}"
+            everyone_role: discord.Role = guild.default_role
+            audit_reason: str = f"Lockdown ended by {interaction.user}"
 
-        # Unlock all channels concurrently (clean up mod overwrites too)
-        result: LockdownResult = await unlock_all_channels(guild, everyone_role, mod_role, audit_reason, self.db)
+            # Unlock all channels concurrently (clean up mod overwrites too)
+            result: LockdownResult = await unlock_all_channels(guild, everyone_role, mod_role, audit_reason, self.db)
 
-        # Clear lockdown state
-        self.db.end_lockdown(guild.id)
+            # Clear lockdown state
+            self.db.end_lockdown(guild.id)
 
-        # Cancel any pending auto-unlock
-        if self.bot.raid_lockdown_service:
-            self.bot.raid_lockdown_service.cancel_auto_unlock()
-            logger.debug("Auto-Unlock Cancelled", [
-                ("Reason", "Manual unlock"),
-            ])
-
-        # Build response embed
-        embed = discord.Embed(
-            title="🔓 Server Unlocked",
-            description="**Server lockdown has ended.**\nMembers can now send messages and join voice channels.",
-            color=EmbedColors.SUCCESS,
-            timestamp=datetime.now(NY_TZ),
-        )
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
-        embed.add_field(name="Channels Unlocked", value=f"`{result.success_count}`", inline=True)
-
-        if result.failed_count > 0:
-            embed.add_field(name="Failed", value=f"`{result.failed_count}`", inline=True)
-
-        if duration_seconds > 0:
-            minutes: int = int(duration_seconds // 60)
-            seconds: int = int(duration_seconds % 60)
-            duration_str: str = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
-            embed.add_field(name="Duration", value=f"`{duration_str}`", inline=True)
-
-        set_footer(embed)
-
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-        # Log the action
-        logger.tree("SERVER UNLOCKED", [
-            ("Guild", f"{guild.name} ({guild.id})"),
-            ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
-            ("Channels Unlocked", str(result.success_count)),
-            ("Failed", str(result.failed_count)),
-            ("Duration", f"{int(duration_seconds)}s"),
-        ], emoji="🔓")
-
-        # Log to server logs service
-        if self.bot.logging_service and self.bot.logging_service.enabled:
-            try:
-                await self.bot.logging_service.log_lockdown(
-                    moderator=interaction.user,
-                    reason=None,
-                    channel_count=result.success_count,
-                    action="unlock",
-                )
-            except Exception as e:
-                logger.warning("Server Log Failed", [
-                    ("Error", str(e)[:100]),
+            # Cancel any pending auto-unlock
+            if self.bot.raid_lockdown_service:
+                self.bot.raid_lockdown_service.cancel_auto_unlock()
+                logger.debug("Auto-Unlock Cancelled", [
+                    ("Reason", "Manual unlock"),
                 ])
 
-        # Send public announcement
-        await send_public_announcement(guild, "unlock", self.config)
+            # Build response embed
+            embed = discord.Embed(
+                title="🔓 Server Unlocked",
+                description="**Server lockdown has ended.**\nMembers can now send messages and join voice channels.",
+                color=EmbedColors.SUCCESS,
+                timestamp=datetime.now(NY_TZ),
+            )
+            embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Channels Unlocked", value=f"`{result.success_count}`", inline=True)
+
+            if result.failed_count > 0:
+                embed.add_field(name="Failed", value=f"`{result.failed_count}`", inline=True)
+
+            if duration_seconds > 0:
+                minutes: int = int(duration_seconds // 60)
+                seconds: int = int(duration_seconds % 60)
+                duration_str: str = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
+                embed.add_field(name="Duration", value=f"`{duration_str}`", inline=True)
+
+            set_footer(embed)
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+            # Log the action
+            logger.tree("SERVER UNLOCKED", [
+                ("Guild", f"{guild.name} ({guild.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Channels Unlocked", str(result.success_count)),
+                ("Failed", str(result.failed_count)),
+                ("Duration", f"{int(duration_seconds)}s"),
+            ], emoji="🔓")
+
+            # Log to server logs service
+            if self.bot.logging_service and self.bot.logging_service.enabled:
+                try:
+                    await self.bot.logging_service.log_lockdown(
+                        moderator=interaction.user,
+                        reason=None,
+                        channel_count=result.success_count,
+                        action="unlock",
+                    )
+                except Exception as e:
+                    logger.warning("Server Log Failed", [
+                        ("Error", str(e)[:100]),
+                    ])
+
+            # Send public announcement
+            await send_public_announcement(guild, "unlock", self.config)
+
+        except discord.HTTPException as e:
+            log_http_error(e, "Unlock Command", [
+                ("Guild", f"{guild.name} ({guild.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+            ])
+            try:
+                await interaction.followup.send(
+                    "An error occurred during unlock.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.error("Unlock Command Failed", [
+                ("Guild", f"{guild.name} ({guild.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Error Type", type(e).__name__),
+                ("Error", str(e)[:100]),
+            ])
+            try:
+                await interaction.followup.send(
+                    "An unexpected error occurred.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass
 
 
 __all__ = ["LockdownCog"]
