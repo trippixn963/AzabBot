@@ -3,6 +3,9 @@ AzabBot - Anti-Spam Punishment Handlers
 =======================================
 
 Handlers for spam detection results - warnings, mutes, and logging.
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
 """
 
 import asyncio
@@ -654,3 +657,10 @@ class SpamHandlerMixin:
                     ("Type", spam_display),
                     ("Error", str(e)[:50]),
                 ])
+
+
+# =============================================================================
+# Module Export
+# =============================================================================
+
+__all__ = ["SpamHandlerMixin"]
