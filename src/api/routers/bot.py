@@ -22,6 +22,7 @@ from src.core.logger import logger
 from src.api.dependencies import get_bot, require_auth
 from src.api.models.auth import TokenPayload
 from src.api.services.log_buffer import get_log_buffer
+from src.api.services.health_tracker import get_health_tracker
 
 
 router = APIRouter(prefix="/bot", tags=["Bot Status"])
@@ -81,6 +82,18 @@ async def get_bot_status(
     python_version = platform.python_version()
     discord_py_version = discord.__version__
 
+    # Get shard info
+    shard_id = bot.shard_id if bot and hasattr(bot, 'shard_id') else 0
+    shard_count = bot.shard_count if bot and hasattr(bot, 'shard_count') else 1
+
+    # Get health tracker data
+    health_tracker = get_health_tracker()
+    health_summary = health_tracker.get_health_summary()
+
+    # Record current latency
+    if latency_ms > 0:
+        health_tracker.record_latency(latency_ms)
+
     response = {
         "success": True,
         "data": {
@@ -99,6 +112,13 @@ async def get_bot_status(
                 "disk_total_gb": round(disk_total_gb, 1),
                 "python_version": python_version,
                 "discord_py_version": discord_py_version,
+            },
+            "health": {
+                "shard_id": shard_id,
+                "shard_count": shard_count or 1,
+                "reconnect_count": health_summary["reconnect_count"],
+                "rate_limit_hits": health_summary["rate_limit_hits"],
+                "avg_latency_ms": health_summary["avg_latency_ms"],
             },
         },
     }
@@ -151,6 +171,31 @@ async def get_bot_logs(
     ])
 
     return JSONResponse(content=response)
+
+
+# =============================================================================
+# Latency History
+# =============================================================================
+
+@router.get("/latency-history")
+async def get_latency_history(
+    payload: TokenPayload = Depends(require_auth),
+) -> JSONResponse:
+    """
+    Get latency history for graphing.
+
+    Returns up to 60 latency measurements (last ~1 hour).
+    """
+    health_tracker = get_health_tracker()
+    history = health_tracker.get_latency_history()
+
+    return JSONResponse(content={
+        "success": True,
+        "data": {
+            "history": history,
+            "count": len(history),
+        },
+    })
 
 
 __all__ = ["router"]

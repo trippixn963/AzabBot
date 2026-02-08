@@ -44,7 +44,7 @@ class APIConfig:
 
     # WebSocket
     ws_heartbeat_interval: int = 30  # seconds
-    ws_max_connections: int = 100
+    ws_max_connections: int = 500
 
     # Cache
     cache_ttl: int = 300  # 5 minutes
