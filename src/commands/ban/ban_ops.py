@@ -15,6 +15,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import is_owner, has_mod_role, EmbedColors
+from src.core.database import get_db
 from src.api.services.event_logger import event_logger
 from src.core.moderation_validation import (
     validate_moderation_target,
