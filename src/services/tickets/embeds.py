@@ -216,7 +216,7 @@ def build_close_notification(
     description = f"🔒 This ticket has been closed by {closed_by.mention}."
     if reason:
         description += f"\n\n**Reason:** {reason}"
-    description += f"\n\n🗑️ This thread will be deleted <t:{deletion_timestamp}:F>"
+    description += f"\n\n🗑️ This thread will be deleted <t:{deletion_timestamp}:R>"
 
     embed = discord.Embed(
         description=description,
