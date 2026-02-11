@@ -16,7 +16,7 @@ import aiohttp
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from src.core.config import get_config
+from src.core.config import get_config, NY_TZ
 from src.core.logger import logger
 from src.core.database import get_db
 from src.api.dependencies import get_bot, require_auth
@@ -526,7 +526,7 @@ async def get_dashboard_stats(
     db = get_db()
 
     # Time calculations
-    now = datetime.utcnow()
+    now = datetime.now(NY_TZ)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     week_ago = (now - timedelta(days=7)).timestamp()
     two_weeks_ago = (now - timedelta(days=14)).timestamp()
