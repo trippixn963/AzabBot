@@ -85,16 +85,17 @@ class AuthService:
     - User registration with PIN
     - JWT token generation and validation
     - Moderator role verification
-    - Token blacklisting (for logout)
+    - Token blacklisting (for logout) - persisted to database
     - Login rate limiting (per Discord ID)
     - Account lockout after consecutive failures
     """
 
     def __init__(self) -> None:
         self._config = get_api_config()
-        self._blacklisted_tokens: Set[str] = set()
+        self._blacklisted_token_hashes: Set[str] = set()  # In-memory cache of hashes
         self._login_attempts: Dict[int, LoginAttempt] = {}  # discord_id -> attempts
         self._failed_logins: Dict[int, FailedLoginTracker] = {}  # discord_id -> tracker
+        self._load_blacklist_cache()
 
     # =========================================================================
     # User Management
@@ -485,9 +486,48 @@ class AuthService:
         return True, token, expires_at
 
     def logout(self, token: str) -> bool:
-        """Invalidate a token (add to blacklist)."""
-        self._blacklisted_tokens.add(token)
-        return True
+        """Invalidate a token (add to blacklist and persist to database)."""
+        import hashlib
+
+        try:
+            # Get token expiry from payload
+            payload = jwt.decode(
+                token,
+                self._config.jwt_secret,
+                algorithms=[self._config.jwt_algorithm],
+                options={"verify_exp": False},  # Allow expired tokens to be blacklisted
+            )
+            expires_at = payload.get("exp", time.time() + 86400)  # Default 24h if no exp
+
+            # Add to in-memory cache
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            self._blacklisted_token_hashes.add(token_hash)
+
+            # Persist to database
+            db = get_db()
+            db.add_blacklisted_token(token, expires_at)
+
+            return True
+        except Exception:
+            # Still add to memory cache even if db fails
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            self._blacklisted_token_hashes.add(token_hash)
+            return True
+
+    def _load_blacklist_cache(self) -> None:
+        """Load blacklisted token hashes from database into memory cache."""
+        try:
+            db = get_db()
+            self._blacklisted_token_hashes = db.load_blacklisted_token_hashes()
+            if self._blacklisted_token_hashes:
+                logger.debug("Token Blacklist Loaded", [
+                    ("Count", str(len(self._blacklisted_token_hashes))),
+                ])
+        except Exception as e:
+            logger.warning("Failed to Load Token Blacklist", [
+                ("Error", str(e)[:50]),
+            ])
+            self._blacklisted_token_hashes = set()
 
     # =========================================================================
     # Token Management
@@ -519,6 +559,12 @@ class AuthService:
 
         return token, expires_at
 
+    def _is_token_blacklisted(self, token: str) -> bool:
+        """Check if a token is blacklisted (using hash for security)."""
+        import hashlib
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        return token_hash in self._blacklisted_token_hashes
+
     def validate_token(self, token: str) -> Optional[int]:
         """
         Validate a token and return the user ID.
@@ -526,7 +572,7 @@ class AuthService:
         Returns:
             Discord user ID if valid, None otherwise
         """
-        if not token or token in self._blacklisted_tokens:
+        if not token or self._is_token_blacklisted(token):
             return None
 
         try:
@@ -550,7 +596,7 @@ class AuthService:
 
     def get_token_payload(self, token: str) -> Optional[TokenPayload]:
         """Get the full token payload."""
-        if not token or token in self._blacklisted_tokens:
+        if not token or self._is_token_blacklisted(token):
             return None
 
         try:

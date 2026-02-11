@@ -940,6 +940,22 @@ class SchemaMixin:
         """)
 
         # -----------------------------------------------------------------
+        # Token Blacklist Table
+        # DESIGN: Persists invalidated JWT tokens (from logout)
+        # Tokens are stored until their natural expiry + 1 day for cleanup
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS token_blacklist (
+                token_hash TEXT PRIMARY KEY,
+                expires_at REAL NOT NULL,
+                blacklisted_at REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_token_blacklist_expires ON token_blacklist(expires_at)"
+        )
+
+        # -----------------------------------------------------------------
         # Guild Daily Snapshots Table
         # DESIGN: Stores daily member/online counts for dashboard charts
         # -----------------------------------------------------------------

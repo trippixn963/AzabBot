@@ -40,6 +40,7 @@ from src.core.database.appeals import AppealsMixin
 from src.core.database.linked import LinkedMixin
 from src.core.database.timeouts import TimeoutsMixin
 from src.core.database.snapshots import SnapshotsMixin
+from src.core.database.token_blacklist import TokenBlacklistMixin
 
 # Import type definitions from models module
 from src.core.database.models import (
@@ -109,6 +110,7 @@ class DatabaseManager(
     LinkedMixin,
     TimeoutsMixin,
     SnapshotsMixin,
+    TokenBlacklistMixin,
 ):
     """
     Centralized database manager with thread-safe operations.

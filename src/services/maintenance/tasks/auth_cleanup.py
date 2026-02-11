@@ -26,15 +26,13 @@ if TYPE_CHECKING:
 
 class AuthCleanupTask(MaintenanceTask):
     """
-    Clean up stale authentication state from memory.
+    Clean up stale authentication state.
 
     Cleans:
-    - Blacklisted tokens (from logouts) that are past expiry
+    - Blacklisted tokens from database (expired tokens)
+    - In-memory token hash cache (synced from database)
     - Login rate limit tracking data for old windows
     - Failed login trackers for expired lockouts
-
-    These grow indefinitely without periodic cleanup since they're
-    stored in memory, not database.
     """
 
     name = "Auth Cleanup"
@@ -62,42 +60,26 @@ class AuthCleanupTask(MaintenanceTask):
             now: float = time.time()
 
             # Track stats before cleanup
-            tokens_before: int = len(auth_service._blacklisted_tokens)
+            tokens_before: int = len(auth_service._blacklisted_token_hashes)
             attempts_before: int = len(auth_service._login_attempts)
             failed_before: int = len(auth_service._failed_logins)
 
             # =================================================================
-            # Clean blacklisted tokens
+            # Clean blacklisted tokens from database
             # =================================================================
             try:
-                tokens_to_remove: Set[str] = set()
+                from src.core.database import get_db
+                db = get_db()
 
-                for token in auth_service._blacklisted_tokens:
-                    try:
-                        # Decode without verification to get expiry
-                        payload = jwt.decode(
-                            token,
-                            options={"verify_signature": False, "verify_exp": False}
-                        )
-                        exp: float = payload.get("exp", 0)
+                # Remove expired tokens from database
+                tokens_removed = db.cleanup_expired_blacklist()
 
-                        # If token expired more than cleanup age ago, safe to remove
-                        if exp and now - exp > AUTH_TOKEN_CLEANUP_AGE:
-                            tokens_to_remove.add(token)
-                    except Exception:
-                        # Can't decode - corrupted token, remove it
-                        tokens_to_remove.add(token)
-
-                for token in tokens_to_remove:
-                    try:
-                        auth_service._blacklisted_tokens.discard(token)
-                        tokens_removed += 1
-                    except (KeyError, ValueError):
-                        pass
+                # Reload the in-memory cache from database
+                auth_service._blacklisted_token_hashes = db.load_blacklisted_token_hashes()
 
             except Exception as e:
                 errors += 1
-                logger.error("Token Cleanup Error", [
+                logger.error("Token Blacklist Cleanup Error", [
                     ("Error", str(e)[:LOG_TRUNCATE_SHORT]),
                 ])
 
@@ -165,8 +147,9 @@ class AuthCleanupTask(MaintenanceTask):
             total_removed: int = tokens_removed + attempts_removed + failed_removed
 
             if total_removed > 0:
+                tokens_after = len(auth_service._blacklisted_token_hashes)
                 logger.tree("Auth Cleanup Complete", [
-                    ("Blacklisted Tokens", f"{tokens_removed} removed ({tokens_before} → {tokens_before - tokens_removed})"),
+                    ("Blacklisted Tokens", f"{tokens_removed} removed from DB ({tokens_before} → {tokens_after} in cache)"),
                     ("Login Attempts", f"{attempts_removed} removed ({attempts_before} → {attempts_before - attempts_removed})"),
                     ("Failed Logins", f"{failed_removed} removed ({failed_before} → {failed_before - failed_removed})"),
                     ("Total Cleaned", str(total_removed)),
