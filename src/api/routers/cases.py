@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from starlette.status import HTTP_404_NOT_FOUND
 
 from src.core.logger import logger
+from src.core.config import NY_TZ
 from src.api.dependencies import get_bot, require_auth, get_pagination, PaginationParams
 from src.api.models.auth import TokenPayload
 from src.api.utils.discord import (
@@ -55,7 +56,7 @@ async def list_cases(
     """
     db = get_db()
     now = time.time()
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0).timestamp()
+    today_start = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0).timestamp()
 
     # Build query conditions
     conditions = []
@@ -182,7 +183,7 @@ async def get_case_stats(
     """
     db = get_db()
     now = time.time()
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0).timestamp()
+    today_start = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0).timestamp()
     week_start = today_start - (7 * 86400)
 
     # Single optimized query for all case stats

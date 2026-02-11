@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
 from src.core.logger import logger
+from src.core.config import NY_TZ
 from src.api.dependencies import get_bot, require_auth, get_pagination, PaginationParams
 from src.api.models.base import APIResponse, PaginatedResponse
 from src.api.models.stats import (
@@ -54,7 +55,7 @@ async def get_public_stats(
     """
     db = get_db()
     now = time.time()
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0).timestamp()
+    today_start = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0).timestamp()
     week_start = today_start - (7 * 86400)
 
     # Bot status
@@ -344,7 +345,7 @@ async def get_public_stats(
             "disk_total_gb": 0,
         },
         "changelog": [],
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(NY_TZ).isoformat(),
     }
 
     logger.tree("Public Stats Fetched", [
@@ -374,7 +375,7 @@ async def get_dashboard_stats(
     """
     db = get_db()
     now = time.time()
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0).timestamp()
+    today_start = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0).timestamp()
     yesterday_start = today_start - 86400
 
     # Get guild info
@@ -492,7 +493,7 @@ async def get_moderator_stats(
     """
     db = get_db()
     now = time.time()
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0).timestamp()
+    today_start = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0).timestamp()
     week_start = today_start - (7 * 86400)
     month_start = today_start - (30 * 86400)
 
@@ -816,8 +817,8 @@ async def get_public_user_summary(
         # Account info
         "account_created_at": user.created_at.isoformat() + "Z" if user and user.created_at else None,
         "joined_server_at": member.joined_at.isoformat() + "Z" if member and member.joined_at else None,
-        "account_age_days": (datetime.utcnow() - user.created_at.replace(tzinfo=None)).days if user and user.created_at else 0,
-        "server_tenure_days": (datetime.utcnow() - member.joined_at.replace(tzinfo=None)).days if member and member.joined_at else 0,
+        "account_age_days": (datetime.now(NY_TZ) - user.created_at.replace(tzinfo=None)).days if user and user.created_at else 0,
+        "server_tenure_days": (datetime.now(NY_TZ) - member.joined_at.replace(tzinfo=None)).days if member and member.joined_at else 0,
 
         # Moderation status
         "is_muted": is_muted,
@@ -862,7 +863,7 @@ async def get_activity_chart(
     Uses optimized queries to avoid N+1 problem.
     """
     db = get_db()
-    now = datetime.utcnow()
+    now = datetime.now(NY_TZ)
     start_date = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
     start_ts = start_date.timestamp()
 

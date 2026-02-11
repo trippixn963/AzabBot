@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette.status import HTTP_404_NOT_FOUND
 
 from src.core.logger import logger
+from src.core.config import NY_TZ
 from src.api.dependencies import get_bot, require_auth, get_pagination, PaginationParams
 from src.api.models.base import APIResponse, PaginatedResponse
 from src.api.models.tickets import (
@@ -129,7 +130,7 @@ async def get_ticket_stats(
     Get aggregate ticket statistics.
     """
     db = get_db()
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0).timestamp()
+    today_start = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0).timestamp()
 
     # Status counts
     open_count = db.fetchone(
