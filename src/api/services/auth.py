@@ -33,6 +33,7 @@ from src.utils.http import http_session, FAST_TIMEOUT
 
 TOKEN_TYPE_ACCESS = "access"
 TOKEN_TYPE_REFRESH = "refresh"
+TOKEN_TYPE_TRANSCRIPT = "transcript"
 
 # Login rate limiting
 LOGIN_RATE_LIMIT_ATTEMPTS = 5
@@ -569,6 +570,103 @@ class AuthService:
 
         except (ExpiredSignatureError, InvalidTokenError, ValueError, TypeError):
             return None
+
+    # =========================================================================
+    # Transcript Access Tokens
+    # =========================================================================
+
+    def generate_transcript_token(self, ticket_id: str) -> str:
+        """
+        Generate a non-expiring token for transcript access.
+        This allows users to view their ticket transcript without logging in.
+
+        Args:
+            ticket_id: The ticket ID to generate a token for
+
+        Returns:
+            JWT token string for transcript access
+        """
+        try:
+            payload = {
+                "sub": ticket_id,
+                "iat": datetime.utcnow(),
+                "type": TOKEN_TYPE_TRANSCRIPT,
+            }
+
+            token = jwt.encode(
+                payload,
+                self._config.jwt_secret,
+                algorithm=self._config.jwt_algorithm,
+            )
+
+            logger.debug("Transcript Token Generated", [
+                ("Ticket ID", ticket_id),
+            ])
+
+            return token
+
+        except Exception as e:
+            logger.error("Transcript Token Generation Failed", [
+                ("Ticket ID", ticket_id),
+                ("Error", str(e)[:50]),
+            ])
+            raise
+
+    def validate_transcript_token(self, token: str, ticket_id: str) -> bool:
+        """
+        Validate a transcript access token.
+
+        Args:
+            token: The JWT token from the URL
+            ticket_id: The ticket ID being accessed
+
+        Returns:
+            True if token is valid for this ticket, False otherwise
+        """
+        if not token:
+            return False
+
+        try:
+            payload = jwt.decode(
+                token,
+                self._config.jwt_secret,
+                algorithms=[self._config.jwt_algorithm],
+                options={"verify_exp": False},  # Transcript tokens don't expire
+            )
+
+            # Check token type
+            if payload.get("type") != TOKEN_TYPE_TRANSCRIPT:
+                logger.debug("Transcript Token Invalid Type", [
+                    ("Ticket ID", ticket_id),
+                    ("Token Type", payload.get("type", "None")),
+                ])
+                return False
+
+            # Check ticket ID matches
+            if payload.get("sub") != ticket_id:
+                logger.debug("Transcript Token ID Mismatch", [
+                    ("Expected", ticket_id),
+                    ("Token Sub", payload.get("sub", "None")),
+                ])
+                return False
+
+            logger.debug("Transcript Token Valid", [
+                ("Ticket ID", ticket_id),
+            ])
+            return True
+
+        except InvalidTokenError as e:
+            logger.debug("Transcript Token Invalid", [
+                ("Ticket ID", ticket_id),
+                ("Error", str(e)[:50]),
+            ])
+            return False
+        except (ValueError, TypeError) as e:
+            logger.warning("Transcript Token Parse Error", [
+                ("Ticket ID", ticket_id),
+                ("Error Type", type(e).__name__),
+            ])
+            return False
 
     # =========================================================================
     # User Info

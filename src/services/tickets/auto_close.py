@@ -46,10 +46,10 @@ class AutoCloseMixin:
 
     async def _check_inactive_tickets(self: "TicketService") -> None:
         """Check and handle inactive tickets."""
-        if not self.config.logging_guild_id:
+        if not self.config.ops_guild_id:
             return
 
-        guild_id = self.config.logging_guild_id
+        guild_id = self.config.ops_guild_id
         now = time.time()
         warning_threshold = now - (INACTIVE_WARNING_DAYS * 86400)
         close_threshold = now - (INACTIVE_CLOSE_DAYS * 86400)
@@ -106,7 +106,7 @@ class AutoCloseMixin:
     async def _auto_close_ticket(self: "TicketService", ticket: dict) -> None:
         """Auto-close an inactive ticket."""
         # Use bot as closer
-        guild = self.bot.get_guild(self.config.logging_guild_id)
+        guild = self.bot.get_guild(self.config.ops_guild_id)
         if not guild:
             return
 

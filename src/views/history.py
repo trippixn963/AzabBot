@@ -288,8 +288,8 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
                 links = []
 
                 # Discord link - only show if active (thread still exists)
-                if thread_id and config.logging_guild_id and status == "active":
-                    discord_url = f"https://discord.com/channels/{config.logging_guild_id}/{thread_id}"
+                if thread_id and config.ops_guild_id and status == "active":
+                    discord_url = f"https://discord.com/channels/{config.ops_guild_id}/{thread_id}"
                     links.append(f"[Discord]({discord_url})")
 
                 # Website link - only show for resolved cases (transcript saved after thread deleted)

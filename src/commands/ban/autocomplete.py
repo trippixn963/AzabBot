@@ -67,9 +67,9 @@ async def banned_user_autocomplete(
         # Determine target guild (cross-server support)
         target_guild = interaction.guild
         if (config.mod_server_id and
-            config.logging_guild_id and
+            config.ops_guild_id and
             interaction.guild.id == config.mod_server_id):
-            main_guild = interaction.client.get_guild(config.logging_guild_id)
+            main_guild = interaction.client.get_guild(config.ops_guild_id)
             if main_guild:
                 target_guild = main_guild
 

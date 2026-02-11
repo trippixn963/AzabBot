@@ -20,7 +20,7 @@ from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
 from src.utils.async_utils import create_safe_task
-from src.utils.snipe_blocker import should_block_snipe
+from src.utils.snipe_blocker import should_block_snipe, is_snipe_clearer
 from src.utils.discord_rate_limit import log_http_error
 from src.api.services.event_logger import event_logger
 
@@ -201,7 +201,7 @@ class MessageEvents(HelpersMixin, commands.Cog):
         # -----------------------------------------------------------------
         if (
             message.guild
-            and message.guild.id == self.config.logging_guild_id
+            and message.guild.id == self.config.ops_guild_id
             and "partnership" in message.content.lower()
         ):
             await self._handle_partnership_mention(message)
@@ -425,6 +425,10 @@ class MessageEvents(HelpersMixin, commands.Cog):
                 )
             return  # Skip snipe cache
 
+        # Check if this is a "snipe clearer" (just dots like ".", "..", "...")
+        # We'll skip saving to snipe cache but still log everything else
+        skip_snipe_save = is_snipe_clearer(message.content)
+
         channel_id = message.channel.id
         deleted_at = datetime.now(NY_TZ).timestamp()
         attachment_names = [a.filename for a in message.attachments] if message.attachments else []
@@ -469,20 +473,22 @@ class MessageEvents(HelpersMixin, commands.Cog):
                     ])
 
         # Save to database (persists across restarts)
-        self.bot.db.save_snipe(
-            channel_id=channel_id,
-            author_id=message.author.id,
-            author_name=str(message.author),
-            author_display=message.author.display_name,
-            author_avatar=message.author.display_avatar.url,
-            content=message.content,
-            attachment_names=attachment_names,
-            deleted_at=deleted_at,
-            attachment_urls=attachment_urls if attachment_urls else None,
-            sticker_urls=sticker_urls if sticker_urls else None,
-            message_id=message.id,
-            attachment_data=attachment_data,
-        )
+        # Skip if this is a "snipe clearer" (dots only) - preserves previous real snipe
+        if not skip_snipe_save:
+            self.bot.db.save_snipe(
+                channel_id=channel_id,
+                author_id=message.author.id,
+                author_name=str(message.author),
+                author_display=message.author.display_name,
+                author_avatar=message.author.display_avatar.url,
+                content=message.content,
+                attachment_names=attachment_names,
+                deleted_at=deleted_at,
+                attachment_urls=attachment_urls if attachment_urls else None,
+                sticker_urls=sticker_urls if sticker_urls else None,
+                message_id=message.id,
+                attachment_data=attachment_data,
+            )
 
         # Log to dashboard (handles console logging too)
         if message.guild and hasattr(message.channel, 'name'):

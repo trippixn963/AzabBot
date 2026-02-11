@@ -76,10 +76,10 @@ def get_target_guild(
     config = get_config()
 
     if (config.mod_server_id and
-        config.logging_guild_id and
+        config.ops_guild_id and
         interaction.guild and
         interaction.guild.id == config.mod_server_id):
-        main_guild = bot.get_guild(config.logging_guild_id)
+        main_guild = bot.get_guild(config.ops_guild_id)
         if main_guild:
             return main_guild
 
@@ -99,7 +99,7 @@ def is_cross_server(interaction: discord.Interaction) -> bool:
     config = get_config()
     return (
         config.mod_server_id is not None and
-        config.logging_guild_id is not None and
+        config.ops_guild_id is not None and
         interaction.guild is not None and
         interaction.guild.id == config.mod_server_id
     )

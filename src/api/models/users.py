@@ -17,25 +17,6 @@ from .cases import CaseBrief
 
 
 # =============================================================================
-# Request Models
-# =============================================================================
-
-class UserSearchParams(BaseModel):
-    """Query parameters for user search."""
-
-    query: str = Field(min_length=2, description="Search query (ID or username)")
-    limit: int = Field(10, ge=1, le=50)
-
-
-class UserHistoryParams(BaseModel):
-    """Query parameters for user moderation history."""
-
-    page: int = Field(1, ge=1)
-    limit: int = Field(20, ge=1, le=100)
-    include_resolved: bool = Field(True, description="Include resolved cases")
-
-
-# =============================================================================
 # Response Models
 # =============================================================================
 
@@ -95,21 +76,8 @@ class ModerationNote(BaseModel):
     updated_at: Optional[datetime] = None
 
 
-class UserActivity(BaseModel):
-    """User activity entry for timeline."""
-
-    timestamp: datetime
-    event_type: str
-    description: str
-    case_id: Optional[str] = None
-    moderator: Optional[UserBrief] = None
-
-
 __all__ = [
-    "UserSearchParams",
-    "UserHistoryParams",
     "UserProfile",
     "UserSearchResult",
     "ModerationNote",
-    "UserActivity",
 ]

@@ -136,7 +136,7 @@ class Config:
     # -------------------------------------------------------------------------
 
     server_logs_forum_id: Optional[int] = None
-    logging_guild_id: Optional[int] = None  # Main guild ID (for logging and cross-server moderation)
+    ops_guild_id: Optional[int] = None  # Main guild ID (for logging and cross-server moderation)
 
     # -------------------------------------------------------------------------
     # Optional: Lockdown Exclusions
@@ -197,7 +197,6 @@ class Config:
     # Optional: Webhooks
     # -------------------------------------------------------------------------
 
-    status_webhook_url: Optional[str] = None
     error_webhook_url: Optional[str] = None
     live_logs_webhook_url: Optional[str] = None
 
@@ -494,7 +493,7 @@ def load_config() -> Config:
     transcript_assets_thread_id = _parse_int_optional(os.getenv("AZAB_TRANSCRIPT_ASSETS_THREAD_ID"))
     case_transcripts_thread_id = _parse_int_optional(os.getenv("AZAB_CASE_TRANSCRIPTS_THREAD_ID"))
     server_logs_forum_id = _parse_int_optional(os.getenv("AZAB_SERVER_LOGS_FORUM_ID"))
-    logging_guild_id = _parse_int_optional(os.getenv("GUILD_ID"))
+    ops_guild_id = _parse_int_optional(os.getenv("GUILD_ID"))
     moderator_ids = _parse_int_set(os.getenv("AZAB_MODERATOR_IDS"))
     ignored_bot_ids = _parse_int_set(os.getenv("AZAB_IGNORED_BOT_IDS"))
     lockdown_exclude_ids = _parse_int_set(os.getenv("AZAB_LOCKDOWN_EXCLUDE_IDS"))
@@ -541,7 +540,7 @@ def load_config() -> Config:
         transcript_assets_thread_id=transcript_assets_thread_id,
         case_transcripts_thread_id=case_transcripts_thread_id,
         server_logs_forum_id=server_logs_forum_id,
-        logging_guild_id=logging_guild_id,
+        ops_guild_id=ops_guild_id,
         cooldown_seconds=_parse_int_with_default(
             os.getenv("COOLDOWN_SECONDS"), 10, "COOLDOWN_SECONDS", min_val=0, max_val=300
         ),
@@ -563,7 +562,6 @@ def load_config() -> Config:
         developer_name=os.getenv("DEVELOPER_NAME", "حَـــــنَّـــــا"),
         server_name=os.getenv("SERVER_NAME", "discord.gg/syria"),
         moderator_ids=moderator_ids if moderator_ids else None,
-        status_webhook_url=_validate_url(os.getenv("AZAB_STATUS_WEBHOOK_URL"), "AZAB_STATUS_WEBHOOK_URL"),
         error_webhook_url=_validate_url(os.getenv("AZAB_ERROR_WEBHOOK_URL"), "AZAB_ERROR_WEBHOOK_URL"),
         live_logs_webhook_url=_validate_url(os.getenv("AZAB_LIVE_LOGS_WEBHOOK_URL"), "AZAB_LIVE_LOGS_WEBHOOK_URL"),
         ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,
@@ -630,8 +628,6 @@ def validate_and_log_config() -> None:
         optional_features.append("Mod Logs")
     if config.server_logs_forum_id:
         optional_features.append("Server Logs")
-    if config.status_webhook_url:
-        optional_features.append("Status Webhook")
 
     missing_optional = []
     if not config.case_log_forum_id:

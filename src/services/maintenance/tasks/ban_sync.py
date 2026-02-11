@@ -44,7 +44,7 @@ class BanSyncTask(MaintenanceTask):
 
     async def should_run(self) -> bool:
         """Check if logging guild is configured and database available."""
-        return bool(self.config.logging_guild_id) and self.bot.db is not None
+        return bool(self.config.ops_guild_id) and self.bot.db is not None
 
     async def run(self) -> Dict[str, Any]:
         """Sync bans from Discord to database."""
@@ -54,7 +54,7 @@ class BanSyncTask(MaintenanceTask):
         unbans_detected: int = 0
         errors: int = 0
 
-        guild_id: int = self.config.logging_guild_id
+        guild_id: int = self.config.ops_guild_id
 
         guild: Optional[discord.Guild] = self.bot.get_guild(guild_id)
         if not guild:

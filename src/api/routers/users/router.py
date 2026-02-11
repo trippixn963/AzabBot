@@ -100,7 +100,7 @@ async def lookup_user(
             ])
 
     # If not found by ID, search guild members by name
-    guild_id = config.logging_guild_id
+    guild_id = config.ops_guild_id
     if not user and guild_id:
         guild = bot.get_guild(guild_id)
         if guild:

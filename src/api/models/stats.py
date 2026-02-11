@@ -16,21 +16,6 @@ from .base import ModeratorBrief
 
 
 # =============================================================================
-# Request Models
-# =============================================================================
-
-class StatsTimeRange(BaseModel):
-    """Time range for statistics queries."""
-
-    start: Optional[datetime] = Field(None, description="Start of range")
-    end: Optional[datetime] = Field(None, description="End of range")
-    preset: Optional[str] = Field(
-        None,
-        description="Preset: today, yesterday, this_week, this_month, last_30_days"
-    )
-
-
-# =============================================================================
 # Response Models
 # =============================================================================
 
@@ -164,7 +149,6 @@ class SystemHealth(BaseModel):
 
 
 __all__ = [
-    "StatsTimeRange",
     "DashboardStats",
     "ModeratorStats",
     "LeaderboardEntry",

@@ -378,8 +378,8 @@ class TicketControlPanelView(discord.ui.View):
                 config = get_config()
                 db = get_db()
                 case_data = db.get_case(case_id)
-                if case_data and case_data.get("thread_id") and config.logging_guild_id:
-                    case_url = f"https://discord.com/channels/{config.logging_guild_id}/{case_data['thread_id']}"
+                if case_data and case_data.get("thread_id") and config.ops_guild_id:
+                    case_url = f"https://discord.com/channels/{config.ops_guild_id}/{case_data['thread_id']}"
             except Exception:
                 pass
 

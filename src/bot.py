@@ -40,8 +40,8 @@ def get_authorized_guilds() -> set:
     """Get authorized guild IDs from config (loaded after dotenv)."""
     config = get_config()
     guilds = set()
-    if config.logging_guild_id:
-        guilds.add(config.logging_guild_id)
+    if config.ops_guild_id:
+        guilds.add(config.ops_guild_id)
     if config.mod_server_id:
         guilds.add(config.mod_server_id)
     return guilds
@@ -85,6 +85,7 @@ class AzabBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
+        intents.presences = True
 
         super().__init__(
             command_prefix="!",
@@ -105,7 +106,6 @@ class AzabBot(commands.Bot):
         self.case_archive_scheduler = None
         self.mod_tracker = None
         self.logging_service = None
-        self.webhook_alert_service = None
         self.voice = None
         self.antispam_service = None
         self.antinuke_service = None
@@ -235,8 +235,8 @@ class AzabBot(commands.Bot):
         # Sync commands globally
         try:
             # Clear any guild-specific commands first (to remove duplicates)
-            if self.config.logging_guild_id:
-                guild = discord.Object(id=self.config.logging_guild_id)
+            if self.config.ops_guild_id:
+                guild = discord.Object(id=self.config.ops_guild_id)
                 self.tree.clear_commands(guild=guild)
                 await self.tree.sync(guild=guild)
                 logger.debug("Cleared guild-specific commands")
@@ -302,7 +302,6 @@ class AzabBot(commands.Bot):
             ("Case Log", "Enabled" if self.case_log_service and self.case_log_service.enabled else "Disabled"),
             ("Mod Tracker", "Enabled" if self.mod_tracker and self.mod_tracker.enabled else "Disabled"),
             ("API Service", "Running" if self.api_service else "Stopped"),
-            ("Webhook Alerts", "Enabled" if self.webhook_alert_service and self.webhook_alert_service.enabled else "Disabled"),
         ], emoji="🔥")
 
     # =========================================================================
@@ -498,17 +497,6 @@ class AzabBot(commands.Bot):
                 ], emoji="🎫")
             else:
                 logger.info("Ticket Service Disabled (no channel configured)")
-
-            # Initialize status webhook service for hourly health reports
-            from src.services.status_webhook import get_status_service
-            self.webhook_alert_service = get_status_service(
-                webhook_url=self.config.status_webhook_url,
-                bot_name="AzabBot",
-            )
-            self.webhook_alert_service.set_bot(self)
-            if self.webhook_alert_service.enabled:
-                await self.webhook_alert_service.send_startup_alert()
-                await self.webhook_alert_service.start_hourly_alerts()
 
             # Summary of all initialized services
             logger.tree("ALL SERVICES INITIALIZED", [
@@ -825,7 +813,7 @@ class AzabBot(commands.Bot):
         if isinstance(channel, discord.CategoryChannel):
             return
 
-        if self.config.logging_guild_id and channel.guild.id != self.config.logging_guild_id:
+        if self.config.ops_guild_id and channel.guild.id != self.config.ops_guild_id:
             return
 
         muted_role = channel.guild.get_role(self.config.muted_role_id)
@@ -858,10 +846,6 @@ class AzabBot(commands.Bot):
     async def shutdown(self) -> None:
         """Graceful shutdown with proper cleanup."""
         logger.info("Initiating Graceful Shutdown")
-
-        if self.webhook_alert_service:
-            self.webhook_alert_service.stop_hourly_alerts()
-            await self.webhook_alert_service.send_shutdown_alert()
 
         if self.mute_scheduler:
             await self.mute_scheduler.stop()

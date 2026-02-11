@@ -18,6 +18,41 @@ from src.core.logger import logger
 
 
 # =============================================================================
+# Snipe Clearer Detection
+# =============================================================================
+
+def is_snipe_clearer(content: Optional[str]) -> bool:
+    """
+    Check if a message is a "snipe clearer" - just dots used to hide real snipes.
+
+    People delete messages like ".", "..", "..." to overwrite their real
+    deleted message in /snipe. We skip saving these so the previous
+    legitimate snipe is preserved.
+
+    Args:
+        content: The message content to check.
+
+    Returns:
+        True if this is a snipe clearer message that should not be saved.
+    """
+    if not content:
+        return False  # Empty messages handled elsewhere, don't block
+
+    # Remove whitespace and check what's left
+    stripped = content.replace(" ", "").replace("\n", "").replace("\t", "")
+
+    if not stripped:
+        return False  # Just whitespace - not a snipe clearer attempt
+
+    # Check if it's ONLY dots (., .., ..., …)
+    # Must be short (<=10 chars) to avoid false positives on legit messages
+    if len(stripped) <= 10 and all(c in ".…" for c in stripped):
+        return True
+
+    return False
+
+
+# =============================================================================
 # Constants
 # =============================================================================
 
@@ -97,4 +132,4 @@ async def should_block_snipe(message_id: int) -> Tuple[bool, Optional[str]]:
         return False, None
 
 
-__all__ = ["block_from_snipe", "should_block_snipe"]
+__all__ = ["block_from_snipe", "should_block_snipe", "is_snipe_clearer"]

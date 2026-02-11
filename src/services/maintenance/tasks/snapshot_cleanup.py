@@ -36,7 +36,7 @@ class SnapshotCleanupTask(MaintenanceTask):
     async def run(self) -> Dict[str, Any]:
         """Clean up old snapshots."""
         config = get_config()
-        guild_id = config.logging_guild_id
+        guild_id = config.ops_guild_id
 
         if not guild_id:
             return {"success": False, "deleted": 0, "error": "No guild configured"}

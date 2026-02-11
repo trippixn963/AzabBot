@@ -364,14 +364,28 @@ class BanOpsMixin:
             ])
 
         # Broadcast WebSocket event for real-time dashboard updates (fire-and-forget)
-        if case_info and hasattr(self.bot, 'api_service') and self.bot.api_service:
+        if hasattr(self.bot, 'api_service') and self.bot.api_service:
             async def broadcast_ban_event():
-                await self.bot.api_service.broadcast_case_created({
-                    'case_id': case_info['case_id'],
-                    'user_id': user.id,
-                    'moderator_id': interaction.user.id,
-                    'action_type': 'softban' if is_softban else 'ban',
+                # Broadcast case creation (if case was logged)
+                if case_info:
+                    await self.bot.api_service.broadcast_case_created({
+                        'case_id': case_info['case_id'],
+                        'user_id': user.id,
+                        'moderator_id': interaction.user.id,
+                        'action_type': 'softban' if is_softban else 'ban',
+                        'reason': reason,
+                    })
+                # Broadcast ban event for real-time bans page
+                await self.bot.api_service.broadcast_user_banned({
+                    'user_id': str(user.id),
+                    'username': user.name,
+                    'display_name': user.display_name,
+                    'avatar_url': user.display_avatar.url if user.display_avatar else None,
                     'reason': reason,
+                    'moderator_id': str(interaction.user.id),
+                    'moderator_name': interaction.user.display_name,
+                    'case_id': case_info['case_id'] if case_info else None,
+                    'is_softban': is_softban,
                 })
                 await self.bot.api_service.broadcast_stats_updated()
             create_safe_task(broadcast_ban_event(), "Ban WebSocket Broadcast")

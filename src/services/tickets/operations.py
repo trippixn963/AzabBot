@@ -18,6 +18,7 @@ from src.core.constants import TICKET_CATEGORY_COOLDOWN, CLOSE_REQUEST_COOLDOWN
 from src.utils.retry import safe_send
 from src.utils.discord_rate_limit import log_http_error
 from src.utils.async_utils import create_safe_task
+from src.api.services.auth import get_auth_service
 
 from .constants import TICKET_CATEGORIES, MAX_OPEN_TICKETS_PER_USER, TRANSCRIPT_EMOJI
 from .embeds import (
@@ -323,10 +324,8 @@ class OperationsMixin:
 
             if ai_greeting:
                 # Send AI greeting as regular message with user mention
-                greeting_content = f"{user.mention}\n\n{ai_greeting}"
-                if ping_content:
-                    # Include staff ping if applicable
-                    greeting_content = f"{ping_content}\n\n{greeting_content}"
+                # Staff will be pinged after AI completes 3 questions
+                greeting_content = f"{user.mention}\n\n{ai_greeting}\n\n-# Question 1/3"
                 await ticket_channel.send(content=greeting_content)
             else:
                 # Fallback to static welcome embed
@@ -501,11 +500,16 @@ class OperationsMixin:
                     guild_name=closed_by.guild.name if closed_by.guild else "Server",
                 )
                 if self.config.transcript_base_url:
+                    # Generate signed token for direct transcript access (no login required)
+                    auth_service = get_auth_service()
+                    transcript_token = auth_service.generate_transcript_token(ticket_id)
+                    transcript_url = f"{self.config.transcript_base_url}/{ticket_id}?token={transcript_token}"
+
                     dm_view = discord.ui.View()
                     dm_view.add_item(discord.ui.Button(
                         label="Transcript",
                         style=discord.ButtonStyle.link,
-                        url=f"{self.config.transcript_base_url}/{ticket_id}",
+                        url=transcript_url,
                         emoji=TRANSCRIPT_EMOJI,
                     ))
                     await ticket_user.send(embed=dm_embed, view=dm_view)

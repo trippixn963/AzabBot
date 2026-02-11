@@ -152,7 +152,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         Returns:
             Number of tickets recovered (channels deleted).
         """
-        if not self.config.logging_guild_id:
+        if not self.config.ops_guild_id:
             return 0
 
         now = time.time()
@@ -163,7 +163,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         # Get closed tickets that were closed before the threshold
         # (reuse existing method that filters by closed_at)
         closed_tickets = self.db.get_closed_tickets_ready_to_delete(
-            self.config.logging_guild_id, deletion_threshold
+            self.config.ops_guild_id, deletion_threshold
         )
 
         for ticket in closed_tickets:
@@ -644,17 +644,69 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
 
         if ai_response:
             try:
+                # Get response count info
+                current, max_count, is_complete, summary = await self.bot.ai_service.get_ticket_response_info(ticket["ticket_id"])
+
+                # Add question counter footer
+                footer = f"\n\n-# Question {current}/{max_count}"
+                response_with_footer = ai_response + footer
+
                 # Send as a reply to the user's message
-                await message.reply(ai_response, mention_author=False)
+                await message.reply(response_with_footer, mention_author=False)
                 logger.tree("AI Follow-up Sent", [
                     ("Ticket ID", ticket["ticket_id"]),
                     ("User", f"{message.author.name} ({message.author.id})"),
-                    ("Channel", f"#{message.channel.name}"),
+                    ("Question", f"{current}/{max_count}"),
                 ], emoji="🤖")
+
+                # After all 3 questions answered, send summary and ping staff
+                if is_complete and summary:
+                    await self._send_staff_summary(message.channel, ticket, summary)
+
             except discord.HTTPException as e:
                 log_http_error(e, "Send AI Follow-up", [
                     ("Ticket ID", ticket["ticket_id"]),
                 ])
+
+    async def _send_staff_summary(
+        self,
+        channel: discord.TextChannel,
+        ticket: dict,
+        summary: str,
+    ) -> None:
+        """Send summary to staff and ping them after AI questions are complete."""
+        # Build staff ping
+        ping_parts = []
+        if self.config.ticket_support_user_ids:
+            ping_parts.extend(f"<@{uid}>" for uid in self.config.ticket_support_user_ids)
+        if ticket.get("category") == "partnership" and self.config.ticket_partnership_user_id:
+            ping_parts.append(f"<@{self.config.ticket_partnership_user_id}>")
+        if ticket.get("category") == "suggestion" and self.config.ticket_suggestion_user_id:
+            ping_parts.append(f"<@{self.config.ticket_suggestion_user_id}>")
+
+        ping_content = " ".join(ping_parts) if ping_parts else ""
+
+        # Build summary message
+        summary_embed = discord.Embed(
+            title="📋 Ticket Summary",
+            description=summary,
+            color=0x3b82f6,
+        )
+        summary_embed.set_footer(text="AI intake complete • A staff member can now claim this ticket")
+
+        try:
+            if ping_content:
+                await channel.send(content=ping_content, embed=summary_embed)
+            else:
+                await channel.send(embed=summary_embed)
+            logger.tree("Staff Summary Sent", [
+                ("Ticket ID", ticket["ticket_id"]),
+                ("Channel", f"#{channel.name}"),
+            ], emoji="📋")
+        except discord.HTTPException as e:
+            log_http_error(e, "Send Staff Summary", [
+                ("Ticket ID", ticket["ticket_id"]),
+            ])
 
 
 # =============================================================================

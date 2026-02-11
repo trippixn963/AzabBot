@@ -91,7 +91,7 @@ class SnapshotService:
         config = get_config()
         db = get_db()
 
-        guild_id = config.logging_guild_id
+        guild_id = config.ops_guild_id
         if not guild_id:
             return
 

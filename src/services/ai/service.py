@@ -215,7 +215,10 @@ class AIService:
                 subject=subject,
             )
             # Add the initial greeting as AI's first message
+            # Greeting counts as question 1, so set response_count = 1
             conv.messages.append({"role": "assistant", "content": initial_greeting})
+            conv.response_count = 1
+            conv.last_response_time = time.time()
             self._conversations[ticket_id] = conv
 
             # Persist to database
@@ -299,6 +302,51 @@ class AIService:
                 return False
 
             return True
+
+    async def get_ticket_response_info(self, ticket_id: str) -> tuple[int, int, bool, str | None]:
+        """
+        Get response count info for a ticket.
+
+        Args:
+            ticket_id: The ticket ID.
+
+        Returns:
+            Tuple of (current_count, max_count, is_complete, summary).
+            Summary is only provided when is_complete=True.
+        """
+        async with self._conversations_lock:
+            conv = self._conversations.get(ticket_id)
+            if not conv:
+                conv = self._load_conversation(ticket_id)
+                if conv:
+                    self._conversations[ticket_id] = conv
+
+            if not conv:
+                return (0, MAX_FOLLOWUP_RESPONSES, False, None)
+
+            current = conv.response_count
+            is_complete = current >= MAX_FOLLOWUP_RESPONSES
+
+            # Build summary if complete
+            summary = None
+            if is_complete:
+                summary = self._build_conversation_summary(conv)
+                logger.tree("AI Questions Complete", [
+                    ("Ticket ID", ticket_id),
+                    ("Total Questions", str(current)),
+                    ("Summary Length", f"{len(summary)} chars"),
+                ], emoji="📋")
+
+            return (current, MAX_FOLLOWUP_RESPONSES, is_complete, summary)
+
+    def _build_conversation_summary(self, conv: "TicketConversation") -> str:
+        """Build a summary of the conversation for staff."""
+        lines = [f"**Category:** {conv.category.title()}", f"**Subject:** {conv.subject}", "", "**Conversation:**"]
+        for msg in conv.messages:
+            role = "User" if msg["role"] == "user" else "Bot"
+            content = msg["content"][:200] + "..." if len(msg["content"]) > 200 else msg["content"]
+            lines.append(f"- **{role}:** {content}")
+        return "\n".join(lines)
 
     # =========================================================================
     # Database Persistence

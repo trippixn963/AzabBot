@@ -65,7 +65,7 @@ async def get_banned_users(
     """
     db = get_db()
     config = get_config()
-    guild_id = config.logging_guild_id
+    guild_id = config.ops_guild_id
 
     offset = (page - 1) * per_page
 
@@ -283,7 +283,7 @@ async def sync_bans(
     config = get_config()
     db = get_db()
 
-    guild_id = config.logging_guild_id
+    guild_id = config.ops_guild_id
     if not guild_id:
         raise HTTPException(status_code=500, detail="Guild not configured")
 
@@ -369,7 +369,7 @@ async def get_ban_details(
     """
     config = get_config()
     db = get_db()
-    guild_id = config.logging_guild_id
+    guild_id = config.ops_guild_id
 
     # Get all ban history for this user
     history = db.fetchall(
@@ -495,7 +495,7 @@ async def unban_user(
             detail="You don't have permission to unban users",
         )
 
-    guild_id = config.logging_guild_id
+    guild_id = config.ops_guild_id
     if not guild_id:
         raise HTTPException(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,

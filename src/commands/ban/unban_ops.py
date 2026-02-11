@@ -30,6 +30,7 @@ from src.views import CaseButtonView
 from src.utils.duration import format_duration
 from src.utils.dm_helpers import safe_send_dm
 from src.utils.discord_rate_limit import log_http_error
+from src.utils.async_utils import create_safe_task
 from src.core.constants import CASE_LOG_TIMEOUT, GUILD_FETCH_TIMEOUT, QUERY_LIMIT_TINY
 
 from .autocomplete import banned_user_autocomplete, removal_reason_autocomplete
@@ -291,6 +292,20 @@ class UnbanOpsMixin:
                 ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
                 ("Error", str(e)[:100]),
             ])
+
+        # Broadcast WebSocket event for real-time dashboard updates (fire-and-forget)
+        if hasattr(self.bot, 'api_service') and self.bot.api_service:
+            async def broadcast_unban_event():
+                await self.bot.api_service.broadcast_user_unbanned({
+                    'user_id': str(target_user.id),
+                    'username': target_user.name,
+                    'display_name': target_user.display_name,
+                    'moderator_id': str(interaction.user.id),
+                    'moderator_name': interaction.user.display_name,
+                    'case_id': case_info['case_id'] if case_info else None,
+                })
+                await self.bot.api_service.broadcast_stats_updated()
+            create_safe_task(broadcast_unban_event(), "Unban WebSocket Broadcast")
 
 
 __all__ = ["UnbanOpsMixin"]

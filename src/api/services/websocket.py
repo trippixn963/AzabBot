@@ -382,6 +382,20 @@ class WebSocketManager:
             data=event_data,
         ), channel="events")
 
+    async def broadcast_user_banned(self, ban_data: Dict[str, Any]) -> int:
+        """Broadcast a user banned event for bans page."""
+        return await self.broadcast(WSMessage(
+            type=WSEventType.USER_BANNED,
+            data=ban_data,
+        ), channel="bans")
+
+    async def broadcast_user_unbanned(self, unban_data: Dict[str, Any]) -> int:
+        """Broadcast a user unbanned event for bans page."""
+        return await self.broadcast(WSMessage(
+            type=WSEventType.USER_UNBANNED,
+            data=unban_data,
+        ), channel="bans")
+
     # =========================================================================
     # Heartbeat
     # =========================================================================

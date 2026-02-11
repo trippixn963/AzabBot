@@ -248,6 +248,14 @@ class APIService:
         """Broadcast a command execution event."""
         return await self.ws_manager.broadcast_command_executed(command_data)
 
+    async def broadcast_user_banned(self, ban_data: dict) -> int:
+        """Broadcast a user banned event for real-time bans page updates."""
+        return await self.ws_manager.broadcast_user_banned(ban_data)
+
+    async def broadcast_user_unbanned(self, unban_data: dict) -> int:
+        """Broadcast a user unbanned event for real-time bans page updates."""
+        return await self.ws_manager.broadcast_user_unbanned(unban_data)
+
 
 # =============================================================================
 # Exports

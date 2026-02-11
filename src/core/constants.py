@@ -348,9 +348,6 @@ EMOJI_ID_TICKET = 1455177168098295983
 EMOJI_ID_SUGGESTION = 1455178213771972608
 EMOJI_ID_STAFF = 1455178387927732381
 
-# Minutes threshold for duration formatting
-MINUTES_PER_DAY = 1440
-
 
 # =============================================================================
 # Moderation Reason Choices (Unified)
@@ -568,8 +565,6 @@ __all__ = [
     "EMOJI_KICK",
     "EMOJI_USERID",
     "EMOJI_CLOSE",
-    # Duration
-    "MINUTES_PER_DAY",
     # PartialEmoji IDs
     "EMOJI_ID_CASE",
     "EMOJI_ID_MESSAGE",

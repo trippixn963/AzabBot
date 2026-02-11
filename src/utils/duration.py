@@ -336,32 +336,6 @@ def format_duration_from_minutes(minutes: int) -> str:
     return format_duration(minutes * SECONDS_PER_MINUTE)
 
 
-def get_remaining_duration(total_seconds: int) -> str:
-    """
-    Format remaining seconds into a human-readable string.
-
-    Args:
-        total_seconds: Number of seconds remaining
-
-    Returns:
-        Human-readable remaining time string
-    """
-    if total_seconds <= 0:
-        return "Expired"
-
-    if total_seconds < 60:
-        return f"{total_seconds}s left"
-    elif total_seconds < SECONDS_PER_HOUR:
-        minutes = total_seconds // SECONDS_PER_MINUTE
-        return f"{minutes}m left"
-    elif total_seconds < SECONDS_PER_DAY:
-        hours = total_seconds // SECONDS_PER_HOUR
-        return f"{hours}h left"
-    else:
-        days = total_seconds // SECONDS_PER_DAY
-        return f"{days}d left"
-
-
 # =============================================================================
 # Module Export
 # =============================================================================
@@ -386,6 +360,4 @@ __all__ = [
     "format_duration_from_minutes",
     # Formatting (timedelta-based)
     "format_duration_timedelta",
-    # Utilities
-    "get_remaining_duration",
 ]

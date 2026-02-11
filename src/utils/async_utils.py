@@ -74,95 +74,6 @@ async def gather_with_logging(
     return results
 
 
-async def safe_async_operation(
-    name: str,
-    coro: Coroutine[Any, Any, Any],
-    default: Any = None,
-    log_level: str = "warning",
-) -> Any:
-    """
-    Run a single async operation with error handling.
-
-    Args:
-        name: Name of the operation for logging.
-        coro: The coroutine to run.
-        default: Value to return if operation fails.
-        log_level: Log level for errors ("debug", "warning", "error").
-
-    Returns:
-        Result of the coroutine, or default if it fails.
-    """
-    try:
-        return await coro
-    except Exception as e:
-        error_details = [
-            ("Operation", name),
-            ("Error Type", type(e).__name__),
-            ("Error", str(e)[:100]),
-        ]
-
-        if log_level == "debug":
-            logger.debug("Async Operation Failed", error_details)
-        elif log_level == "error":
-            logger.error("Async Operation Failed", error_details)
-        else:
-            logger.warning("Async Operation Failed", error_details)
-
-        return default
-
-
-def log_gather_exceptions(
-    results: List[Any],
-    operation_names: List[str],
-    context: Optional[str] = None,
-) -> int:
-    """
-    Log any exceptions from asyncio.gather results.
-
-    Use this when you have existing asyncio.gather calls and want to
-    add logging without changing the call structure.
-
-    Args:
-        results: Results from asyncio.gather(..., return_exceptions=True).
-        operation_names: Names of the operations in the same order.
-        context: Optional context string for error logs.
-
-    Returns:
-        Number of failures logged.
-
-    Example:
-        results = await asyncio.gather(
-            send_dm(),
-            post_logs(),
-            update_tracker(),
-            return_exceptions=True,
-        )
-        log_gather_exceptions(
-            results,
-            ["Send DM", "Post Logs", "Mod Tracker"],
-            context="Mute Command",
-        )
-    """
-    failures = 0
-
-    for i, result in enumerate(results):
-        if isinstance(result, Exception):
-            failures += 1
-            name = operation_names[i] if i < len(operation_names) else f"Operation {i}"
-
-            error_details = [
-                ("Operation", name),
-                ("Error Type", type(result).__name__),
-                ("Error", str(result)[:100]),
-            ]
-            if context:
-                error_details.insert(0, ("Context", context))
-
-            logger.warning("Async Operation Failed", error_details)
-
-    return failures
-
-
 # =============================================================================
 # Safe Background Tasks
 # =============================================================================
@@ -213,7 +124,5 @@ def create_safe_task(
 
 __all__ = [
     "gather_with_logging",
-    "safe_async_operation",
-    "log_gather_exceptions",
     "create_safe_task",
 ]

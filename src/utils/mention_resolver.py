@@ -191,13 +191,7 @@ def mention_map_to_json(mention_map: Dict[int, str]) -> Dict[str, str]:
     return {str(k): v for k, v in mention_map.items()}
 
 
-def mention_map_from_json(json_map: Dict[str, str]) -> Dict[int, str]:
-    """Convert JSON mention_map keys back to integers."""
-    return {int(k): v for k, v in json_map.items()}
-
-
 __all__ = [
     "collect_mentions_from_messages",
     "mention_map_to_json",
-    "mention_map_from_json",
 ]

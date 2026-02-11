@@ -176,42 +176,6 @@ def set_footer(embed: discord.Embed, icon_url: Optional[str] = None) -> discord.
     return embed
 
 
-async def set_footer_async(embed: discord.Embed, bot: Optional[discord.Client] = None) -> discord.Embed:
-    """
-    Set the standard footer on an embed, fetching fresh icon.
-
-    Args:
-        embed: The embed to add footer to.
-        bot: The bot client to fetch icon from.
-
-    Returns:
-        The embed with footer set.
-    """
-    client = bot or _bot_ref
-    icon_url = _get_guild_icon(client) if client else _cached_icon_url
-    return set_footer(embed, icon_url)
-
-
-def set_game_footer(embed: discord.Embed, stats: dict, user: discord.Member) -> discord.Embed:
-    """
-    Set footer with player game stats and avatar (for casino/game bots).
-
-    Args:
-        embed: The embed to add footer to.
-        stats: Dict with 'games' and 'wins' keys.
-        user: The player whose stats to display.
-
-    Returns:
-        The embed with footer set.
-    """
-    win_rate = (stats["wins"] / stats["games"] * 100) if stats["games"] > 0 else 0
-    embed.set_footer(
-        text=f"{stats['games']} games | {win_rate:.0f}% win rate",
-        icon_url=user.display_avatar.url if user.display_avatar else None
-    )
-    return embed
-
-
 # =============================================================================
 # Module Constants
 # =============================================================================
@@ -228,6 +192,4 @@ __all__ = [
     "init_footer",
     "refresh_avatar",
     "set_footer",
-    "set_footer_async",
-    "set_game_footer",
 ]

@@ -380,8 +380,8 @@ async def get_dashboard_stats(
 
     # Get guild info
     guild = None
-    if bot and hasattr(bot, 'config') and bot.config.logging_guild_id:
-        guild = bot.get_guild(bot.config.logging_guild_id)
+    if bot and hasattr(bot, 'config') and bot.config.ops_guild_id:
+        guild = bot.get_guild(bot.config.ops_guild_id)
 
     total_members = guild.member_count if guild else 0
     online_members = sum(1 for m in guild.members if m.status.value != "offline") if guild else 0
@@ -723,7 +723,7 @@ async def get_public_user_summary(
         pass
 
     # Try to get member from guild
-    guild_id = config.logging_guild_id if config else None
+    guild_id = config.ops_guild_id if config else None
     if user and guild_id:
         guild = bot.get_guild(guild_id)
         if guild:
@@ -955,8 +955,8 @@ async def get_server_info(
     Get Discord server information.
     """
     guild = None
-    if bot and hasattr(bot, 'config') and bot.config.logging_guild_id:
-        guild = bot.get_guild(bot.config.logging_guild_id)
+    if bot and hasattr(bot, 'config') and bot.config.ops_guild_id:
+        guild = bot.get_guild(bot.config.ops_guild_id)
 
     if not guild:
         logger.warning("Server Info Failed", [

@@ -927,7 +927,7 @@ class CaseLogService(
             if is_voice_chat:
                 vc_activity = self.db.get_recent_voice_activity(
                     pending["target_user_id"],
-                    self.config.logging_guild_id,
+                    self.config.ops_guild_id,
                     limit=QUERY_LIMIT_SMALL,
                     max_age_seconds=3600,
                 )
