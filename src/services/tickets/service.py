@@ -302,7 +302,6 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         """Send DM notification to staff that ticket OP left."""
         try:
             from src.core.config import EmbedColors, NY_TZ
-            from src.utils.footer import set_footer
 
             embed = discord.Embed(
                 title="🎫 Ticket Auto-Closed",
@@ -330,7 +329,6 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
             )
             status_text = "Was claimed by you" if ticket["status"] == "claimed" else "Was unclaimed"
             embed.add_field(name="Status", value=status_text, inline=True)
-            set_footer(embed)
 
             await staff.send(embed=embed)
             return True
@@ -692,7 +690,6 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
             description=summary,
             color=0x3b82f6,
         )
-        summary_embed.set_footer(text="AI intake complete • A staff member can now claim this ticket")
 
         try:
             if ping_content:

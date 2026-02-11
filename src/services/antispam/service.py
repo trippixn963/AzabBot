@@ -22,7 +22,6 @@ from src.core.database import get_db
 from src.core.logger import logger
 from src.utils.async_utils import create_safe_task
 from src.utils.discord_rate_limit import log_http_error
-from src.utils.footer import set_footer
 
 from .constants import (
     ATTACHMENT_LIMIT,
@@ -739,7 +738,6 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
             )
             embed.add_field(name="Duration", value=f"{SLOWMODE_DURATION}s", inline=True)
             embed.add_field(name="Reason", value="Spam wave detected", inline=True)
-            set_footer(embed)
 
             await channel.send(embed=embed, delete_after=DELETE_AFTER_EXTENDED)
 

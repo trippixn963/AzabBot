@@ -30,7 +30,6 @@ from src.core.constants import (
     PRISONER_PING_MAX,
     PRISONER_WARNING_COOLDOWN,
 )
-from src.utils.footer import set_footer
 from src.utils.snipe_blocker import block_from_snipe
 from src.utils.dm_helpers import send_moderation_dm
 from src.utils.async_utils import create_safe_task
@@ -491,7 +490,6 @@ class HelpersMixin:
                 inline=False,
             )
             embed.set_thumbnail(url=member.display_avatar.url)
-            set_footer(embed)
 
             try:
                 await prison_channel.send(content=member.mention, embed=embed)

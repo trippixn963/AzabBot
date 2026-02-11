@@ -15,7 +15,6 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors
-from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 from ..constants import EXTEND_EMOJI, DENY_EMOJI
 from .helpers import _is_ticket_staff
@@ -160,7 +159,6 @@ class RemoveUserButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt
                     description=f"👤 ~~{member.mention}~~ was removed from this ticket by {interaction.user.mention}.",
                     color=EmbedColors.GOLD,
                 )
-                set_footer(removed_embed)
                 await interaction.message.edit(embed=removed_embed, view=None)
             except discord.HTTPException:
                 pass

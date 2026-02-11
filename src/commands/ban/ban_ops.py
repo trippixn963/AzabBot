@@ -23,7 +23,6 @@ from src.core.moderation_validation import (
     is_cross_server,
     send_management_blocked_embed,
 )
-from src.utils.footer import set_footer
 from src.views import CaseButtonView, APPEAL_EMOJI
 from src.utils.async_utils import create_safe_task
 from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
@@ -347,7 +346,6 @@ class BanOpsMixin:
         # Only visible in DMs, case logs, and mod logs
 
         embed.set_thumbnail(url=user.display_avatar.url)
-        set_footer(embed)
 
         sent_message = None
         try:

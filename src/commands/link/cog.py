@@ -21,7 +21,6 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.core.moderation_validation import get_target_guild, is_cross_server
-from src.utils.footer import set_footer
 from src.utils.interaction import safe_respond
 from src.utils.discord_rate_limit import log_http_error
 
@@ -256,8 +255,6 @@ class LinkCog(commands.Cog):
                     value=f"*{len(message.embeds)} embed(s)*",
                     inline=False,
                 )
-
-            confirm_embed.set_footer(text="This will auto-delete the message if the member leaves")
 
             # Create view with buttons
             view = LinkConfirmView(

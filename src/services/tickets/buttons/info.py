@@ -17,7 +17,6 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors
 from src.core.constants import QUERY_LIMIT_LARGE
-from src.utils.footer import set_footer
 from src.views import build_history_embed, build_history_view
 from ..constants import INFO_EMOJI
 
@@ -272,7 +271,6 @@ class InfoSelectView(discord.ui.View):
                 inline=False,
             )
 
-        set_footer(embed)
         return embed
 
     async def _build_criminal_history_embed(self, bot: "AzabBot") -> tuple:

@@ -556,7 +556,6 @@ class CaseLogService(
                 ),
                 color=EmbedColors.WARNING,
             )
-            embed.set_footer(text="Reply with media to complete this request")
 
             msg = await safe_send(thread, embed=embed)
             if msg:

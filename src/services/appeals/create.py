@@ -18,7 +18,6 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
-from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 
 from .constants import (
@@ -267,8 +266,6 @@ class CreateMixin:
             value=f"Mutes: `{mute_count}` | Bans: `{ban_count}`",
             inline=False,
         )
-
-        set_footer(embed)
 
         return embed
 

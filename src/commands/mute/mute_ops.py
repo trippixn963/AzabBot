@@ -22,7 +22,6 @@ from src.core.moderation_validation import (
     is_cross_server,
     send_management_blocked_embed,
 )
-from src.utils.footer import set_footer
 from src.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
 from src.utils.duration import parse_duration, format_duration
@@ -301,7 +300,6 @@ class MuteOpsMixin:
         # Only visible in DMs, case logs, and mod logs
 
         embed.set_thumbnail(url=target_member.display_avatar.url)
-        set_footer(embed)
 
         try:
             if case_info:

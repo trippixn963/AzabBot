@@ -95,7 +95,6 @@ async def build_history_embed(
 
     if not cases:
         embed.description = "✅ No moderation history found. Clean record!"
-        embed.set_footer(text="0 cases")
         return embed
 
     # Pre-fetch all unique moderator names in parallel
@@ -207,11 +206,6 @@ async def build_history_embed(
     if counts.get("warn_count", 0) > 0:
         count_parts.append(f"⚠️{counts['warn_count']}")
 
-    footer_text = f"{len(cases)} cases"
-    if count_parts:
-        footer_text += f" • {' '.join(count_parts)}"
-
-    embed.set_footer(text=footer_text)
     return embed
 
 
@@ -315,7 +309,6 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
                 description="\n".join(lines),
                 color=EmbedColors.INFO,
             )
-            embed.set_footer(text=f"{len(cases)} cases")
 
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -425,10 +418,6 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
                 value=value,
                 inline=False,
             )
-
-        # Footer with pagination info
-        total_pages = (total + QUERY_LIMIT_TINY - 1) // QUERY_LIMIT_TINY  # Ceiling division
-        embed.set_footer(text=f"Page {page + 1}/{total_pages} • {total} total records")
 
         return embed
 
@@ -590,7 +579,6 @@ class HistoryPaginationView(discord.ui.View):
                 inline=False,
             )
 
-        embed.set_footer(text=f"Page {self.page + 1}/{self.total_pages} • {self.total} total records")
         return embed
 
 

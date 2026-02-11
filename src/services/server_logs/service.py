@@ -360,12 +360,6 @@ class LoggingService(
             timestamp=datetime.now(NY_TZ),
         )
         footer_parts = []
-        if category:
-            footer_parts.append(category)
-        if user_id:
-            footer_parts.append(f"ID: {user_id}")
-        footer_text = " • ".join(footer_parts) if footer_parts else datetime.now(NY_TZ).strftime("%B %d, %Y")
-        embed.set_footer(text=footer_text)
         return embed
 
     def _format_user_field(self, user: Union[discord.User, discord.Member]) -> str:

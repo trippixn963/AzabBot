@@ -274,10 +274,6 @@ class AzabBot(commands.Bot):
             self.latency * 1000,
         )
 
-        # Initialize footer first so embeds have server icon
-        from src.utils.footer import init_footer
-        await init_footer(self)
-
         await self._init_services()
 
         from src.utils.metrics import init_metrics

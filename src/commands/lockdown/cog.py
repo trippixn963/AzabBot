@@ -21,7 +21,6 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.api.services.event_logger import event_logger
 from src.core.database import get_db
-from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 
 from .constants import MAX_CONCURRENT_OPS, LockdownResult
@@ -165,7 +164,6 @@ class LockdownCog(commands.Cog):
                 value="Use `/unlock` to restore permissions",
                 inline=False,
             )
-            set_footer(embed)
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -336,8 +334,6 @@ class LockdownCog(commands.Cog):
                 seconds: int = int(duration_seconds % 60)
                 duration_str: str = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
                 embed.add_field(name="Duration", value=f"`{duration_str}`", inline=True)
-
-            set_footer(embed)
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 

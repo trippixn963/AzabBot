@@ -15,7 +15,6 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
-from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
     from .cog import SnipeCog
@@ -75,8 +74,6 @@ class HelpersMixin:
                 value=f"```{content_preview[:100]}```" if content_preview else "*(empty)*",
                 inline=False,
             )
-
-            set_footer(embed)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.MOD_ACTIONS,
@@ -144,8 +141,6 @@ class HelpersMixin:
                 inline=False,
             )
 
-            set_footer(embed)
-
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.MOD_ACTIONS,
                 embed,
@@ -206,8 +201,6 @@ class HelpersMixin:
                 value=f"`{cleared_edits}` message(s)",
                 inline=True,
             )
-
-            set_footer(embed)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.MOD_ACTIONS,

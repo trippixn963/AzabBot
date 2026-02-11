@@ -18,7 +18,6 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
-from src.utils.footer import set_footer
 from src.services.server_logs.categories import LogCategory
 from src.core.constants import CASE_LOG_TIMEOUT, QUERY_LIMIT_TINY, LOG_TRUNCATE_SHORT
 from src.utils.async_utils import create_safe_task
@@ -563,8 +562,6 @@ class MemberEvents(commands.Cog):
                     value=f"```{ids_text}```",
                     inline=False,
                 )
-
-            set_footer(embed)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.ALLIANCES,

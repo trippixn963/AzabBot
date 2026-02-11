@@ -33,7 +33,6 @@ from typing import Optional, List, Tuple, Union
 
 from src.core.logger import logger
 from src.core.config import EmbedColors
-from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 
 
@@ -159,9 +158,6 @@ def build_moderation_dm(
     if thumbnail_url:
         embed.set_thumbnail(url=thumbnail_url)
 
-    # Standard footer
-    set_footer(embed)
-
     return embed
 
 
@@ -188,7 +184,6 @@ def build_appeal_dm(
     )
     embed.add_field(name="Case ID", value=f"`{case_id}`", inline=True)
     embed.add_field(name="Server", value=f"`{guild.name}`", inline=True)
-    set_footer(embed)
 
     return embed
 

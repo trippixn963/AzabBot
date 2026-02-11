@@ -19,7 +19,6 @@ import discord
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.constants import RATE_LIMIT_DELAY
-from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 
 from .constants import (
@@ -629,8 +628,6 @@ class AntiNukeService:
                 timestamp=datetime.now(NY_TZ),
             )
 
-        set_footer(embed)
-
         # Send to alert channel
         if self.config.alert_channel_id:
             try:
@@ -789,7 +786,6 @@ class AntiNukeService:
         embed.add_field(name="Actions", value=f"{count} in {TIME_WINDOW}s", inline=True)
         embed.add_field(name="Response", value="Permissions stripped", inline=True)
         embed.set_thumbnail(url=offender.display_avatar.url)
-        set_footer(embed)
 
         # Send to server logs
         if self.bot.logging_service and self.bot.logging_service.enabled:

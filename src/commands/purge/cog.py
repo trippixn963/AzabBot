@@ -21,7 +21,6 @@ from src.core.logger import logger
 from src.core.config import get_config, has_mod_role, EmbedColors, NY_TZ
 from src.api.services.event_logger import event_logger
 from src.core.constants import MAX_PURGE_AMOUNT, BULK_DELETE_LIMIT
-from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 
 from .constants import MESSAGE_AGE_LIMIT, URL_PATTERN, PurgeFilter, FILTER_CHOICES
@@ -206,8 +205,6 @@ class PurgeCog(commands.Cog):
                 value=f"`{failed_count}` messages could not be deleted",
                 inline=False,
             )
-
-        set_footer(embed)
 
         await interaction.followup.send(embed=embed, ephemeral=True)
 

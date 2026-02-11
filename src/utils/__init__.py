@@ -11,7 +11,6 @@ DESIGN:
     or depend on bot state.
 
 Available Utilities:
-    Footer: Standardized embed footer with cached avatar
     Metrics: Lightweight performance monitoring
     Views: Persistent button views for moderation
 
@@ -24,7 +23,6 @@ Server: discord.gg/syria
 # =============================================================================
 
 from .cache import ForumCache, ThreadCache, TTLCache
-from .footer import FOOTER_TEXT, init_footer, refresh_avatar, set_footer
 from .interaction import safe_defer, safe_edit, safe_respond
 from .metrics import (
     MetricsCollector,
@@ -49,11 +47,6 @@ __all__ = [
     "TTLCache",
     "ThreadCache",
     "ForumCache",
-    # Footer
-    "FOOTER_TEXT",
-    "init_footer",
-    "refresh_avatar",
-    "set_footer",
     # Interaction
     "safe_respond",
     "safe_defer",

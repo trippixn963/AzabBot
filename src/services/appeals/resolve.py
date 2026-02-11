@@ -15,7 +15,6 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
-from src.utils.footer import set_footer
 from src.utils.retry import safe_send
 from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
 from src.utils.discord_rate_limit import log_http_error
@@ -156,7 +155,6 @@ class ResolveMixin:
 
                 embed.add_field(name="Action Taken", value=action_taken, inline=False)
 
-                set_footer(embed)
                 approved_view = AppealApprovedView(user_id, guild.id)
                 await safe_send(thread, embed=embed, view=approved_view)
 
@@ -283,8 +281,6 @@ class ResolveMixin:
                     inline=False,
                 )
 
-                set_footer(embed)
-
                 # Add contact staff button if ticket channel is configured
                 if self.config.ticket_channel_id:
                     denied_view = AppealDeniedView(self.config.ticket_channel_id, guild_id)
@@ -376,7 +372,6 @@ class ResolveMixin:
             embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
 
         embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
-        set_footer(embed)
 
         # Send the DM
         sent = await safe_send_dm(user, embed=embed, context="Appeal Approved DM")
@@ -430,7 +425,6 @@ class ResolveMixin:
         )
 
         embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
-        set_footer(embed)
 
         # Send the DM
         sent = await safe_send_dm(user, embed=embed, context="Appeal Denied DM")

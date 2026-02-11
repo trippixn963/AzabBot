@@ -264,7 +264,6 @@ class ModTrackerMixin:
                     )
                     embed.add_field(name="To Channel", value=f"`{to_channel.name}`", inline=True)
                     embed.add_field(name="Count", value=f"`{count}`", inline=True)
-                    embed.set_footer(text="Voice • Bulk Move")
                     await self.bot.mod_tracker._send_log(mod_id, embed, "Voice Move")
 
             # Bulk message delete

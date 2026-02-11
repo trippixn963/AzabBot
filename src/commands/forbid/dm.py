@@ -73,8 +73,6 @@ class DMMixin:
             inline=False,
         )
 
-        embed.set_footer(text=f"Server: {guild.name}")
-
         # Create appeal button view
         view = ForbidAppealView(guild.id, user.id)
 
@@ -127,8 +125,6 @@ class DMMixin:
             value="You now have full access to these features again.",
             inline=False,
         )
-
-        embed.set_footer(text=f"Server: {guild.name}")
 
         result = await safe_send_dm(user, embed=embed, context="Unforbid DM")
 

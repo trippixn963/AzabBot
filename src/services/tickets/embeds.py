@@ -16,7 +16,6 @@ import discord
 
 from src.core.config import EmbedColors, NY_TZ
 from src.core.constants import THREAD_DELETE_DELAY
-from src.utils.footer import set_footer
 
 from .constants import (
     TICKET_CATEGORIES,
@@ -87,7 +86,6 @@ def build_control_panel_embed(
     elif user:
         embed.set_thumbnail(url=user.display_avatar.url)
 
-    set_footer(embed)
     return embed
 
 
@@ -168,7 +166,6 @@ def build_welcome_embed(
         description=description,
         color=cat_info["color"],
     )
-    set_footer(embed)
     return embed
 
 
@@ -200,7 +197,6 @@ def build_claim_notification(
             inline=True,
         )
 
-    set_footer(embed)
     return embed
 
 
@@ -240,7 +236,6 @@ def build_close_notification(
             inline=True,
         )
 
-    set_footer(embed)
     return embed
 
 
@@ -271,7 +266,6 @@ def build_reopen_notification(
             inline=True,
         )
 
-    set_footer(embed)
     return embed
 
 
@@ -309,7 +303,6 @@ def build_user_added_notification(
             inline=True,
         )
 
-    set_footer(embed)
     return embed
 
 
@@ -341,7 +334,6 @@ def build_transfer_notification(
             inline=True,
         )
 
-    set_footer(embed)
     return embed
 
 
@@ -360,7 +352,6 @@ def build_inactivity_warning(
         ),
         color=EmbedColors.WARNING,
     )
-    set_footer(embed)
     return embed
 
 
@@ -380,7 +371,6 @@ def build_close_request_embed(
         ),
         color=EmbedColors.WARNING,
     )
-    set_footer(embed)
     return embed
 
 
@@ -414,7 +404,6 @@ def build_ticket_closed_dm(
             inline=False,
         )
 
-    set_footer(embed)
     return embed
 
 
@@ -432,7 +421,6 @@ def build_ticket_claimed_dm(
         ),
         color=EmbedColors.GOLD,
     )
-    set_footer(embed)
     return embed
 
 
@@ -455,7 +443,6 @@ def build_panel_embed() -> discord.Embed:
         embed.description += f"{info['emoji']} **{info['label']}** - {info['description']}\n"
 
     embed.description += "\n*Only one open ticket per user is allowed.*"
-    set_footer(embed)
     return embed
 
 

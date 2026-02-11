@@ -17,7 +17,6 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
-from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -85,8 +84,6 @@ async def log_purge_usage(
                 value=reason,
                 inline=False,
             )
-
-        set_footer(embed)
 
         await bot.logging_service._send_log(
             bot.logging_service.LogCategory.MOD_ACTIONS,

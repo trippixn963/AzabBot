@@ -234,8 +234,6 @@ class CaseLogExtendedActionsMixin:
             if evidence_message_url:
                 embed.add_field(name="Evidence", value=f"[View Evidence]({evidence_message_url})", inline=False)
 
-            embed.set_footer(text=f"Ban • ID: {user.id}")
-
             # Action embeds no longer have buttons - control panel handles all controls
             embed_message = await safe_send(case_thread, embed=embed)
 
@@ -362,8 +360,6 @@ class CaseLogExtendedActionsMixin:
                 if reason:
                     embed.add_field(name="Unban Reason", value=f"```{reason}```", inline=False)
 
-                embed.set_footer(text=f"Case Resolved • ID: {user_id}")
-
                 # Action embeds no longer have buttons - control panel handles all controls
                 embed_message = await safe_send(case_thread, embed=embed)
 
@@ -480,8 +476,6 @@ class CaseLogExtendedActionsMixin:
 
             if reason:
                 embed.add_field(name="Unban Reason", value=f"```{reason}```", inline=False)
-
-            embed.set_footer(text=f"Unban • ID: {user_id}")
 
             # Action embeds no longer have buttons - control panel handles all controls
             await safe_send(case_thread, embed=embed)

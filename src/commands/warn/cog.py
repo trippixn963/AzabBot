@@ -27,7 +27,6 @@ from src.core.moderation_validation import (
     get_target_guild,
     is_cross_server,
 )
-from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 from src.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
@@ -250,7 +249,6 @@ class WarnCog(commands.Cog):
                 embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
 
             embed.set_thumbnail(url=avatar_url)
-            set_footer(embed)
 
             sent_message = None
             try:

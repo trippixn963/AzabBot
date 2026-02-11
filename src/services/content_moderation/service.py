@@ -27,7 +27,6 @@ from src.core.constants import (
 from src.core.logger import logger
 from src.api.services.event_logger import event_logger
 from src.utils.async_utils import create_safe_task
-from src.utils.footer import set_footer
 from src.utils.dm_helpers import send_moderation_dm
 from src.utils.snipe_blocker import block_from_snipe
 from src.utils.discord_rate_limit import log_http_error
@@ -829,7 +828,6 @@ class ContentModerationService:
             value=f"```{message.content[:500]}```" if message.content else "(no text)",
             inline=False,
         )
-        set_footer(embed)
 
         try:
             await self.bot.logging_service._send_log(
@@ -873,7 +871,6 @@ class ContentModerationService:
                 value=f"```{message.content[:500]}```" if message.content else "(no text)",
                 inline=False,
             )
-            dm_embed.set_footer(text="Please keep discussions secular. Repeated violations may result in mute.")
             await message.author.send(embed=dm_embed)
             logger.debug("Violation DM Sent", [("User", str(message.author.id))])
         except discord.Forbidden:
@@ -930,8 +927,6 @@ class ContentModerationService:
                 value=f"[Jump to Message]({message.jump_url})\nPlease review and take action if needed.",
                 inline=False,
             )
-
-        set_footer(embed)
 
         try:
             await self.bot.logging_service._send_log(

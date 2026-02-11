@@ -22,7 +22,6 @@ from src.core.constants import (
 )
 from src.core.logger import logger
 from src.api.services.event_logger import event_logger
-from src.utils.footer import set_footer
 from src.utils.snipe_blocker import block_from_snipe
 from src.utils.discord_rate_limit import log_http_error
 from src.views import CASE_EMOJI
@@ -185,7 +184,6 @@ class SpamHandlerMixin:
                 embed.add_field(name="Stickers Deleted", value=str(deleted_count), inline=True)
                 embed.add_field(name="Channel", value=f"<#{channel.id}>", inline=True)
                 embed.add_field(name="Action", value="Warning issued", inline=True)
-                set_footer(embed)
 
                 await bot.logging_service._send_log(
                     LogCategory.AUTOMOD,
@@ -272,7 +270,6 @@ class SpamHandlerMixin:
             if expires_at:
                 unmute_ts = int(expires_at)
                 embed.add_field(name="Unmutes", value=f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", inline=False)
-            set_footer(embed)
 
             view = None
             if case_info and case_info.get("thread_id"):
@@ -300,7 +297,6 @@ class SpamHandlerMixin:
                 if expires_at:
                     unmute_ts = int(expires_at)
                     dm_embed.add_field(name="Unmutes", value=f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", inline=False)
-                dm_embed.set_footer(text="This was an automatic action by the anti-spam system.")
                 await member.send(embed=dm_embed)
                 dm_sent = True
             except discord.Forbidden:
@@ -330,7 +326,6 @@ class SpamHandlerMixin:
                     log_embed.add_field(name="Duration", value="10 minutes", inline=True)
                     log_embed.add_field(name="Violations", value=f"#{violation_count}", inline=True)
                     log_embed.add_field(name="Channel", value=f"<#{message.channel.id}>", inline=True)
-                    set_footer(log_embed)
 
                     await bot.logging_service._send_log(
                         LogCategory.AUTOMOD,
@@ -398,7 +393,6 @@ class SpamHandlerMixin:
                 if message.content:
                     content_preview = message.content[:200] + ("..." if len(message.content) > 200 else "")
                     embed.add_field(name="Content", value=f"```{content_preview}```", inline=False)
-                set_footer(embed)
 
                 await bot.logging_service._send_log(
                     LogCategory.AUTOMOD,
@@ -422,7 +416,6 @@ class SpamHandlerMixin:
                 color=EmbedColors.WARNING,
             )
             embed.add_field(name="Action", value="Warning", inline=True)
-            set_footer(embed)
 
             await channel.send(embed=embed, delete_after=DELETE_AFTER_MEDIUM)
 
@@ -510,7 +503,6 @@ class SpamHandlerMixin:
             if expires_at:
                 unmute_ts = int(expires_at)
                 embed.add_field(name="Unmutes", value=f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", inline=False)
-            set_footer(embed)
 
             view = None
             if case_info and case_info.get("thread_id"):
@@ -538,7 +530,6 @@ class SpamHandlerMixin:
                 if expires_at:
                     unmute_ts = int(expires_at)
                     dm_embed.add_field(name="Unmutes", value=f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", inline=False)
-                dm_embed.set_footer(text="This was an automatic action by the anti-spam system.")
                 await member.send(embed=dm_embed)
                 dm_sent = True
             except discord.Forbidden:
@@ -648,7 +639,6 @@ class SpamHandlerMixin:
                     if message.content:
                         content_preview = message.content[:200] + ("..." if len(message.content) > 200 else "")
                         embed.add_field(name="Content", value=f"```{content_preview}```", inline=False)
-                    set_footer(embed)
 
                     await bot.logging_service._send_log(
                         LogCategory.AUTOMOD,
@@ -671,7 +661,6 @@ class SpamHandlerMixin:
                     if message.content:
                         content_preview = message.content[:200] + ("..." if len(message.content) > 200 else "")
                         embed.add_field(name="Content", value=f"```{content_preview}```", inline=False)
-                    set_footer(embed)
 
                     await bot.logging_service._send_log(
                         LogCategory.AUTOMOD,

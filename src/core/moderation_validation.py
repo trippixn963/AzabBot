@@ -34,7 +34,6 @@ import discord
 
 from src.core.config import get_config, is_owner, EmbedColors
 from src.core.logger import logger
-from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -460,7 +459,6 @@ async def send_management_blocked_embed(
         description=f"Management members cannot {action} each other.",
         color=EmbedColors.WARNING,
     )
-    set_footer(embed)
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 

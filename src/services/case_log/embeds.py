@@ -636,7 +636,6 @@ def build_mute_evasion_embed(
     )
 
     embed.set_thumbnail(url=member.display_avatar.url)
-    embed.set_footer(text=f"Rejoin • ID: {member.id}")
 
     return embed
 
@@ -806,8 +805,6 @@ def build_control_panel_embed(
         if len(reason) > 200:
             reason = reason[:197] + "..."
         embed.add_field(name="Reason", value=f"`{reason}`", inline=False)
-
-    embed.set_footer(text="Use the buttons below to manage this case")
 
     return embed
 

@@ -25,7 +25,6 @@ from src.core.constants import (
     DELETE_AFTER_EXTENDED,
 )
 from src.core.database import get_db
-from src.utils.footer import set_footer
 from src.utils.async_utils import create_safe_task
 from src.utils.discord_rate_limit import log_http_error
 
@@ -690,7 +689,6 @@ class RaidLockdownService:
                 value="Moderators can use `/unlock`",
                 inline=True,
             )
-            set_footer(embed)
 
             await channel.send(embed=embed)
 
@@ -733,7 +731,6 @@ class RaidLockdownService:
                 color=EmbedColors.SUCCESS,
                 timestamp=datetime.now(NY_TZ),
             )
-            set_footer(embed)
 
             await channel.send(embed=embed)
 
@@ -783,7 +780,6 @@ class RaidLockdownService:
             )
             embed.add_field(name="Detected", value=f"`{join_count}` joins in `{time_window}s`", inline=True)
             embed.add_field(name="Auto-Unlock", value=f"In `{AUTO_UNLOCK_DURATION}s`", inline=True)
-            set_footer(embed)
 
             instructions: str = (
                 f"@everyone 🚨 **RAID DETECTED - SERVER LOCKED!**\n\n"

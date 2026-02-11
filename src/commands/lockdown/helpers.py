@@ -18,7 +18,6 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
 from src.core.moderation_validation import get_target_guild  # Re-export centralized function
-from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
@@ -67,7 +66,6 @@ async def send_public_announcement(
                 timestamp=datetime.now(NY_TZ),
             )
 
-        set_footer(embed)
         await channel.send(embed=embed)
 
         logger.debug("Public Announcement Sent", [

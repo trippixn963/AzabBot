@@ -15,7 +15,6 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors
-from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 from ..constants import TRANSFER_EMOJI
 from .helpers import _is_ticket_staff, _get_ticket_staff_ids, REVERT_EMOJI
@@ -111,7 +110,6 @@ class RevertTransferButton(discord.ui.DynamicItem[discord.ui.Button], template=r
                     description=f"↩️ Transfer reverted to {original_staff.mention} by {interaction.user.mention}.",
                     color=EmbedColors.GOLD,
                 )
-                set_footer(reverted_embed)
                 await interaction.message.edit(content=None, embed=reverted_embed, view=None)
             except discord.HTTPException:
                 pass

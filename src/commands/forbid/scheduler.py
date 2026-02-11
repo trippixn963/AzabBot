@@ -17,7 +17,6 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
-from src.utils.footer import set_footer
 from src.utils.dm_helpers import safe_send_dm
 from src.utils.rate_limiter import rate_limit
 from src.core.constants import FORBID_STARTUP_DELAY, FORBID_CHECK_INTERVAL
@@ -263,7 +262,6 @@ class SchedulerMixin:
                 )
                 expiry_embed.add_field(name="Server", value=guild.name, inline=True)
                 expiry_embed.add_field(name="Restriction", value=RESTRICTIONS[restriction_type]['display'], inline=True)
-                set_footer(expiry_embed)
                 await safe_send_dm(member, embed=expiry_embed, context="Forbid Expiry DM")
 
             except Exception as e:

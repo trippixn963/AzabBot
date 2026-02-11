@@ -19,7 +19,6 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.api.services.event_logger import event_logger
 from src.core.database import get_db
-from src.utils.footer import set_footer
 from src.views import CASE_EMOJI
 from src.utils.async_utils import create_safe_task
 from src.utils.rate_limiter import rate_limit
@@ -405,7 +404,6 @@ class MuteScheduler:
                 color=EmbedColors.SUCCESS,
                 timestamp=datetime.now(NY_TZ),
             )
-            set_footer(dm_embed)
             await member.send(embed=dm_embed)
         except (discord.Forbidden, discord.HTTPException):
             pass

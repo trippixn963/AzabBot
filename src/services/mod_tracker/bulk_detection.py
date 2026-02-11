@@ -190,7 +190,6 @@ class BulkDetectionMixin:
             embed.add_field(name="Action", value=action_display, inline=True)
             embed.add_field(name="Count", value=f"`{count}` in 5 min\n(Threshold: `{threshold}`)", inline=True)
             embed.set_thumbnail(url=member.display_avatar.url)
-            embed.set_footer(text="Mod Tracker • Bulk Action Protection")
 
             # Build message content
             instructions = (
@@ -256,7 +255,6 @@ class BulkDetectionMixin:
             color=color,
             timestamp=datetime.now(NY_TZ),
         )
-        embed.set_footer(text=f"Alert • Mod ID: {mod_id}")
 
         # Queue with high priority - alerts bypass regular log queue
         await self._enqueue(

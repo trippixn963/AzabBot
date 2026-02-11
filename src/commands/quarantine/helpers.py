@@ -18,7 +18,6 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
 from src.core.moderation_validation import get_target_guild  # Re-export centralized function
-from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:
@@ -57,8 +56,6 @@ async def log_quarantine_action(
             )
             embed.add_field(name="Moderator", value=moderator.mention, inline=True)
             embed.add_field(name="Guild", value=guild.name, inline=True)
-
-        set_footer(embed)
 
         await bot.logging_service._send_log(
             bot.logging_service.LogCategory.MOD_ACTIONS,

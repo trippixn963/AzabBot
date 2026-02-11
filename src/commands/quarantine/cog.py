@@ -20,7 +20,6 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ, is_owner
 from src.api.services.event_logger import event_logger
-from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 
 from .helpers import get_target_guild, log_quarantine_action
@@ -127,7 +126,6 @@ class QuarantineCog(commands.Cog):
                 )
                 if reason:
                     embed.add_field(name="Reason", value=reason, inline=False)
-                set_footer(embed)
 
                 await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -243,7 +241,6 @@ class QuarantineCog(commands.Cog):
                     color=EmbedColors.SUCCESS,
                     timestamp=datetime.now(NY_TZ),
                 )
-                set_footer(embed)
 
                 await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -350,7 +347,6 @@ class QuarantineCog(commands.Cog):
                     timestamp=datetime.now(NY_TZ),
                 )
 
-            set_footer(embed)
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
         except discord.HTTPException as e:

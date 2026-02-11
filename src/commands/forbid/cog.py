@@ -25,7 +25,6 @@ from src.core.moderation_validation import (
     get_target_guild,
     is_cross_server,
 )
-from src.utils.footer import set_footer
 from src.views import CaseButtonView
 from src.utils.duration import parse_duration, format_duration_short as format_duration
 from src.utils.async_utils import create_safe_task
@@ -337,7 +336,6 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
 
             # Note: Reason intentionally not shown in public embed
             embed.set_thumbnail(url=user.display_avatar.url)
-            set_footer(embed)
 
             # Send public embed with buttons
             if case_info:
@@ -560,7 +558,6 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 embed.add_field(name="Reason", value=reason, inline=False)
 
             embed.set_thumbnail(url=user.display_avatar.url)
-            set_footer(embed)
 
             # Send public embed with buttons
             if case_info:
@@ -648,8 +645,6 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
 
             if reason:
                 embed.add_field(name="Reason", value=reason, inline=False)
-
-            set_footer(embed)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.MOD_ACTIONS,

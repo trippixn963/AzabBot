@@ -18,7 +18,6 @@ import discord
 from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
-from src.utils.footer import set_footer
 
 from .constants import APPROVE_EMOJI, DENY_EMOJI
 
@@ -119,7 +118,6 @@ class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"la
             value=f"{member_mention}\n`{self.member_id}`",
             inline=True,
         )
-        set_footer(success_embed)
 
         await interaction.response.edit_message(
             embed=success_embed,
@@ -175,7 +173,6 @@ class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ld:(?
             color=EmbedColors.GOLD,
             timestamp=datetime.now(NY_TZ),
         )
-        set_footer(deny_embed)
 
         await interaction.response.edit_message(
             embed=deny_embed,
@@ -259,8 +256,6 @@ class LinkConfirmView(discord.ui.View):
                     value=f"```{preview}```",
                     inline=False,
                 )
-
-            set_footer(embed)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.ALLIANCES,

@@ -19,7 +19,6 @@ import discord
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.database import get_db
 from src.core.logger import logger
-from src.utils.footer import set_footer
 from ..categories import LogCategory
 from ..views import TicketLogView, UserIdButton, TranscriptLinkView, TRANSCRIPT_EMOJI, CASE_EMOJI
 
@@ -340,8 +339,6 @@ class TicketsLogsMixin:
         embed.add_field(name="Created", value=f"<t:{int(created_at)}:F>", inline=True)
         embed.add_field(name="Duration", value=f"`{duration_str}`", inline=True)
 
-        set_footer(embed)
-
         html_content = self._generate_transcript_html(
             ticket_id=ticket_id,
             category=category,
@@ -412,8 +409,6 @@ class TicketsLogsMixin:
         embed.add_field(name="Reason", value=reason[:200] if len(reason) > 200 else reason, inline=False)
         embed.add_field(name="Created", value=f"<t:{int(created_at)}:F>", inline=True)
         embed.add_field(name="Approved By", value=approved_by.mention, inline=True)
-
-        set_footer(embed)
 
         view = discord.ui.View(timeout=None)
         if transcript_url:

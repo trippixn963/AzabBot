@@ -18,7 +18,6 @@ from src.core.config import get_config, EmbedColors
 from src.core.database import get_db
 from src.core.logger import logger
 from src.core.constants import CASE_LOG_TIMEOUT, LOG_TRUNCATE_LONG
-from src.utils.footer import set_footer
 from src.utils.duration import parse_duration
 
 from .constants import EXTEND_EMOJI, UNMUTE_EMOJI
@@ -114,7 +113,6 @@ class ExtendModal(discord.ui.Modal, title="Extend Mute"):
                     embed.add_field(name="Additional Time", value=f"`{duration_str}`", inline=True)
                     embed.add_field(name="New Expiration", value=f"<t:{int(new_expires)}:R>", inline=True)
                     embed.add_field(name="Reason", value=reason_text, inline=False)
-                    set_footer(embed)
                     await thread.send(embed=embed)
         except Exception as e:
             logger.debug("Mute Extension Case Log Failed", [("Error", str(e)[:50])])

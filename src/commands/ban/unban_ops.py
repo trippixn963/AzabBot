@@ -25,7 +25,6 @@ from src.core.moderation_validation import (
     get_target_guild,
     is_cross_server,
 )
-from src.utils.footer import set_footer
 from src.views import CaseButtonView
 from src.utils.duration import format_duration
 from src.utils.dm_helpers import safe_send_dm
@@ -156,7 +155,6 @@ class UnbanOpsMixin:
             value="You can now rejoin the server if you have an invite link.",
             inline=False,
         )
-        dm_embed.set_footer(text=f"Server ID: {target_guild.id}")
 
         dm_sent = await safe_send_dm(target_user, embed=dm_embed, context="Unban DM")
         logger.tree("Unban DM Sent", [
@@ -277,7 +275,6 @@ class UnbanOpsMixin:
         # Only visible in DMs, case logs, and mod logs
 
         embed.set_thumbnail(url=target_user.display_avatar.url)
-        set_footer(embed)
 
         sent_message = None
         try:

@@ -15,7 +15,6 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors
-from src.utils.footer import set_footer
 from src.utils.discord_rate_limit import log_http_error
 from ..constants import LOCK_EMOJI, APPROVE_EMOJI, DENY_EMOJI
 from .helpers import _is_ticket_staff
@@ -276,8 +275,6 @@ class CloseDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_
                 value=f"<t:{int(interaction.user.joined_at.timestamp())}:D>",
                 inline=True,
             )
-
-        set_footer(deny_embed)
 
         # Edit the close request message with the rich embed
         try:

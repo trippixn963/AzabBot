@@ -15,7 +15,6 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
-from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
     from .service import AppealService
@@ -54,8 +53,6 @@ class HelpersMixin:
             if reason:
                 preview = (reason[:100] + "...") if len(reason) > 100 else reason
                 embed.add_field(name="Reason Preview", value=f"```{preview}```", inline=False)
-
-            set_footer(embed)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.APPEALS,
@@ -97,8 +94,6 @@ class HelpersMixin:
             )
             if reason:
                 embed.add_field(name="Reason", value=f"```{reason[:200]}```", inline=False)
-
-            set_footer(embed)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.APPEALS,

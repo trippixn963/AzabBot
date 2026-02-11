@@ -17,7 +17,6 @@ from collections import OrderedDict
 from src.core.logger import logger
 from src.core.config import get_config, NY_TZ, EmbedColors
 from src.core.constants import QUERY_LIMIT_MEDIUM, QUERY_LIMIT_XXL, CASE_LOG_TIMEOUT
-from src.utils.footer import set_footer
 from src.utils.rate_limiter import rate_limit
 from src.utils.duration import format_duration_from_minutes as format_duration
 from src.utils.async_utils import create_safe_task
@@ -196,7 +195,6 @@ class PrisonHandler:
             embed.set_thumbnail(
                 url=member.avatar.url if member.avatar else member.default_avatar.url
             )
-            set_footer(embed)
 
             # ---------------------------------------------------------------------
             # Create Case if None Exists

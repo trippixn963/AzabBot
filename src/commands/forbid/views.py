@@ -17,7 +17,6 @@ from src.core.logger import logger
 from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.constants import MODAL_FIELD_LONG
 from src.views import APPEAL_EMOJI
-from src.utils.footer import set_footer
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -132,7 +131,6 @@ class ForbidAppealModal(discord.ui.Modal):
                         inline=False,
                     )
                     embed.set_thumbnail(url=interaction.user.display_avatar.url)
-                    set_footer(embed)
 
                     await bot.logging_service._send_log(
                         bot.logging_service.LogCategory.MOD_ACTIONS,
@@ -165,7 +163,6 @@ class ForbidAppealModal(discord.ui.Modal):
                     inline=False,
                 )
                 embed.set_thumbnail(url=interaction.user.display_avatar.url)
-                set_footer(embed)
 
                 await alert_channel.send(embed=embed)
 

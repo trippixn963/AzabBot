@@ -16,7 +16,6 @@ import discord
 from src.core.database import get_db
 from src.core.config import EmbedColors
 from src.core.logger import logger
-from src.utils.footer import set_footer
 from src.views import (
     CASE_EMOJI,
     MESSAGE_EMOJI,
@@ -100,8 +99,6 @@ class EvidenceButton(discord.ui.DynamicItem[discord.ui.Button], template=r"case_
             url = evidence_urls[0].lower()
             if any(ext in url for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
                 embed.set_image(url=evidence_urls[0])
-
-        embed.set_footer(text=f"{len(evidence_urls)} piece(s) of evidence")
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
