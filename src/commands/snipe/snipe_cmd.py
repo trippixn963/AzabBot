@@ -198,15 +198,20 @@ class SnipeCmdMixin:
 
             message_content = "\n".join(lines)
 
+            # SECURITY: Disable all mentions to prevent @everyone/@here injection
+            # Users without mention perms could have their deleted messages sniped,
+            # and the bot (with admin) would then actually ping everyone
+            no_mentions = discord.AllowedMentions.none()
+
             # Send public message with files and/or stickers
             if files_to_send and stickers_to_send:
-                await interaction.response.send_message(content=message_content, files=files_to_send, stickers=stickers_to_send)
+                await interaction.response.send_message(content=message_content, files=files_to_send, stickers=stickers_to_send, allowed_mentions=no_mentions)
             elif files_to_send:
-                await interaction.response.send_message(content=message_content, files=files_to_send)
+                await interaction.response.send_message(content=message_content, files=files_to_send, allowed_mentions=no_mentions)
             elif stickers_to_send:
-                await interaction.response.send_message(content=message_content, stickers=stickers_to_send)
+                await interaction.response.send_message(content=message_content, stickers=stickers_to_send, allowed_mentions=no_mentions)
             else:
-                await interaction.response.send_message(content=message_content)
+                await interaction.response.send_message(content=message_content, allowed_mentions=no_mentions)
 
             # Log to server logs
             await self._log_snipe_usage(

@@ -184,8 +184,11 @@ class EditsnipeCmdMixin:
                     emoji=discord.PartialEmoji(name="message", id=EMOJI_ID_MESSAGE),
                 ))
 
+            # SECURITY: Disable all mentions to prevent @everyone/@here injection
+            no_mentions = discord.AllowedMentions.none()
+
             # Send public message (not ephemeral)
-            await interaction.response.send_message(content=message_content, view=view)
+            await interaction.response.send_message(content=message_content, view=view, allowed_mentions=no_mentions)
 
             # Log to server logs
             await self._log_editsnipe_usage(
