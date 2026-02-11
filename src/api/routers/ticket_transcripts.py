@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FOUND
 
 from src.core.logger import logger
+from src.core.constants import USER_FETCH_TIMEOUT, CHANNEL_FETCH_TIMEOUT
 from src.api.dependencies import require_auth, get_bot
 from src.api.models.auth import TokenPayload
 from src.api.services.auth import get_auth_service
@@ -117,7 +118,7 @@ async def _fetch_user_info(bot: Any, user_id: int) -> Dict[str, Any]:
     }
 
     try:
-        user = await asyncio.wait_for(bot.fetch_user(user_id), timeout=2.0)
+        user = await asyncio.wait_for(bot.fetch_user(user_id), timeout=USER_FETCH_TIMEOUT)
         user_info["name"] = user.name
         user_info["display_name"] = user.display_name
         user_info["avatar_url"] = str(user.display_avatar.url) if user.display_avatar else None
@@ -154,7 +155,7 @@ async def _fetch_live_transcript(
         channel = bot.get_channel(channel_id)
         if not channel:
             try:
-                channel = await asyncio.wait_for(bot.fetch_channel(channel_id), timeout=5.0)
+                channel = await asyncio.wait_for(bot.fetch_channel(channel_id), timeout=CHANNEL_FETCH_TIMEOUT)
             except discord.NotFound:
                 return None
             except (discord.HTTPException, asyncio.TimeoutError):

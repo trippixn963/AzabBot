@@ -56,8 +56,12 @@ SHUTDOWN_TIMEOUT = 10                 # Graceful shutdown timeout
 DRAIN_TIMEOUT = 10.0                  # Queue drain timeout
 CASE_LOG_TIMEOUT = 10.0               # Case logging timeout
 GUILD_FETCH_TIMEOUT = 5.0             # Guild/channel fetch timeout
+USER_FETCH_TIMEOUT = 2.0              # User fetch timeout (API routers)
+CHANNEL_FETCH_TIMEOUT = 5.0           # Channel fetch timeout (API routers)
 DB_CONNECTION_TIMEOUT = 30.0          # SQLite connection timeout
+SQLITE_BUSY_TIMEOUT = 5000            # SQLite busy timeout in ms
 AUDIT_LOG_WAIT = 0.5                  # Wait for audit log availability
+VIEW_TIMEOUT = 60                     # Discord UI view timeout
 RATE_LIMIT_DELAY = 0.5                # Delay for Discord rate limit protection
 MAINTENANCE_RATE_LIMIT_DELAY = 0.1    # Delay between member checks in maintenance tasks
 
@@ -413,8 +417,12 @@ __all__ = [
     "DRAIN_TIMEOUT",
     "CASE_LOG_TIMEOUT",
     "GUILD_FETCH_TIMEOUT",
+    "USER_FETCH_TIMEOUT",
+    "CHANNEL_FETCH_TIMEOUT",
     "DB_CONNECTION_TIMEOUT",
+    "SQLITE_BUSY_TIMEOUT",
     "AUDIT_LOG_WAIT",
+    "VIEW_TIMEOUT",
     "RATE_LIMIT_DELAY",
     "MAINTENANCE_RATE_LIMIT_DELAY",
     # Delete after

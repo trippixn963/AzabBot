@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.logger import logger
+from src.core.constants import USER_FETCH_TIMEOUT, CACHE_TTL
 
 
 # =============================================================================
@@ -22,7 +23,7 @@ from src.core.logger import logger
 
 # Simple TTL cache for user info: {user_id: (name, avatar, expires_at)}
 _user_cache: Dict[int, Tuple[str, Optional[str], float]] = {}
-_CACHE_TTL = 300  # 5 minutes
+_CACHE_TTL = CACHE_TTL
 
 
 def _get_cached_user(user_id: int) -> Optional[Tuple[str, Optional[str]]]:
@@ -65,7 +66,7 @@ async def fetch_user_info(bot: Any, user_id: int) -> Tuple[int, Optional[str], O
         return (user_id, cached[0], cached[1])
 
     try:
-        user = await asyncio.wait_for(bot.fetch_user(user_id), timeout=2.0)
+        user = await asyncio.wait_for(bot.fetch_user(user_id), timeout=USER_FETCH_TIMEOUT)
         if user:
             avatar = str(user.display_avatar.url) if user.display_avatar else None
             _cache_user(user_id, user.name, avatar)

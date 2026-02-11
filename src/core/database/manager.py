@@ -17,6 +17,7 @@ from typing import Optional, List, Tuple, Any, Dict
 
 from src.core.logger import logger
 from src.core.config import NY_TZ
+from src.core.constants import DB_CONNECTION_TIMEOUT, SQLITE_BUSY_TIMEOUT
 
 # Import all mixins
 from src.core.database.schema import SchemaMixin
@@ -168,7 +169,7 @@ class DatabaseManager(
             self._conn = sqlite3.connect(
                 str(DB_PATH),
                 check_same_thread=False,
-                timeout=30.0,
+                timeout=DB_CONNECTION_TIMEOUT,
             )
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA synchronous=NORMAL")
@@ -176,7 +177,7 @@ class DatabaseManager(
             self._conn.execute("PRAGMA temp_store=MEMORY")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped I/O
-            self._conn.execute("PRAGMA busy_timeout=5000")  # 5s busy timeout
+            self._conn.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT}")
             self._conn.row_factory = sqlite3.Row
         except sqlite3.Error as e:
             logger.error("Database Connection Failed", [("Error", str(e))])

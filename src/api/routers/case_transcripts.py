@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from starlette.status import HTTP_404_NOT_FOUND
 
 from src.core.logger import logger
+from src.core.constants import USER_FETCH_TIMEOUT, CHANNEL_FETCH_TIMEOUT
 from src.api.dependencies import require_auth, get_bot
 from src.api.models.auth import TokenPayload
 from src.core.database import get_db
@@ -125,7 +126,7 @@ async def _fetch_extended_user_info(bot: Any, user_id: int, guild: discord.Guild
             member = guild.get_member(user_id)
             if not member:
                 try:
-                    member = await asyncio.wait_for(guild.fetch_member(user_id), timeout=2.0)
+                    member = await asyncio.wait_for(guild.fetch_member(user_id), timeout=USER_FETCH_TIMEOUT)
                 except (discord.NotFound, discord.HTTPException, asyncio.TimeoutError):
                     pass
 
@@ -138,7 +139,7 @@ async def _fetch_extended_user_info(bot: Any, user_id: int, guild: discord.Guild
         else:
             # Fall back to user fetch
             try:
-                user = await asyncio.wait_for(bot.fetch_user(user_id), timeout=2.0)
+                user = await asyncio.wait_for(bot.fetch_user(user_id), timeout=USER_FETCH_TIMEOUT)
                 user_info["username"] = user.name
                 user_info["display_name"] = user.display_name
                 user_info["avatar_url"] = str(user.display_avatar.url) if user.display_avatar else None
@@ -244,7 +245,7 @@ async def _fetch_live_transcript(
         thread = bot.get_channel(thread_id)
         if not thread:
             try:
-                thread = await asyncio.wait_for(bot.fetch_channel(thread_id), timeout=5.0)
+                thread = await asyncio.wait_for(bot.fetch_channel(thread_id), timeout=CHANNEL_FETCH_TIMEOUT)
             except discord.NotFound:
                 return None
             except (discord.HTTPException, asyncio.TimeoutError):

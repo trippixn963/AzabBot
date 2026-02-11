@@ -137,10 +137,6 @@ class AzabBot(commands.Bot):
         self._message_cache: OrderedDict[int, dict] = OrderedDict()
         self._message_cache_limit: int = 5000
 
-        # Snipe cache (channel_id -> deque of last 10 deleted messages)
-        self._snipe_cache: Dict[int, deque] = {}
-        self._snipe_limit: int = 10
-
         # Edit snipe cache (channel_id -> deque of last 10 edits)
         self._editsnipe_cache_lock = asyncio.Lock()
         self._editsnipe_cache: OrderedDict[int, deque] = OrderedDict()
@@ -375,7 +371,35 @@ class AzabBot(commands.Bot):
     # =========================================================================
 
     async def _init_services(self) -> None:
-        """Initialize all services after Discord connection."""
+        """
+        Initialize all services after Discord connection.
+
+        SERVICE INITIALIZATION ORDER (dependencies in parentheses):
+        ==========================================================
+        1. PrisonerService       - Core prisoner management
+        2. PrisonHandler         - Prison channel events (needs PrisonerService)
+        3. MuteHandler           - Mute embed parsing (needs PrisonHandler)
+        4. PresenceHandler       - Status rotation (independent)
+        5. MaintenanceService    - Cleanup tasks (independent)
+        6. APIService            - REST API server (independent)
+        7. BackupScheduler       - Database backups (independent)
+        8. MuteScheduler         - Mute expiration checks (needs db)
+        9. CaseLogService        - Case logging to forum (needs db)
+        10. CaseArchiveScheduler - Archive old cases (needs CaseLogService)
+        11. ModTrackerService    - Mod action tracking (needs db)
+        12. LoggingService       - Server event logging (independent)
+        13. VoiceHandler         - Voice channel events (independent)
+        14. AntiSpamService      - Spam detection (independent)
+        15. ContentModerationService - Content filtering (independent)
+        16. AntiNukeService      - Raid protection (independent)
+        17. RaidLockdownService  - Auto-lockdown (needs AntiNukeService)
+        18. AppealService        - Ban/mute appeals (needs CaseLogService)
+        19. AIService            - OpenAI integration (independent)
+        20. TicketService        - Support tickets (needs AIService)
+        21. UserSnapshotsService - Avatar/name tracking (independent)
+
+        IMPORTANT: Do not reorder without understanding dependencies.
+        """
         # Guard against re-initialization on reconnects
         if self.prison is not None:
             logger.debug("Services already initialized, skipping")
