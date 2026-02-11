@@ -327,26 +327,26 @@ class AIService:
             current = conv.response_count
             is_complete = current >= MAX_FOLLOWUP_RESPONSES
 
-            # Build summary if complete
-            summary = None
-            if is_complete:
-                summary = self._build_conversation_summary(conv)
-                logger.tree("AI Questions Complete", [
-                    ("Ticket ID", ticket_id),
-                    ("Total Questions", str(current)),
-                    ("Summary Length", f"{len(summary)} chars"),
-                ], emoji="📋")
+        # Generate AI summary outside the lock if complete
+        summary = None
+        if is_complete:
+            summary = await self._generate_completion_summary(ticket_id)
+            logger.tree("AI Questions Complete", [
+                ("Ticket ID", ticket_id),
+                ("Total Questions", str(current)),
+                ("Summary Length", f"{len(summary) if summary else 0} chars"),
+            ], emoji="📋")
 
-            return (current, MAX_FOLLOWUP_RESPONSES, is_complete, summary)
+        return (current, MAX_FOLLOWUP_RESPONSES, is_complete, summary)
 
-    def _build_conversation_summary(self, conv: "TicketConversation") -> str:
-        """Build a summary of the conversation for staff."""
-        lines = [f"**Category:** {conv.category.title()}", f"**Subject:** {conv.subject}", "", "**Conversation:**"]
-        for msg in conv.messages:
-            role = "User" if msg["role"] == "user" else "Bot"
-            content = msg["content"][:200] + "..." if len(msg["content"]) > 200 else msg["content"]
-            lines.append(f"- **{role}:** {content}")
-        return "\n".join(lines)
+    async def _generate_completion_summary(self, ticket_id: str) -> Optional[str]:
+        """Generate a concise summary when AI questions are complete."""
+        # Use the existing AI summary generation
+        ai_summary = await self.generate_ticket_summary(ticket_id)
+        if ai_summary:
+            # Wrap in code block for clean display
+            return f"```\n{ai_summary}\n```"
+        return None
 
     # =========================================================================
     # Database Persistence
