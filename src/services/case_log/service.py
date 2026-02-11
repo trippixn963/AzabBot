@@ -439,7 +439,7 @@ class CaseLogService(
             thread_with_msg = await forum.create_thread(
                 name=thread_name[:100],
                 embed=user_embed,
-                applied_tags=case_tags if case_tags else None,
+                applied_tags=case_tags or [],
             )
 
             try:
