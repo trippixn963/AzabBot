@@ -108,7 +108,7 @@ class SchedulerMixin:
             # Get Guild and Role (mod role is in main server, not mod server)
             # -----------------------------------------------------------------
 
-            main_guild_id = self.config.ops_guild_id or self.config.mod_server_id
+            main_guild_id = self.config.main_guild_id or self.config.mod_server_id
             guild = self.bot.get_guild(main_guild_id)
             if not guild:
                 guild = await self.bot.fetch_guild(main_guild_id)
@@ -322,7 +322,7 @@ class SchedulerMixin:
 
         try:
             # Mod role is in main server, not mod tracker server
-            main_guild_id = self.config.ops_guild_id or self.config.mod_server_id
+            main_guild_id = self.config.main_guild_id or self.config.mod_server_id
             guild = self.bot.get_guild(main_guild_id)
             if not guild:
                 guild = await self.bot.fetch_guild(main_guild_id)

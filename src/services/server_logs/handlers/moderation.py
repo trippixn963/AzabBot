@@ -50,9 +50,9 @@ class ModerationLogsMixin:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
 
         # Add prior actions context
-        if self.config.ops_guild_id:
+        if self.config.main_guild_id:
             db = get_db()
-            counts = db.get_user_case_counts(user.id, self.config.ops_guild_id)
+            counts = db.get_user_case_counts(user.id, self.config.main_guild_id)
             if counts["mute_count"] or counts["ban_count"] or counts["warn_count"]:
                 prior = f"🔇 `{counts['mute_count']}` mutes · 🔨 `{counts['ban_count']}` bans · ⚠️ `{counts['warn_count']}` warns"
                 embed.add_field(name="Prior Actions", value=prior, inline=False)
@@ -60,7 +60,7 @@ class ModerationLogsMixin:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        view = ModActionLogView(user.id, self.config.ops_guild_id or 0, case_id=case_id)
+        view = ModActionLogView(user.id, self.config.main_guild_id or 0, case_id=case_id)
         await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id, view=view)
 
     async def log_unban(
@@ -89,7 +89,7 @@ class ModerationLogsMixin:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        view = ModActionLogView(user.id, self.config.ops_guild_id or 0, case_id=case_id)
+        view = ModActionLogView(user.id, self.config.main_guild_id or 0, case_id=case_id)
         await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id, view=view)
 
     async def log_kick(
@@ -117,9 +117,9 @@ class ModerationLogsMixin:
             embed.add_field(name="Case", value=f"`#{case_id}`", inline=True)
 
         # Add prior actions context
-        if self.config.ops_guild_id:
+        if self.config.main_guild_id:
             db = get_db()
-            counts = db.get_user_case_counts(user.id, self.config.ops_guild_id)
+            counts = db.get_user_case_counts(user.id, self.config.main_guild_id)
             if counts["mute_count"] or counts["ban_count"] or counts["warn_count"]:
                 prior = f"🔇 `{counts['mute_count']}` mutes · 🔨 `{counts['ban_count']}` bans · ⚠️ `{counts['warn_count']}` warns"
                 embed.add_field(name="Prior Actions", value=prior, inline=False)
@@ -127,7 +127,7 @@ class ModerationLogsMixin:
         embed.add_field(name="Reason", value=self._format_reason(reason), inline=False)
         self._set_user_thumbnail(embed, user)
 
-        view = ModActionLogView(user.id, self.config.ops_guild_id or 0, case_id=case_id)
+        view = ModActionLogView(user.id, self.config.main_guild_id or 0, case_id=case_id)
         await self._send_log(LogCategory.BANS_KICKS, embed, user_id=user.id, view=view)
 
 

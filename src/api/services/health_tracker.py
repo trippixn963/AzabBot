@@ -1,6 +1,6 @@
 """
-Health Tracker Service
-======================
+AzabBot - Health Tracker Service
+=================================
 
 Tracks bot health metrics over time: latency, reconnections, rate limits.
 
@@ -95,3 +95,6 @@ def get_health_tracker() -> HealthTracker:
     if _health_tracker is None:
         _health_tracker = HealthTracker()
     return _health_tracker
+
+
+__all__ = ["HealthTracker", "LatencyPoint", "get_health_tracker"]

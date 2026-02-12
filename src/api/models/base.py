@@ -104,7 +104,7 @@ class UserBrief(BaseModel):
 class ModeratorBrief(BaseModel):
     """Brief moderator information."""
 
-    discord_id: int = Field(description="Discord user ID")
+    discord_id: str = Field(description="Discord user ID (as string to preserve precision)")
     username: Optional[str] = None
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
@@ -165,6 +165,11 @@ class WSEventType:
 
     # Stats events
     STATS_UPDATED = "stats.updated"
+    STATS_LEADERBOARD = "stats.leaderboard"
+    STATS_PERSONAL = "stats.personal"
+    STATS_ACTIVITY = "stats.activity"
+    STATS_PEAK_HOURS = "stats.peak_hours"
+    STATS_SERVER_PEAK_HOURS = "stats.server_peak_hours"
 
     # Bot status events (for dashboard)
     BOT_STATUS = "bot_status"

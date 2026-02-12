@@ -16,6 +16,10 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+from typing import TYPE_CHECKING
+
+from src.core.logger import logger
+
 from .constants import RESTRICTIONS, FORBID_ROLE_PREFIX
 from .views import (
     ForbidAppealButton,
@@ -24,6 +28,9 @@ from .views import (
     setup_forbid_views,
 )
 from .cog import ForbidCog
+
+if TYPE_CHECKING:
+    from src.bot import AzabBot
 
 __all__ = [
     "RESTRICTIONS",
@@ -36,6 +43,10 @@ __all__ = [
 ]
 
 
-async def setup(bot) -> None:
+async def setup(bot: "AzabBot") -> None:
     """Load the ForbidCog."""
     await bot.add_cog(ForbidCog(bot))
+    logger.tree("Forbid Cog Loaded", [
+        ("Commands", "/forbid, /unforbid"),
+        ("Features", "permission restrictions, appeals"),
+    ], emoji="🚫")

@@ -22,7 +22,10 @@ if TYPE_CHECKING:
 async def setup(bot: "AzabBot") -> None:
     """Add the channel events cog to the bot."""
     await bot.add_cog(ChannelEvents(bot))
-    logger.debug("Channel Events Loaded")
+    logger.tree("Channel Events Loaded", [
+        ("Events", "channel, thread, role, emoji, invite"),
+        ("Features", "voice, reaction, stage, automod"),
+    ], emoji="📺")
 
 
 __all__ = ["ChannelEvents", "setup"]

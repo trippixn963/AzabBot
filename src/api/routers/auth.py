@@ -104,7 +104,7 @@ async def check_moderator(
     if member:
         avatar_url = str(member.display_avatar.url) if member.display_avatar else None
         user_info = DiscordUserInfo(
-            discord_id=member.id,
+            discord_id=str(member.id),
             username=member.name,
             display_name=member.display_name,
             avatar=avatar_url,

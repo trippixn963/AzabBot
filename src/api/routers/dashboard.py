@@ -585,8 +585,8 @@ async def get_dashboard_stats(
             ("Error", str(e)[:50]),
         ])
         # Fallback to local guild data
-        if config.ops_guild_id:
-            guild = bot.get_guild(config.ops_guild_id)
+        if config.main_guild_id:
+            guild = bot.get_guild(config.main_guild_id)
             if guild:
                 total_members = guild.member_count or 0
 
@@ -602,9 +602,9 @@ async def get_dashboard_stats(
     daily_members = []
     daily_online = []
     snapshot_service = get_snapshot_service()
-    if snapshot_service and config.ops_guild_id:
-        daily_members = snapshot_service.get_daily_member_counts(config.ops_guild_id, 7)
-        daily_online = snapshot_service.get_daily_online_counts(config.ops_guild_id, 7)
+    if snapshot_service and config.main_guild_id:
+        daily_members = snapshot_service.get_daily_member_counts(config.main_guild_id, 7)
+        daily_online = snapshot_service.get_daily_online_counts(config.main_guild_id, 7)
 
     server_stats = ServerDashboardStats(
         total_members=total_members,

@@ -110,7 +110,7 @@ class LoggingService(
 
         logger.tree("Logging Service Created", [
             ("Enabled", str(self.enabled)),
-            ("Guild Filter", str(self.config.ops_guild_id) if self.config.ops_guild_id else "None (all guilds)"),
+            ("Guild Filter", str(self.config.main_guild_id) if self.config.main_guild_id else "None (all guilds)"),
         ], emoji="📋")
 
     @property
@@ -126,8 +126,8 @@ class LoggingService(
             return False
         if user_id and self.config.ignored_bot_ids and user_id in self.config.ignored_bot_ids:
             return False
-        if self.config.ops_guild_id:
-            return guild_id == self.config.ops_guild_id
+        if self.config.main_guild_id:
+            return guild_id == self.config.main_guild_id
         return True
 
     def _format_channel(self, channel) -> str:

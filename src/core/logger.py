@@ -620,8 +620,9 @@ class Logger:
         title: str,
         items: List[Tuple[str, Any]],
         emoji: str = "❌",
+        level: str = "ERROR",
     ) -> None:
-        """Log structured error data in tree format to both log files and live logs."""
+        """Log structured error/warning data in tree format to both log files and live logs."""
         if not self._last_was_tree:
             self._write_raw("", also_to_error=True)
 
@@ -643,8 +644,8 @@ class Logger:
         # Also send to dedicated error webhook
         self._send_error_webhook(title, items, emoji)
 
-        # Notify WebSocket log callbacks
-        self._notify_log_callbacks("ERROR", title, formatted)
+        # Notify WebSocket log callbacks with correct level
+        self._notify_log_callbacks(level, title, formatted)
 
     # =========================================================================
     # Public Methods - Log Levels
@@ -682,11 +683,11 @@ class Logger:
 
     def warning(self, message: str, details: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Log a warning message (also writes to error log and live logs)."""
-        formatted = self._format_tree_for_live(message, details, "⚠️") if details else None
-        self._notify_log_callbacks("WARNING", message, formatted)
         if details:
-            self._tree_error(message, details, emoji="⚠️")
+            self._tree_error(message, details, emoji="⚠️", level="WARNING")
         else:
+            formatted = self._format_tree_for_live(message, [], "⚠️")
+            self._notify_log_callbacks("WARNING", message, formatted)
             self._write_error(message, "⚠️")
             self._last_was_tree = False
 

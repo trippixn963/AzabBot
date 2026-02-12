@@ -339,8 +339,8 @@ async def get_ticket_stats(
 
     # Get guild for online status (using correct config attribute)
     guild = None
-    if hasattr(bot, 'config') and bot.config.ops_guild_id:
-        guild = bot.get_guild(bot.config.ops_guild_id)
+    if hasattr(bot, 'config') and bot.config.main_guild_id:
+        guild = bot.get_guild(bot.config.main_guild_id)
 
     top_moderators = []
     for row in mod_rows:

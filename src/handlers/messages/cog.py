@@ -201,7 +201,7 @@ class MessageEvents(HelpersMixin, commands.Cog):
         # -----------------------------------------------------------------
         if (
             message.guild
-            and message.guild.id == self.config.ops_guild_id
+            and message.guild.id == self.config.main_guild_id
             and "partnership" in message.content.lower()
         ):
             await self._handle_partnership_mention(message)

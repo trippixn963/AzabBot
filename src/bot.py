@@ -40,8 +40,8 @@ def get_authorized_guilds() -> set:
     """Get authorized guild IDs from config (loaded after dotenv)."""
     config = get_config()
     guilds = set()
-    if config.ops_guild_id:
-        guilds.add(config.ops_guild_id)
+    if config.main_guild_id:
+        guilds.add(config.main_guild_id)
     if config.mod_server_id:
         guilds.add(config.mod_server_id)
     return guilds
@@ -231,8 +231,8 @@ class AzabBot(commands.Bot):
         # Sync commands globally
         try:
             # Clear any guild-specific commands first (to remove duplicates)
-            if self.config.ops_guild_id:
-                guild = discord.Object(id=self.config.ops_guild_id)
+            if self.config.main_guild_id:
+                guild = discord.Object(id=self.config.main_guild_id)
                 self.tree.clear_commands(guild=guild)
                 await self.tree.sync(guild=guild)
                 logger.debug("Cleared guild-specific commands")
@@ -557,12 +557,8 @@ class AzabBot(commands.Bot):
 
     async def _scan_and_clean_poll_results(self) -> None:
         """Scan polls channels and delete poll result messages ('X's poll has closed')."""
-        # Get both polls channels
-        channel_ids = []
-        if self.config.polls_only_channel_id:
-            channel_ids.append(self.config.polls_only_channel_id)
-        if self.config.permanent_polls_channel_id:
-            channel_ids.append(self.config.permanent_polls_channel_id)
+        # Get polls channels from config (polls_only_channel_ids is a set)
+        channel_ids = list(self.config.polls_only_channel_ids) if self.config.polls_only_channel_ids else []
 
         if not channel_ids:
             logger.tree("Polls Cleanup Skipped", [
@@ -833,7 +829,7 @@ class AzabBot(commands.Bot):
         if isinstance(channel, discord.CategoryChannel):
             return
 
-        if self.config.ops_guild_id and channel.guild.id != self.config.ops_guild_id:
+        if self.config.main_guild_id and channel.guild.id != self.config.main_guild_id:
             return
 
         muted_role = channel.guild.get_role(self.config.muted_role_id)

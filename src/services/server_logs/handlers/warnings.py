@@ -104,7 +104,7 @@ class WarningsLogsMixin:
         db = get_db()
         case = db.get_case_log(user.id)
         if case:
-            guild_id = self.config.ops_guild_id or case.get('guild_id', 0)
+            guild_id = self.config.main_guild_id or case.get('guild_id', 0)
             case_url = f"https://discord.com/channels/{guild_id}/{case['thread_id']}"
             view.add_item(discord.ui.Button(
                 label="Case",

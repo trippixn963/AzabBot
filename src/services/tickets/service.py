@@ -152,7 +152,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         Returns:
             Number of tickets recovered (channels deleted).
         """
-        if not self.config.ops_guild_id:
+        if not self.config.main_guild_id:
             return 0
 
         now = time.time()
@@ -163,7 +163,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         # Get closed tickets that were closed before the threshold
         # (reuse existing method that filters by closed_at)
         closed_tickets = self.db.get_closed_tickets_ready_to_delete(
-            self.config.ops_guild_id, deletion_threshold
+            self.config.main_guild_id, deletion_threshold
         )
 
         for ticket in closed_tickets:

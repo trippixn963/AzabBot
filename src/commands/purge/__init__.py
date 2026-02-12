@@ -10,6 +10,8 @@ Server: discord.gg/syria
 
 from typing import TYPE_CHECKING
 
+from src.core.logger import logger
+
 from .cog import PurgeCog
 
 if TYPE_CHECKING:
@@ -19,6 +21,10 @@ if TYPE_CHECKING:
 async def setup(bot: "AzabBot") -> None:
     """Load the Purge cog."""
     await bot.add_cog(PurgeCog(bot))
+    logger.tree("Purge Cog Loaded", [
+        ("Commands", "/purge"),
+        ("Features", "bulk message deletion"),
+    ], emoji="🧹")
 
 
 __all__ = ["PurgeCog", "setup"]

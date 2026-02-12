@@ -380,8 +380,8 @@ async def get_dashboard_stats(
 
     # Get guild info
     guild = None
-    if bot and hasattr(bot, 'config') and bot.config.ops_guild_id:
-        guild = bot.get_guild(bot.config.ops_guild_id)
+    if bot and hasattr(bot, 'config') and bot.config.main_guild_id:
+        guild = bot.get_guild(bot.config.main_guild_id)
 
     total_members = guild.member_count if guild else 0
     online_members = sum(1 for m in guild.members if m.status.value != "offline") if guild else 0
@@ -482,6 +482,67 @@ async def get_dashboard_stats(
 # Moderator Stats
 # =============================================================================
 
+@router.get("/peak-hours")
+async def get_server_peak_hours(
+    payload: TokenPayload = Depends(require_auth),
+) -> JSONResponse:
+    """
+    Get server-wide peak activity hours (aggregate of all moderators).
+
+    Returns activity count for each hour of the day (0-23).
+    """
+    db = get_db()
+
+    # Get aggregated peak hours across all moderators
+    rows = db.fetchall(
+        """SELECT hour, SUM(count) as total
+           FROM mod_hourly_activity
+           GROUP BY hour
+           ORDER BY hour"""
+    )
+
+    # Build full 24-hour data with zeros for missing hours
+    hourly_data = {i: 0 for i in range(24)}
+    for row in rows:
+        hourly_data[row["hour"]] = row["total"]
+
+    data = [{"hour": hour, "count": count} for hour, count in hourly_data.items()]
+
+    logger.debug("Server Peak Hours Fetched", [
+        ("Requested By", str(payload.sub)),
+        ("Total Hours", str(len(data))),
+    ])
+
+    return JSONResponse(content={"success": True, "data": {"peak_hours": data}})
+
+
+@router.get("/moderators/{moderator_id}/peak-hours")
+async def get_moderator_peak_hours(
+    moderator_id: int,
+    top_n: int = Query(3, ge=1, le=24, description="Number of top hours to return"),
+    payload: TokenPayload = Depends(require_auth),
+) -> JSONResponse:
+    """
+    Get peak activity hours for a specific moderator.
+
+    Returns top N hours when the moderator is most active.
+    """
+    db = get_db()
+
+    peak_hours = db.get_peak_hours(moderator_id, top_n)
+
+    # Format for frontend
+    data = [{"hour": hour, "count": count} for hour, count in peak_hours]
+
+    logger.debug("Moderator Peak Hours Fetched", [
+        ("Moderator ID", str(moderator_id)),
+        ("Requested By", str(payload.sub)),
+        ("Hours Returned", str(len(data))),
+    ])
+
+    return JSONResponse(content={"success": True, "data": {"peak_hours": data}})
+
+
 @router.get("/moderators/{moderator_id}", response_model=APIResponse[ModeratorStats])
 async def get_moderator_stats(
     moderator_id: int,
@@ -502,7 +563,7 @@ async def get_moderator_stats(
     mod_name, mod_avatar = user_info.get(moderator_id, (None, None))
 
     moderator = ModeratorBrief(
-        discord_id=moderator_id,
+        discord_id=str(moderator_id),
         username=mod_name,
         avatar_url=mod_avatar,
     )
@@ -595,9 +656,15 @@ async def get_leaderboard(
     Get moderator leaderboard rankings (public endpoint).
 
     Ranked by weighted score of moderation actions.
+    Only includes moderators who are currently in the ops server.
     """
     db = get_db()
     now = time.time()
+
+    # Get ops guild for member filtering
+    guild = None
+    if bot and hasattr(bot, 'config') and bot.config.main_guild_id:
+        guild = bot.get_guild(bot.config.main_guild_id)
 
     # Calculate time range
     period_offsets = {"week": 7 * 86400, "month": 30 * 86400, "year": 365 * 86400}
@@ -625,6 +692,11 @@ async def get_leaderboard(
         """,
         (start_time,)
     )
+
+    # Filter to only include moderators who are in the ops server
+    if guild:
+        guild_member_ids = {m.id for m in guild.members}
+        all_rows = [row for row in all_rows if row["moderator_id"] in guild_member_ids]
 
     total = len(all_rows)
 
@@ -668,7 +740,7 @@ async def get_leaderboard(
         entries.append(LeaderboardEntry(
             rank=idx,
             moderator=ModeratorBrief(
-                discord_id=mod_id,
+                discord_id=str(mod_id),
                 username=mod_name,
                 avatar_url=mod_avatar,
             ),
@@ -723,7 +795,7 @@ async def get_public_user_summary(
         pass
 
     # Try to get member from guild
-    guild_id = config.ops_guild_id if config else None
+    guild_id = config.main_guild_id if config else None
     if user and guild_id:
         guild = bot.get_guild(guild_id)
         if guild:
@@ -955,8 +1027,8 @@ async def get_server_info(
     Get Discord server information.
     """
     guild = None
-    if bot and hasattr(bot, 'config') and bot.config.ops_guild_id:
-        guild = bot.get_guild(bot.config.ops_guild_id)
+    if bot and hasattr(bot, 'config') and bot.config.main_guild_id:
+        guild = bot.get_guild(bot.config.main_guild_id)
 
     if not guild:
         logger.warning("Server Info Failed", [

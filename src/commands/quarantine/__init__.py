@@ -14,6 +14,8 @@ Server: discord.gg/syria
 
 from typing import TYPE_CHECKING
 
+from src.core.logger import logger
+
 from .cog import QuarantineCog
 
 if TYPE_CHECKING:
@@ -23,6 +25,10 @@ if TYPE_CHECKING:
 async def setup(bot: "AzabBot") -> None:
     """Load the Quarantine cog."""
     await bot.add_cog(QuarantineCog(bot))
+    logger.tree("Quarantine Cog Loaded", [
+        ("Commands", "/quarantine, /unquarantine"),
+        ("Features", "anti-nuke role lockdown"),
+    ], emoji="☣️")
 
 
 __all__ = ["QuarantineCog", "setup"]

@@ -136,7 +136,8 @@ class Config:
     # -------------------------------------------------------------------------
 
     server_logs_forum_id: Optional[int] = None
-    ops_guild_id: Optional[int] = None  # Main guild ID (for logging and cross-server moderation)
+    main_guild_id: Optional[int] = None  # Main Syria server (GUILD_ID)
+    ops_guild_id: Optional[int] = None  # Staff/ops server for mod tracking (MODS_GUILD_ID)
 
     # -------------------------------------------------------------------------
     # Optional: Lockdown Exclusions
@@ -476,7 +477,8 @@ def load_config() -> Config:
     male_verified_role_id = _parse_int_optional(os.getenv("MALE_VERIFIED_ROLE_ID"))
     female_role_id = _parse_int_optional(os.getenv("FEMALE_ROLE_ID"))
     female_verified_role_id = _parse_int_optional(os.getenv("FEMALE_VERIFIED_ROLE_ID"))
-    mod_server_id = _parse_int_optional(os.getenv("MODS_GUILD_ID"))
+    main_guild_id = _parse_int_optional(os.getenv("GUILD_ID"))  # Main Syria server
+    mod_server_id = _parse_int_optional(os.getenv("MODS_GUILD_ID"))  # Staff server (alias: ops_guild_id)
     alert_channel_id = _parse_int_optional(os.getenv("ALERT_CHANNEL_ID"))
     appeal_forum_id = _parse_int_optional(os.getenv("AZAB_APPEAL_FORUM_ID"))
     appeal_token_secret = os.getenv("AZAB_APPEAL_TOKEN_SECRET") or None
@@ -493,7 +495,7 @@ def load_config() -> Config:
     transcript_assets_thread_id = _parse_int_optional(os.getenv("AZAB_TRANSCRIPT_ASSETS_THREAD_ID"))
     case_transcripts_thread_id = _parse_int_optional(os.getenv("AZAB_CASE_TRANSCRIPTS_THREAD_ID"))
     server_logs_forum_id = _parse_int_optional(os.getenv("AZAB_SERVER_LOGS_FORUM_ID"))
-    ops_guild_id = _parse_int_optional(os.getenv("GUILD_ID"))
+    ops_guild_id = _parse_int_optional(os.getenv("MODS_GUILD_ID"))  # Same as mod_server_id
     moderator_ids = _parse_int_set(os.getenv("AZAB_MODERATOR_IDS"))
     ignored_bot_ids = _parse_int_set(os.getenv("AZAB_IGNORED_BOT_IDS"))
     lockdown_exclude_ids = _parse_int_set(os.getenv("AZAB_LOCKDOWN_EXCLUDE_IDS"))
@@ -540,6 +542,7 @@ def load_config() -> Config:
         transcript_assets_thread_id=transcript_assets_thread_id,
         case_transcripts_thread_id=case_transcripts_thread_id,
         server_logs_forum_id=server_logs_forum_id,
+        main_guild_id=main_guild_id,
         ops_guild_id=ops_guild_id,
         cooldown_seconds=_parse_int_with_default(
             os.getenv("COOLDOWN_SECONDS"), 10, "COOLDOWN_SECONDS", min_val=0, max_val=300

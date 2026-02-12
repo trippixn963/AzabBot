@@ -331,7 +331,7 @@ class HelpersMixin:
         # Get closed_by member if ticket is closed and not passed
         if ticket["status"] == "closed" and not closed_by and ticket.get("closed_by"):
             try:
-                guild = channel.guild or self.bot.get_guild(self.config.ops_guild_id)
+                guild = channel.guild or self.bot.get_guild(self.config.main_guild_id)
                 if guild:
                     closed_by = guild.get_member(ticket["closed_by"])
             except Exception:

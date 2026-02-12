@@ -270,7 +270,7 @@ class OpenAppealTicketButton(discord.ui.DynamicItem[discord.ui.Button], template
             return
 
         # Get the user from the main server
-        main_guild = bot.get_guild(config.ops_guild_id)
+        main_guild = bot.get_guild(config.main_guild_id)
         if not main_guild:
             await interaction.followup.send(
                 "Main server not found.",

@@ -319,7 +319,7 @@ class AuthService:
                         avatar_url = f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar_hash}.{ext}"
 
                     user_info = DiscordUserInfo(
-                        discord_id=discord_id,
+                        discord_id=str(discord_id),
                         username=data.get("username", "Unknown"),
                         display_name=data.get("global_name"),
                         avatar=avatar_url,
@@ -734,7 +734,7 @@ class AuthService:
                 last_login_at = datetime.fromtimestamp(registered.last_login, tz=timezone.utc)
 
             return AuthenticatedUser(
-                discord_id=discord_id,
+                discord_id=str(discord_id),
                 username=user.name,
                 display_name=user.display_name,
                 avatar_url=str(user.display_avatar.url) if user.display_avatar else None,

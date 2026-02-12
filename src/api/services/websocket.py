@@ -354,6 +354,41 @@ class WebSocketManager:
             data=stats_data or {},
         ), channel="stats")
 
+    async def broadcast_stats_leaderboard(self, leaderboard_data: list, period: str) -> int:
+        """Broadcast full leaderboard data."""
+        return await self.broadcast(WSMessage(
+            type=WSEventType.STATS_LEADERBOARD,
+            data={"leaderboard": leaderboard_data, "period": period},
+        ), channel="stats")
+
+    async def broadcast_stats_personal(self, moderator_id: str, stats_data: Dict[str, Any]) -> int:
+        """Broadcast personal stats for a specific moderator."""
+        return await self.broadcast(WSMessage(
+            type=WSEventType.STATS_PERSONAL,
+            data={"moderator_id": moderator_id, "stats": stats_data},
+        ), channel="stats")
+
+    async def broadcast_stats_activity(self, activity_data: list, days: int) -> int:
+        """Broadcast activity chart data."""
+        return await self.broadcast(WSMessage(
+            type=WSEventType.STATS_ACTIVITY,
+            data={"activity": activity_data, "days": days},
+        ), channel="stats")
+
+    async def broadcast_stats_peak_hours(self, moderator_id: str, peak_hours: list) -> int:
+        """Broadcast peak hours for a specific moderator."""
+        return await self.broadcast(WSMessage(
+            type=WSEventType.STATS_PEAK_HOURS,
+            data={"moderator_id": moderator_id, "peak_hours": peak_hours},
+        ), channel="stats")
+
+    async def broadcast_stats_server_peak_hours(self, peak_hours: list) -> int:
+        """Broadcast server-wide peak hours."""
+        return await self.broadcast(WSMessage(
+            type=WSEventType.STATS_SERVER_PEAK_HOURS,
+            data={"peak_hours": peak_hours},
+        ), channel="stats")
+
     async def broadcast_bot_status(self, status_data: Dict[str, Any]) -> int:
         """Broadcast bot status update (latency, CPU, memory)."""
         return await self.broadcast(WSMessage(

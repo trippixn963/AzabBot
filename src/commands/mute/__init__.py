@@ -17,9 +17,16 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+from typing import TYPE_CHECKING
+
+from src.core.logger import logger
+
 from .constants import DURATION_CHOICES
 from .views import MuteModal
 from .cog import MuteCog, mute_author_context, unmute_author_context
+
+if TYPE_CHECKING:
+    from src.bot import AzabBot
 
 __all__ = [
     "DURATION_CHOICES",
@@ -30,6 +37,10 @@ __all__ = [
 ]
 
 
-async def setup(bot) -> None:
+async def setup(bot: "AzabBot") -> None:
     """Load the MuteCog."""
     await bot.add_cog(MuteCog(bot))
+    logger.tree("Mute Cog Loaded", [
+        ("Commands", "/mute, /unmute, context menu"),
+        ("Features", "timed mutes, DM notify"),
+    ], emoji="🔇")

@@ -114,7 +114,7 @@ class BulkDetectionMixin:
 
         try:
             # Mod role is in main server
-            main_guild_id = self.config.ops_guild_id or self.config.mod_server_id
+            main_guild_id = self.config.main_guild_id or self.config.mod_server_id
             guild = self.bot.get_guild(main_guild_id)
             if not guild:
                 return False, None

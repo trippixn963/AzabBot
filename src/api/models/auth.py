@@ -44,7 +44,7 @@ class LoginRequest(BaseModel):
 class DiscordUserInfo(BaseModel):
     """Discord user information fetched from API."""
 
-    discord_id: int = Field(description="Discord user ID")
+    discord_id: str = Field(description="Discord user ID (as string to preserve precision)")
     username: str = Field(description="Discord username")
     display_name: Optional[str] = Field(None, description="Display name (global name)")
     avatar: Optional[str] = Field(None, description="Avatar URL")
@@ -69,7 +69,7 @@ class AuthTokenResponse(BaseModel):
 class AuthenticatedUser(BaseModel):
     """Authenticated user info."""
 
-    discord_id: int
+    discord_id: str = Field(description="Discord user ID (as string to preserve precision)")
     username: str
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None

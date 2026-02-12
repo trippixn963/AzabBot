@@ -673,11 +673,9 @@ class OperationsMixin:
         # Clear claim reminder cooldowns (no longer needed)
         await self.clear_claim_reminder_cooldowns(ticket_id)
 
-        # Generate AI summary before ending conversation (for staff)
-        ai_summary = None
+        # End AI conversation (staff is taking over)
+        # Note: AI summary is only shown after 3/3 questions, not in claim notification
         if hasattr(self.bot, "ai_service") and self.bot.ai_service and self.bot.ai_service.enabled:
-            ai_summary = await self.bot.ai_service.generate_ticket_summary(ticket_id)
-            # End AI conversation (staff is taking over)
             await self.bot.ai_service.end_conversation(ticket_id)
 
         # Get ticket user for notification and control panel
@@ -721,15 +719,6 @@ class OperationsMixin:
                 await safe_send(channel, content=ticket_user.mention, embed=claim_embed)
             else:
                 await safe_send(channel, embed=claim_embed)
-
-            # Send AI summary for staff (if available) - ping the mod with a human summary
-            if ai_summary:
-                summary_content = f"{staff.mention} {ai_summary}"
-                await safe_send(channel, content=summary_content)
-                logger.tree("AI Summary Sent", [
-                    ("Ticket ID", ticket_id),
-                    ("Staff", f"{staff.name} ({staff.id})"),
-                ], emoji="🤖")
 
             # DM user
             if ticket_user:

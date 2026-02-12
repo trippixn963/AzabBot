@@ -99,7 +99,7 @@ class CaseLogUpdatesMixin:
             if not profile_msg:
                 return
 
-            main_guild_id = self.config.ops_guild_id
+            main_guild_id = self.config.main_guild_id
             guild = self.bot.get_guild(main_guild_id) if main_guild_id else case_thread.guild
             member = guild.get_member(user_id) if guild else None
 

@@ -21,6 +21,10 @@ if TYPE_CHECKING:
 async def setup(bot: "AzabBot") -> None:
     """Load the Lockdown cog."""
     await bot.add_cog(LockdownCog(bot))
+    logger.tree("Lockdown Cog Loaded", [
+        ("Commands", "/lockdown, /unlock"),
+        ("Features", "emergency raid protection"),
+    ], emoji="🔒")
 
 
 __all__ = ["LockdownCog", "setup"]

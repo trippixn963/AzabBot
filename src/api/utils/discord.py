@@ -108,8 +108,8 @@ async def batch_fetch_users(bot: Any, user_ids: List[int]) -> Dict[int, Tuple[st
 
     # Check guild member cache
     guild = None
-    if hasattr(bot, 'config') and bot.config.ops_guild_id:
-        guild = bot.get_guild(bot.config.ops_guild_id)
+    if hasattr(bot, 'config') and bot.config.main_guild_id:
+        guild = bot.get_guild(bot.config.main_guild_id)
 
     still_remaining: List[int] = []
     for uid in remaining_ids:
