@@ -312,8 +312,7 @@ class MuteOpsMixin:
             embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
 
         if xp_lost and offense_count_week > 0:
-            ordinal = {1: "1st", 2: "2nd", 3: "3rd"}.get(offense_count_week, f"{offense_count_week}th")
-            embed.add_field(name="XP Lost", value=f"`-{xp_lost:,}` ({ordinal} this week)", inline=True)
+            embed.add_field(name="XP Lost", value=f"`-{xp_lost:,}`", inline=True)
 
         # Show total mutes for mod visibility
         embed.add_field(name="Total Mutes", value=f"`{total_mutes}`", inline=True)

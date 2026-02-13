@@ -16,14 +16,15 @@ import time
 from typing import Any, Optional, Dict, List, Tuple
 
 import discord
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
-from starlette.status import HTTP_404_NOT_FOUND
+from fastapi import APIRouter, Depends, Query
+
+from src.api.errors import APIError, ErrorCode
 
 from src.core.logger import logger
 from src.core.constants import USER_FETCH_TIMEOUT, CHANNEL_FETCH_TIMEOUT
 from src.api.dependencies import require_auth, get_bot
 from src.api.models.auth import TokenPayload
+from src.api.models.cases import CaseTranscriptResponse
 from src.core.database import get_db
 from src.utils.mention_resolver import collect_mentions_from_messages, mention_map_to_json
 
@@ -411,14 +412,14 @@ async def _fetch_live_transcript(
         return None
 
 
-@router.get("/{case_id}")
+@router.get("/{case_id}", response_model=CaseTranscriptResponse)
 async def get_case_transcript(
     case_id: str,
     limit: int = Query(500, ge=1, le=1000, description="Max messages to return"),
     offset: int = Query(0, ge=0, description="Messages to skip from start"),
     bot: Any = Depends(get_bot),
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> CaseTranscriptResponse:
     """
     Get case transcript for the dedicated transcript view.
 
@@ -437,10 +438,7 @@ async def get_case_transcript(
     )
 
     if not row:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail=f"Case #{case_id} not found",
-        )
+        raise APIError(ErrorCode.CASE_NOT_FOUND, message=f"Case #{case_id} not found")
 
     # Get guild for user lookups
     guild = None
@@ -524,19 +522,6 @@ async def get_case_transcript(
         except (json.JSONDecodeError, TypeError):
             pass
 
-    response = {
-        "case_id": row["case_id"],
-        "user_id": row["user_id"],
-        "action_type": row["action_type"],
-        "reason": row["reason"],
-        "moderator_id": row["moderator_id"],
-        "created_at": row["created_at"],
-        "evidence": evidence,
-        "transcript": transcript,
-        "target_user": target_user,
-        "moderator": moderator,
-    }
-
     logger.debug("Case Transcript Fetched", [
         ("Case ID", str(case_id)),
         ("User", str(payload.sub)),
@@ -544,7 +529,18 @@ async def get_case_transcript(
         ("Source", "live" if transcript and transcript.get("is_live") else "archived"),
     ])
 
-    return JSONResponse(content=response)
+    return CaseTranscriptResponse(
+        case_id=row["case_id"],
+        user_id=row["user_id"],
+        action_type=row["action_type"],
+        reason=row["reason"],
+        moderator_id=row["moderator_id"],
+        created_at=row["created_at"],
+        evidence=evidence,
+        transcript=transcript,
+        target_user=target_user,
+        moderator=moderator,
+    )
 
 
 __all__ = ["router"]

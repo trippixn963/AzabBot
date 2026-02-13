@@ -10,7 +10,7 @@ Server: discord.gg/syria
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -109,6 +109,42 @@ class TicketStats(BaseModel):
     avg_resolution_time_minutes: Optional[float] = None
 
 
+# =============================================================================
+# Full Response Models
+# =============================================================================
+
+class TicketListResponse(BaseModel):
+    """Response for GET /tickets endpoint."""
+    success: bool = True
+    data: List[Dict[str, Any]] = Field(description="List of tickets")
+    total: int = Field(description="Total ticket count")
+    total_pages: int = Field(description="Total pages")
+    page: int = Field(description="Current page")
+    per_page: int = Field(description="Items per page")
+
+
+class TicketStatsResponse(BaseModel):
+    """Response for GET /tickets/stats endpoint."""
+    success: bool = True
+    data: Dict[str, Any] = Field(description="Ticket statistics")
+
+
+class TicketDetailResponse(BaseModel):
+    """Response for GET /tickets/{ticket_id} endpoint."""
+    success: bool = True
+    data: Dict[str, Any] = Field(description="Ticket details")
+
+
+class TicketMessagesResponse(BaseModel):
+    """Response for GET /tickets/{ticket_id}/messages endpoint."""
+    success: bool = True
+    data: List[Dict[str, Any]] = Field(description="List of messages")
+    total: int = Field(description="Total message count")
+    total_pages: int = Field(description="Total pages")
+    page: int = Field(description="Current page")
+    per_page: int = Field(description="Items per page")
+
+
 __all__ = [
     "TicketStatus",
     "TicketPriority",
@@ -117,4 +153,8 @@ __all__ = [
     "TicketDetail",
     "TicketMessage",
     "TicketStats",
+    "TicketListResponse",
+    "TicketStatsResponse",
+    "TicketDetailResponse",
+    "TicketMessagesResponse",
 ]

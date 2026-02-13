@@ -9,7 +9,7 @@ Server: discord.gg/syria
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from .base import ModeratorBrief
@@ -148,6 +148,67 @@ class SystemHealth(BaseModel):
     ws_connections: int = 0
 
 
+# =============================================================================
+# Response Models
+# =============================================================================
+
+class HourlyCount(BaseModel):
+    """Hour and count data."""
+    hour: int = Field(description="Hour of day (0-23)")
+    count: int = Field(description="Activity count")
+
+
+class PeakHoursData(BaseModel):
+    """Peak hours data."""
+    peak_hours: List[HourlyCount] = Field(description="Peak hours data")
+
+
+class PeakHoursResponse(BaseModel):
+    """Response for peak hours endpoints."""
+    success: bool = True
+    data: PeakHoursData
+
+
+class PublicStatsResponse(BaseModel):
+    """Response for GET /stats endpoint (public)."""
+    bot: Dict[str, Any] = Field(description="Bot status info")
+    moderation: Dict[str, Any] = Field(description="Moderation stats")
+    appeals: Dict[str, Any] = Field(description="Appeals stats")
+    tickets: Dict[str, Any] = Field(description="Tickets stats")
+    top_offenders: List[Dict[str, Any]] = Field(description="Top offenders list")
+    moderator_leaderboard: List[Dict[str, Any]] = Field(description="Moderator leaderboard")
+    recent_actions: List[Dict[str, Any]] = Field(description="Recent actions")
+    repeat_offenders: List[Dict[str, Any]] = Field(description="Repeat offenders")
+    recent_releases: List[Dict[str, Any]] = Field(description="Recent releases")
+    moderator_spotlight: Optional[Dict[str, Any]] = Field(None, description="Spotlight moderator")
+    system: Dict[str, Any] = Field(description="System info")
+    changelog: List[Dict[str, Any]] = Field(description="Changelog entries")
+    generated_at: str = Field(description="ISO timestamp")
+
+
+class UserSummaryResponse(BaseModel):
+    """Response for GET /stats/user/{user_id} endpoint."""
+    user_id: str = Field(description="Discord user ID")
+    username: str = Field(description="Discord username")
+    display_name: Optional[str] = Field(None, description="Display name")
+    avatar_url: Optional[str] = Field(None, description="Avatar URL")
+    in_server: bool = Field(description="Whether user is in server")
+    account_created_at: Optional[str] = Field(None, description="Account creation date")
+    joined_server_at: Optional[str] = Field(None, description="Server join date")
+    account_age_days: int = Field(0, description="Account age in days")
+    server_tenure_days: int = Field(0, description="Server tenure in days")
+    is_muted: bool = Field(False, description="Whether user is muted")
+    is_banned: bool = Field(False, description="Whether user is banned")
+    mute_expires_at: Optional[str] = Field(None, description="Mute expiration")
+    total_cases: int = Field(0, description="Total cases")
+    total_warns: int = Field(0, description="Total warnings")
+    total_mutes: int = Field(0, description="Total mutes")
+    total_bans: int = Field(0, description="Total bans")
+    first_case_at: Optional[str] = Field(None, description="First case date")
+    last_case_at: Optional[str] = Field(None, description="Last case date")
+    recent_cases: List[Dict[str, Any]] = Field(description="Recent cases")
+
+
 __all__ = [
     "DashboardStats",
     "ModeratorStats",
@@ -155,4 +216,9 @@ __all__ = [
     "ActivityChartData",
     "ServerInfo",
     "SystemHealth",
+    "HourlyCount",
+    "PeakHoursData",
+    "PeakHoursResponse",
+    "PublicStatsResponse",
+    "UserSummaryResponse",
 ]

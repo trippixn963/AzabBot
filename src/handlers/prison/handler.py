@@ -296,7 +296,10 @@ class PrisonHandler:
             # Get duration string
             sentence_text = "Unknown"
             if mute_record["expires_at"]:
-                duration_seconds = int(mute_record["expires_at"] - mute_record["muted_at"])
+                # Ensure both values are floats (database may store as string)
+                expires_at = float(mute_record["expires_at"])
+                muted_at = float(mute_record["muted_at"])
+                duration_seconds = int(expires_at - muted_at)
                 sentence_text = format_duration(duration_seconds // 60)
             elif mute_record["expires_at"] is None:
                 sentence_text = "Permanent"

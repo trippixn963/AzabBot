@@ -13,10 +13,18 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import JSONResponse
 
 from src.api.dependencies import require_auth
 from src.api.models.auth import TokenPayload
+from src.api.models.events import (
+    EventListResponse,
+    EventListData,
+    EventFilters,
+    EventStatsResponse,
+    EventTypesResponse,
+    EventTypesData,
+    EventCategoriesResponse,
+)
 from src.api.services.event_storage import get_event_storage, EventType
 
 
@@ -28,7 +36,7 @@ TIMEZONE = ZoneInfo("America/New_York")
 # Event Endpoints
 # =============================================================================
 
-@router.get("")
+@router.get("", response_model=EventListResponse)
 async def get_events(
     limit: int = Query(50, ge=1, le=500, description="Maximum number of events"),
     offset: int = Query(0, ge=0, description="Number of entries to skip"),
@@ -40,7 +48,7 @@ async def get_events(
     search: Optional[str] = Query(None, description="Search in reasons, names, and details"),
     hours: Optional[int] = Query(None, ge=1, le=720, description="Filter events from last N hours"),
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> EventListResponse:
     """
     Get paginated Discord events with filtering.
 
@@ -78,30 +86,29 @@ async def get_events(
         from_time=from_time,
     )
 
-    return JSONResponse(content={
-        "success": True,
-        "data": {
-            "events": [e.to_dict() for e in events],
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "filters": {
-                "event_type": event_type,
-                "category": category,
-                "actor_id": actor_id,
-                "target_id": target_id,
-                "channel_id": channel_id,
-                "search": search,
-                "hours": hours,
-            },
-        },
-    })
+    return EventListResponse(
+        data=EventListData(
+            events=[e.to_dict() for e in events],
+            total=total,
+            limit=limit,
+            offset=offset,
+            filters=EventFilters(
+                event_type=event_type,
+                category=category,
+                actor_id=actor_id,
+                target_id=target_id,
+                channel_id=channel_id,
+                search=search,
+                hours=hours,
+            ),
+        )
+    )
 
 
-@router.get("/stats")
+@router.get("/stats", response_model=EventStatsResponse)
 async def get_event_stats(
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> EventStatsResponse:
     """
     Get event statistics.
 
@@ -110,16 +117,13 @@ async def get_event_stats(
     storage = get_event_storage()
     stats = storage.get_stats()
 
-    return JSONResponse(content={
-        "success": True,
-        "data": stats,
-    })
+    return EventStatsResponse(data=stats)
 
 
-@router.get("/types")
+@router.get("/types", response_model=EventTypesResponse)
 async def get_event_types(
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> EventTypesResponse:
     """
     Get all event types with their counts.
     """
@@ -136,26 +140,22 @@ async def get_event_types(
     for t in types:
         t["category"] = type_to_category.get(t["type"], "other")
 
-    return JSONResponse(content={
-        "success": True,
-        "data": {
-            "types": types,
-            "categories": list(categories.keys()),
-        },
-    })
+    return EventTypesResponse(
+        data=EventTypesData(
+            types=types,
+            categories=list(categories.keys()),
+        )
+    )
 
 
-@router.get("/categories")
+@router.get("/categories", response_model=EventCategoriesResponse)
 async def get_event_categories(
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> EventCategoriesResponse:
     """
     Get event categories and their event types.
     """
-    return JSONResponse(content={
-        "success": True,
-        "data": EventType.categories(),
-    })
+    return EventCategoriesResponse(data=EventType.categories())
 
 
 __all__ = ["router"]

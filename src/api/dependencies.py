@@ -10,13 +10,13 @@ Server: discord.gg/syria
 
 from typing import TYPE_CHECKING, Optional
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Request
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
 
+from src.api.errors import APIError, ErrorCode
 from src.api.services.auth import get_auth_service, AuthService
 from src.api.models.auth import TokenPayload
 
@@ -44,10 +44,7 @@ def set_bot(bot: "AzabBot") -> None:
 def get_bot() -> "AzabBot":
     """Get the bot instance."""
     if _bot_instance is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Bot not initialized",
-        )
+        raise APIError(ErrorCode.BOT_NOT_INITIALIZED)
     return _bot_instance
 
 
@@ -86,9 +83,8 @@ async def require_auth(
     Raises 401 if not authenticated.
     """
     if credentials is None:
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
+        raise APIError(
+            ErrorCode.AUTH_MISSING_TOKEN,
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -96,9 +92,8 @@ async def require_auth(
     payload = auth_service.get_token_payload(credentials.credentials)
 
     if payload is None:
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+        raise APIError(
+            ErrorCode.AUTH_INVALID_TOKEN,
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -120,9 +115,9 @@ async def require_permission(permission: str):
         payload: TokenPayload = Depends(require_auth),
     ) -> TokenPayload:
         if permission not in payload.permissions and "admin" not in payload.permissions:
-            raise HTTPException(
-                status_code=HTTP_403_FORBIDDEN,
-                detail=f"Permission '{permission}' required",
+            raise APIError(
+                ErrorCode.PERMISSION_DENIED,
+                message=f"Permission '{permission}' required",
             )
         return payload
 

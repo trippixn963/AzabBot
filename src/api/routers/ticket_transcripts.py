@@ -15,14 +15,15 @@ import time
 from typing import Any, Optional, Dict, List, Tuple
 
 import discord
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
-from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FOUND
+from fastapi import APIRouter, Depends, Query, Request
+
+from src.api.errors import APIError, ErrorCode
 
 from src.core.logger import logger
 from src.core.constants import USER_FETCH_TIMEOUT, CHANNEL_FETCH_TIMEOUT
 from src.api.dependencies import require_auth, get_bot
 from src.api.models.auth import TokenPayload
+from src.api.models.cases import TicketTranscriptResponse
 from src.api.services.auth import get_auth_service
 from src.core.database import get_db
 
@@ -294,13 +295,13 @@ def _build_transcript_from_db(db, ticket_id: str) -> Optional[dict]:
     }
 
 
-@router.get("/{ticket_id}")
+@router.get("/{ticket_id}", response_model=TicketTranscriptResponse)
 async def get_ticket_transcript(
     ticket_id: str,
     request: Request,
     token: Optional[str] = Query(None, description="Transcript access token (bypasses auth)"),
     bot: Any = Depends(get_bot),
-) -> JSONResponse:
+) -> TicketTranscriptResponse:
     """
     Get ticket transcript for the dedicated transcript view.
 
@@ -316,14 +317,14 @@ async def get_ticket_transcript(
     if not has_transcript_access:
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
-            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Authentication required")
+            raise APIError(ErrorCode.AUTH_MISSING_TOKEN, message="Authentication required")
 
         jwt_token = auth_header.split(" ", 1)[1]
         auth_service = get_auth_service()
         payload = auth_service.get_token_payload(jwt_token)
 
         if payload is None:
-            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+            raise APIError(ErrorCode.AUTH_INVALID_TOKEN, message="Invalid or expired token")
 
     db = get_db()
 
@@ -336,10 +337,7 @@ async def get_ticket_transcript(
     )
 
     if not row:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail=f"Ticket {ticket_id} not found",
-        )
+        raise APIError(ErrorCode.TICKET_NOT_FOUND, message=f"Ticket {ticket_id} not found")
 
     # Fetch user info in parallel
     user_ids = [row["user_id"]]
@@ -403,19 +401,6 @@ async def get_ticket_transcript(
             "closed_by_name": closer_info.get("display_name") if closer_info else None,
         })
 
-    response = {
-        "ticket_id": row["ticket_id"],
-        "user_id": row["user_id"],
-        "category": row["category"] or "Support",
-        "subject": row["subject"] or f"Ticket {row['ticket_id']}",
-        "status": row["status"] or "open",
-        "claimed_by": row["claimed_by"],
-        "closed_by": row["closed_by"],
-        "closed_at": row["closed_at"],
-        "created_at": row["created_at"],
-        "transcript": transcript,
-    }
-
     logger.debug("Ticket Transcript Fetched", [
         ("Ticket ID", ticket_id),
         ("Access", "transcript_token" if has_transcript_access else "authenticated"),
@@ -423,7 +408,18 @@ async def get_ticket_transcript(
         ("Source", "live" if transcript and transcript.get("is_live") else "stored"),
     ])
 
-    return JSONResponse(content=response)
+    return TicketTranscriptResponse(
+        ticket_id=row["ticket_id"],
+        user_id=row["user_id"],
+        category=row["category"] or "Support",
+        subject=row["subject"] or f"Ticket {row['ticket_id']}",
+        status=row["status"] or "open",
+        claimed_by=row["claimed_by"],
+        closed_by=row["closed_by"],
+        closed_at=row["closed_at"],
+        created_at=row["created_at"],
+        transcript=transcript,
+    )
 
 
 __all__ = ["router"]

@@ -14,16 +14,30 @@ import time
 from typing import Any, Optional
 
 import discord
-from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
 from src.core.logger import logger
 from src.core.config import get_config
 from src.core.database import get_db
 from src.api.dependencies import get_bot, require_auth
 from src.api.models.auth import TokenPayload
+from src.api.models.bans import (
+    BanListResponse,
+    BanSyncResponse,
+    BanDetailResponse,
+    UnbanResponse,
+    BanListData,
+    BanSyncData,
+    BanDetailData,
+    UnbanData,
+    BanEntry,
+    BanHistoryEntry,
+    BanPagination,
+    BannedUserInfo,
+    ModeratorInfo,
+)
+from src.api.errors import APIError, ErrorCode
 
 
 router = APIRouter(prefix="/bans", tags=["Bans"])
@@ -50,14 +64,14 @@ class UnbanRequest(BaseModel):
 # Get Banned Users (from database cache)
 # =============================================================================
 
-@router.get("")
+@router.get("", response_model=BanListResponse)
 async def get_banned_users(
     search: Optional[str] = Query(None, description="Search by username or user ID"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     auth: TokenPayload = Depends(require_auth),
     bot: Any = Depends(get_bot),
-) -> JSONResponse:
+) -> BanListResponse:
     """
     Get list of banned users.
 
@@ -254,27 +268,26 @@ async def get_banned_users(
         ("Requested By", str(auth.sub)),
     ], emoji="🔨")
 
-    return JSONResponse(content={
-        "success": True,
-        "data": {
-            "bans": bans,
-            "pagination": {
-                "page": page,
-                "per_page": per_page,
-                "total": total,
-                "total_pages": total_pages,
-                "has_next": page < total_pages,
-                "has_prev": page > 1,
-            },
-        },
-    })
+    return BanListResponse(
+        data=BanListData(
+            bans=[BanEntry(**b) for b in bans],
+            pagination=BanPagination(
+                page=page,
+                per_page=per_page,
+                total=total,
+                total_pages=total_pages,
+                has_next=page < total_pages,
+                has_prev=page > 1,
+            ),
+        )
+    )
 
 
-@router.get("/sync")
+@router.get("/sync", response_model=BanSyncResponse)
 async def sync_bans(
     auth: TokenPayload = Depends(require_auth),
     bot: Any = Depends(get_bot),
-) -> JSONResponse:
+) -> BanSyncResponse:
     """
     Sync bans from Discord to database.
 
@@ -286,11 +299,11 @@ async def sync_bans(
 
     guild_id = config.main_guild_id
     if not guild_id:
-        raise HTTPException(status_code=500, detail="Guild not configured")
+        raise APIError(ErrorCode.SERVER_ERROR, message="Guild not configured")
 
     guild = bot.get_guild(guild_id)
     if not guild:
-        raise HTTPException(status_code=500, detail="Guild not found")
+        raise APIError(ErrorCode.SERVER_DISCORD_ERROR, message="Guild not found")
 
     synced = 0
     errors = 0
@@ -346,25 +359,24 @@ async def sync_bans(
             ("Requested By", str(auth.sub)),
         ], emoji="🔄")
 
-        return JSONResponse(content={
-            "success": True,
-            "data": {
-                "synced": synced,
-                "errors": errors,
-            },
-        })
+        return BanSyncResponse(
+            data=BanSyncData(
+                synced=synced,
+                errors=errors,
+            )
+        )
 
     except Exception as e:
         logger.error("Ban sync failed", [("Error", str(e)[:100])])
-        raise HTTPException(status_code=500, detail="Sync failed")
+        raise APIError(ErrorCode.SERVER_ERROR, message="Sync failed")
 
 
-@router.get("/{user_id}")
+@router.get("/{user_id}", response_model=BanDetailResponse)
 async def get_ban_details(
     user_id: int,
     auth: TokenPayload = Depends(require_auth),
     bot: Any = Depends(get_bot),
-) -> JSONResponse:
+) -> BanDetailResponse:
     """
     Get ban history for a specific user.
     """
@@ -382,7 +394,7 @@ async def get_ban_details(
     )
 
     if not history:
-        raise HTTPException(status_code=404, detail="No ban history found")
+        raise APIError(ErrorCode.BAN_NOT_FOUND, message="No ban history found")
 
     # Get user snapshot
     user_snapshot = db.fetchone(
@@ -443,14 +455,13 @@ async def get_ban_details(
 
         history_list.append(entry)
 
-    return JSONResponse(content={
-        "success": True,
-        "data": {
-            "user": user_data,
-            "is_banned": is_banned,
-            "history": history_list,
-        },
-    })
+    return BanDetailResponse(
+        data=BanDetailData(
+            user=BannedUserInfo(**user_data, bot=False),
+            is_banned=is_banned,
+            history=[BanHistoryEntry(**h) for h in history_list],
+        )
+    )
 
 
 # =============================================================================
@@ -468,13 +479,13 @@ def _has_unban_permission(auth: TokenPayload, config) -> bool:
     return bool(user_permissions & UNBAN_PERMISSIONS)
 
 
-@router.post("/{user_id}/unban")
+@router.post("/{user_id}/unban", response_model=UnbanResponse)
 async def unban_user(
     user_id: int,
     body: UnbanRequest,
     auth: TokenPayload = Depends(require_auth),
     bot: Any = Depends(get_bot),
-) -> JSONResponse:
+) -> UnbanResponse:
     """
     Unban a user from the server.
 
@@ -491,42 +502,27 @@ async def unban_user(
             ("Requested By", str(auth.sub)),
             ("Permissions", ",".join(auth.permissions) or "none"),
         ])
-        raise HTTPException(
-            status_code=HTTP_403_FORBIDDEN,
-            detail="You don't have permission to unban users",
-        )
+        raise APIError(ErrorCode.PERMISSION_DENIED, message="You don't have permission to unban users")
 
     guild_id = config.main_guild_id
     if not guild_id:
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Guild not configured",
-        )
+        raise APIError(ErrorCode.SERVER_ERROR, message="Guild not configured")
 
     guild = bot.get_guild(guild_id)
     if not guild:
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Guild not found",
-        )
+        raise APIError(ErrorCode.SERVER_DISCORD_ERROR, message="Guild not found")
 
     # Check if user is actually banned
     try:
         ban_entry = await guild.fetch_ban(discord.Object(id=user_id))
     except discord.NotFound:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail="User is not banned",
-        )
+        raise APIError(ErrorCode.BAN_NOT_FOUND, message="User is not banned")
     except discord.HTTPException as e:
         logger.error("Failed to fetch ban", [
             ("User ID", str(user_id)),
             ("Error", str(e)[:100]),
         ])
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to check ban status",
-        )
+        raise APIError(ErrorCode.SERVER_DISCORD_ERROR, message="Failed to check ban status")
 
     # Perform unban
     reason = body.reason or f"Unbanned via dashboard by {auth.sub}"
@@ -537,10 +533,7 @@ async def unban_user(
             ("User ID", str(user_id)),
             ("Error", str(e)[:100]),
         ])
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to unban user",
-        )
+        raise APIError(ErrorCode.SERVER_DISCORD_ERROR, message="Failed to unban user")
 
     # Record in ban_history
     try:
@@ -562,15 +555,13 @@ async def unban_user(
         ("Reason", reason[:50] if reason else "None"),
     ], emoji="🔓")
 
-    return JSONResponse(content={
-        "success": True,
-        "message": "User has been unbanned",
-        "data": {
-            "user_id": str(user_id),
-            "unbanned_by": str(auth.sub),
-            "reason": reason,
-        },
-    })
+    return UnbanResponse(
+        data=UnbanData(
+            user_id=str(user_id),
+            unbanned_by=str(auth.sub),
+            reason=reason,
+        )
+    )
 
 
 __all__ = ["router"]

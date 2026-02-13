@@ -16,14 +16,29 @@ from typing import Any, Optional
 import discord
 import psutil
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import JSONResponse
 
 from src.core.logger import logger
 from src.api.dependencies import get_bot, require_auth
 from src.api.models.auth import TokenPayload
+from src.api.models.bot import (
+    BotStatusResponse,
+    BotStatusData,
+    SystemInfo,
+    HealthInfo,
+    BotLogsResponse,
+    BotLogsData,
+    LatencyResponse,
+    LatencyData,
+    LatencyStatsResponse,
+    LatencyReportResponse,
+    LatencyReportData,
+    LatencyHistoryResponse,
+    LatencyHistoryData,
+)
 from src.api.services.log_storage import get_log_storage
 from src.api.services.health_tracker import get_health_tracker
 from src.api.services.latency_storage import get_latency_storage
+from src.api.errors import APIError, ErrorCode
 
 
 router = APIRouter(prefix="/bot", tags=["Bot Status"])
@@ -33,11 +48,11 @@ router = APIRouter(prefix="/bot", tags=["Bot Status"])
 # Bot Status
 # =============================================================================
 
-@router.get("/status")
+@router.get("/status", response_model=BotStatusResponse)
 async def get_bot_status(
     bot: Any = Depends(get_bot),
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> BotStatusResponse:
     """
     Get comprehensive bot status and system information.
 
@@ -97,35 +112,6 @@ async def get_bot_status(
     if latency_ms > 0:
         health_tracker.record_latency(latency_ms)
 
-    response = {
-        "success": True,
-        "data": {
-            "online": bot_online,
-            "uptime_seconds": uptime_seconds,
-            "started_at": started_at,
-            "latency_ms": latency_ms,
-            "guild_count": guild_count,
-            "user_count": user_count,
-            "version": version,
-            "system": {
-                "cpu_percent": round(cpu_percent, 1),
-                "memory_used_mb": round(memory_used_mb, 1),
-                "memory_total_mb": round(memory_total_mb, 1),
-                "disk_used_gb": round(disk_used_gb, 1),
-                "disk_total_gb": round(disk_total_gb, 1),
-                "python_version": python_version,
-                "discord_py_version": discord_py_version,
-            },
-            "health": {
-                "shard_id": shard_id,
-                "shard_count": shard_count or 1,
-                "reconnect_count": health_summary["reconnect_count"],
-                "rate_limit_hits": health_summary["rate_limit_hits"],
-                "avg_latency_ms": health_summary["avg_latency_ms"],
-            },
-        },
-    }
-
     logger.debug("Bot Status Fetched", [
         ("User", str(payload.sub)),
         ("Online", str(bot_online)),
@@ -133,14 +119,40 @@ async def get_bot_status(
         ("Latency", f"{latency_ms}ms"),
     ])
 
-    return JSONResponse(content=response)
+    return BotStatusResponse(
+        data=BotStatusData(
+            online=bot_online,
+            uptime_seconds=uptime_seconds,
+            started_at=started_at,
+            latency_ms=latency_ms,
+            guild_count=guild_count,
+            user_count=user_count,
+            version=version,
+            system=SystemInfo(
+                cpu_percent=round(cpu_percent, 1),
+                memory_used_mb=round(memory_used_mb, 1),
+                memory_total_mb=round(memory_total_mb, 1),
+                disk_used_gb=round(disk_used_gb, 1),
+                disk_total_gb=round(disk_total_gb, 1),
+                python_version=python_version,
+                discord_py_version=discord_py_version,
+            ),
+            health=HealthInfo(
+                shard_id=shard_id,
+                shard_count=shard_count or 1,
+                reconnect_count=health_summary["reconnect_count"],
+                rate_limit_hits=health_summary["rate_limit_hits"],
+                avg_latency_ms=health_summary["avg_latency_ms"],
+            ),
+        )
+    )
 
 
 # =============================================================================
 # Bot Logs
 # =============================================================================
 
-@router.get("/logs")
+@router.get("/logs", response_model=BotLogsResponse)
 async def get_bot_logs(
     limit: int = Query(100, ge=1, le=500, description="Maximum number of logs"),
     level: str = Query("all", description="Filter by level: all, info, warning, error"),
@@ -148,7 +160,7 @@ async def get_bot_logs(
     search: Optional[str] = Query(None, description="Search in log messages"),
     module: Optional[str] = Query(None, description="Filter by module"),
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> BotLogsResponse:
     """
     Get paginated bot logs from persistent SQLite storage.
 
@@ -164,17 +176,6 @@ async def get_bot_logs(
         module=module,
     )
 
-    response = {
-        "success": True,
-        "data": {
-            "logs": [log.to_dict() for log in logs],
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "level": level,
-        },
-    }
-
     logger.debug("Bot Logs Fetched", [
         ("User", str(payload.sub)),
         ("Count", str(len(logs))),
@@ -182,18 +183,26 @@ async def get_bot_logs(
         ("Limit", str(limit)),
     ])
 
-    return JSONResponse(content=response)
+    return BotLogsResponse(
+        data=BotLogsData(
+            logs=[log.to_dict() for log in logs],
+            total=total,
+            limit=limit,
+            offset=offset,
+            level=level,
+        )
+    )
 
 
 # =============================================================================
 # Latency History
 # =============================================================================
 
-@router.get("/latency")
+@router.get("/latency", response_model=LatencyResponse)
 async def get_latency(
     period: str = Query("live", description="Time period: live, 24h, 7d, 30d"),
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> LatencyResponse:
     """
     Get latency history for graphing.
 
@@ -207,82 +216,72 @@ async def get_latency(
 
     if period == "live":
         points = latency_storage.get_live(60)
-        return JSONResponse(content={
-            "success": True,
-            "data": {
-                "period": "live",
-                "points": [p.to_dict() for p in points],
-                "count": len(points),
-                "aggregated": False,
-            },
-        })
+        return LatencyResponse(
+            data=LatencyData(
+                period="live",
+                points=[p.to_dict() for p in points],
+                count=len(points),
+                aggregated=False,
+            )
+        )
 
     elif period == "24h":
         points = latency_storage.get_hourly(24)
-        return JSONResponse(content={
-            "success": True,
-            "data": {
-                "period": "24h",
-                "points": [p.to_dict() for p in points],
-                "count": len(points),
-                "aggregated": True,
-            },
-        })
+        return LatencyResponse(
+            data=LatencyData(
+                period="24h",
+                points=[p.to_dict() for p in points],
+                count=len(points),
+                aggregated=True,
+            )
+        )
 
     elif period == "7d":
         points = latency_storage.get_hourly(24 * 7)
-        return JSONResponse(content={
-            "success": True,
-            "data": {
-                "period": "7d",
-                "points": [p.to_dict() for p in points],
-                "count": len(points),
-                "aggregated": True,
-            },
-        })
+        return LatencyResponse(
+            data=LatencyData(
+                period="7d",
+                points=[p.to_dict() for p in points],
+                count=len(points),
+                aggregated=True,
+            )
+        )
 
     elif period == "30d":
         points = latency_storage.get_daily(30)
-        return JSONResponse(content={
-            "success": True,
-            "data": {
-                "period": "30d",
-                "points": [p.to_dict() for p in points],
-                "count": len(points),
-                "aggregated": True,
-            },
-        })
+        return LatencyResponse(
+            data=LatencyData(
+                period="30d",
+                points=[p.to_dict() for p in points],
+                count=len(points),
+                aggregated=True,
+            )
+        )
 
     else:
-        return JSONResponse(
-            status_code=400,
-            content={
-                "success": False,
-                "error": "Invalid period. Use: live, 24h, 7d, 30d",
-            },
+        raise APIError(
+            ErrorCode.VALIDATION_ERROR,
+            message="Invalid period. Use: live, 24h, 7d, 30d"
         )
 
 
-@router.get("/latency/stats")
+@router.get("/latency/stats", response_model=LatencyStatsResponse)
 async def get_latency_stats(
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> LatencyStatsResponse:
     """Get latency statistics."""
     latency_storage = get_latency_storage()
     stats = latency_storage.get_stats()
 
-    return JSONResponse(content={
-        "success": True,
-        "data": stats,
-    })
+    return LatencyStatsResponse(data=stats)
 
 
-@router.post("/latency/report")
+@router.post("/latency/report", response_model=LatencyReportResponse)
 async def report_api_latency(
     api_ms: int = Query(..., ge=0, le=10000, description="API response time in ms"),
     discord_ms: int = Query(..., ge=0, le=10000, description="Discord latency in ms"),
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> LatencyReportResponse:
     """
     Report both API and Discord latency measurements from the frontend.
 
@@ -294,28 +293,31 @@ async def report_api_latency(
     # Store both latencies together in the same record
     record_id = latency_storage.record(discord_ms=discord_ms, api_ms=api_ms)
 
-    return JSONResponse(content={
-        "success": True,
-        "data": {"recorded": True, "id": record_id, "discord_ms": discord_ms, "api_ms": api_ms},
-    })
+    return LatencyReportResponse(
+        data=LatencyReportData(
+            recorded=True,
+            id=record_id,
+            discord_ms=discord_ms,
+            api_ms=api_ms,
+        )
+    )
 
 
 # Keep old endpoint for backwards compatibility
-@router.get("/latency-history")
+@router.get("/latency-history", response_model=LatencyHistoryResponse)
 async def get_latency_history_legacy(
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> LatencyHistoryResponse:
     """Legacy endpoint - redirects to new latency endpoint."""
     latency_storage = get_latency_storage()
     points = latency_storage.get_live(60)
 
-    return JSONResponse(content={
-        "success": True,
-        "data": {
-            "history": [{"timestamp": p.timestamp.timestamp(), "latency_ms": p.discord_ms} for p in points],
-            "count": len(points),
-        },
-    })
+    return LatencyHistoryResponse(
+        data=LatencyHistoryData(
+            history=[{"timestamp": p.timestamp.timestamp(), "latency_ms": p.discord_ms} for p in points],
+            count=len(points),
+        )
+    )
 
 
 __all__ = ["router"]

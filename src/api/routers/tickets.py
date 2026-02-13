@@ -13,15 +13,20 @@ import discord
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
-from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FOUND
+from fastapi import APIRouter, Depends, Query, Request
 
 from src.core.logger import logger
 from src.core.config import NY_TZ
 from src.api.dependencies import get_bot, require_auth, get_pagination, PaginationParams
 from src.api.models.auth import TokenPayload
+from src.api.models.tickets import (
+    TicketListResponse,
+    TicketStatsResponse,
+    TicketDetailResponse,
+    TicketMessagesResponse,
+)
 from src.api.services.auth import get_auth_service
+from src.api.errors import APIError, ErrorCode
 from src.core.database import get_db
 
 
@@ -93,7 +98,7 @@ class UserInfoCache:
 # List & Search
 # =============================================================================
 
-@router.get("")
+@router.get("", response_model=TicketListResponse)
 async def list_tickets(
     pagination: PaginationParams = Depends(get_pagination),
     status: Optional[str] = Query(None, description="Filter by status"),
@@ -106,7 +111,7 @@ async def list_tickets(
     sort_dir: Optional[str] = Query("desc", description="Sort direction: asc or desc"),
     bot: Any = Depends(get_bot),
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> TicketListResponse:
     """List support tickets with optional filters."""
     db = get_db()
     user_cache = UserInfoCache(bot)
@@ -214,21 +219,20 @@ async def list_tickets(
         ("Total", str(total)),
     ])
 
-    return JSONResponse(content={
-        "success": True,
-        "data": tickets,
-        "total": total,
-        "total_pages": total_pages,
-        "page": pagination.page,
-        "per_page": pagination.per_page,
-    })
+    return TicketListResponse(
+        data=tickets,
+        total=total,
+        total_pages=total_pages,
+        page=pagination.page,
+        per_page=pagination.per_page,
+    )
 
 
-@router.get("/stats")
+@router.get("/stats", response_model=TicketStatsResponse)
 async def get_ticket_stats(
     bot: Any = Depends(get_bot),
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> TicketStatsResponse:
     """Get aggregate ticket statistics with moderator data."""
     db = get_db()
     user_cache = UserInfoCache(bot)
@@ -387,23 +391,20 @@ async def get_ticket_stats(
         ("Top Mods", str(len(top_moderators))),
     ])
 
-    return JSONResponse(content={
-        "success": True,
-        "data": stats,
-    })
+    return TicketStatsResponse(data=stats)
 
 
 # =============================================================================
 # Individual Ticket
 # =============================================================================
 
-@router.get("/{ticket_id}")
+@router.get("/{ticket_id}", response_model=TicketDetailResponse)
 async def get_ticket(
     ticket_id: str,
     request: "Request",
     token: Optional[str] = Query(None, description="Transcript access token (bypasses auth)"),
     bot: Any = Depends(get_bot),
-) -> JSONResponse:
+) -> TicketDetailResponse:
     """Get detailed information about a specific ticket."""
     from fastapi.security import HTTPBearer
     ticket_id = ticket_id.upper()
@@ -415,14 +416,14 @@ async def get_ticket(
     if not has_transcript_access:
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Authentication required")
+            raise APIError(ErrorCode.AUTH_MISSING_TOKEN)
 
         jwt_token = auth_header.split(" ", 1)[1]
         auth_service = get_auth_service()
         payload = auth_service.get_token_payload(jwt_token)
 
         if payload is None:
-            raise HTTPException(status_code=401, detail="Invalid or expired token")
+            raise APIError(ErrorCode.AUTH_INVALID_TOKEN)
 
     db = get_db()
     user_cache = UserInfoCache(bot)
@@ -439,10 +440,7 @@ async def get_ticket(
             ("Ticket ID", ticket_id),
             ("Access", "transcript_token" if has_transcript_access else "authenticated"),
         ])
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail=f"Ticket {ticket_id} not found",
-        )
+        raise APIError(ErrorCode.TICKET_NOT_FOUND)
 
     # Prefetch both users
     await user_cache.prefetch([row["user_id"], row["claimed_by"]] if row["claimed_by"] else [row["user_id"]])
@@ -479,20 +477,17 @@ async def get_ticket(
         ("Access", "transcript_token" if has_transcript_access else "authenticated"),
     ])
 
-    return JSONResponse(content={
-        "success": True,
-        "data": ticket,
-    })
+    return TicketDetailResponse(data=ticket)
 
 
-@router.get("/{ticket_id}/messages")
+@router.get("/{ticket_id}/messages", response_model=TicketMessagesResponse)
 async def get_ticket_messages(
     ticket_id: str,
     request: Request,
     token: Optional[str] = Query(None, description="Transcript access token (bypasses auth)"),
     pagination: PaginationParams = Depends(get_pagination),
     bot: Any = Depends(get_bot),
-) -> JSONResponse:
+) -> TicketMessagesResponse:
     """Get messages for a specific ticket."""
     ticket_id = ticket_id.upper()
 
@@ -503,14 +498,14 @@ async def get_ticket_messages(
     if not has_transcript_access:
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
-            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Authentication required")
+            raise APIError(ErrorCode.AUTH_MISSING_TOKEN)
 
         jwt_token = auth_header.split(" ", 1)[1]
         auth_service = get_auth_service()
         payload = auth_service.get_token_payload(jwt_token)
 
         if payload is None:
-            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+            raise APIError(ErrorCode.AUTH_INVALID_TOKEN)
 
     db = get_db()
     user_cache = UserInfoCache(bot)
@@ -518,10 +513,7 @@ async def get_ticket_messages(
     # Verify ticket exists
     ticket = db.fetchone("SELECT 1 FROM tickets WHERE ticket_id = ?", (ticket_id,))
     if not ticket:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail=f"Ticket {ticket_id} not found",
-        )
+        raise APIError(ErrorCode.TICKET_NOT_FOUND)
 
     total = db.fetchone(
         "SELECT COUNT(*) FROM ticket_messages WHERE ticket_id = ?",
@@ -561,14 +553,13 @@ async def get_ticket_messages(
         ("Messages", str(len(messages))),
     ])
 
-    return JSONResponse(content={
-        "success": True,
-        "data": messages,
-        "total": total,
-        "total_pages": total_pages,
-        "page": pagination.page,
-        "per_page": pagination.per_page,
-    })
+    return TicketMessagesResponse(
+        data=messages,
+        total=total,
+        total_pages=total_pages,
+        page=pagination.page,
+        per_page=pagination.per_page,
+    )
 
 
 __all__ = ["router"]
