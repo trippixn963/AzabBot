@@ -287,6 +287,7 @@ class AzabBot(commands.Bot):
         await self._cleanup_polls_channel()
         await self._cache_invites()
         await self._check_lockdown_state()
+        self._cleanup_unjail_records()
 
         logger.tree("AZAB READY", [
             ("Prison Handler", "Ready" if self.prison else "Missing"),
@@ -647,6 +648,19 @@ class AzabBot(commands.Bot):
         if self.prisoner_service:
             return await self.prisoner_service.cleanup_stale_entries()
         return 0
+
+    def _cleanup_unjail_records(self) -> None:
+        """Clean up old unjail card usage records (older than 7 days)."""
+        try:
+            deleted = self.db.cleanup_old_unjail_records(days=7)
+            if deleted > 0:
+                logger.tree("Unjail Records Cleaned", [
+                    ("Deleted", str(deleted)),
+                ], emoji="🔓")
+        except Exception as e:
+            logger.warning("Unjail Cleanup Failed", [
+                ("Error", str(e)[:50]),
+            ])
 
     async def _cleanup_editsnipe_cache(self) -> int:
         """

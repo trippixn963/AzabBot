@@ -1003,6 +1003,24 @@ class SchemaMixin:
             "CREATE INDEX IF NOT EXISTS idx_user_snapshots_reason ON user_snapshots(snapshot_reason)"
         )
 
+        # -----------------------------------------------------------------
+        # Booster Unjail Card Usage Table
+        # DESIGN: Tracks daily "Get Out of Jail Free" card usage for boosters
+        # Resets daily at midnight EST
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS booster_unjail_usage (
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                used_at REAL NOT NULL,
+                mute_reason TEXT,
+                PRIMARY KEY (user_id, guild_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_unjail_usage_time ON booster_unjail_usage(used_at)"
+        )
+
         conn.commit()
 
         # Initialize staff ticket counters from existing data (runs once on startup)

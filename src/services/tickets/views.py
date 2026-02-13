@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import re
 from typing import TYPE_CHECKING, Optional
 
 import discord
@@ -124,6 +125,281 @@ class TicketPanelSelect(discord.ui.DynamicItem[discord.ui.Select], template=r"tk
             ("Category", category),
         ], emoji="🎫")
         await interaction.response.send_modal(TicketCreateModal(category))
+
+
+# =============================================================================
+# Booster Unjail Button (for prison intro embed)
+# =============================================================================
+
+class BoosterUnjailButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=r"unjail_card:(?P<user_id>\d+):(?P<guild_id>\d+)"
+):
+    """
+    Persistent button on prison intro embed for boosters to unjail themselves.
+
+    Only boosters can see and use this button (once per day).
+    Removes the muted role and marks the mute as resolved.
+    """
+
+    def __init__(self, user_id: int, guild_id: int) -> None:
+        super().__init__(
+            discord.ui.Button(
+                label="Unjail",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"unjail_card:{user_id}:{guild_id}",
+                emoji="<:unlock:1455200891866190040>",
+            )
+        )
+        self.user_id = user_id
+        self.guild_id = guild_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Button,
+        match: re.Match[str],
+    ) -> "BoosterUnjailButton":
+        user_id = int(match.group("user_id"))
+        guild_id = int(match.group("guild_id"))
+        return cls(user_id, guild_id)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """
+        Handle unjail button click - removes mute for boosters.
+
+        Validates:
+        - Correct user (only muted user can use their own card)
+        - Booster status (must still be boosting)
+        - Daily usage limit (one per day, resets midnight EST)
+        """
+        logger.tree("Unjail Button Clicked", [
+            ("User", f"{interaction.user.name} ({interaction.user.id})"),
+            ("Expected User", str(self.user_id)),
+            ("Guild ID", str(self.guild_id)),
+        ], emoji="🔓")
+
+        # Only the muted user can use this
+        if interaction.user.id != self.user_id:
+            logger.warning("Unjail Button Wrong User", [
+                ("Clicked By", f"{interaction.user.name} ({interaction.user.id})"),
+                ("Expected User", str(self.user_id)),
+            ])
+            await interaction.response.send_message(
+                "You can only use your own Unjail card.",
+                ephemeral=True,
+            )
+            return
+
+        # Ensure we have a Member object
+        if not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message(
+                "This button can only be used in the server.",
+                ephemeral=True,
+            )
+            return
+
+        member = interaction.user
+
+        # Verify booster status (in case they lost boost since embed was sent)
+        if member.premium_since is None:
+            logger.warning("Unjail Card Non-Booster Attempt", [
+                ("User", f"{member.name} ({member.id})"),
+            ])
+            await interaction.response.send_message(
+                "Only server boosters can use the Unjail card.",
+                ephemeral=True,
+            )
+            return
+
+        # Check daily usage
+        from src.core.database import get_db
+        db = get_db()
+
+        if not db.can_use_unjail_card(member.id, self.guild_id):
+            # Get cooldown time
+            reset_at = db.get_unjail_card_cooldown(member.id, self.guild_id)
+            if reset_at:
+                reset_ts = int(reset_at)
+                await interaction.response.send_message(
+                    f"You've already used your daily Unjail card.\n"
+                    f"Resets <t:{reset_ts}:R> (midnight EST).",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(
+                    "You've already used your daily Unjail card.",
+                    ephemeral=True,
+                )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        # Get mute info for logging
+        mute_record = db.get_active_mute(member.id, self.guild_id)
+        mute_reason = mute_record["reason"] if mute_record else None
+
+        # Record usage atomically (prevents double-click race condition)
+        if not db.use_unjail_card(member.id, self.guild_id, mute_reason):
+            await interaction.followup.send(
+                "Failed to use Unjail card. Please try again.",
+                ephemeral=True,
+            )
+            return
+
+        # Get muted role and remove it
+        config = get_config()
+        muted_role = interaction.guild.get_role(config.muted_role_id)
+
+        if not muted_role:
+            logger.error("Unjail Card Failed", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Reason", "Muted role not found"),
+            ])
+            await interaction.followup.send(
+                "Failed to unjail - muted role not found. Please contact staff.",
+                ephemeral=True,
+            )
+            return
+
+        if muted_role not in member.roles:
+            # Already unmuted somehow
+            await interaction.followup.send(
+                "You're not currently muted!",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            # Remove the muted role
+            await member.remove_roles(
+                muted_role,
+                reason=f"Booster Unjail Card used by {member.name}"
+            )
+
+            # Update database - mark mute as resolved
+            db.remove_mute(
+                user_id=member.id,
+                guild_id=self.guild_id,
+                moderator_id=member.id,  # Self-unmute
+                reason="Booster Unjail Card",
+            )
+
+            # Log to permanent audit log
+            db.log_moderation_action(
+                user_id=member.id,
+                guild_id=self.guild_id,
+                moderator_id=member.id,
+                action_type="unmute",
+                action_source="unjail_card",
+                reason="Booster Unjail Card",
+                details={"original_reason": mute_reason},
+            )
+
+            logger.tree("Booster Unjail Success", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Original Reason", (mute_reason or "None")[:50]),
+            ], emoji="🔓")
+
+            await interaction.followup.send(
+                "<:unlock:1455200891866190040> **Unjail Card Used!**\n"
+                "You have been released from prison.\n"
+                "Your daily card will reset at midnight EST.",
+                ephemeral=True,
+            )
+
+            # -----------------------------------------------------------------
+            # Post to Prison Channel (advertisement for boosting)
+            # -----------------------------------------------------------------
+            try:
+                if config.prison_channel_ids:
+                    prison_channel = interaction.guild.get_channel(
+                        next(iter(config.prison_channel_ids))
+                    )
+                    if prison_channel:
+                        await prison_channel.send(
+                            f"<:unlock:1455200891866190040> **{member.mention} used their Booster Unjail Card!**\n"
+                            f"-# Server boosters get a free \"Get Out of Jail\" card every day. "
+                            f"Boost the server to unlock this perk!"
+                        )
+            except Exception as e:
+                logger.warning("Failed to post unjail announcement", [
+                    ("User", f"{member.name} ({member.id})"),
+                    ("Error", str(e)[:50]),
+                ])
+
+            # -----------------------------------------------------------------
+            # Add Note to Case Thread
+            # -----------------------------------------------------------------
+            try:
+                bot = interaction.client
+                if hasattr(bot, "case_log_service") and bot.case_log_service:
+                    case_data = db.get_active_mute_case(member.id, self.guild_id)
+                    if case_data and case_data.get("thread_id"):
+                        thread = interaction.guild.get_thread(case_data["thread_id"])
+                        if not thread:
+                            thread = await interaction.guild.fetch_channel(case_data["thread_id"])
+                        if thread:
+                            await thread.send(
+                                f"<:unlock:1455200891866190040> **Unjail Card Used**\n"
+                                f"{member.mention} used their daily Booster Unjail Card to release themselves from prison."
+                            )
+            except Exception as e:
+                logger.warning("Failed to post case note", [
+                    ("User", f"{member.name} ({member.id})"),
+                    ("Error", str(e)[:50]),
+                ])
+
+            # -----------------------------------------------------------------
+            # Update Original Embed
+            # -----------------------------------------------------------------
+            try:
+                original_message = interaction.message
+                if original_message:
+                    embed = original_message.embeds[0] if original_message.embeds else None
+                    if embed:
+                        embed.title = "<:unlock:1455200891866190040> Released (Unjail Card)"
+                        embed.color = 0x57F287  # Green
+                        await original_message.edit(embed=embed, view=None)
+            except Exception as e:
+                logger.warning("Failed to update unjail embed", [
+                    ("User", f"{member.name} ({member.id})"),
+                    ("Error", str(e)[:50]),
+                ])
+
+        except discord.Forbidden:
+            logger.error("Unjail Card Failed (Permissions)", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Guild", str(self.guild_id)),
+            ])
+            await interaction.followup.send(
+                "Failed to remove muted role - missing permissions. Please contact staff.",
+                ephemeral=True,
+            )
+        except discord.HTTPException as e:
+            logger.error("Unjail Card Failed (HTTP)", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Guild", str(self.guild_id)),
+                ("Error", str(e)[:100]),
+            ])
+            await interaction.followup.send(
+                f"Failed to unjail: {e}",
+                ephemeral=True,
+            )
+        except Exception as e:
+            logger.error("Unjail Card Failed (Unexpected)", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Guild", str(self.guild_id)),
+                ("Error", str(e)[:100]),
+            ])
+            try:
+                await interaction.followup.send(
+                    "An unexpected error occurred. Please try again or contact staff.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass  # Already failed, nothing more we can do
 
 
 # =============================================================================
@@ -421,6 +697,7 @@ __all__ = [
     "TicketPanelView",
     "TicketPanelSelect",
     "MuteAppealButton",
+    "BoosterUnjailButton",
     "TicketControlPanelView",
     "CloseRequestView",
 ]

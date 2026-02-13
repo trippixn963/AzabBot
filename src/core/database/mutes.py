@@ -11,7 +11,7 @@ Server: discord.gg/syria
 import time
 import sqlite3
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
 from src.core.logger import logger
@@ -429,6 +429,37 @@ class MutesMixin:
         )
         return row["count"] if row else 0
 
+    def get_user_mute_count_week(self: "DatabaseManager", user_id: int, guild_id: int) -> int:
+        """
+        Get number of mutes for a user in a guild since Sunday midnight EST.
+
+        Used for XP drain tier calculation - repeat offenders within the week
+        get progressively harsher penalties. Resets every Sunday at midnight EST.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Mute count since Sunday midnight EST (including current mute).
+        """
+        # Calculate Sunday midnight EST for current week
+        now_est = datetime.now(NY_TZ)
+        days_since_sunday = now_est.weekday() + 1  # Monday=0, so +1 to get days since Sunday
+        if days_since_sunday == 7:  # It's Sunday
+            days_since_sunday = 0
+        sunday_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
+        sunday_midnight = sunday_midnight - timedelta(days=days_since_sunday)
+        cutoff = sunday_midnight.timestamp()
+
+        row = self.fetchone(
+            """SELECT COUNT(*) as count FROM mute_history
+               WHERE user_id = ? AND guild_id = ? AND action = 'mute'
+               AND timestamp >= ?""",
+            (user_id, guild_id, cutoff)
+        )
+        return row["count"] if row else 0
+
     def get_mute_moderator_ids(self: "DatabaseManager", user_id: int, guild_id: int) -> List[int]:
         """
         Get all unique moderator IDs who muted/extended a user.
@@ -447,6 +478,136 @@ class MutesMixin:
             (user_id, guild_id)
         )
         return [row["moderator_id"] for row in rows]
+
+
+    # =========================================================================
+    # Booster Unjail Card Operations
+    # =========================================================================
+
+    def _get_today_midnight_est(self: "DatabaseManager") -> float:
+        """Get today's midnight EST as unix timestamp."""
+        now_est = datetime.now(NY_TZ)
+        today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
+        return today_midnight.timestamp()
+
+    def can_use_unjail_card(
+        self: "DatabaseManager",
+        user_id: int,
+        guild_id: int,
+    ) -> bool:
+        """
+        Check if a booster can use their daily unjail card.
+
+        Resets at midnight EST each day.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            True if card is available, False if already used today.
+        """
+        cutoff = self._get_today_midnight_est()
+
+        row = self.fetchone(
+            """SELECT used_at FROM booster_unjail_usage
+               WHERE user_id = ? AND guild_id = ? AND used_at >= ?""",
+            (user_id, guild_id, cutoff)
+        )
+        return row is None
+
+    def use_unjail_card(
+        self: "DatabaseManager",
+        user_id: int,
+        guild_id: int,
+        mute_reason: Optional[str] = None,
+    ) -> bool:
+        """
+        Atomically record usage of a booster's daily unjail card.
+
+        Uses INSERT with NOT EXISTS to prevent race conditions.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+            mute_reason: Original mute reason (for logging).
+
+        Returns:
+            True if successfully recorded, False if already used today.
+        """
+        now = time.time()
+        cutoff = self._get_today_midnight_est()
+
+        # Atomic check-and-insert: Only inserts if no record exists for today
+        # This prevents race conditions from double-clicks
+        cursor = self.execute(
+            """INSERT INTO booster_unjail_usage (user_id, guild_id, used_at, mute_reason)
+               SELECT ?, ?, ?, ?
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM booster_unjail_usage
+                   WHERE user_id = ? AND guild_id = ? AND used_at >= ?
+               )""",
+            (user_id, guild_id, now, mute_reason, user_id, guild_id, cutoff)
+        )
+
+        # Check if insert actually happened (rowcount > 0)
+        if cursor.rowcount == 0:
+            return False
+
+        logger.tree("Unjail Card Used", [
+            ("User ID", str(user_id)),
+            ("Guild ID", str(guild_id)),
+            ("Mute Reason", (mute_reason or "None")[:50]),
+        ], emoji="🔓")
+
+        return True
+
+    def get_unjail_card_cooldown(
+        self: "DatabaseManager",
+        user_id: int,
+        guild_id: int,
+    ) -> Optional[float]:
+        """
+        Get when the user's unjail card will reset (next midnight EST).
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Unix timestamp of next reset, or None if card is available.
+        """
+        if self.can_use_unjail_card(user_id, guild_id):
+            return None
+
+        # Calculate next midnight EST
+        now_est = datetime.now(NY_TZ)
+        tomorrow_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow_midnight = tomorrow_midnight + timedelta(days=1)
+        return tomorrow_midnight.timestamp()
+
+    def cleanup_old_unjail_records(self: "DatabaseManager", days: int = 7) -> int:
+        """
+        Remove unjail card records older than specified days.
+
+        Args:
+            days: Number of days to keep records.
+
+        Returns:
+            Number of records deleted.
+        """
+        cutoff = time.time() - (days * 86400)
+        cursor = self.execute(
+            "DELETE FROM booster_unjail_usage WHERE used_at < ?",
+            (cutoff,)
+        )
+        deleted = cursor.rowcount
+        if deleted > 0:
+            logger.tree("Unjail Records Cleanup", [
+                ("Deleted", str(deleted)),
+                ("Older Than", f"{days} days"),
+            ], emoji="🧹")
+        return deleted
 
 
 # =============================================================================

@@ -30,6 +30,7 @@ from src.core.constants import CASE_LOG_TIMEOUT
 from src.services.user_snapshots import save_member_snapshot
 
 from .views import MuteModal
+from src.services.xp_drain import process_mute_xp_drain, get_drain_amount, is_drain_exempt
 
 # Threshold for detecting concurrent mute operations (seconds)
 # If an existing mute was created within this window, treat as duplicate, not extension
@@ -281,6 +282,20 @@ class MuteOpsMixin:
                     )
 
         # ---------------------------------------------------------------------
+        # Calculate XP Drain & Offense Counts (for display in embed)
+        # ---------------------------------------------------------------------
+
+        # Get total mute count (all-time) for mod visibility
+        total_mutes = self.db.get_user_mute_count(user.id, target_guild.id)
+
+        xp_lost: Optional[int] = None
+        offense_count_week = 0
+        if not is_extension and not is_drain_exempt(target_member):
+            # Count mutes since Sunday midnight EST for escalating penalties
+            offense_count_week = self.db.get_user_mute_count_week(user.id, target_guild.id)
+            xp_lost = get_drain_amount(offense_count_week)
+
+        # ---------------------------------------------------------------------
         # Build & Send Embed
         # ---------------------------------------------------------------------
 
@@ -295,6 +310,13 @@ class MuteOpsMixin:
 
         if case_info:
             embed.add_field(name="Case", value=f"`#{case_info['case_id']}`", inline=True)
+
+        if xp_lost and offense_count_week > 0:
+            ordinal = {1: "1st", 2: "2nd", 3: "3rd"}.get(offense_count_week, f"{offense_count_week}th")
+            embed.add_field(name="XP Lost", value=f"`-{xp_lost:,}` ({ordinal} this week)", inline=True)
+
+        # Show total mutes for mod visibility
+        embed.add_field(name="Total Mutes", value=f"`{total_mutes}`", inline=True)
 
         # Note: Reason/Evidence intentionally not shown in public embed
         # Only visible in DMs, case logs, and mod logs
@@ -329,6 +351,8 @@ class MuteOpsMixin:
                 evidence=evidence,
                 case_info=case_info,
                 is_extension=is_extension,
+                xp_lost=xp_lost,
+                offense_count=offense_count_week,
             )),
             ("Post Mod Logs", self._post_mod_log(
                 action="Mute Extended" if is_extension else "Mute",
@@ -352,6 +376,12 @@ class MuteOpsMixin:
                 action_type="mute",
                 reason=reason,
                 duration=duration_display,
+                is_extension=is_extension,
+            )),
+            ("XP Drain", process_mute_xp_drain(
+                member=target_member,
+                guild_id=target_guild.id,
+                offense_count=offense_count_week,
                 is_extension=is_extension,
             )),
             context="Mute Command",
@@ -396,6 +426,8 @@ class MuteOpsMixin:
             cog=self,
         )
         await interaction.response.send_modal(modal)
+
+
 
 
 __all__ = ["MuteOpsMixin"]

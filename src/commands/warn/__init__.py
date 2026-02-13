@@ -24,7 +24,7 @@ async def setup(bot: "AzabBot") -> None:
     logger.tree("Warn Cog Loaded", [
         ("Commands", "/warn"),
         ("Features", "case logging, DM notify"),
-    ], emoji="⚠️")
+    ], emoji="📋")
 
 
 __all__ = ["WarnCog", "setup"]

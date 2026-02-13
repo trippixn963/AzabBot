@@ -191,6 +191,24 @@ class PrisonHandler:
                 embed.add_field(name="Visit #", value=f"`{visit_num}`", inline=True)
                 embed.add_field(name="Total Time Served", value=f"`{total_time}`", inline=True)
 
+            # Add booster unjail card notice
+            is_booster = member.premium_since is not None
+            if is_booster:
+                can_use_card = self.bot.db.can_use_unjail_card(member.id, member.guild.id)
+                if can_use_card:
+                    embed.add_field(
+                        name="<:unlock:1455200891866190040> Booster Perk",
+                        value="Your daily **Unjail Card** is available! Use the button below to release yourself.",
+                        inline=False,
+                    )
+                else:
+                    reset_at = self.bot.db.get_unjail_card_cooldown(member.id, member.guild.id)
+                    if reset_at:
+                        embed.add_field(
+                            name="<:unlock:1455200891866190040> Booster Perk",
+                            value=f"Unjail Card on cooldown. Resets <t:{int(reset_at)}:R>",
+                            inline=False,
+                        )
 
             embed.set_thumbnail(
                 url=member.avatar.url if member.avatar else member.default_avatar.url
@@ -513,26 +531,75 @@ class PrisonHandler:
         mute_record: Optional["Row"],
     ) -> Optional[discord.ui.View]:
         """
-        Build appeal button view for prison intro embed.
+        Build view for prison intro embed with appeal and unjail buttons.
 
-        Only includes appeal button if:
-        - Mute duration >= MIN_APPEALABLE_MUTE_DURATION (1 hour), OR
-        - Mute is permanent (no expiration)
-        - An active case exists in the database
+        Includes:
+        - Appeal button: If mute >= 1 hour or permanent, and case exists
+        - Unjail button: If member is a booster (daily card available)
 
         Args:
             member: The muted member.
             mute_record: Active mute record from database.
 
         Returns:
-            View with appeal button, or None if not eligible.
+            View with buttons, or None if no buttons apply.
         """
+        view = discord.ui.View(timeout=None)
+        has_buttons = False
+
+        # -----------------------------------------------------------------
+        # Booster Unjail Button (daily "Get Out of Jail Free" card)
+        # -----------------------------------------------------------------
+        is_booster = member.premium_since is not None
+
+        if is_booster:
+            try:
+                from src.services.tickets import BoosterUnjailButton
+
+                # Check if daily card is available
+                can_use = self.bot.db.can_use_unjail_card(member.id, member.guild.id)
+
+                if can_use:
+                    unjail_btn = BoosterUnjailButton(member.id, member.guild.id)
+                    view.add_item(unjail_btn)
+                    has_buttons = True
+
+                    logger.tree("Unjail Button Added", [
+                        ("User", f"{member.name} ({member.id})"),
+                        ("Booster Since", str(member.premium_since.date())),
+                        ("Card Available", "Yes"),
+                    ], emoji="🔓")
+                else:
+                    # Card already used today
+                    reset_at = self.bot.db.get_unjail_card_cooldown(member.id, member.guild.id)
+                    logger.tree("Unjail Button Skipped", [
+                        ("User", f"{member.name} ({member.id})"),
+                        ("Reason", "Daily card already used"),
+                        ("Resets At", f"<t:{int(reset_at)}:R>" if reset_at else "Unknown"),
+                    ], emoji="ℹ️")
+
+            except ImportError as e:
+                logger.error("Unjail Button Failed", [
+                    ("User", f"{member.name} ({member.id})"),
+                    ("Location", "Import BoosterUnjailButton"),
+                    ("Error", str(e)[:100]),
+                ])
+            except Exception as e:
+                logger.error("Unjail Button Failed", [
+                    ("User", f"{member.name} ({member.id})"),
+                    ("Location", "Button creation"),
+                    ("Error", str(e)[:100]),
+                ])
+
+        # -----------------------------------------------------------------
+        # Appeal Button (for long/permanent mutes)
+        # -----------------------------------------------------------------
         if not mute_record:
             logger.tree("Appeal Button Skipped", [
                 ("User", f"{member.name} ({member.id})"),
                 ("Reason", "No mute record found"),
             ], emoji="ℹ️")
-            return None
+            return view if has_buttons else None
 
         # Check if mute qualifies for appeal
         is_permanent = mute_record["expires_at"] is None
@@ -547,7 +614,7 @@ class PrisonHandler:
                 ("User", f"{member.name} ({member.id})"),
                 ("Reason", f"Mute < {MIN_APPEALABLE_MUTE_DURATION // 3600}h"),
             ], emoji="ℹ️")
-            return None
+            return view if has_buttons else None
 
         # Get case_id from cases table
         try:
@@ -558,24 +625,24 @@ class PrisonHandler:
                 ("Location", "get_active_mute_case"),
                 ("Error", str(e)[:100]),
             ])
-            return None
+            return view if has_buttons else None
 
         if not case_data or not case_data.get("case_id"):
             logger.warning("Appeal Button Skipped", [
                 ("User", f"{member.name} ({member.id})"),
                 ("Reason", "No active case found"),
             ])
-            return None
+            return view if has_buttons else None
 
         case_id: str = case_data["case_id"]
 
-        # Build the view with appeal button (opens a ticket)
+        # Add appeal button
         try:
             from src.services.tickets import MuteAppealButton
 
-            view = discord.ui.View(timeout=None)
             appeal_btn = MuteAppealButton(case_id, member.id)
             view.add_item(appeal_btn)
+            has_buttons = True
 
             logger.tree("Appeal Button Added", [
                 ("User", f"{member.name} ({member.id})"),
@@ -584,22 +651,20 @@ class PrisonHandler:
                 ("Action", "Opens ticket"),
             ], emoji="📝")
 
-            return view
-
         except ImportError as e:
             logger.error("Appeal Button Failed", [
                 ("User", f"{member.name} ({member.id})"),
                 ("Location", "Import MuteAppealButton"),
                 ("Error", str(e)[:100]),
             ])
-            return None
         except Exception as e:
             logger.error("Appeal Button Failed", [
                 ("User", f"{member.name} ({member.id})"),
                 ("Location", "Button creation"),
                 ("Error", str(e)[:100]),
             ])
-            return None
+
+        return view if has_buttons else None
 
     async def _scan_logs_for_reason(
         self,

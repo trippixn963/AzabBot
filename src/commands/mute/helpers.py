@@ -34,12 +34,19 @@ class HelpersMixin:
         evidence: Optional[str],
         case_info: Optional[dict],
         is_extension: bool = False,
+        xp_lost: Optional[int] = None,
+        offense_count: int = 0,
     ) -> None:
         """Send DM notification to muted user (appeal via tickets, not button)."""
         dm_title = "Your mute has been extended" if is_extension else "You have been muted"
 
         # Build fields with duration and unmute time
         fields = [("Duration", f"`{duration_display}`", True)]
+
+        # Add XP lost if applicable
+        if xp_lost and offense_count > 0:
+            ordinal = {1: "1st", 2: "2nd", 3: "3rd"}.get(offense_count, f"{offense_count}th")
+            fields.append(("XP Lost", f"`-{xp_lost:,}` ({ordinal} offense)", True))
 
         # Add unmute time in Discord timestamp format (shows in user's timezone)
         if expires_at:
