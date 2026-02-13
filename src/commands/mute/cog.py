@@ -17,7 +17,7 @@ from discord.ext import commands
 from src.core.logger import logger
 from src.core.config import get_config, has_mod_role
 from src.core.database import get_db
-from src.core.moderation_validation import (
+from src.utils.validation import (
     validate_evidence,
     get_target_guild,
     is_cross_server,

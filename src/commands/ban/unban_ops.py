@@ -20,7 +20,7 @@ from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
 from src.api.services.event_logger import event_logger
 from src.core.database import get_db
-from src.core.moderation_validation import (
+from src.utils.validation import (
     validate_evidence,
     get_target_guild,
     is_cross_server,
@@ -31,7 +31,7 @@ from src.utils.dm_helpers import safe_send_dm
 from src.utils.discord_rate_limit import log_http_error
 from src.utils.async_utils import create_safe_task
 from src.core.constants import GUILD_FETCH_TIMEOUT, QUERY_LIMIT_TINY
-from src.commands.moderation_helpers import log_case_resolution
+from src.utils.moderation import log_case_resolution
 
 from .autocomplete import banned_user_autocomplete, removal_reason_autocomplete
 

@@ -17,7 +17,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import EmbedColors, NY_TZ
-from src.core.moderation_validation import get_target_guild  # Re-export centralized function
+from src.utils.validation import get_target_guild  # Re-export centralized function
 from src.utils.discord_rate_limit import log_http_error
 
 if TYPE_CHECKING:

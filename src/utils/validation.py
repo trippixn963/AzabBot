@@ -6,7 +6,7 @@ Shared validation logic for moderation commands (ban, mute, warn, forbid).
 Eliminates duplicate validation code and ensures consistent behavior.
 
 Usage:
-    from src.core.moderation_validation import (
+    from src.utils.validation import (
         validate_moderation_target,
         get_target_guild,
         is_cross_server,

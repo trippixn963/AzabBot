@@ -16,7 +16,7 @@ from src.core.logger import logger
 from src.core.config import is_owner, has_mod_role, EmbedColors
 from src.core.database import get_db
 from src.api.services.event_logger import event_logger
-from src.core.moderation_validation import (
+from src.utils.validation import (
     validate_moderation_target,
     get_target_guild,
     is_cross_server,
@@ -28,7 +28,7 @@ from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
 from src.utils.discord_rate_limit import log_http_error
 from src.core.constants import GUILD_FETCH_TIMEOUT
 from src.services.user_snapshots import save_member_snapshot
-from src.commands.moderation_helpers import log_case_with_fallback
+from src.utils.moderation import log_case_with_fallback
 
 from .views import BanModal
 

@@ -16,7 +16,7 @@ from discord.ext import commands
 
 from src.core.logger import logger
 from src.core.config import get_config, has_mod_role
-from src.core.moderation_validation import validate_evidence
+from src.utils.validation import validate_evidence
 
 from .autocomplete import reason_autocomplete
 from .ban_ops import BanOpsMixin

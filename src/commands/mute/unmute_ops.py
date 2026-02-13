@@ -17,7 +17,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors
 from src.api.services.event_logger import event_logger
-from src.core.moderation_validation import get_target_guild, is_cross_server
+from src.utils.validation import get_target_guild, is_cross_server
 from src.views import CaseButtonView
 from src.utils.async_utils import gather_with_logging
 from src.utils.duration import format_duration

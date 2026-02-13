@@ -16,7 +16,7 @@ import discord
 from src.core.logger import logger
 from src.core.config import EmbedColors
 from src.api.services.event_logger import event_logger
-from src.core.moderation_validation import (
+from src.utils.validation import (
     validate_moderation_target,
     get_target_guild,
     is_cross_server,

@@ -21,7 +21,7 @@ from src.core.logger import logger
 from src.core.config import get_config, has_mod_role, EmbedColors
 from src.api.services.event_logger import event_logger
 from src.core.database import get_db
-from src.core.moderation_validation import (
+from src.utils.validation import (
     validate_moderation_target,
     validate_evidence,
     get_target_guild,
