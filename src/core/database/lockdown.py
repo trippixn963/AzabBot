@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import sqlite3
 import time
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
@@ -398,7 +399,8 @@ class LockdownMixin:
             ], emoji="🚫")
 
             return True
-        except Exception:
+        except sqlite3.Error:
+            # Database error during forbid creation
             return False
 
     def get_expired_forbids(self: "DatabaseManager") -> List[Dict[str, Any]]:

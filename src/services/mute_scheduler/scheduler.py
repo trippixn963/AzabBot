@@ -34,6 +34,7 @@ from src.core.constants import (
     LOG_TRUNCATE_MEDIUM,
     SECONDS_PER_HOUR,
 )
+from src.utils.duration import format_duration_from_minutes
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -410,6 +411,30 @@ class MuteScheduler:
 
         # Post to mod log
         await self._post_auto_unmute_log(member, guild)
+
+        # Send release announcement to general chat
+        try:
+            # Import here to avoid circular import (prison handler imports services)
+            from src.handlers.prison.handler import send_release_announcement, ReleaseType
+
+            # Calculate time served
+            time_served = None
+            if mute.get("muted_at") and mute.get("expires_at"):
+                duration_minutes = int((mute["expires_at"] - mute["muted_at"]) / 60)
+                time_served = format_duration_from_minutes(duration_minutes)
+
+            await send_release_announcement(
+                bot=self.bot,
+                member=member,
+                release_type=ReleaseType.TIME_SERVED,
+                time_served=time_served,
+            )
+            # Note: send_release_announcement handles its own logging
+        except Exception as e:
+            logger.warning("Release Announcement Failed", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Error", str(e)[:50]),
+            ])
 
     async def _post_auto_unmute_log(
         self,

@@ -11,6 +11,7 @@ Server: discord.gg/syria
 """
 
 import json
+import sqlite3
 import time
 from typing import TYPE_CHECKING, Optional, List, Dict, Any
 
@@ -85,7 +86,8 @@ class SnapshotsMixin:
                 )
             )
             return True
-        except Exception:
+        except sqlite3.Error:
+            # Database error during snapshot save
             return False
 
     # =========================================================================

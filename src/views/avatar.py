@@ -59,7 +59,8 @@ class OldAvatarButton(discord.ui.DynamicItem[discord.ui.Button], template=r"avat
                 await interaction.response.send_message(message.attachments[0].url, ephemeral=True)
             else:
                 await interaction.response.send_message("Old avatar not found.", ephemeral=True)
-        except Exception:
+        except discord.HTTPException:
+            # Channel/message may not exist or be fetchable
             await interaction.response.send_message("Failed to fetch old avatar.", ephemeral=True)
 
 
@@ -105,7 +106,8 @@ class NewAvatarButton(discord.ui.DynamicItem[discord.ui.Button], template=r"avat
                 await interaction.response.send_message(message.embeds[0].image.url, ephemeral=True)
             else:
                 await interaction.response.send_message("New avatar not found.", ephemeral=True)
-        except Exception:
+        except discord.HTTPException:
+            # Channel/message may not exist or be fetchable
             await interaction.response.send_message("Failed to fetch new avatar.", ephemeral=True)
 
 

@@ -269,7 +269,7 @@ class DatabaseManager(
             self._cursor = conn.cursor()
             return self
 
-        def __exit__(self, exc_type, exc_val, exc_tb):
+        def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
             conn = self._db._ensure_connection()
             try:
                 if exc_type is None:

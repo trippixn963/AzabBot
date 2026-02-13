@@ -260,8 +260,35 @@ class UnmuteOpsMixin:
                 reason=reason,
                 case_id=case_info["case_id"] if case_info else None,
             )),
+            ("Release Announcement", self._send_release_announcement(
+                member=target_member,
+                moderator=interaction.user,
+            )),
             context="Unmute Command",
         )
+
+    async def _send_release_announcement(
+        self: "MuteCog",
+        member: discord.Member,
+        moderator: discord.Member,
+    ) -> None:
+        """Send release announcement to general chat for manual unmute."""
+        try:
+            # Import here to avoid circular import (prison handler imports services)
+            from src.handlers.prison.handler import send_release_announcement, ReleaseType
+
+            await send_release_announcement(
+                bot=self.bot,
+                member=member,
+                release_type=ReleaseType.MANUAL_UNMUTE,
+                moderator=moderator,
+            )
+            # Note: send_release_announcement handles its own logging
+        except Exception as e:
+            logger.warning("Release Announcement Failed", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Error", str(e)[:50]),
+            ])
 
     async def _unmute_from_message(
         self: "MuteCog",

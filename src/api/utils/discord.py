@@ -13,6 +13,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+import discord
+
 from src.core.logger import logger
 from src.core.constants import USER_FETCH_TIMEOUT, CACHE_TTL
 
@@ -73,7 +75,8 @@ async def fetch_user_info(bot: Any, user_id: int) -> Tuple[int, Optional[str], O
             return (user_id, user.name, avatar)
     except asyncio.TimeoutError:
         logger.debug("User Fetch Timeout", [("User ID", str(user_id))])
-    except Exception:
+    except discord.HTTPException:
+        # Discord API error - user may not exist or be fetchable
         pass
 
     return (user_id, None, None)

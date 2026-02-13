@@ -63,7 +63,8 @@ def _get_timezone(timezone_name: Optional[str] = None) -> ZoneInfo:
     """Get timezone, with fallback to default."""
     try:
         return ZoneInfo(timezone_name or DEFAULT_TIMEZONE)
-    except Exception:
+    except (KeyError, ValueError):
+        # KeyError: unknown timezone name, ValueError: invalid format
         return ZoneInfo(DEFAULT_TIMEZONE)
 
 

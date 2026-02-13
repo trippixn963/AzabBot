@@ -88,7 +88,8 @@ async def build_history_embed(
         user = await client.fetch_user(user_id)
         username = user.name
         embed.set_thumbnail(url=user.display_avatar.url)
-    except Exception:
+    except discord.HTTPException:
+        # User may not exist or be fetchable
         pass
 
     embed.title = f"📋 Case History - {username}"
@@ -105,7 +106,8 @@ async def build_history_embed(
         try:
             mod = await client.fetch_user(mid)
             return (mid, mod.name[:10])
-        except Exception:
+        except discord.HTTPException:
+            # Mod may not exist or be fetchable
             return (mid, str(mid)[:8])
 
     if mod_ids:
@@ -354,7 +356,8 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
         try:
             user = await client.fetch_user(self.user_id)
             embed.set_author(name=user.name, icon_url=user.display_avatar.url)
-        except Exception:
+        except discord.HTTPException:
+            # User may not exist or be fetchable
             pass
 
         import time as time_module
@@ -521,7 +524,8 @@ class HistoryPaginationView(discord.ui.View):
         try:
             user = await client.fetch_user(self.user_id)
             embed.set_author(name=user.name, icon_url=user.display_avatar.url)
-        except Exception:
+        except discord.HTTPException:
+            # User may not exist or be fetchable
             pass
 
         import time as time_module

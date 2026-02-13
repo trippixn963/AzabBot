@@ -368,6 +368,25 @@ class BoosterUnjailButton(
                     ("Error", str(e)[:50]),
                 ])
 
+            # -----------------------------------------------------------------
+            # Send Release Announcement to General Chat
+            # -----------------------------------------------------------------
+            try:
+                # Import here to avoid circular import (prison handler imports services)
+                from src.handlers.prison.handler import send_release_announcement, ReleaseType
+
+                await send_release_announcement(
+                    bot=interaction.client,
+                    member=member,
+                    release_type=ReleaseType.BOOSTER_CARD,
+                )
+                # Note: send_release_announcement handles its own logging
+            except Exception as e:
+                logger.warning("Release Announcement Failed", [
+                    ("User", f"{member.name} ({member.id})"),
+                    ("Error", str(e)[:50]),
+                ])
+
         except discord.Forbidden:
             logger.error("Unjail Card Failed (Permissions)", [
                 ("User", f"{member.name} ({member.id})"),

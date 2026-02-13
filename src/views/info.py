@@ -117,7 +117,8 @@ class InfoButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_info:
                 embed.add_field(name="Username", value=f"`{user.name}`", inline=True)
                 embed.add_field(name="User ID", value=f"`{user.id}`", inline=True)
                 embed.add_field(name="Status", value="⚠️ Not in Server", inline=True)
-            except Exception:
+            except discord.HTTPException:
+                # User may not exist or be fetchable
                 embed.add_field(name="User ID", value=f"`{self.user_id}`", inline=True)
                 embed.add_field(name="Status", value="⚠️ User Not Found", inline=True)
 
@@ -252,7 +253,8 @@ class DownloadButton(discord.ui.DynamicItem[discord.ui.Button], template=r"downl
             await interaction.response.send_message(avatar_url, ephemeral=True)
         except discord.NotFound:
             await interaction.response.send_message("User not found.", ephemeral=True)
-        except Exception:
+        except discord.HTTPException:
+            # Other Discord API error
             await interaction.response.send_message("Failed to fetch avatar.", ephemeral=True)
 
 

@@ -153,8 +153,12 @@ class BanSyncTask(MaintenanceTask):
                                      avatar_url, time.time(), time.time())
                                 )
                                 snapshots_created += 1
-                        except Exception:
-                            pass  # Snapshot is optional
+                        except Exception as e:
+                            # Snapshot is optional, just log debug
+                            logger.debug("Ban Sync Snapshot Error", [
+                                ("User ID", str(user.id)),
+                                ("Error", str(e)[:50]),
+                            ])
 
                     except Exception as e:
                         errors += 1

@@ -295,6 +295,9 @@ class CoinUnjailButton(
             # Update original embed
             await self._update_embed(interaction, member)
 
+            # Send release announcement to general chat
+            await self._send_release_announcement(interaction, member, cost)
+
         except discord.Forbidden:
             logger.error("Coin Unjail Failed (Permissions)", [
                 ("User", f"{member.name} ({member.id})"),
@@ -469,6 +472,30 @@ class CoinUnjailButton(
 
         except Exception as e:
             logger.warning("Embed Update Failed", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Error", str(e)[:50]),
+            ])
+
+    async def _send_release_announcement(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        cost: int,
+    ) -> None:
+        """Send release announcement to general chat."""
+        try:
+            # Import here to avoid circular import (prison handler imports services)
+            from src.handlers.prison.handler import send_release_announcement, ReleaseType
+
+            await send_release_announcement(
+                bot=interaction.client,
+                member=member,
+                release_type=ReleaseType.COIN_UNJAIL,
+                cost=cost,
+            )
+            # Note: send_release_announcement handles its own logging
+        except Exception as e:
+            logger.warning("Release Announcement Failed", [
                 ("User", f"{member.name} ({member.id})"),
                 ("Error", str(e)[:50]),
             ])

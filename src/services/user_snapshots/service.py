@@ -10,6 +10,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import sqlite3
 from typing import Optional, List, Dict, Any
 
 import discord
@@ -229,7 +230,8 @@ def get_snapshot(user_id: int, guild_id: int) -> Optional[Dict[str, Any]]:
     try:
         db = get_db()
         return db.get_user_snapshot(user_id, guild_id)
-    except Exception:
+    except sqlite3.Error:
+        # Database error during snapshot retrieval
         return None
 
 

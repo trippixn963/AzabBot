@@ -9,6 +9,7 @@ Server: discord.gg/syria
 """
 
 import hashlib
+import sqlite3
 import time
 from typing import TYPE_CHECKING, Set
 
@@ -44,7 +45,7 @@ class TokenBlacklistMixin:
             )
             conn.commit()
             return True
-        except Exception:
+        except sqlite3.Error:
             return False
 
     def is_token_blacklisted(self: "DatabaseManager", token: str) -> bool:
@@ -67,7 +68,7 @@ class TokenBlacklistMixin:
                 (token_hash,)
             )
             return cursor.fetchone() is not None
-        except Exception:
+        except sqlite3.Error:
             return False
 
     def load_blacklisted_token_hashes(self: "DatabaseManager") -> Set[str]:
@@ -85,7 +86,7 @@ class TokenBlacklistMixin:
                 (time.time(),)
             )
             return {row[0] for row in cursor.fetchall()}
-        except Exception:
+        except sqlite3.Error:
             return set()
 
     def cleanup_expired_blacklist(self: "DatabaseManager") -> int:
@@ -108,7 +109,7 @@ class TokenBlacklistMixin:
             )
             conn.commit()
             return cursor.rowcount
-        except Exception:
+        except sqlite3.Error:
             return 0
 
 

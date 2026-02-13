@@ -13,6 +13,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 import discord
 
@@ -101,7 +102,7 @@ class BasePresenceHandler(ABC):
         pass
 
     @abstractmethod
-    def get_timezone(self):
+    def get_timezone(self) -> ZoneInfo:
         """
         Get the timezone for promo scheduling.
 
