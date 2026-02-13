@@ -8,7 +8,6 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
-import asyncio
 from typing import TYPE_CHECKING, Optional
 
 import discord
@@ -27,8 +26,9 @@ from src.views import CaseButtonView, APPEAL_EMOJI
 from src.utils.async_utils import create_safe_task
 from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
 from src.utils.discord_rate_limit import log_http_error
-from src.core.constants import CASE_LOG_TIMEOUT, GUILD_FETCH_TIMEOUT
+from src.core.constants import GUILD_FETCH_TIMEOUT
 from src.services.user_snapshots import save_member_snapshot
+from src.commands.moderation_helpers import log_case_with_fallback
 
 from .views import BanModal
 
@@ -105,45 +105,17 @@ class BanOpsMixin:
 
         case_info = None
         if self.bot.case_log_service and not is_softban:
-            try:
-                case_info = await asyncio.wait_for(
-                    self.bot.case_log_service.log_ban(
-                        user=user,
-                        moderator=interaction.user,
-                        reason=reason,
-                        evidence=evidence,
-                    ),
-                    timeout=CASE_LOG_TIMEOUT,
-                )
-                if case_info:
-                    logger.tree("Case Created", [
-                        ("Action", "Ban"),
-                        ("Case ID", case_info["case_id"]),
-                        ("User", f"{user.name} ({user.id})"),
-                    ], emoji="📋")
-            except asyncio.TimeoutError:
-                logger.warning("Case Log Timeout", [
-                    ("Action", "Ban"),
-                    ("User", user.name),
-                    ("ID", str(user.id)),
-                ])
-                if self.bot.webhook_alert_service:
-                    await self.bot.webhook_alert_service.send_error_alert(
-                        "Case Log Timeout",
-                        f"Ban case logging timed out for {user} ({user.id})"
-                    )
-            except Exception as e:
-                logger.error("Case Log Failed", [
-                    ("Action", "Ban"),
-                    ("User", user.name),
-                    ("ID", str(user.id)),
-                    ("Error", str(e)[:100]),
-                ])
-                if self.bot.webhook_alert_service:
-                    await self.bot.webhook_alert_service.send_error_alert(
-                        "Case Log Failed",
-                        f"Ban case logging failed for {user} ({user.id}): {str(e)[:200]}"
-                    )
+            case_info = await log_case_with_fallback(
+                bot=self.bot,
+                case_log_coro=self.bot.case_log_service.log_ban(
+                    user=user,
+                    moderator=interaction.user,
+                    reason=reason,
+                    evidence=evidence,
+                ),
+                action_type="Ban",
+                user=user,
+            )
 
         # -----------------------------------------------------------------
         # DM User Before Ban (with appeal URL link if case was logged)

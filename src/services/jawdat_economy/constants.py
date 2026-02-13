@@ -174,6 +174,10 @@ def get_unjail_cost_for_user(user_id: int, guild_id: int) -> Tuple[int, int, Opt
         # Get active mute to determine duration
         mute_record = db.get_active_mute(user_id, guild_id)
 
+        # Convert sqlite3.Row to dict if needed
+        if mute_record and hasattr(mute_record, 'keys'):
+            mute_record = dict(mute_record)
+
         if mute_record and mute_record.get("expires_at"):
             # Calculate total mute duration in hours
             muted_at = mute_record.get("muted_at")

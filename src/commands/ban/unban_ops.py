@@ -30,7 +30,8 @@ from src.utils.duration import format_duration
 from src.utils.dm_helpers import safe_send_dm
 from src.utils.discord_rate_limit import log_http_error
 from src.utils.async_utils import create_safe_task
-from src.core.constants import CASE_LOG_TIMEOUT, GUILD_FETCH_TIMEOUT, QUERY_LIMIT_TINY
+from src.core.constants import GUILD_FETCH_TIMEOUT, QUERY_LIMIT_TINY
+from src.commands.moderation_helpers import log_case_resolution
 
 from .autocomplete import banned_user_autocomplete, removal_reason_autocomplete
 
@@ -192,45 +193,17 @@ class UnbanOpsMixin:
 
         case_info = None
         if self.bot.case_log_service:
-            try:
-                case_info = await asyncio.wait_for(
-                    self.bot.case_log_service.log_unban(
-                        user_id=target_user.id,
-                        username=str(target_user),
-                        moderator=interaction.user,
-                        reason=reason,
-                    ),
-                    timeout=CASE_LOG_TIMEOUT,
-                )
-                if case_info:
-                    logger.tree("Case Resolved", [
-                        ("Action", "Unban"),
-                        ("Case ID", case_info["case_id"]),
-                        ("User", f"{target_user.name} ({target_user.id})"),
-                    ], emoji="📋")
-            except asyncio.TimeoutError:
-                logger.warning("Case Log Timeout", [
-                    ("Action", "Unban"),
-                    ("User", target_user.name),
-                    ("ID", str(target_user.id)),
-                ])
-                if self.bot.webhook_alert_service:
-                    await self.bot.webhook_alert_service.send_error_alert(
-                        "Case Log Timeout",
-                        f"Unban case logging timed out for {target_user} ({target_user.id})"
-                    )
-            except Exception as e:
-                logger.error("Case Log Failed", [
-                    ("Action", "Unban"),
-                    ("User", target_user.name),
-                    ("ID", str(target_user.id)),
-                    ("Error", str(e)[:100]),
-                ])
-                if self.bot.webhook_alert_service:
-                    await self.bot.webhook_alert_service.send_error_alert(
-                        "Case Log Failed",
-                        f"Unban case logging failed for {target_user} ({target_user.id}): {str(e)[:200]}"
-                    )
+            case_info = await log_case_resolution(
+                bot=self.bot,
+                case_log_coro=self.bot.case_log_service.log_unban(
+                    user_id=target_user.id,
+                    username=str(target_user),
+                    moderator=interaction.user,
+                    reason=reason,
+                ),
+                action_type="Unban",
+                target=target_user,
+            )
 
         # Server logs (after case creation to include case_id)
         if self.bot.logging_service and self.bot.logging_service.enabled:
