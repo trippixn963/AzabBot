@@ -15,7 +15,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from src.core.logger import logger
-from src.core.config import NY_TZ
+from src.core.config import NY_TZ, get_config
 from src.api.dependencies import get_bot
 from src.api.models.stats import PublicStatsResponse
 from src.api.utils.discord import batch_fetch_users, format_relative_time
@@ -114,21 +114,23 @@ async def get_public_stats(
     approved_appeals = appeal_stats[2] or 0
     denied_appeals = appeal_stats[3] or 0
 
-    # Optimized: Single query for tickets stats
+    # Optimized: Single query for current tickets stats
     ticket_stats = db.fetchone(
         """
         SELECT
-            COUNT(*) as total,
             SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open,
             SUM(CASE WHEN status = 'claimed' THEN 1 ELSE 0 END) as claimed,
             SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed
         FROM tickets
         """
     )
-    total_tickets = ticket_stats[0] or 0
-    open_tickets = ticket_stats[1] or 0
-    claimed_tickets = ticket_stats[2] or 0
-    closed_tickets = ticket_stats[3] or 0
+    open_tickets = ticket_stats[0] or 0
+    claimed_tickets = ticket_stats[1] or 0
+    closed_tickets = ticket_stats[2] or 0
+
+    # Use permanent counter for total (tickets are auto-deleted after close)
+    config = get_config()
+    total_tickets = db.get_total_tickets_opened(config.main_guild_id) if config.main_guild_id else 0
 
     # Top offenders (users with most punishments)
     offenders_rows = db.fetchall(
