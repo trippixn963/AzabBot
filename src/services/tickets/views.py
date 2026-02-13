@@ -334,12 +334,24 @@ class BoosterUnjailButton(
             # -----------------------------------------------------------------
             try:
                 bot = interaction.client
+                config = get_config()
                 if hasattr(bot, "case_log_service") and bot.case_log_service:
-                    case_data = db.get_active_mute_case(member.id, self.guild_id)
+                    # Find case - check ops guild first (where cases are created)
+                    case_data = None
+                    for gid in [config.ops_guild_id, self.guild_id]:
+                        if gid:
+                            case_data = db.get_active_mute_case(member.id, gid)
+                            if case_data and case_data.get("thread_id"):
+                                break
                     if case_data and case_data.get("thread_id"):
-                        thread = interaction.guild.get_thread(case_data["thread_id"])
-                        if not thread:
-                            thread = await interaction.guild.fetch_channel(case_data["thread_id"])
+                        # Thread is always in ops server
+                        ops_guild = bot.get_guild(config.ops_guild_id)
+                        if ops_guild:
+                            thread = ops_guild.get_thread(case_data["thread_id"])
+                            if not thread:
+                                thread = await ops_guild.fetch_channel(case_data["thread_id"])
+                        else:
+                            thread = None
                         if thread:
                             await thread.send(
                                 f"<:unlock:1455200891866190040> **Unjail Card Used**\n"

@@ -288,7 +288,14 @@ class PrisonHandler:
         if not self.bot.case_log_service or not mute_record:
             return
 
-        existing_case = self.bot.db.get_active_mute_case(member.id, member.guild.id)
+        # Check ops guild first (where cases are created), then member's guild
+        config = get_config()
+        existing_case = None
+        for guild_id in [config.ops_guild_id, member.guild.id]:
+            if guild_id:
+                existing_case = self.bot.db.get_active_mute_case(member.id, guild_id)
+                if existing_case:
+                    break
         if existing_case:
             return
 

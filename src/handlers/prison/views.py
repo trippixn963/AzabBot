@@ -12,6 +12,7 @@ import discord
 from typing import Optional, TYPE_CHECKING
 
 from src.core.logger import logger
+from src.core.config import get_config
 from src.services.appeals.constants import MIN_APPEALABLE_MUTE_DURATION
 
 if TYPE_CHECKING:
@@ -194,9 +195,15 @@ async def build_appeal_view(
         ], emoji="ℹ️")
         return view if has_buttons else None
 
-    # Get case_id from cases table
+    # Get case_id from cases table - check ops guild first (where cases are created)
+    config = get_config()
+    case_data = None
     try:
-        case_data = bot.db.get_active_mute_case(member.id, member.guild.id)
+        for guild_id in [config.ops_guild_id, member.guild.id]:
+            if guild_id:
+                case_data = bot.db.get_active_mute_case(member.id, guild_id)
+                if case_data and case_data.get("case_id"):
+                    break
     except Exception as e:
         logger.error("Appeal Button Failed", [
             ("User", f"{member.name} ({member.id})"),

@@ -408,20 +408,19 @@ class CoinUnjailButton(
                 ])
                 return
 
-            # Use the guild_id from the case record itself
-            case_guild_id = case_data.get("guild_id")
-            case_guild = bot.get_guild(case_guild_id) if case_guild_id else None
-            if not case_guild:
+            # Threads are always in ops server (case forum location)
+            ops_guild = bot.get_guild(config.ops_guild_id) if config.ops_guild_id else None
+            if not ops_guild:
                 logger.debug("Case Note Skipped", [
                     ("User", f"{member.name} ({member.id})"),
-                    ("Reason", f"Case guild {case_guild_id} not found"),
+                    ("Reason", "Ops guild not found"),
                 ])
                 return
 
-            thread = case_guild.get_thread(case_data["thread_id"])
+            thread = ops_guild.get_thread(case_data["thread_id"])
             if not thread:
                 try:
-                    thread = await case_guild.fetch_channel(case_data["thread_id"])
+                    thread = await ops_guild.fetch_channel(case_data["thread_id"])
                 except discord.NotFound:
                     logger.warning("Case Note Failed", [
                         ("User", f"{member.name} ({member.id})"),
