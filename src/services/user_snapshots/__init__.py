@@ -3,7 +3,8 @@ AzabBot - User Snapshots Service Package
 ========================================
 
 Centralized service for managing user snapshots.
-Preserves user data (nickname, roles, avatar) for banned/left users.
+Preserves user profile data (nickname, roles, avatar) for banned/left users.
+Activity data comes from SyriaBot which retains data for inactive users.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria

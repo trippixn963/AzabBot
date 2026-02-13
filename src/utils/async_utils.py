@@ -104,7 +104,7 @@ def create_safe_task(
     """
     async def wrapped():
         try:
-            await coro
+            return await coro
         except asyncio.CancelledError:
             # Task was cancelled, this is expected during shutdown
             pass

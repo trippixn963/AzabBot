@@ -3,7 +3,8 @@ AzabBot - User Snapshots Database Mixin
 =======================================
 
 Handles user snapshot caching for banned/left users.
-Preserves user data (nickname, roles, avatar) even after they leave.
+Preserves user profile data (nickname, roles, avatar) even after they leave.
+Activity data comes from SyriaBot which retains data for inactive users.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -38,7 +39,7 @@ class SnapshotsMixin:
         reason: str,
     ) -> bool:
         """
-        Save or update a user snapshot.
+        Save or update a user snapshot (profile data only).
 
         Args:
             user_id: Discord user ID
@@ -240,7 +241,6 @@ class SnapshotsMixin:
         """
         cutoff = time.time() - (days_old * 86400)
 
-        # Only delete snapshots for users with no cases
         cursor = self.execute(
             """
             DELETE FROM user_snapshots

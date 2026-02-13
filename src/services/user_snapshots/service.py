@@ -3,7 +3,8 @@ AzabBot - User Snapshots Service
 ================================
 
 Centralized service for managing user snapshots.
-Preserves user data (nickname, roles, avatar) for banned/left users.
+Preserves user profile data (nickname, roles, avatar) for banned/left users.
+Activity data is NOT snapshotted - SyriaBot retains it for inactive users.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -22,7 +23,7 @@ def save_member_snapshot(
     reason: str = "lookup",
 ) -> bool:
     """
-    Save a snapshot of member data for future lookups.
+    Save a snapshot of member profile data for future lookups.
 
     Called when:
     - A member leaves the server (reason="leave")
@@ -30,6 +31,9 @@ def save_member_snapshot(
     - A member is muted (reason="mute")
     - A member is kicked (reason="kick")
     - A member is looked up via dashboard (reason="lookup")
+
+    Note: Activity data (messages, voice time) is NOT saved here.
+    SyriaBot retains activity data for inactive users.
 
     Args:
         member: Discord member object with full data
@@ -119,10 +123,10 @@ def save_user_snapshot(
             guild_id=guild_id,
             username=user.name,
             display_name=user.display_name or user.name,
-            nickname=None,  # No member data
+            nickname=None,
             avatar_url=avatar_url,
-            roles=[],  # No member data
-            joined_at=None,  # No member data
+            roles=[],
+            joined_at=None,
             account_created_at=account_created_at,
             reason=reason,
         )
@@ -258,7 +262,6 @@ def cleanup_old_snapshots(guild_id: int, days_old: int = 365) -> int:
     try:
         db = get_db()
 
-        # Get stats before cleanup for logging
         stats_before = db.get_snapshot_stats(guild_id)
         total_before = stats_before.get("total", 0)
 
@@ -272,12 +275,6 @@ def cleanup_old_snapshots(guild_id: int, days_old: int = 365) -> int:
                 ("Threshold", f"{days_old} days"),
                 ("Note", "Users with cases preserved"),
             ], emoji="🧹")
-        else:
-            logger.debug("Snapshot Cleanup", [
-                ("Guild ID", str(guild_id)),
-                ("Result", "No old snapshots to clean"),
-                ("Total Snapshots", str(total_before)),
-            ])
 
         return deleted
 

@@ -286,7 +286,7 @@ async def lookup_user(
         except Exception:
             pass
 
-    # Await SyriaBot data
+    # Always fetch from SyriaBot - it retains data for inactive users
     syriabot_data = await syriabot_task
 
     # Extract activity stats
