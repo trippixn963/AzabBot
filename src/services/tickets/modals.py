@@ -108,7 +108,7 @@ class TicketCreateModal(discord.ui.Modal, title="Create Ticket"):
                     f"❌ An error occurred while creating your ticket: {str(e)[:100]}",
                     ephemeral=True,
                 )
-            except Exception:
+            except discord.HTTPException:
                 pass
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:

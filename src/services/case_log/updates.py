@@ -93,7 +93,7 @@ class CaseLogUpdatesMixin:
                             profile_msg = msg
                             self.db.set_profile_message_id(user_id, msg.id)
                             break
-                except Exception:
+                except discord.HTTPException:
                     pass
 
             if not profile_msg:

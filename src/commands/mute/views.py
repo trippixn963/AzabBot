@@ -61,7 +61,11 @@ class MuteModal(discord.ui.Modal, title="Mute User"):
         reason = self.reason_input.value or None
 
         # Defer the response
-        await interaction.response.defer(ephemeral=False)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=False)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
 
         # Get the target as a Member
         user = interaction.guild.get_member(self.target_user.id)

@@ -80,10 +80,8 @@ def build_control_panel_embed(
         color=STATUS_COLOR.get(status, EmbedColors.GREEN),
     )
 
-    # Thumbnail: closed_by avatar if closed, else user avatar
-    if status == "closed" and closed_by:
-        embed.set_thumbnail(url=closed_by.display_avatar.url)
-    elif user:
+    # Thumbnail: always use ticket user's avatar (not closed_by)
+    if user:
         embed.set_thumbnail(url=user.display_avatar.url)
 
     return embed

@@ -75,6 +75,7 @@ async def detailed_health(bot: Any = Depends(get_bot)) -> APIResponse[SystemHeal
     db_size: Optional[float] = None
     try:
         from src.core.database import get_db
+        import sqlite3
         db = get_db()
         # Simple query to check connection
         db.fetchone("SELECT 1")
@@ -84,7 +85,7 @@ async def detailed_health(bot: Any = Depends(get_bot)) -> APIResponse[SystemHeal
             db_path = db._db_path
             if os.path.exists(db_path):
                 db_size = os.path.getsize(db_path) / (1024 * 1024)
-    except Exception:
+    except (ImportError, sqlite3.Error, OSError):
         db_connected = False
 
     # WebSocket connections

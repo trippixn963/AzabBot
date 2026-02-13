@@ -50,14 +50,14 @@ UNJAIL_OFFENSE_TIERS: Dict[int, int] = {
 # Duration Multipliers (in hours)
 # =============================================================================
 
-# (max_hours, multiplier) - sorted ascending
-DURATION_MULTIPLIERS: list[tuple[int, float]] = [
-    (3, 1.0),       # 1-3 hours: ×1.0
-    (12, 2.0),      # 4-12 hours: ×2.0
-    (24, 3.0),      # 12-24 hours: ×3.0
-    (72, 5.0),      # 1-3 days: ×5.0
-    (168, 10.0),    # 3-7 days: ×10.0
-    (None, 20.0),   # 7+ days: ×20.0
+# (max_hours, multiplier, tier_name) - sorted ascending
+DURATION_MULTIPLIERS: list[tuple[int | None, float, str]] = [
+    (3, 1.0, "1-3h"),       # 1-3 hours: ×1.0
+    (12, 2.0, "4-12h"),     # 4-12 hours: ×2.0
+    (24, 3.0, "12-24h"),    # 12-24 hours: ×3.0
+    (72, 5.0, "1-3d"),      # 1-3 days: ×5.0
+    (168, 10.0, "3-7d"),    # 3-7 days: ×10.0
+    (None, 20.0, "7d+"),    # 7+ days: ×20.0
 ]
 
 # Base cost shown on button (minimum possible cost)
@@ -79,24 +79,20 @@ def get_duration_multiplier(duration_hours: float) -> Tuple[float, str]:
     """
     Get the duration multiplier based on mute duration.
 
+    Uses DURATION_MULTIPLIERS constant for consistency with documented tiers.
+
     Args:
         duration_hours: Mute duration in hours.
 
     Returns:
         Tuple of (multiplier, duration_tier_name).
     """
-    if duration_hours <= 3:
-        return 1.0, "1-3h"
-    elif duration_hours <= 12:
-        return 1.5, "4-12h"
-    elif duration_hours <= 24:
-        return 2.0, "12-24h"
-    elif duration_hours <= 72:
-        return 3.0, "1-3d"
-    elif duration_hours <= 168:
-        return 5.0, "3-7d"
-    else:
-        return 10.0, "7d+"
+    for max_hours, multiplier, tier_name in DURATION_MULTIPLIERS:
+        if max_hours is None or duration_hours <= max_hours:
+            return multiplier, tier_name
+
+    # Fallback (shouldn't reach here)
+    return 20.0, "7d+"
 
 
 def get_offense_base_cost(offense_count: int) -> int:
@@ -184,10 +180,15 @@ def get_unjail_cost_for_user(user_id: int, guild_id: int) -> Tuple[int, int, Opt
             expires_at = mute_record.get("expires_at")
 
             if muted_at and expires_at:
-                # Parse timestamps if they're strings
-                if isinstance(muted_at, str):
+                # Parse timestamps - could be float (unix), string (ISO), or datetime
+                if isinstance(muted_at, (int, float)):
+                    muted_at = datetime.fromtimestamp(muted_at, tz=timezone.utc)
+                elif isinstance(muted_at, str):
                     muted_at = datetime.fromisoformat(muted_at.replace("Z", "+00:00"))
-                if isinstance(expires_at, str):
+
+                if isinstance(expires_at, (int, float)):
+                    expires_at = datetime.fromtimestamp(expires_at, tz=timezone.utc)
+                elif isinstance(expires_at, str):
                     expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
 
                 duration_seconds = (expires_at - muted_at).total_seconds()

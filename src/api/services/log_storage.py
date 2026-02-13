@@ -389,7 +389,7 @@ class LogStorage:
         """Callback from logger."""
         try:
             self.add(level, message, module, formatted)
-        except Exception:
+        except (KeyError, TypeError, RuntimeError):
             pass  # Don't let storage errors break logging
 
 

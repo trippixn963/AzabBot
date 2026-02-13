@@ -411,7 +411,7 @@ class MessageEvents(HelpersMixin, commands.Cog):
                         if ref_msg:
                             reply_to_user = ref_msg.author
                             reply_to_id = ref_msg.author.id
-                    except Exception:
+                    except (discord.NotFound, discord.HTTPException):
                         pass
 
                 await self.bot.mod_tracker.log_message_delete(
@@ -523,7 +523,7 @@ class MessageEvents(HelpersMixin, commands.Cog):
                     if ref_msg:
                         reply_to_user = ref_msg.author
                         reply_to_id = ref_msg.author.id
-                except Exception:
+                except (discord.NotFound, discord.HTTPException):
                     pass
 
             await self.bot.mod_tracker.log_message_delete(
@@ -635,7 +635,7 @@ class MessageEvents(HelpersMixin, commands.Cog):
                     if ref_msg:
                         reply_to_user = ref_msg.author
                         reply_to_id = ref_msg.author.id
-                except Exception:
+                except (discord.NotFound, discord.HTTPException):
                     pass
 
             await self.bot.mod_tracker.log_message_edit(

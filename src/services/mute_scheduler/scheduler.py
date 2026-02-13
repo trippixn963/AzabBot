@@ -174,7 +174,7 @@ class MuteScheduler:
                             "Mute Scheduler Error",
                             f"Error #{self._consecutive_errors}: {str(e)[:500]}"
                         )
-                    except Exception:
+                    except discord.HTTPException:
                         pass  # Don't fail scheduler loop due to webhook issues
 
                 # Apply exponential backoff
@@ -415,7 +415,7 @@ class MuteScheduler:
         # Send release announcement to general chat
         try:
             # Import here to avoid circular import (prison handler imports services)
-            from src.handlers.prison.handler import send_release_announcement, ReleaseType
+            from src.handlers.prison import send_release_announcement, ReleaseType
 
             # Calculate time served
             time_served = None

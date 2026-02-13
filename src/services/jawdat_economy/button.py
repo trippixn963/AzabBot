@@ -51,7 +51,7 @@ class CoinUnjailButton(
     def __init__(self, user_id: int, guild_id: int) -> None:
         super().__init__(
             discord.ui.Button(
-                label=f"Buy Unjail ({UNJAIL_BASE_COST:,}+)",
+                label="Buy Unjail",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"coin_unjail:{user_id}:{guild_id}",
                 emoji=COINS_EMOJI,
@@ -168,14 +168,9 @@ class CoinUnjailButton(
                 ("Shortfall", f"{shortfall:,}"),
             ], emoji="💸")
 
-            # Build cost breakdown message
-            cost_msg = f"Cost: **{cost:,}** coins"
-            if breakdown:
-                cost_msg += f"\n-# Base {breakdown['base_cost']:,} × {breakdown['multiplier']} ({breakdown['duration_tier']} mute)"
-
             await interaction.followup.send(
                 f"<:coins:{COINS_EMOJI_ID}> **Insufficient coins!**\n"
-                f"{cost_msg}\n"
+                f"Cost: **{cost:,}** coins\n"
                 f"Your balance: **{total:,}** coins\n"
                 f"You need **{shortfall:,}** more coins.\n\n"
                 f"-# Earn coins by chatting and playing games in Jawdat Casino!",
@@ -333,7 +328,7 @@ class CoinUnjailButton(
                     "An unexpected error occurred. Please contact staff if your coins were charged.",
                     ephemeral=True,
                 )
-            except Exception:
+            except discord.HTTPException:
                 pass
 
     async def _post_prison_announcement(
@@ -485,7 +480,7 @@ class CoinUnjailButton(
         """Send release announcement to general chat."""
         try:
             # Import here to avoid circular import (prison handler imports services)
-            from src.handlers.prison.handler import send_release_announcement, ReleaseType
+            from src.handlers.prison import send_release_announcement, ReleaseType
 
             await send_release_announcement(
                 bot=interaction.client,

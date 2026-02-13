@@ -8,10 +8,12 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 import io
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
+import aiohttp
 import discord
 
 from src.core.logger import logger
@@ -265,7 +267,7 @@ class MemberLogsMixin:
                         embed.set_thumbnail(url="attachment://old_avatar.png")
                         embed.add_field(name="Previous", value="See thumbnail ↗️", inline=True)
                         old_avatar_downloaded = True
-            except Exception:
+            except (aiohttp.ClientError, asyncio.TimeoutError):
                 pass
 
         if after_url:
@@ -283,7 +285,7 @@ class MemberLogsMixin:
                     view.add_item(NewAvatarButton(message.channel.id, message.id))
                 view.add_item(UserIdButton(user.id))
                 await message.edit(view=view)
-            except Exception:
+            except discord.HTTPException:
                 pass
 
 

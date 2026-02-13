@@ -81,7 +81,7 @@ class WebSocketCleanupTask(MaintenanceTask):
                             try:
                                 if connection.websocket.client_state != WebSocketState.CONNECTED:
                                     is_stale = True
-                            except Exception:
+                            except (AttributeError, RuntimeError):
                                 # Can't check state - might be stale
                                 is_stale = True
 

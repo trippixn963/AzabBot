@@ -276,7 +276,11 @@ class PurgeCog(commands.Cog):
         reason: Optional[str] = None,
     ) -> None:
         """Delete messages from the channel with optional filters."""
-        await interaction.response.defer(ephemeral=True)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
 
         # Determine filter value
         if filter_type:

@@ -164,8 +164,12 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             return
 
         try:
-            await interaction.response.defer(ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
 
+        try:
             # Get target guild (for cross-server moderation)
             target_guild = get_target_guild(interaction, self.bot)
             cross_server = is_cross_server(interaction)
@@ -416,8 +420,12 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             return
 
         try:
-            await interaction.response.defer(ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
 
+        try:
             # Get target guild (for cross-server moderation)
             target_guild = get_target_guild(interaction, self.bot)
             cross_server = is_cross_server(interaction)

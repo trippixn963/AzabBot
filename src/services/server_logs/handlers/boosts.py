@@ -65,7 +65,7 @@ class BoostsLogsMixin:
                             emoji=MESSAGE_EMOJI,
                         ))
                         break
-            except Exception:
+            except discord.HTTPException:
                 pass
 
         await self._send_log(LogCategory.BOOSTS, embed, view=view, user_id=member.id)

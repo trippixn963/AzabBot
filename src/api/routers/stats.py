@@ -781,7 +781,7 @@ async def get_public_user_summary(
     try:
         from src.core.config import get_config
         config = get_config()
-    except Exception:
+    except (ImportError, RuntimeError):
         pass
 
     now = time.time()
@@ -791,7 +791,7 @@ async def get_public_user_summary(
     # Try to fetch user from Discord
     try:
         user = await bot.fetch_user(user_id)
-    except Exception:
+    except (discord.NotFound, discord.HTTPException):
         pass
 
     # Try to get member from guild
@@ -848,7 +848,7 @@ async def get_public_user_summary(
                 import discord
                 ban_entry = await guild.fetch_ban(discord.Object(id=user_id))
                 is_banned = ban_entry is not None
-            except Exception:
+            except (discord.NotFound, discord.HTTPException):
                 pass
 
     # Get recent cases (last 5)

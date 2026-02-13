@@ -15,6 +15,7 @@ import discord
 
 from src.core.logger import logger
 from src.core.config import get_config
+from src.api.services.auth import get_auth_service
 from ..constants import UNLOCK_EMOJI, TRANSCRIPT_EMOJI
 from .helpers import _is_ticket_staff
 
@@ -129,6 +130,15 @@ class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt
             )
             return
 
+        # Get ticket with stored transcript token
+        ticket = bot.ticket_service.db.get_ticket(self.ticket_id)
+        if not ticket:
+            await interaction.response.send_message(
+                "Ticket not found.",
+                ephemeral=True,
+            )
+            return
+
         # Check if transcript exists
         transcript = bot.ticket_service.db.get_ticket_transcript(self.ticket_id)
         if not transcript:
@@ -147,11 +157,17 @@ class TranscriptButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt
             )
             return
 
+        # Use stored token from database (or generate if missing for old tickets)
+        transcript_token = ticket.get("transcript_token")
+        if not transcript_token:
+            auth_service = get_auth_service()
+            transcript_token = auth_service.generate_transcript_token(self.ticket_id)
+
         view = discord.ui.View()
         view.add_item(discord.ui.Button(
             label="Transcript",
             style=discord.ButtonStyle.link,
-            url=f"{config.transcript_base_url}/{self.ticket_id}",
+            url=f"{config.transcript_base_url}/{self.ticket_id}?token={transcript_token}",
             emoji=TRANSCRIPT_EMOJI,
         ))
 

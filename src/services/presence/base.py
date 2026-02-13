@@ -17,6 +17,8 @@ from zoneinfo import ZoneInfo
 
 import discord
 
+from src.utils.async_utils import create_safe_task
+
 if TYPE_CHECKING:
     from discord import Client
 
@@ -154,11 +156,11 @@ class BasePresenceHandler(ABC):
 
         self._running = True
 
-        # Start rotation task (error handling via on_error hook)
-        self._rotation_task = asyncio.create_task(self._rotation_loop())
+        # Start rotation task with safe task wrapper
+        self._rotation_task = create_safe_task(self._rotation_loop(), name="presence_rotation")
 
-        # Start promo task (error handling via on_error hook)
-        self._promo_task = asyncio.create_task(self._promo_loop())
+        # Start promo task with safe task wrapper
+        self._promo_task = create_safe_task(self._promo_loop(), name="presence_promo")
 
         self.on_handler_ready()
 

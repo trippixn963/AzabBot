@@ -137,7 +137,7 @@ async def get_current_user_optional(request: Request) -> Optional[TokenPayload]:
     try:
         payload = auth_service.verify_token(token)
         return payload
-    except Exception:
+    except (ValueError, KeyError):
         return None
 
 

@@ -626,7 +626,7 @@ class CaseLogService(
                     "⚠️ Please provide an **image or video** as evidence.",
                     delete_after=DELETE_AFTER_MEDIUM,
                 )
-            except Exception:
+            except discord.HTTPException:
                 pass
             return False
 
@@ -642,7 +642,7 @@ class CaseLogService(
                     assets_thread = self.bot.get_channel(self.config.transcript_assets_thread_id)
                     if not assets_thread:
                         assets_thread = await self.bot.fetch_channel(self.config.transcript_assets_thread_id)
-                except Exception:
+                except (discord.NotFound, discord.HTTPException):
                     pass
 
             for attachment in valid_attachments:
@@ -681,7 +681,7 @@ class CaseLogService(
                 try:
                     request_msg = await thread.fetch_message(message.reference.message_id)
                     await request_msg.delete()
-                except Exception:
+                except (discord.NotFound, discord.HTTPException):
                     pass
 
                 logger.tree("Evidence Captured", [
@@ -969,7 +969,7 @@ class CaseLogService(
                 if warning_msg:
                     await safe_delete(warning_msg)
                 await safe_delete(message)
-            except Exception:
+            except discord.HTTPException:
                 pass
 
             await safe_send(thread, f"✅ Reason updated by {message.author.mention}", delete_after=DELETE_AFTER_MEDIUM)

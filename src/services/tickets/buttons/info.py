@@ -153,7 +153,7 @@ class InfoSelectView(discord.ui.View):
         if self._user_cache is None:
             try:
                 self._user_cache = await bot.fetch_user(self.user_id)
-            except Exception:
+            except (discord.NotFound, discord.HTTPException):
                 pass
         user = self._user_cache
 

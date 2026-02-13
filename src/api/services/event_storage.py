@@ -371,7 +371,7 @@ class EventStorage:
                             details=details or {},
                         )
                         self._on_event_callback(event_data.to_dict())
-                    except Exception:
+                    except (AttributeError, TypeError, RuntimeError):
                         pass  # Don't let callback errors break event storage
 
                 return event_id

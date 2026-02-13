@@ -66,7 +66,11 @@ class UnbanOpsMixin:
             )
             return
 
-        await interaction.response.defer()
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer()
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
 
         # Get target guild for cross-server moderation
         target_guild = get_target_guild(interaction, self.bot)

@@ -373,7 +373,7 @@ class BoosterUnjailButton(
             # -----------------------------------------------------------------
             try:
                 # Import here to avoid circular import (prison handler imports services)
-                from src.handlers.prison.handler import send_release_announcement, ReleaseType
+                from src.handlers.prison import send_release_announcement, ReleaseType
 
                 await send_release_announcement(
                     bot=interaction.client,
@@ -417,7 +417,7 @@ class BoosterUnjailButton(
                     "An unexpected error occurred. Please try again or contact staff.",
                     ephemeral=True,
                 )
-            except Exception:
+            except discord.HTTPException:
                 pass  # Already failed, nothing more we can do
 
 
@@ -581,6 +581,7 @@ class TicketControlPanelView(discord.ui.View):
         user_id: int,
         guild_id: int,
         case_url: Optional[str] = None,
+        transcript_token: Optional[str] = None,
     ):
         super().__init__(timeout=None)
 
@@ -589,6 +590,7 @@ class TicketControlPanelView(discord.ui.View):
         self.user_id = user_id
         self.guild_id = guild_id
         self.case_url = case_url  # Pre-computed URL for appeal tickets
+        self.transcript_token = transcript_token  # Stored token for transcript access
 
         self._add_components()
 
@@ -638,13 +640,13 @@ class TicketControlPanelView(discord.ui.View):
             reopen_btn.row = 1
             self.add_item(reopen_btn)
 
-            # Direct link button for transcript (no extra message)
+            # Direct link button for transcript with stored token (no login required)
             config = get_config()
-            if config.transcript_base_url:
+            if config.transcript_base_url and self.transcript_token:
                 self.add_item(discord.ui.Button(
                     label="Transcript",
                     style=discord.ButtonStyle.link,
-                    url=f"{config.transcript_base_url}/{self.ticket_id}",
+                    url=f"{config.transcript_base_url}/{self.ticket_id}?token={self.transcript_token}",
                     emoji=TRANSCRIPT_EMOJI,
                     row=1,
                 ))
@@ -675,7 +677,7 @@ class TicketControlPanelView(discord.ui.View):
                 case_data = db.get_case(case_id)
                 if case_data and case_data.get("thread_id") and config.main_guild_id:
                     case_url = f"https://discord.com/channels/{config.main_guild_id}/{case_data['thread_id']}"
-            except Exception:
+            except (KeyError, TypeError):
                 pass
 
         return cls(
@@ -684,6 +686,7 @@ class TicketControlPanelView(discord.ui.View):
             user_id=ticket["user_id"],
             guild_id=ticket.get("guild_id", 0),
             case_url=case_url,
+            transcript_token=ticket.get("transcript_token"),
         )
 
 

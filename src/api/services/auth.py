@@ -508,7 +508,7 @@ class AuthService:
             db.add_blacklisted_token(token, expires_at)
 
             return True
-        except Exception:
+        except (KeyError, TypeError):
             # Still add to memory cache even if db fails
             token_hash = hashlib.sha256(token.encode()).hexdigest()
             self._blacklisted_token_hashes.add(token_hash)
@@ -744,7 +744,7 @@ class AuthService:
                 last_login_ip=registered.last_login_ip if registered else None,
                 last_login_agent=registered.last_login_agent if registered else None,
             )
-        except Exception:
+        except (discord.NotFound, discord.HTTPException, AttributeError):
             return None
 
 

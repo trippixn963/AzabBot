@@ -123,7 +123,7 @@ async def batch_fetch_moderators(bot: Any, mod_ids: set[int]) -> dict[int, str]:
             try:
                 user = await bot.fetch_user(uid)
                 return (uid, user.name if user else None)
-            except Exception:
+            except (discord.NotFound, discord.HTTPException):
                 return (uid, None)
 
         # Batch in groups of 10

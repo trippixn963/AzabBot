@@ -12,6 +12,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
+import aiohttp
 import discord
 
 from src.core.logger import logger
@@ -112,7 +113,7 @@ class CacheMixin:
                             if resp.status == 200:
                                 data = await resp.read()
                                 attachment_data.append((attachment.filename, data))
-                except Exception:
+                except (aiohttp.ClientError, asyncio.TimeoutError):
                     pass
 
         # Create cached message

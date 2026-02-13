@@ -549,7 +549,7 @@ class LoggingMixin:
             await self.bot.logging_service.log_message_pin(
                 message=message, pinned=pinned, moderator=moderator,
             )
-        except Exception:
+        except (discord.NotFound, discord.HTTPException):
             # Fallback when message can't be fetched
             await self.bot.logging_service.log_message_pin(
                 pinned=pinned, moderator=moderator, channel=channel, message_id=message_id,

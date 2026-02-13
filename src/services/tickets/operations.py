@@ -310,7 +310,7 @@ class OperationsMixin:
                         case_data = self.db.get_case(case_id)
                         if case_data:
                             case_reason = case_data.get("reason")
-                    except Exception:
+                    except (KeyError, TypeError):
                         pass
 
                 ai_greeting = await self.bot.ai_service.generate_ticket_greeting(
@@ -403,8 +403,14 @@ class OperationsMixin:
         if ticket["status"] == "closed":
             return (False, "Ticket is already closed.")
 
-        # Close in database
-        if not self.db.close_ticket(ticket_id, closed_by.id, reason):
+        # Generate transcript token once (used for all transcript links)
+        transcript_token = None
+        if self.config.transcript_base_url:
+            auth_service = get_auth_service()
+            transcript_token = auth_service.generate_transcript_token(ticket_id)
+
+        # Close in database (stores the token)
+        if not self.db.close_ticket(ticket_id, closed_by.id, reason, transcript_token):
             return (False, "Failed to close ticket.")
 
         # Clear claim reminder cooldowns (no longer needed)
@@ -417,7 +423,7 @@ class OperationsMixin:
         # Fetch ticket user
         try:
             ticket_user = await self.bot.fetch_user(ticket["user_id"])
-        except Exception:
+        except (discord.NotFound, discord.HTTPException):
             ticket_user = None
 
         # Fetch claimed_by member if available
@@ -427,7 +433,7 @@ class OperationsMixin:
                 claimed_by_member = closed_by.guild.get_member(ticket["claimed_by"])
                 if not claimed_by_member:
                     claimed_by_member = await closed_by.guild.fetch_member(ticket["claimed_by"])
-            except Exception:
+            except (discord.NotFound, discord.HTTPException):
                 pass
 
         # Get ticket channel
@@ -499,10 +505,8 @@ class OperationsMixin:
                     closed_by=closed_by,
                     guild_name=closed_by.guild.name if closed_by.guild else "Server",
                 )
-                if self.config.transcript_base_url:
-                    # Generate signed token for direct transcript access (no login required)
-                    auth_service = get_auth_service()
-                    transcript_token = auth_service.generate_transcript_token(ticket_id)
+                if transcript_token:
+                    # Use the token generated earlier (stored in database)
                     transcript_url = f"{self.config.transcript_base_url}/{ticket_id}?token={transcript_token}"
 
                     dm_view = discord.ui.View()
@@ -602,7 +606,7 @@ class OperationsMixin:
         # Get ticket user for control panel and logging
         try:
             ticket_user = await self.bot.fetch_user(ticket["user_id"])
-        except Exception:
+        except (discord.NotFound, discord.HTTPException):
             ticket_user = None
 
         # Get ticket channel
@@ -681,7 +685,7 @@ class OperationsMixin:
         # Get ticket user for notification and control panel
         try:
             ticket_user = await self.bot.fetch_user(ticket["user_id"])
-        except Exception:
+        except (discord.NotFound, discord.HTTPException):
             ticket_user = None
 
         channel = await self._get_ticket_channel(ticket["thread_id"])
@@ -866,7 +870,7 @@ class OperationsMixin:
         # Get ticket user for control panel and logging
         try:
             ticket_user = await self.bot.fetch_user(ticket["user_id"])
-        except Exception:
+        except (discord.NotFound, discord.HTTPException):
             ticket_user = None
 
         # Get ticket channel
@@ -1033,7 +1037,7 @@ class OperationsMixin:
 
         try:
             ticket_user = await self.bot.fetch_user(ticket["user_id"])
-        except Exception:
+        except (discord.NotFound, discord.HTTPException):
             return (False, "Could not fetch ticket user.", None)
 
         messages, mention_map = await collect_transcript_messages(channel, self.bot)

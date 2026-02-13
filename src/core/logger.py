@@ -278,7 +278,7 @@ class Logger:
             current_time = datetime.now(TIMEZONE)
             tz_name = current_time.strftime("%Z")
             return f"[{current_time.strftime('%I:%M:%S %p')} {tz_name}]"
-        except Exception:
+        except (KeyError, ValueError, OSError):
             return datetime.now().strftime("[%I:%M:%S %p]")
 
     def _strip_emojis(self, text: str) -> str:
@@ -343,7 +343,7 @@ class Logger:
                 display_str = name
 
             return (display_str, str(user_id))
-        except Exception:
+        except (AttributeError, TypeError):
             return ("Unknown", "Unknown")
 
     def _get_uptime(self) -> str:
@@ -591,7 +591,7 @@ class Logger:
         for callback in self._log_callbacks:
             try:
                 callback(level, message, module, formatted)
-            except Exception:
+            except (TypeError, RuntimeError, AttributeError):
                 pass  # Don't let callback errors break logging
 
     def _format_tree_for_live(

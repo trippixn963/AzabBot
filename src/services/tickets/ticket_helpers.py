@@ -325,7 +325,7 @@ class HelpersMixin:
         if ticket_user is None:
             try:
                 ticket_user = await self.bot.fetch_user(ticket["user_id"])
-            except Exception:
+            except (discord.NotFound, discord.HTTPException):
                 ticket_user = None
 
         # Get closed_by member if ticket is closed and not passed
@@ -334,7 +334,7 @@ class HelpersMixin:
                 guild = channel.guild or self.bot.get_guild(self.config.main_guild_id)
                 if guild:
                     closed_by = guild.get_member(ticket["closed_by"])
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
 
         # Get user ticket count for stats

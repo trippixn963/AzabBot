@@ -55,7 +55,11 @@ class WarnModal(discord.ui.Modal, title="Warn User"):
 
         reason = self.reason_input.value or None
 
-        await interaction.response.defer(ephemeral=False)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=False)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
 
         user = interaction.guild.get_member(self.target_user.id)
         if not user:

@@ -106,7 +106,11 @@ class LockdownCog(commands.Cog):
             return
 
         # Defer response (this may take a while for large servers)
-        await interaction.response.defer(ephemeral=True)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
 
         try:
             # Get mod role so they keep access during lockdown
@@ -212,7 +216,7 @@ class LockdownCog(commands.Cog):
                     "An error occurred during lockdown.",
                     ephemeral=True,
                 )
-            except Exception:
+            except discord.HTTPException:
                 pass
 
         except Exception as e:
@@ -227,7 +231,7 @@ class LockdownCog(commands.Cog):
                     "An unexpected error occurred.",
                     ephemeral=True,
                 )
-            except Exception:
+            except discord.HTTPException:
                 pass
 
     # =========================================================================
@@ -280,7 +284,11 @@ class LockdownCog(commands.Cog):
             return
 
         # Defer response
-        await interaction.response.defer(ephemeral=True)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
 
         try:
             # Get lockdown info for duration calculation
@@ -381,7 +389,7 @@ class LockdownCog(commands.Cog):
                     "An error occurred during unlock.",
                     ephemeral=True,
                 )
-            except Exception:
+            except discord.HTTPException:
                 pass
 
         except Exception as e:
@@ -396,7 +404,7 @@ class LockdownCog(commands.Cog):
                     "An unexpected error occurred.",
                     ephemeral=True,
                 )
-            except Exception:
+            except discord.HTTPException:
                 pass
 
 

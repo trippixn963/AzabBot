@@ -10,29 +10,24 @@ Server: discord.gg/syria
 
 import discord
 import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, TYPE_CHECKING
 from collections import OrderedDict
 
 from src.core.logger import logger
-from src.core.config import get_config, NY_TZ, EmbedColors
-from src.core.constants import QUERY_LIMIT_MEDIUM, QUERY_LIMIT_XXL, CASE_LOG_TIMEOUT
-from src.utils.rate_limiter import rate_limit
+from src.core.config import get_config, NY_TZ
+from src.core.constants import QUERY_LIMIT_MEDIUM, CASE_LOG_TIMEOUT
 from src.utils.duration import format_duration_from_minutes as format_duration
 from src.utils.async_utils import create_safe_task
 from src.utils.retry import safe_fetch_channel
-from src.utils.dm_helpers import send_moderation_dm
-from src.services.appeals.constants import MIN_APPEALABLE_MUTE_DURATION
-from src.api.services.event_logger import event_logger
+
+from .welcome import build_welcome_embed
+from .views import build_appeal_view
+from .vc_kick import handle_vc_kick
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
-    from sqlite3 import Row
 
-
-# =============================================================================
-# Prison Handler Class
-# =============================================================================
 
 class PrisonHandler:
     """
@@ -41,10 +36,6 @@ class PrisonHandler:
     DESIGN: Central handler for all prisoner-related events.
     Coordinates between Discord events and database.
     """
-
-    # =========================================================================
-    # Initialization
-    # =========================================================================
 
     def __init__(self, bot: "AzabBot") -> None:
         """
@@ -56,23 +47,14 @@ class PrisonHandler:
         self.bot = bot
         self.config = get_config()
 
-        # =================================================================
         # Mute Reason Tracking (OrderedDict with LRU eviction)
-        # DESIGN: Stores mute reasons by user_id or username for context
-        # =================================================================
         self.mute_reasons: OrderedDict[Any, str] = OrderedDict()
-        self._mute_reasons_limit: int = 1000  # Max entries
+        self._mute_reasons_limit: int = 1000
 
-        # =================================================================
-        # VC Kick Tracking
-        # DESIGN: Progressive timeout - 1st warning, 2nd 5min, 3rd+ 30min
-        # =================================================================
+        # VC Kick Tracking (progressive timeout)
         self.vc_kick_counts: Dict[int, int] = {}
 
-        # =================================================================
         # Concurrency Protection
-        # DESIGN: Lock for thread-safe access to shared dicts
-        # =================================================================
         self._state_lock = asyncio.Lock()
 
         logger.tree("Prison Handler Loaded", [
@@ -80,23 +62,18 @@ class PrisonHandler:
             ("VC Timeout", "1st warn, 2nd 5m, 3rd+ 30m"),
         ], emoji="⛓️")
 
-    # =========================================================================
-    # Main Event Handlers
-    # =========================================================================
-
     async def handle_new_prisoner(self, member: discord.Member) -> None:
         """
         Welcome a newly muted user to prison.
 
         DESIGN: Multi-step process:
         1. Kick from VC if connected
-        2. Send mute notification to last active channel
-        3. Get mute reason from logs
-        4. Create welcome embed
-        5. Record mute in database
+        2. Get mute reason from logs
+        3. Create welcome embed
+        4. Record mute in database
         """
         try:
-            # Calculate account age
+            # Calculate account age for logging
             now = datetime.now(NY_TZ)
             created = member.created_at.replace(tzinfo=timezone.utc) if member.created_at.tzinfo is None else member.created_at
             age_days = (now - created).days
@@ -114,12 +91,10 @@ class PrisonHandler:
             ], emoji="⛓️")
 
             # Handle VC kick with progressive timeout
-            await self._handle_vc_kick(member)
+            await handle_vc_kick(self.bot, member, self.vc_kick_counts, self._state_lock)
 
-            # Get channels (use safe_fetch to handle cache misses)
+            # Get channels
             logs_channel = await safe_fetch_channel(self.bot, self.config.mod_logs_forum_id)
-
-            # Get first prison channel
             prison_channel = None
             if self.config.prison_channel_ids:
                 prison_channel = await safe_fetch_channel(
@@ -136,166 +111,34 @@ class PrisonHandler:
             # Wait for mute embed to appear in logs
             await asyncio.sleep(self.config.presence_retry_delay)
 
-            # Get mute reason from cache or scan logs (with lock for thread-safety)
-            async with self._state_lock:
-                mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(
-                    member.name.lower()
-                )
+            # Get mute reason from cache or scan logs
+            mute_reason = await self._get_mute_reason(member, logs_channel)
 
-            if not mute_reason:
-                await self._scan_logs_for_reason(member, logs_channel)
-                async with self._state_lock:
-                    mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(
-                        member.name.lower()
-                    )
-
-            # Get prisoner stats for personalized message
+            # Get prisoner stats and mute record
             prisoner_stats = await self.bot.db.get_prisoner_stats(member.id)
+            mute_record = self.bot.db.get_active_mute(member.id, member.guild.id)
 
-            # Get mute info for sentence duration
-            guild = member.guild
-            mute_record = self.bot.db.get_active_mute(member.id, guild.id)
-            sentence_text = None
-            if mute_record and mute_record["expires_at"]:
-                # Calculate duration from muted_at to expires_at
-                duration_seconds = int(mute_record["expires_at"] - mute_record["muted_at"])
-                duration_minutes = duration_seconds // 60
-                sentence_text = format_duration(duration_minutes)
-            elif mute_record:
-                sentence_text = "Permanent"
+            # Get weekly stats
+            offense_count_week = self.bot.db.get_user_mute_count_week(member.id, member.guild.id)
+            time_served_week = self.bot.db.get_user_time_served_week(member.id, member.guild.id)
 
-            # Create welcome embed
-            visit_num = prisoner_stats['total_mutes'] + 1
-            embed = discord.Embed(
-                title="🔒 Arrived to Prison",
-                color=EmbedColors.GOLD,
+            # Build welcome embed
+            embed = build_welcome_embed(
+                member=member,
+                mute_record=mute_record,
+                mute_reason=mute_reason,
+                prisoner_stats=prisoner_stats,
+                offense_count_week=offense_count_week,
+                time_served_week=time_served_week,
             )
 
-            embed.add_field(name="Prisoner", value=member.mention, inline=True)
+            # Create case if none exists
+            await self._ensure_case_exists(member, mute_record, mute_reason)
 
-            if sentence_text:
-                embed.add_field(name="Sentence", value=f"`{sentence_text}`", inline=True)
+            # Build appeal button view
+            view = await build_appeal_view(self.bot, member, mute_record)
 
-            # Add unmute time in Discord timestamp format (shows in user's timezone)
-            if mute_record and mute_record["expires_at"]:
-                unmute_ts = int(mute_record["expires_at"])
-                embed.add_field(name="Unmutes", value=f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", inline=False)
-
-            if mute_reason:
-                # Truncate long reasons
-                reason_display = mute_reason[:100] + "..." if len(mute_reason) > 100 else mute_reason
-                embed.add_field(name="Reason", value=f"`{reason_display}`", inline=False)
-
-            if prisoner_stats["total_mutes"] > 0:
-                total_time = format_duration(prisoner_stats["total_minutes"] or 0)
-                embed.add_field(name="Visit #", value=f"`{visit_num}`", inline=True)
-                embed.add_field(name="Total Time Served", value=f"`{total_time}`", inline=True)
-
-            # Add booster unjail card notice (only for mutes >= 1 hour or permanent)
-            is_booster = member.premium_since is not None
-            mute_qualifies_for_unjail = False
-
-            if mute_record:
-                is_permanent_mute = mute_record["expires_at"] is None
-                if is_permanent_mute:
-                    mute_qualifies_for_unjail = True
-                elif mute_record["expires_at"] and mute_record["muted_at"]:
-                    duration_secs = int(mute_record["expires_at"] - mute_record["muted_at"])
-                    mute_qualifies_for_unjail = duration_secs >= MIN_APPEALABLE_MUTE_DURATION
-
-            if is_booster and mute_qualifies_for_unjail:
-                can_use_card = self.bot.db.can_use_unjail_card(member.id, member.guild.id)
-                if can_use_card:
-                    embed.add_field(
-                        name="<:unlock:1455200891866190040> Booster Perk",
-                        value="Your daily **Unjail Card** is available! Use the button below to release yourself.",
-                        inline=False,
-                    )
-                else:
-                    reset_at = self.bot.db.get_unjail_card_cooldown(member.id, member.guild.id)
-                    if reset_at:
-                        embed.add_field(
-                            name="<:unlock:1455200891866190040> Booster Perk",
-                            value=f"Unjail Card on cooldown. Resets <t:{int(reset_at)}:R>",
-                            inline=False,
-                        )
-
-            # Add coin unjail cost (for mutes >= 1 hour or permanent)
-            if mute_qualifies_for_unjail:
-                try:
-                    from src.services.jawdat_economy import get_unjail_cost_for_user, COINS_EMOJI_ID
-                    unjail_cost, offense_num, breakdown = get_unjail_cost_for_user(member.id, member.guild.id)
-
-                    cost_value = f"**{unjail_cost:,}** coins"
-                    if breakdown:
-                        cost_value += f"\n-# Offense #{offense_num} ({breakdown['base_cost']:,}) × {breakdown['multiplier']} ({breakdown['duration_tier']})"
-
-                    embed.add_field(
-                        name=f"<:coins:{COINS_EMOJI_ID}> Coin Unjail",
-                        value=cost_value,
-                        inline=False,
-                    )
-                except Exception as e:
-                    logger.warning("Failed to add unjail cost field", [
-                        ("User", f"{member.name} ({member.id})"),
-                        ("Error", str(e)[:50]),
-                    ])
-
-            embed.set_thumbnail(
-                url=member.avatar.url if member.avatar else member.default_avatar.url
-            )
-
-            # ---------------------------------------------------------------------
-            # Create Case if None Exists
-            # DESIGN: Ensures every muted user has a case, even if muted manually
-            # by adding the role directly (not via /mute command)
-            # ---------------------------------------------------------------------
-            case_created = False
-            if self.bot.case_log_service and mute_record:
-                # Check if case already exists
-                existing_case = self.bot.db.get_active_mute_case(member.id, member.guild.id)
-                if not existing_case:
-                    try:
-                        # Get duration string for case
-                        duration_str = sentence_text or "Unknown"
-
-                        # Use bot as moderator for manually-added mutes
-                        bot_member = member.guild.get_member(self.bot.user.id)
-                        if bot_member:
-                            case_info = await asyncio.wait_for(
-                                self.bot.case_log_service.log_mute(
-                                    user=member,
-                                    moderator=bot_member,
-                                    duration=duration_str,
-                                    reason=mute_reason or "Manual mute (role added directly)",
-                                    is_extension=False,
-                                    evidence=None,
-                                ),
-                                timeout=CASE_LOG_TIMEOUT,
-                            )
-                            if case_info:
-                                case_created = True
-                                logger.tree("Case Created (Auto)", [
-                                    ("Action", "Mute"),
-                                    ("Case ID", case_info.get("case_id", "Unknown")),
-                                    ("User", f"{member.name} ({member.id})"),
-                                    ("Reason", "No existing case - created automatically"),
-                                ], emoji="📋")
-                    except asyncio.TimeoutError:
-                        logger.warning("Case Log Timeout (Auto)", [
-                            ("Action", "Mute"),
-                            ("User", f"{member.name} ({member.id})"),
-                        ])
-                    except Exception as e:
-                        logger.error("Case Log Failed (Auto)", [
-                            ("Action", "Mute"),
-                            ("User", f"{member.name} ({member.id})"),
-                            ("Error", str(e)[:100]),
-                        ])
-
-            # Build appeal button view if eligible (>= 1 hour or permanent)
-            view = await self._build_appeal_view(member, mute_record)
-
+            # Send welcome message
             await prison_channel.send(member.mention, embed=embed, view=view)
 
             # Update presence
@@ -346,9 +189,6 @@ class PrisonHandler:
         Handle prisoner release cleanup (no automated message).
 
         DESIGN: Only handles cleanup - /unmute command sends its own embed.
-        1. Update database
-        2. Cleanup tracking data
-        3. Schedule message cleanup
         """
         try:
             logger.tree("Processing Prisoner Release", [
@@ -391,387 +231,25 @@ class PrisonHandler:
                 ("Error", str(e)),
             ])
 
-    # =========================================================================
-    # VC Handling
-    # =========================================================================
-
-    async def _handle_vc_kick(self, member: discord.Member) -> None:
-        """
-        Handle VC kick with progressive timeout.
-
-        DESIGN: Escalating punishment:
-        - 1st offense: Warning only
-        - 2nd offense: 5 minute timeout
-        - 3rd+ offense: 30 minute timeout
-        """
-        if not member.voice or not member.voice.channel:
-            return
-
-        vc_name = member.voice.channel.name
-
-        logger.tree("Prison Handler: _handle_vc_kick Called", [
-            ("Member", f"{member.name} ({member.id})"),
-            ("VC Channel", vc_name),
-            ("Current Kick Count", str(self.vc_kick_counts.get(member.id, 0))),
-        ], emoji="📝")
-
-        try:
-            await member.move_to(None)
-
-            # Track kick count (with lock for thread-safety)
-            async with self._state_lock:
-                self.vc_kick_counts[member.id] = self.vc_kick_counts.get(member.id, 0) + 1
-                kick_count = self.vc_kick_counts[member.id]
-
-            # Determine timeout duration
-            timeout_minutes = 0
-            if kick_count == 2:
-                timeout_minutes = 5
-            elif kick_count >= 3:
-                timeout_minutes = 30
-
-            # Apply timeout if needed
-            if timeout_minutes > 0:
-                try:
-                    await member.timeout(
-                        timedelta(minutes=timeout_minutes),
-                        reason=f"Prisoner VC violation #{kick_count}"
-                    )
-
-                    # Record timeout to database
-                    from datetime import timezone
-                    until_ts = (datetime.now(NY_TZ) + timedelta(minutes=timeout_minutes)).timestamp()
-                    self.bot.db.add_timeout(
-                        user_id=member.id,
-                        guild_id=member.guild.id,
-                        moderator_id=self.bot.user.id,
-                        reason=f"Prisoner VC violation #{kick_count} (joined #{vc_name})",
-                        duration_seconds=timeout_minutes * 60,
-                        until_timestamp=until_ts,
-                    )
-
-                    # Log to permanent audit log
-                    self.bot.db.log_moderation_action(
-                        user_id=member.id,
-                        guild_id=member.guild.id,
-                        moderator_id=self.bot.user.id,
-                        action_type="timeout",
-                        action_source="auto_vc",
-                        reason=f"Prisoner VC violation #{kick_count}",
-                        duration_seconds=timeout_minutes * 60,
-                        details={"vc_channel": vc_name, "kick_count": kick_count},
-                    )
-
-                    logger.tree("Timeout Applied", [
-                        ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
-                        ("ID", str(member.id)),
-                        ("Duration", f"{timeout_minutes}min"),
-                        ("Offense #", str(kick_count)),
-                    ], emoji="⏱️")
-
-                    # Log to dashboard events
-                    event_logger.log_timeout(
-                        guild=member.guild,
-                        target=member,
-                        moderator=None,
-                        reason=f"Prisoner VC violation #{kick_count} (joined #{vc_name})",
-                        duration_seconds=timeout_minutes * 60,
-                    )
-
-                    # Create case for the timeout
-                    if self.bot.case_log_service and member.guild:
-                        try:
-                            bot_member = member.guild.get_member(self.bot.user.id)
-                            if bot_member:
-                                await asyncio.wait_for(
-                                    self.bot.case_log_service.log_mute(
-                                        user=member,
-                                        moderator=bot_member,
-                                        duration=f"{timeout_minutes} minute(s)",
-                                        reason=f"Auto-timeout: Prisoner VC violation #{kick_count} (joined #{vc_name})",
-                                        is_extension=False,
-                                        evidence=None,
-                                    ),
-                                    timeout=CASE_LOG_TIMEOUT,
-                                )
-                        except asyncio.TimeoutError:
-                            logger.warning("Case Log Timeout", [
-                                ("Action", "Prisoner VC Violation"),
-                                ("User", str(member.id)),
-                            ])
-                        except Exception as e:
-                            logger.error("Case Log Failed", [
-                                ("Action", "Prisoner VC Violation"),
-                                ("User", str(member.id)),
-                                ("Error", str(e)[:100]),
-                            ])
-
-                    # Fire-and-forget DM (no appeal button)
-                    create_safe_task(send_moderation_dm(
-                        user=member,
-                        title="You have been timed out",
-                        color=EmbedColors.ERROR,
-                        guild=member.guild,
-                        moderator=None,
-                        reason=f"VC violation #{kick_count} - Prisoners cannot join voice channels",
-                        fields=[("Duration", f"`{timeout_minutes} minutes`", True)],
-                        context="Prisoner VC Violation DM",
-                    ))
-                except discord.Forbidden:
-                    pass
-
-            # Send VC kick message
-            prison_channel = None
-            if self.config.prison_channel_ids:
-                prison_channel = self.bot.get_channel(
-                    next(iter(self.config.prison_channel_ids))
-                )
-
-            if prison_channel:
-                if kick_count == 1:
-                    msg = f"{member.mention} Got kicked from **#{vc_name}**. No voice privileges. This is your warning."
-                elif kick_count == 2:
-                    msg = f"{member.mention} Kicked from **#{vc_name}** AGAIN. **5 minute timeout.**"
-                else:
-                    msg = f"{member.mention} Kicked from **#{vc_name}**. Offense #{kick_count}. **30 minute timeout.**"
-
-                await prison_channel.send(msg)
-
-            logger.tree("VC Kick", [
-                ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
-                ("ID", str(member.id)),
-                ("Channel", f"#{vc_name}"),
-                ("Offense #", str(kick_count)),
-                ("Timeout", f"{timeout_minutes}min" if timeout_minutes else "None"),
-            ], emoji="🔇")
-
-        except discord.Forbidden:
-            logger.warning("VC Kick Failed (Permissions)", [
-                ("User", f"{member.name} ({member.nick})" if hasattr(member, 'nick') and member.nick else member.name),
-                ("ID", str(member.id)),
-                ("VC", vc_name),
-            ])
-
-    # =========================================================================
-    # Helper Methods
-    # =========================================================================
-
-    async def _build_appeal_view(
+    async def _get_mute_reason(
         self,
         member: discord.Member,
-        mute_record: Optional["Row"],
-    ) -> Optional[discord.ui.View]:
-        """
-        Build view for prison intro embed with appeal and unjail buttons.
+        logs_channel: discord.abc.GuildChannel,
+    ) -> Optional[str]:
+        """Get mute reason from cache or scan logs."""
+        async with self._state_lock:
+            mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(
+                member.name.lower()
+            )
 
-        Includes:
-        - Appeal button: If mute >= 1 hour or permanent, and case exists
-        - Unjail button: If member is a booster (daily card available)
+        if not mute_reason:
+            await self._scan_logs_for_reason(member, logs_channel)
+            async with self._state_lock:
+                mute_reason = self.mute_reasons.get(member.id) or self.mute_reasons.get(
+                    member.name.lower()
+                )
 
-        Args:
-            member: The muted member.
-            mute_record: Active mute record from database.
-
-        Returns:
-            View with buttons, or None if no buttons apply.
-        """
-        view = discord.ui.View(timeout=None)
-        has_buttons = False
-
-        # -----------------------------------------------------------------
-        # Check Mute Duration First (required for all buttons)
-        # Unjail, Coin Unjail, and Appeal only show for mutes >= 1 hour or permanent
-        # -----------------------------------------------------------------
-        if not mute_record:
-            logger.tree("Buttons Skipped", [
-                ("User", f"{member.name} ({member.id})"),
-                ("Reason", "No mute record found"),
-            ], emoji="ℹ️")
-            return None
-
-        is_permanent = mute_record["expires_at"] is None
-        is_long_enough = False
-
-        if not is_permanent and mute_record["expires_at"] and mute_record["muted_at"]:
-            duration_seconds = int(mute_record["expires_at"] - mute_record["muted_at"])
-            is_long_enough = duration_seconds >= MIN_APPEALABLE_MUTE_DURATION
-
-        # Short mutes (< 1 hour) don't get any buttons
-        if not is_permanent and not is_long_enough:
-            logger.tree("Buttons Skipped", [
-                ("User", f"{member.name} ({member.id})"),
-                ("Reason", f"Mute < {MIN_APPEALABLE_MUTE_DURATION // 3600}h"),
-            ], emoji="ℹ️")
-            return None
-
-        # -----------------------------------------------------------------
-        # Booster Unjail Button (daily "Get Out of Jail Free" card)
-        # Only for mutes >= 1 hour or permanent
-        # -----------------------------------------------------------------
-        is_booster = member.premium_since is not None
-
-        if is_booster:
-            try:
-                from src.services.tickets import BoosterUnjailButton
-
-                # Check if daily card is available
-                can_use = self.bot.db.can_use_unjail_card(member.id, member.guild.id)
-
-                if can_use:
-                    unjail_btn = BoosterUnjailButton(member.id, member.guild.id)
-                    view.add_item(unjail_btn)
-
-                    logger.tree("Unjail Button Added", [
-                        ("User", f"{member.name} ({member.id})"),
-                        ("Booster Since", str(member.premium_since.date())),
-                        ("Mute Type", "Permanent" if is_permanent else f">= {MIN_APPEALABLE_MUTE_DURATION // 3600}h"),
-                        ("Appeal Button", "Skipped (can self-unjail)"),
-                    ], emoji="🔓")
-
-                    # Booster can self-unjail, no appeal button needed
-                    return view
-                else:
-                    # Card already used today - fall through to appeal button
-                    reset_at = self.bot.db.get_unjail_card_cooldown(member.id, member.guild.id)
-                    logger.tree("Unjail Button Skipped", [
-                        ("User", f"{member.name} ({member.id})"),
-                        ("Reason", "Daily card already used"),
-                        ("Resets At", f"<t:{int(reset_at)}:R>" if reset_at else "Unknown"),
-                    ], emoji="ℹ️")
-
-            except ImportError as e:
-                logger.error("Unjail Button Failed", [
-                    ("User", f"{member.name} ({member.id})"),
-                    ("Location", "Import BoosterUnjailButton"),
-                    ("Error", str(e)[:100]),
-                ])
-            except Exception as e:
-                logger.error("Unjail Button Failed", [
-                    ("User", f"{member.name} ({member.id})"),
-                    ("Location", "Button creation"),
-                    ("Error", str(e)[:100]),
-                ])
-
-        # -----------------------------------------------------------------
-        # Coin Unjail Button (pay to get out of jail)
-        # Shows for: non-boosters OR boosters who used their daily card
-        # If user can afford it, skip the appeal button (pay or wait)
-        # -----------------------------------------------------------------
-        can_afford_unjail = False
-
-        try:
-            from src.services.jawdat_economy import CoinUnjailButton, get_unjail_cost_for_user, get_user_balance
-
-            # Get tiered cost based on weekly offense count and duration
-            cost, offense_count, breakdown = get_unjail_cost_for_user(member.id, member.guild.id)
-
-            # Check if user can afford the unjail cost
-            user_balance = await get_user_balance(member.id)
-            can_afford_unjail = user_balance is not None and user_balance >= cost
-
-            coin_btn = CoinUnjailButton(member.id, member.guild.id)
-            view.add_item(coin_btn)
-            has_buttons = True
-
-            logger.tree("Coin Unjail Button Added", [
-                ("User", f"{member.name} ({member.id})"),
-                ("Offense #", str(offense_count)),
-                ("Cost", f"{cost:,} coins"),
-                ("Balance", f"{user_balance:,}" if user_balance is not None else "Unknown"),
-                ("Can Afford", "Yes" if can_afford_unjail else "No"),
-                ("Mute Type", "Permanent" if is_permanent else f">= {MIN_APPEALABLE_MUTE_DURATION // 3600}h"),
-            ], emoji="🪙")
-
-            # If user can afford to pay, no appeal button needed
-            if can_afford_unjail:
-                logger.tree("Appeal Button Skipped", [
-                    ("User", f"{member.name} ({member.id})"),
-                    ("Reason", "Can afford coin unjail"),
-                    ("Cost", f"{cost:,}"),
-                    ("Balance", f"{user_balance:,}"),
-                ], emoji="💰")
-                return view
-
-        except ImportError as e:
-            logger.error("Coin Unjail Button Failed", [
-                ("User", f"{member.name} ({member.id})"),
-                ("Location", "Import CoinUnjailButton"),
-                ("Error", str(e)[:100]),
-            ])
-        except Exception as e:
-            logger.error("Coin Unjail Button Failed", [
-                ("User", f"{member.name} ({member.id})"),
-                ("Location", "Button creation"),
-                ("Error", str(e)[:100]),
-            ])
-
-        # -----------------------------------------------------------------
-        # Appeal Button (for long/permanent mutes when other options not available)
-        # -----------------------------------------------------------------
-        # Mute duration already validated above, just need case_id
-        is_permanent = mute_record["expires_at"] is None
-        is_long_enough = False
-
-        if not is_permanent and mute_record["expires_at"] and mute_record["muted_at"]:
-            duration_seconds = int(mute_record["expires_at"] - mute_record["muted_at"])
-            is_long_enough = duration_seconds >= MIN_APPEALABLE_MUTE_DURATION
-
-        if not is_permanent and not is_long_enough:
-            logger.tree("Appeal Button Skipped", [
-                ("User", f"{member.name} ({member.id})"),
-                ("Reason", f"Mute < {MIN_APPEALABLE_MUTE_DURATION // 3600}h"),
-            ], emoji="ℹ️")
-            return view if has_buttons else None
-
-        # Get case_id from cases table
-        try:
-            case_data = self.bot.db.get_active_mute_case(member.id, member.guild.id)
-        except Exception as e:
-            logger.error("Appeal Button Failed", [
-                ("User", f"{member.name} ({member.id})"),
-                ("Location", "get_active_mute_case"),
-                ("Error", str(e)[:100]),
-            ])
-            return view if has_buttons else None
-
-        if not case_data or not case_data.get("case_id"):
-            logger.warning("Appeal Button Skipped", [
-                ("User", f"{member.name} ({member.id})"),
-                ("Reason", "No active case found"),
-            ])
-            return view if has_buttons else None
-
-        case_id: str = case_data["case_id"]
-
-        # Add appeal button
-        try:
-            from src.services.tickets import MuteAppealButton
-
-            appeal_btn = MuteAppealButton(case_id, member.id)
-            view.add_item(appeal_btn)
-            has_buttons = True
-
-            logger.tree("Appeal Button Added", [
-                ("User", f"{member.name} ({member.id})"),
-                ("Case ID", case_id),
-                ("Mute Type", "Permanent" if is_permanent else "Timed"),
-                ("Action", "Opens ticket"),
-            ], emoji="📝")
-
-        except ImportError as e:
-            logger.error("Appeal Button Failed", [
-                ("User", f"{member.name} ({member.id})"),
-                ("Location", "Import MuteAppealButton"),
-                ("Error", str(e)[:100]),
-            ])
-        except Exception as e:
-            logger.error("Appeal Button Failed", [
-                ("User", f"{member.name} ({member.id})"),
-                ("Location", "Button creation"),
-                ("Error", str(e)[:100]),
-            ])
-
-        return view if has_buttons else None
+        return mute_reason
 
     async def _scan_logs_for_reason(
         self,
@@ -782,7 +260,7 @@ class PrisonHandler:
         if not self.bot.mute:
             return
 
-        # Skip if logs_channel is a forum (forums don't have history)
+        # Skip if logs_channel is a forum
         if isinstance(logs_channel, discord.ForumChannel):
             logger.debug("Log Scan Skipped", [("Reason", "Forum channel")])
             return
@@ -800,170 +278,61 @@ class PrisonHandler:
                 ("Error", str(e)[:50]),
             ])
 
+    async def _ensure_case_exists(
+        self,
+        member: discord.Member,
+        mute_record: Optional[Any],
+        mute_reason: Optional[str],
+    ) -> None:
+        """Create case if none exists for this mute."""
+        if not self.bot.case_log_service or not mute_record:
+            return
 
-# =============================================================================
-# Release Announcement Types
-# =============================================================================
+        existing_case = self.bot.db.get_active_mute_case(member.id, member.guild.id)
+        if existing_case:
+            return
 
-class ReleaseType:
-    """Constants for release announcement types."""
-    TIME_SERVED = "time_served"
-    MANUAL_UNMUTE = "manual_unmute"
-    BOOSTER_CARD = "booster_card"
-    COIN_UNJAIL = "coin_unjail"
+        try:
+            # Get duration string
+            sentence_text = "Unknown"
+            if mute_record["expires_at"]:
+                duration_seconds = int(mute_record["expires_at"] - mute_record["muted_at"])
+                sentence_text = format_duration(duration_seconds // 60)
+            elif mute_record["expires_at"] is None:
+                sentence_text = "Permanent"
 
+            bot_member = member.guild.get_member(self.bot.user.id)
+            if bot_member:
+                case_info = await asyncio.wait_for(
+                    self.bot.case_log_service.log_mute(
+                        user=member,
+                        moderator=bot_member,
+                        duration=sentence_text,
+                        reason=mute_reason or "Manual mute (role added directly)",
+                        is_extension=False,
+                        evidence=None,
+                    ),
+                    timeout=CASE_LOG_TIMEOUT,
+                )
+                if case_info:
+                    logger.tree("Case Created (Auto)", [
+                        ("Action", "Mute"),
+                        ("Case ID", case_info.get("case_id", "Unknown")),
+                        ("User", f"{member.name} ({member.id})"),
+                        ("Reason", "No existing case - created automatically"),
+                    ], emoji="📋")
 
-# Release type display configuration
-RELEASE_CONFIG = {
-    ReleaseType.TIME_SERVED: {
-        "title": "🔓 Released from Prison",
-        "description": "{user} has served their time and is now free.",
-        "color": EmbedColors.SUCCESS,
-        "footer": "Sentence completed",
-    },
-    ReleaseType.MANUAL_UNMUTE: {
-        "title": "🔓 Released from Prison",
-        "description": "{user} has been released by a moderator.",
-        "color": EmbedColors.SUCCESS,
-        "footer": "Released by staff",
-    },
-    ReleaseType.BOOSTER_CARD: {
-        "title": "<:unlock:1455200891866190040> Booster Unjail",
-        "description": "{user} used their **daily Unjail Card** to escape prison!",
-        "color": 0xF47FFF,  # Boost pink
-        "footer": "Server boosters get a free daily Unjail Card",
-    },
-    ReleaseType.COIN_UNJAIL: {
-        "title": "<:coins:1471898816671256677> Bought Freedom",
-        "description": "{user} paid **{cost:,}** coins to buy their way out of prison!",
-        "color": 0xFFD700,  # Gold
-        "footer": "Earn coins in Jawdat Casino to unlock this option",
-    },
-}
-
-
-async def send_release_announcement(
-    bot: "AzabBot",
-    member: discord.Member,
-    release_type: str,
-    cost: Optional[int] = None,
-    moderator: Optional[discord.Member] = None,
-    time_served: Optional[str] = None,
-) -> bool:
-    """
-    Send a release announcement to the general chat.
-
-    Args:
-        bot: Bot instance.
-        member: Released member.
-        release_type: Type of release (from ReleaseType constants).
-        cost: Coin cost (for coin_unjail type).
-        moderator: Moderator who released (for manual_unmute type).
-        time_served: How long they were muted.
-
-    Returns:
-        True if announcement was sent successfully.
-    """
-    config = get_config()
-
-    if not config.general_channel_id:
-        logger.debug("Release Announcement Skipped", [
-            ("User", f"{member.name} ({member.id})"),
-            ("Reason", "No general channel configured"),
-        ])
-        return False
-
-    channel = bot.get_channel(config.general_channel_id)
-    if not channel:
-        logger.warning("Release Announcement Failed", [
-            ("User", f"{member.name} ({member.id})"),
-            ("Reason", "General channel not found"),
-            ("Channel ID", str(config.general_channel_id)),
-        ])
-        return False
-
-    # Get release config
-    release_info = RELEASE_CONFIG.get(release_type, RELEASE_CONFIG[ReleaseType.TIME_SERVED])
-
-    # Build description with cost if applicable
-    if release_type == ReleaseType.COIN_UNJAIL and cost:
-        description = release_info["description"].format(user=member.mention, cost=cost)
-    else:
-        description = release_info["description"].format(user=member.mention)
-
-    # Create embed
-    embed = discord.Embed(
-        title=release_info["title"],
-        description=description,
-        color=release_info["color"],
-        timestamp=datetime.now(NY_TZ),
-    )
-
-    # Add time served if available
-    if time_served:
-        embed.add_field(name="Time Served", value=f"`{time_served}`", inline=True)
-
-    # Add moderator if manual unmute
-    if release_type == ReleaseType.MANUAL_UNMUTE and moderator:
-        embed.add_field(name="Released By", value=moderator.mention, inline=True)
-
-    # Add cost breakdown for coin unjail
-    if release_type == ReleaseType.COIN_UNJAIL and cost:
-        embed.add_field(name="Cost Paid", value=f"`{cost:,}` coins", inline=True)
-
-    # Set user avatar as thumbnail
-    embed.set_thumbnail(url=member.display_avatar.url)
-
-    # Add footer with feature advertisement
-    embed.set_footer(text=release_info["footer"])
-
-    # Add promotional field for boosters/economy (only for time served releases)
-    if release_type == ReleaseType.TIME_SERVED:
-        promo_text = (
-            "**<:unlock:1455200891866190040> Boosters** get a free daily Unjail Card\n"
-            "**<:coins:1471898816671256677> Everyone** can buy their way out with Jawdat coins"
-        )
-        embed.add_field(name="Skip the Wait", value=promo_text, inline=False)
-
-    try:
-        await channel.send(embed=embed)
-
-        logger.tree("Release Announcement Sent", [
-            ("User", f"{member.name} ({member.id})"),
-            ("Type", release_type),
-            ("Channel", f"#{channel.name}"),
-            ("Cost", f"{cost:,}" if cost else "N/A"),
-        ], emoji="📢")
-
-        return True
-
-    except discord.Forbidden:
-        logger.error("Release Announcement Failed (Permissions)", [
-            ("User", f"{member.name} ({member.id})"),
-            ("Channel", f"#{channel.name}"),
-        ])
-        return False
-    except discord.HTTPException as e:
-        logger.error("Release Announcement Failed (HTTP)", [
-            ("User", f"{member.name} ({member.id})"),
-            ("Error", str(e)[:50]),
-        ])
-        return False
-    except Exception as e:
-        logger.error("Release Announcement Failed", [
-            ("User", f"{member.name} ({member.id})"),
-            ("Error", str(e)[:50]),
-        ])
-        return False
+        except asyncio.TimeoutError:
+            logger.warning("Case Log Timeout (Auto)", [
+                ("Action", "Mute"),
+                ("User", f"{member.name} ({member.id})"),
+            ])
+        except Exception as e:
+            logger.error("Case Log Failed (Auto)", [
+                ("Action", "Mute"),
+                ("User", f"{member.name} ({member.id})"),
+                ("Error", str(e)[:100]),
+            ])
 
 
-# =============================================================================
-# Module Export
-# =============================================================================
-
-__all__ = [
-    "PrisonHandler",
-    "format_duration",
-    "ReleaseType",
-    "send_release_announcement",
-]
+__all__ = ["PrisonHandler"]

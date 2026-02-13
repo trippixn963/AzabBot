@@ -460,6 +460,57 @@ class MutesMixin:
         )
         return row["count"] if row else 0
 
+    def get_user_time_served_week(self: "DatabaseManager", user_id: int, guild_id: int) -> int:
+        """
+        Get total mute time served this week in minutes.
+
+        Calculates time from all mutes since Sunday midnight EST.
+        For active mutes, counts time up to now.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+
+        Returns:
+            Total minutes served this week.
+        """
+        import time as time_module
+
+        # Calculate Sunday midnight EST for current week
+        now_est = datetime.now(NY_TZ)
+        days_since_sunday = now_est.weekday() + 1
+        if days_since_sunday == 7:
+            days_since_sunday = 0
+        sunday_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
+        sunday_midnight = sunday_midnight - timedelta(days=days_since_sunday)
+        cutoff = sunday_midnight.timestamp()
+        now_ts = time_module.time()
+
+        # Get all mutes this week from prisoner_history
+        rows = self.fetchall(
+            """SELECT muted_at, unmuted_at, duration_minutes, is_active
+               FROM prisoner_history
+               WHERE user_id = ? AND muted_at >= ?""",
+            (user_id, cutoff)
+        )
+
+        total_minutes = 0
+        for row in rows:
+            if row["is_active"]:
+                # Active mute - calculate time from muted_at to now
+                muted_at = row["muted_at"] or cutoff
+                minutes = (now_ts - muted_at) / 60
+                total_minutes += max(0, int(minutes))
+            elif row["duration_minutes"]:
+                # Completed mute - use stored duration
+                total_minutes += row["duration_minutes"]
+            elif row["unmuted_at"] and row["muted_at"]:
+                # Calculate from timestamps
+                minutes = (row["unmuted_at"] - row["muted_at"]) / 60
+                total_minutes += max(0, int(minutes))
+
+        return total_minutes
+
     def get_mute_moderator_ids(self: "DatabaseManager", user_id: int, guild_id: int) -> List[int]:
         """
         Get all unique moderator IDs who muted/extended a user.

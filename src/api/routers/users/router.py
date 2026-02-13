@@ -283,7 +283,7 @@ async def lookup_user(
         try:
             inviter = await bot.fetch_user(inviter_id)
             invited_by_name = inviter.name if inviter else None
-        except Exception:
+        except (discord.NotFound, discord.HTTPException):
             pass
 
     # Always fetch from SyriaBot - it retains data for inactive users
@@ -490,7 +490,7 @@ async def search_users(
                         avatar_url=str(user.display_avatar.url) if user.display_avatar else None,
                         case_count=row["case_count"],
                     ))
-            except Exception:
+            except (discord.NotFound, discord.HTTPException):
                 continue
 
     logger.debug("User Search", [
@@ -521,7 +521,7 @@ async def get_user_profile(
 
     try:
         user = await bot.fetch_user(user_id)
-    except Exception:
+    except (discord.NotFound, discord.HTTPException):
         logger.debug("User Profile Not Found", [
             ("User ID", str(user_id)),
             ("Requested By", str(payload.sub)),
@@ -715,7 +715,7 @@ async def get_user_notes(
         try:
             author = await bot.fetch_user(row["author_id"])
             author_name = author.name
-        except Exception:
+        except (discord.NotFound, discord.HTTPException):
             pass
 
         notes.append(ModerationNote(

@@ -191,6 +191,7 @@ class TicketsMixin:
         ticket_id: str,
         closed_by: int,
         close_reason: Optional[str] = None,
+        transcript_token: Optional[str] = None,
     ) -> bool:
         """Close a ticket."""
         # Get ticket info first for guild_id
@@ -199,9 +200,9 @@ class TicketsMixin:
             return False
 
         cursor = self.execute(
-            """UPDATE tickets SET status = 'closed', closed_at = ?, closed_by = ?, close_reason = ?
+            """UPDATE tickets SET status = 'closed', closed_at = ?, closed_by = ?, close_reason = ?, transcript_token = ?
                WHERE ticket_id = ? AND status != 'closed'""",
-            (time.time(), closed_by, close_reason, ticket_id)
+            (time.time(), closed_by, close_reason, transcript_token, ticket_id)
         )
         if cursor.rowcount > 0:
             # Increment permanent counters

@@ -313,7 +313,7 @@ class WarnCog(commands.Cog):
                     "An error occurred while issuing the warning.",
                     ephemeral=True,
                 )
-            except Exception:
+            except discord.HTTPException:
                 pass
 
         except Exception as e:
@@ -328,7 +328,7 @@ class WarnCog(commands.Cog):
                     "An unexpected error occurred.",
                     ephemeral=True,
                 )
-            except Exception:
+            except discord.HTTPException:
                 pass
 
     # =========================================================================
@@ -359,7 +359,11 @@ class WarnCog(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=False)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=False)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
         await self.execute_warn(interaction, user, reason, evidence_result.url)
 
     # =========================================================================

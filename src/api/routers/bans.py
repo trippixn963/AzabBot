@@ -9,6 +9,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import sqlite3
 import time
 from typing import Any, Optional
 
@@ -317,7 +318,7 @@ async def sync_bans(
                         (user.id, guild_id, bot.user.id, reason, time.time())
                     )
                     synced += 1
-                except Exception:
+                except sqlite3.Error:
                     errors += 1
 
             # Also save user snapshot if we don't have one
@@ -336,7 +337,7 @@ async def sync_bans(
                          str(user.display_avatar.url) if user.display_avatar else None,
                          time.time(), time.time())
                     )
-                except Exception:
+                except sqlite3.Error:
                     pass  # Snapshot is optional
 
         logger.tree("Bans Synced", [

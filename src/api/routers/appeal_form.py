@@ -177,7 +177,7 @@ async def get_appeal_form(token: str, request: Request):
         try:
             mod = await bot.fetch_user(mod_id)
             mod_name = mod.display_name if mod else f"User {mod_id}"
-        except Exception:
+        except (discord.NotFound, discord.HTTPException):
             mod_name = f"User {mod_id}"
 
     response = {
@@ -254,7 +254,7 @@ async def submit_appeal_form(token: str, request: Request):
     # Parse body
     try:
         body = await request.json()
-    except Exception:
+    except (ValueError, UnicodeDecodeError):
         return JSONResponse(
             {"error": "Invalid request body"},
             status_code=400,

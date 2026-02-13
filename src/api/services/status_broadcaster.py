@@ -166,7 +166,7 @@ class StatusBroadcaster:
                 self._broadcast_log(level, message, module, formatted),
                 self._loop
             )
-        except Exception:
+        except RuntimeError:
             pass  # Loop closed or other error
 
     async def _broadcast_log(

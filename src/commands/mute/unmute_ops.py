@@ -275,7 +275,7 @@ class UnmuteOpsMixin:
         """Send release announcement to general chat for manual unmute."""
         try:
             # Import here to avoid circular import (prison handler imports services)
-            from src.handlers.prison.handler import send_release_announcement, ReleaseType
+            from src.handlers.prison import send_release_announcement, ReleaseType
 
             await send_release_announcement(
                 bot=self.bot,
@@ -328,7 +328,11 @@ class UnmuteOpsMixin:
             return
 
         # Defer and execute unmute (validation already done)
-        await interaction.response.defer(ephemeral=False)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=False)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
         await self.execute_unmute(interaction, user, reason=None, skip_validation=True)
 
 

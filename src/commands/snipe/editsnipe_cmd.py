@@ -212,7 +212,7 @@ class EditsnipeCmdMixin:
                     "Failed to send editsnipe result. Please try again.",
                     ephemeral=True,
                 )
-            except Exception:
+            except discord.HTTPException:
                 pass
 
         except Exception as e:

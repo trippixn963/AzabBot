@@ -534,7 +534,7 @@ class ModTrackerMixin:
             await self.bot.mod_tracker.log_message_pin(
                 mod_id=mod_id, channel=channel, message=message, pinned=pinned,
             )
-        except Exception:
+        except (discord.NotFound, discord.HTTPException):
             # Fallback when message can't be fetched
             await self.bot.mod_tracker.log_message_pin(
                 mod_id=mod_id, channel=channel, pinned=pinned, message_id=message_id,

@@ -176,14 +176,14 @@ class ModTrackerService(
         try:
             forum = await self._get_forum()
             health["forum_accessible"] = forum is not None
-        except Exception:
+        except discord.HTTPException:
             health["forum_accessible"] = False
 
         # Count tracked mods
         try:
             tracked = self.db.get_all_tracked_mods()
             health["tracked_mods_count"] = len(tracked)
-        except Exception:
+        except (KeyError, TypeError):
             pass
 
         return health

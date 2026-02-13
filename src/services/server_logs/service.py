@@ -141,7 +141,7 @@ class LoggingService(
                 return f"#{channel.name}"
             else:
                 return "#unknown"
-        except Exception:
+        except (AttributeError, TypeError):
             return "#unknown"
 
     def _format_role(self, role) -> str:
@@ -155,7 +155,7 @@ class LoggingService(
                 return f"`role-{role.id}`"
             else:
                 return "unknown role"
-        except Exception:
+        except (AttributeError, TypeError):
             return "unknown role"
 
     # =========================================================================
@@ -215,7 +215,7 @@ class LoggingService(
                 if thread.archived:
                     try:
                         await thread.edit(archived=False)
-                    except Exception:
+                    except discord.HTTPException:
                         pass
                 self._threads[category] = thread
             else:
@@ -226,7 +226,7 @@ class LoggingService(
                     )
                     self._threads[category] = thread.thread
                     await rate_limit("thread_create")
-                except Exception as e:
+                except discord.HTTPException as e:
                     logger.warning("Logging Service Thread Creation Failed", [("Thread", thread_name), ("Error", str(e)[:50])])
 
     async def _validate_threads(self) -> List[str]:
@@ -253,7 +253,7 @@ class LoggingService(
         try:
             async for thread in self._forum.archived_threads(limit=QUERY_LIMIT_MEDIUM):
                 forum_threads.append(thread)
-        except Exception:
+        except discord.HTTPException:
             pass
 
         thread_name_counts: Dict[str, int] = {}
@@ -320,7 +320,7 @@ class LoggingService(
                                 ("New Name", thread_name),
                                 ("Thread ID", str(thread_id)),
                             ])
-                        except Exception:
+                        except discord.HTTPException:
                             pass
                     logger.debug("Utility Thread Verified", [("Thread", thread_name), ("ID", str(thread_id))])
                 else:
@@ -334,7 +334,7 @@ class LoggingService(
                     ("Thread ID", str(thread_id)),
                     ("Action", "Will be recreated on next use"),
                 ])
-            except Exception as e:
+            except discord.HTTPException as e:
                 logger.error("Utility Thread Check Failed", [
                     ("Thread", thread_name),
                     ("Error", str(e)[:50]),
@@ -414,7 +414,7 @@ class LoggingService(
         try:
             if user.display_avatar:
                 embed.set_thumbnail(url=user.display_avatar.url)
-        except Exception:
+        except (AttributeError, TypeError):
             pass
 
     async def _send_log(
@@ -443,7 +443,7 @@ class LoggingService(
         except discord.Forbidden:
             logger.warning("Logging Service Send Forbidden", [("Category", category.value)])
             return None
-        except Exception as e:
+        except discord.HTTPException as e:
             logger.warning("Logging Service Send Failed", [("Category", category.value), ("Error", str(e)[:50])])
             return None
 

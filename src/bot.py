@@ -788,7 +788,7 @@ class AzabBot(commands.Bot):
                 try:
                     data = await att.read()
                     attachments.append((att.filename, data))
-                except Exception:
+                except discord.HTTPException:
                     pass
 
         if not attachments:

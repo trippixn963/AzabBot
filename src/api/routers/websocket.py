@@ -96,7 +96,7 @@ async def websocket_endpoint(
                         data={},
                     ))
                     continue
-                except Exception:
+                except WebSocketDisconnect:
                     break  # Connection dead
 
             # Handle client actions

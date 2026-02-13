@@ -120,7 +120,11 @@ class MuteCog(HelpersMixin, AutocompleteMixin, MuteOpsMixin, UnmuteOpsMixin, com
             )
             return
 
-        await interaction.response.defer(ephemeral=False)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=False)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
         await self.execute_mute(interaction, user, duration, reason, evidence_result.url)
 
     # =========================================================================
@@ -168,7 +172,11 @@ class MuteCog(HelpersMixin, AutocompleteMixin, MuteOpsMixin, UnmuteOpsMixin, com
             return
 
         # All validation passed - now defer and execute
-        await interaction.response.defer(ephemeral=False)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=False)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
         await self.execute_unmute(interaction, user, reason, skip_validation=True)
 
 

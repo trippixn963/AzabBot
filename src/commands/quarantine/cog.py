@@ -98,7 +98,11 @@ class QuarantineCog(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
 
         logger.tree("QUARANTINE COMMAND", [
             ("Guild", f"{guild.name} ({guild.id})"),
@@ -220,7 +224,11 @@ class QuarantineCog(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except discord.HTTPException:
+            pass  # Interaction already responded or expired
 
         logger.tree("UNQUARANTINE COMMAND", [
             ("Guild", f"{guild.name} ({guild.id})"),

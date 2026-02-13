@@ -36,6 +36,7 @@ from typing import Any, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from src.core.logger import logger
+from src.utils.async_utils import create_safe_task
 
 
 # =============================================================================
@@ -332,8 +333,8 @@ class BackupSchedulerBase:
                 ("Error", str(e)),
             ])
 
-        # Start the scheduler loop (error handling in loop itself)
-        self._task = asyncio.create_task(self._scheduler_loop())
+        # Start the scheduler loop with safe task wrapper
+        self._task = create_safe_task(self._scheduler_loop(), name="backup_scheduler")
 
         logger.tree("Backup Scheduler Started", [
             ("Schedule", f"Daily at {self._system['backup_hour']}:00 AM"),

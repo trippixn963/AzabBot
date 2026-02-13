@@ -107,7 +107,7 @@ async def get_transcript(ticket_id: str):
             if stored_mention_map:
                 # Convert keys back to integers
                 mention_map = {int(k): v for k, v in stored_mention_map.items()}
-    except Exception:
+    except (ValueError, KeyError, TypeError):
         pass  # Fall back to building from authors
 
     for msg in stored_messages:
@@ -118,7 +118,7 @@ async def get_transcript(ticket_id: str):
         try:
             ts = datetime.fromtimestamp(msg["timestamp"], tz=NY_TZ)
             timestamp_str = ts.strftime("%b %d, %Y %I:%M %p")
-        except Exception:
+        except (ValueError, KeyError, TypeError, OSError):
             timestamp_str = "Unknown"
 
         messages.append({
