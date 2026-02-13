@@ -191,9 +191,19 @@ class PrisonHandler:
                 embed.add_field(name="Visit #", value=f"`{visit_num}`", inline=True)
                 embed.add_field(name="Total Time Served", value=f"`{total_time}`", inline=True)
 
-            # Add booster unjail card notice
+            # Add booster unjail card notice (only for mutes >= 1 hour or permanent)
             is_booster = member.premium_since is not None
-            if is_booster:
+            mute_qualifies_for_unjail = False
+
+            if mute_record:
+                is_permanent_mute = mute_record["expires_at"] is None
+                if is_permanent_mute:
+                    mute_qualifies_for_unjail = True
+                elif mute_record["expires_at"] and mute_record["muted_at"]:
+                    duration_secs = int(mute_record["expires_at"] - mute_record["muted_at"])
+                    mute_qualifies_for_unjail = duration_secs >= MIN_APPEALABLE_MUTE_DURATION
+
+            if is_booster and mute_qualifies_for_unjail:
                 can_use_card = self.bot.db.can_use_unjail_card(member.id, member.guild.id)
                 if can_use_card:
                     embed.add_field(
@@ -545,11 +555,36 @@ class PrisonHandler:
             View with buttons, or None if no buttons apply.
         """
         view = discord.ui.View(timeout=None)
-        has_buttons = False
-        unjail_card_available = False  # Track if booster can self-unjail
+
+        # -----------------------------------------------------------------
+        # Check Mute Duration First (required for both buttons)
+        # Both Unjail and Appeal only show for mutes >= 1 hour or permanent
+        # -----------------------------------------------------------------
+        if not mute_record:
+            logger.tree("Buttons Skipped", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Reason", "No mute record found"),
+            ], emoji="ℹ️")
+            return None
+
+        is_permanent = mute_record["expires_at"] is None
+        is_long_enough = False
+
+        if not is_permanent and mute_record["expires_at"] and mute_record["muted_at"]:
+            duration_seconds = int(mute_record["expires_at"] - mute_record["muted_at"])
+            is_long_enough = duration_seconds >= MIN_APPEALABLE_MUTE_DURATION
+
+        # Short mutes (< 1 hour) don't get any buttons
+        if not is_permanent and not is_long_enough:
+            logger.tree("Buttons Skipped", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Reason", f"Mute < {MIN_APPEALABLE_MUTE_DURATION // 3600}h"),
+            ], emoji="ℹ️")
+            return None
 
         # -----------------------------------------------------------------
         # Booster Unjail Button (daily "Get Out of Jail Free" card)
+        # Only for mutes >= 1 hour or permanent
         # -----------------------------------------------------------------
         is_booster = member.premium_since is not None
 
@@ -563,17 +598,18 @@ class PrisonHandler:
                 if can_use:
                     unjail_btn = BoosterUnjailButton(member.id, member.guild.id)
                     view.add_item(unjail_btn)
-                    has_buttons = True
-                    unjail_card_available = True  # No need for appeal button
 
                     logger.tree("Unjail Button Added", [
                         ("User", f"{member.name} ({member.id})"),
                         ("Booster Since", str(member.premium_since.date())),
-                        ("Card Available", "Yes"),
+                        ("Mute Type", "Permanent" if is_permanent else f">= {MIN_APPEALABLE_MUTE_DURATION // 3600}h"),
                         ("Appeal Button", "Skipped (can self-unjail)"),
                     ], emoji="🔓")
+
+                    # Booster can self-unjail, no appeal button needed
+                    return view
                 else:
-                    # Card already used today - they may need appeal button
+                    # Card already used today - fall through to appeal button
                     reset_at = self.bot.db.get_unjail_card_cooldown(member.id, member.guild.id)
                     logger.tree("Unjail Button Skipped", [
                         ("User", f"{member.name} ({member.id})"),
@@ -595,22 +631,9 @@ class PrisonHandler:
                 ])
 
         # -----------------------------------------------------------------
-        # Appeal Button (for long/permanent mutes)
-        # DESIGN: Skip if unjail card is available - no need to appeal
-        # if they can release themselves instantly
+        # Appeal Button (for long/permanent mutes when unjail not available)
         # -----------------------------------------------------------------
-        if unjail_card_available:
-            # Booster can self-unjail, no appeal button needed
-            return view
-
-        if not mute_record:
-            logger.tree("Appeal Button Skipped", [
-                ("User", f"{member.name} ({member.id})"),
-                ("Reason", "No mute record found"),
-            ], emoji="ℹ️")
-            return view if has_buttons else None
-
-        # Check if mute qualifies for appeal
+        # Mute duration already validated above, just need case_id
         is_permanent = mute_record["expires_at"] is None
         is_long_enough = False
 
