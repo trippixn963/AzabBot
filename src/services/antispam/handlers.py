@@ -552,7 +552,7 @@ class SpamHandlerMixin:
                 target=member,
                 moderator=None,  # Auto-action
                 reason=f"Auto-mute: {spam_type} (violation #{violation_count})",
-                duration_seconds=duration_minutes * 60 if duration_minutes else None,
+                duration_seconds=duration,
             )
 
         except discord.Forbidden:

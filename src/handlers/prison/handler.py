@@ -220,6 +220,27 @@ class PrisonHandler:
                             inline=False,
                         )
 
+            # Add coin unjail cost (for mutes >= 1 hour or permanent)
+            if mute_qualifies_for_unjail:
+                try:
+                    from src.services.jawdat_economy import get_unjail_cost_for_user, COINS_EMOJI_ID
+                    unjail_cost, offense_num, breakdown = get_unjail_cost_for_user(member.id, member.guild.id)
+
+                    cost_value = f"**{unjail_cost:,}** coins"
+                    if breakdown:
+                        cost_value += f"\n-# Offense #{offense_num} ({breakdown['base_cost']:,}) × {breakdown['multiplier']} ({breakdown['duration_tier']})"
+
+                    embed.add_field(
+                        name=f"<:coins:{COINS_EMOJI_ID}> Coin Unjail",
+                        value=cost_value,
+                        inline=False,
+                    )
+                except Exception as e:
+                    logger.warning("Failed to add unjail cost field", [
+                        ("User", f"{member.name} ({member.id})"),
+                        ("Error", str(e)[:50]),
+                    ])
+
             embed.set_thumbnail(
                 url=member.avatar.url if member.avatar else member.default_avatar.url
             )
@@ -273,7 +294,7 @@ class PrisonHandler:
                         ])
 
             # Build appeal button view if eligible (>= 1 hour or permanent)
-            view = self._build_appeal_view(member, mute_record)
+            view = await self._build_appeal_view(member, mute_record)
 
             await prison_channel.send(member.mention, embed=embed, view=view)
 
@@ -535,7 +556,7 @@ class PrisonHandler:
     # Helper Methods
     # =========================================================================
 
-    def _build_appeal_view(
+    async def _build_appeal_view(
         self,
         member: discord.Member,
         mute_record: Optional["Row"],
@@ -555,10 +576,11 @@ class PrisonHandler:
             View with buttons, or None if no buttons apply.
         """
         view = discord.ui.View(timeout=None)
+        has_buttons = False
 
         # -----------------------------------------------------------------
-        # Check Mute Duration First (required for both buttons)
-        # Both Unjail and Appeal only show for mutes >= 1 hour or permanent
+        # Check Mute Duration First (required for all buttons)
+        # Unjail, Coin Unjail, and Appeal only show for mutes >= 1 hour or permanent
         # -----------------------------------------------------------------
         if not mute_record:
             logger.tree("Buttons Skipped", [
@@ -631,7 +653,60 @@ class PrisonHandler:
                 ])
 
         # -----------------------------------------------------------------
-        # Appeal Button (for long/permanent mutes when unjail not available)
+        # Coin Unjail Button (pay to get out of jail)
+        # Shows for: non-boosters OR boosters who used their daily card
+        # If user can afford it, skip the appeal button (pay or wait)
+        # -----------------------------------------------------------------
+        can_afford_unjail = False
+
+        try:
+            from src.services.jawdat_economy import CoinUnjailButton, get_unjail_cost_for_user, get_user_balance
+
+            # Get tiered cost based on weekly offense count and duration
+            cost, offense_count, breakdown = get_unjail_cost_for_user(member.id, member.guild.id)
+
+            # Check if user can afford the unjail cost
+            user_balance = await get_user_balance(member.id)
+            can_afford_unjail = user_balance is not None and user_balance >= cost
+
+            coin_btn = CoinUnjailButton(member.id, member.guild.id)
+            view.add_item(coin_btn)
+            has_buttons = True
+
+            logger.tree("Coin Unjail Button Added", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Offense #", str(offense_count)),
+                ("Cost", f"{cost:,} coins"),
+                ("Balance", f"{user_balance:,}" if user_balance is not None else "Unknown"),
+                ("Can Afford", "Yes" if can_afford_unjail else "No"),
+                ("Mute Type", "Permanent" if is_permanent else f">= {MIN_APPEALABLE_MUTE_DURATION // 3600}h"),
+            ], emoji="🪙")
+
+            # If user can afford to pay, no appeal button needed
+            if can_afford_unjail:
+                logger.tree("Appeal Button Skipped", [
+                    ("User", f"{member.name} ({member.id})"),
+                    ("Reason", "Can afford coin unjail"),
+                    ("Cost", f"{cost:,}"),
+                    ("Balance", f"{user_balance:,}"),
+                ], emoji="💰")
+                return view
+
+        except ImportError as e:
+            logger.error("Coin Unjail Button Failed", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Location", "Import CoinUnjailButton"),
+                ("Error", str(e)[:100]),
+            ])
+        except Exception as e:
+            logger.error("Coin Unjail Button Failed", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Location", "Button creation"),
+                ("Error", str(e)[:100]),
+            ])
+
+        # -----------------------------------------------------------------
+        # Appeal Button (for long/permanent mutes when other options not available)
         # -----------------------------------------------------------------
         # Mute duration already validated above, just need case_id
         is_permanent = mute_record["expires_at"] is None

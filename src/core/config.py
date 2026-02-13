@@ -214,6 +214,20 @@ class Config:
     whitelisted_webhook_ids: Set[int] = None  # Webhook IDs to exclude from spam detection
     mention_spam_exempt_channel_ids: Set[int] = None  # Channel IDs exempt from mention spam detection
 
+    # -------------------------------------------------------------------------
+    # Optional: Syria XP Integration
+    # -------------------------------------------------------------------------
+
+    SYRIA_API_PORT: int = 8088  # SyriaBot API port
+    SYRIA_XP_API_KEY: Optional[str] = None  # API key for XP operations
+
+    # -------------------------------------------------------------------------
+    # Optional: Jawdat Economy Integration
+    # -------------------------------------------------------------------------
+
+    JAWDAT_API_PORT: int = 8082  # JawdatBot API port
+    JAWDAT_API_KEY: Optional[str] = None  # API key for currency operations
+
 
 # =============================================================================
 # Embed Colors
@@ -504,6 +518,14 @@ def load_config() -> Config:
     whitelisted_webhook_ids = _parse_int_set(os.getenv("WHITELISTED_WEBHOOK_IDS"))
     mention_spam_exempt_channel_ids = _parse_int_set(os.getenv("AZAB_MENTION_SPAM_EXEMPT_CHANNEL_IDS"))
 
+    # Syria XP Integration
+    syria_api_port = _parse_int_with_default(os.getenv("SYRIA_API_PORT"), 8088, "SYRIA_API_PORT", min_val=1, max_val=65535)
+    syria_xp_api_key = os.getenv("SYRIA_XP_API_KEY") or None
+
+    # Jawdat Economy Integration
+    jawdat_api_port = _parse_int_with_default(os.getenv("JAWDAT_API_PORT"), 8082, "JAWDAT_API_PORT", min_val=1, max_val=65535)
+    jawdat_api_key = os.getenv("JAWDAT_API_KEY") or None
+
     # -------------------------------------------------------------------------
     # Build Config Object
     # -------------------------------------------------------------------------
@@ -573,6 +595,10 @@ def load_config() -> Config:
         appeal_allowed_user_ids=appeal_allowed_user_ids if appeal_allowed_user_ids else None,
         whitelisted_webhook_ids=whitelisted_webhook_ids if whitelisted_webhook_ids else None,
         mention_spam_exempt_channel_ids=mention_spam_exempt_channel_ids if mention_spam_exempt_channel_ids else None,
+        SYRIA_API_PORT=syria_api_port,
+        SYRIA_XP_API_KEY=syria_xp_api_key,
+        JAWDAT_API_PORT=jawdat_api_port,
+        JAWDAT_API_KEY=jawdat_api_key,
     )
 
 

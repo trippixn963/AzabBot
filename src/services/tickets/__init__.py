@@ -39,6 +39,7 @@ def setup_ticket_views(bot: "AzabBot") -> None:
     bot.add_view(TicketPanelView())
 
     # Register dynamic items (select menus and buttons that persist across restarts)
+    # Note: CoinUnjailButton is registered separately via setup_jawdat_economy()
     bot.add_dynamic_items(TicketPanelSelect, MuteAppealButton, BoosterUnjailButton)
     setup_ticket_buttons(bot)
 

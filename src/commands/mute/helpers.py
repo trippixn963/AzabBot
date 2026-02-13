@@ -36,6 +36,7 @@ class HelpersMixin:
         is_extension: bool = False,
         xp_lost: Optional[int] = None,
         offense_count: int = 0,
+        muted_at: Optional[float] = None,
     ) -> None:
         """Send DM notification to muted user (appeal via tickets, not button)."""
         dm_title = "Your mute has been extended" if is_extension else "You have been muted"
@@ -52,6 +53,41 @@ class HelpersMixin:
         if expires_at:
             unmute_ts = int(expires_at)
             fields.append(("Unmutes", f"<t:{unmute_ts}:F> (<t:{unmute_ts}:R>)", False))
+
+        # Add coin unjail cost (for mutes >= 1 hour)
+        try:
+            from src.services.jawdat_economy import calculate_unjail_cost, COINS_EMOJI_ID
+            import time
+
+            # Calculate duration in hours
+            if expires_at and muted_at:
+                duration_hours = (expires_at - muted_at) / 3600
+            elif expires_at:
+                duration_hours = (expires_at - time.time()) / 3600
+            else:
+                # Permanent mute
+                duration_hours = 168.0  # 7+ days
+
+            # Only show for mutes >= 1 hour
+            if duration_hours >= 1.0:
+                # Get offense count for this user
+                weekly_offenses = self.bot.db.get_user_mute_count_week(target.id, guild.id)
+                if weekly_offenses < 1:
+                    weekly_offenses = 1
+
+                unjail_cost, breakdown = calculate_unjail_cost(weekly_offenses, duration_hours)
+
+                cost_text = f"`{unjail_cost:,}` coins"
+                if breakdown:
+                    cost_text += f"\n-# Base {breakdown['base_cost']:,} × {breakdown['multiplier']} ({breakdown['duration_tier']})"
+
+                fields.append((f"<:coins:{COINS_EMOJI_ID}> Unjail Cost", cost_text, False))
+
+        except Exception as e:
+            logger.warning("Failed to calculate unjail cost for DM", [
+                ("User", f"{target.name} ({target.id})"),
+                ("Error", str(e)[:50]),
+            ])
 
         # Note: Mute appeals are handled through server tickets, not appeal button
         sent = await send_moderation_dm(

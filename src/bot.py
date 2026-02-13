@@ -194,6 +194,9 @@ class AzabBot(commands.Bot):
         from src.services.tickets import setup_ticket_views
         setup_ticket_views(self)
 
+        from src.services.jawdat_economy import setup_jawdat_economy
+        setup_jawdat_economy(self)
+
         from src.services.case_log.views import setup_case_log_views
         setup_case_log_views(self)
 
