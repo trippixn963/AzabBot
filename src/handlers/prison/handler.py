@@ -546,6 +546,7 @@ class PrisonHandler:
         """
         view = discord.ui.View(timeout=None)
         has_buttons = False
+        unjail_card_available = False  # Track if booster can self-unjail
 
         # -----------------------------------------------------------------
         # Booster Unjail Button (daily "Get Out of Jail Free" card)
@@ -563,14 +564,16 @@ class PrisonHandler:
                     unjail_btn = BoosterUnjailButton(member.id, member.guild.id)
                     view.add_item(unjail_btn)
                     has_buttons = True
+                    unjail_card_available = True  # No need for appeal button
 
                     logger.tree("Unjail Button Added", [
                         ("User", f"{member.name} ({member.id})"),
                         ("Booster Since", str(member.premium_since.date())),
                         ("Card Available", "Yes"),
+                        ("Appeal Button", "Skipped (can self-unjail)"),
                     ], emoji="🔓")
                 else:
-                    # Card already used today
+                    # Card already used today - they may need appeal button
                     reset_at = self.bot.db.get_unjail_card_cooldown(member.id, member.guild.id)
                     logger.tree("Unjail Button Skipped", [
                         ("User", f"{member.name} ({member.id})"),
@@ -593,7 +596,13 @@ class PrisonHandler:
 
         # -----------------------------------------------------------------
         # Appeal Button (for long/permanent mutes)
+        # DESIGN: Skip if unjail card is available - no need to appeal
+        # if they can release themselves instantly
         # -----------------------------------------------------------------
+        if unjail_card_available:
+            # Booster can self-unjail, no appeal button needed
+            return view
+
         if not mute_record:
             logger.tree("Appeal Button Skipped", [
                 ("User", f"{member.name} ({member.id})"),
