@@ -377,10 +377,7 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
         for webhook_id, state in list(self._webhook_states.items()):
             state.messages = [t for t in state.messages if t > webhook_cutoff]
             if not state.messages:
-                try:
-                    del self._webhook_states[webhook_id]
-                except KeyError:
-                    pass
+                self._webhook_states.pop(webhook_id, None)
 
         # Enforce max webhook states to prevent unbounded growth
         MAX_WEBHOOK_STATES = 1000
@@ -392,10 +389,7 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
             )
             excess = len(self._webhook_states) - MAX_WEBHOOK_STATES
             for webhook_id, _ in sorted_webhooks[:excess]:
-                try:
-                    del self._webhook_states[webhook_id]
-                except KeyError:
-                    pass
+                self._webhook_states.pop(webhook_id, None)
 
         # Clean raid records
         await self.cleanup_raid_records(now)

@@ -154,10 +154,7 @@ class CacheMixin:
                             oldest_time = msg_time
                             oldest_mod = mod_id
                 if oldest_mod and oldest_mod != message.author.id:
-                    try:
-                        del self._message_cache[oldest_mod]
-                    except KeyError:
-                        pass  # Already removed by another coroutine
+                    self._message_cache.pop(oldest_mod, None)
 
     def get_cached_message(
         self: "ModTrackerService",

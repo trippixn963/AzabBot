@@ -134,10 +134,7 @@ class RateLimiter:
         ]
 
         for key in stale_keys:
-            try:
-                del self._buckets[key]
-            except KeyError:
-                pass  # Already removed by another coroutine
+            self._buckets.pop(key, None)
 
         if stale_keys:
             logger.debug("Rate Limit Cleanup", [

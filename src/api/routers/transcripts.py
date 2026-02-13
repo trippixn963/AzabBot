@@ -10,9 +10,8 @@ Server: discord.gg/syria
 
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
-from starlette.status import HTTP_404_NOT_FOUND
 
 from src.core.logger import logger
 from src.core.database import get_db

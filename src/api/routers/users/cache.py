@@ -29,10 +29,7 @@ class LookupCache:
             return None
         cached_at, data = self._cache[user_id]
         if time.time() - cached_at > LOOKUP_CACHE_TTL:
-            try:
-                del self._cache[user_id]
-            except KeyError:
-                pass
+            self._cache.pop(user_id, None)
             return None
         return data
 

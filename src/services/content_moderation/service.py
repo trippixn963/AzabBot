@@ -203,11 +203,8 @@ class ContentModerationService:
                 if timestamp < cooldown_cutoff
             ]
             for user_id in expired_users:
-                try:
-                    del self._user_cooldowns[user_id]
+                if self._user_cooldowns.pop(user_id, None) is not None:
                     cleaned_cooldowns += 1
-                except KeyError:
-                    pass
 
         # Clean classification cache
         async with self._cache_lock:
@@ -217,11 +214,8 @@ class ContentModerationService:
                 if timestamp < cache_cutoff
             ]
             for content_hash in expired_hashes:
-                try:
-                    del self._cache[content_hash]
+                if self._cache.pop(content_hash, None) is not None:
                     cleaned_cache += 1
-                except KeyError:
-                    pass
 
         # Clean old API call timestamps
         async with self._api_lock:
@@ -240,11 +234,8 @@ class ContentModerationService:
                 if not self._offense_history[user_id]:
                     users_to_remove.append(user_id)
             for user_id in users_to_remove:
-                try:
-                    del self._offense_history[user_id]
+                if self._offense_history.pop(user_id, None) is not None:
                     cleaned_offenses += 1
-                except KeyError:
-                    pass
 
         if cleaned_cooldowns > 0 or cleaned_cache > 0 or cleaned_offenses > 0:
             logger.debug("Content Moderation Cleanup", [
@@ -337,10 +328,7 @@ class ContentModerationService:
             result, timestamp = self._cache[content_hash]
             if datetime.now(NY_TZ) - timestamp > timedelta(seconds=CLASSIFICATION_CACHE_TTL):
                 # Expired
-                try:
-                    del self._cache[content_hash]
-                except KeyError:
-                    pass
+                self._cache.pop(content_hash, None)
                 return None
 
             # Move to end (LRU)
@@ -412,10 +400,7 @@ class ContentModerationService:
                 # Remove oldest half
                 sorted_items = sorted(self._user_cooldowns.items(), key=lambda x: x[1])
                 for uid, _ in sorted_items[:MAX_COOLDOWN_ENTRIES // 2]:
-                    try:
-                        del self._user_cooldowns[uid]
-                    except KeyError:
-                        pass
+                    self._user_cooldowns.pop(uid, None)
                 logger.debug("Forced Cooldown Cleanup", [
                     ("Removed", str(MAX_COOLDOWN_ENTRIES // 2)),
                 ])

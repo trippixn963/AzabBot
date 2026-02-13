@@ -10,14 +10,14 @@ Server: discord.gg/syria
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
+from fastapi import APIRouter, Depends
 
 from src.core.config import get_config
 from src.core.logger import logger
 from src.api.dependencies import get_bot
 from src.api.models.base import APIResponse
 from src.api.models.auth import GuildInfo
+from src.api.errors import APIError, ErrorCode
 
 
 router = APIRouter(tags=["Server"])
@@ -37,20 +37,14 @@ async def get_guild_info(
 
     if not config.mod_server_id:
         logger.error("Mod Server ID Not Configured", [])
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Mod server not configured",
-        )
+        raise APIError(ErrorCode.SERVER_ERROR, message="Mod server not configured")
 
     guild = bot.get_guild(config.mod_server_id)
     if not guild:
         logger.warning("Mod Guild Not Found", [
             ("Guild ID", str(config.mod_server_id)),
         ])
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Mod server not accessible",
-        )
+        raise APIError(ErrorCode.SERVER_DISCORD_ERROR, message="Mod server not accessible")
 
     icon_url = str(guild.icon.url) if guild.icon else None
 

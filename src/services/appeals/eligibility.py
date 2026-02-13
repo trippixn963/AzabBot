@@ -71,10 +71,7 @@ class EligibilityMixin:
             if now - cached_at < self.THREAD_CACHE_TTL:
                 return cached_thread
             else:
-                try:
-                    del self._thread_cache[thread_id]
-                except KeyError:
-                    pass  # Already removed
+                self._thread_cache.pop(thread_id, None)
 
         # Fetch thread
         channel = await safe_fetch_channel(self.bot, thread_id)
@@ -83,13 +80,13 @@ class EligibilityMixin:
 
         if isinstance(channel, discord.Thread):
             self._thread_cache[thread_id] = (channel, now)
-            # Evict oldest entry if cache exceeds limit (with race condition protection)
+            # Evict oldest entry if cache exceeds limit
             if len(self._thread_cache) > 50:
                 try:
                     oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
-                    del self._thread_cache[oldest]
-                except (KeyError, ValueError):
-                    pass  # Entry already removed by another coroutine
+                    self._thread_cache.pop(oldest, None)
+                except ValueError:
+                    pass  # Cache empty
             return channel
 
         return None

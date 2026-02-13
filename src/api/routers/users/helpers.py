@@ -11,10 +11,10 @@ Server: discord.gg/syria
 import asyncio
 from typing import Any, List, Optional
 
-import aiohttp
 import discord
 
 from src.core.logger import logger
+from src.utils.http import http_session, FAST_TIMEOUT
 from .models import UserRole
 
 
@@ -25,13 +25,12 @@ SYRIABOT_API_URL = "http://localhost:8088/api/syria/user"
 async def fetch_syriabot_data(user_id: int) -> Optional[dict]:
     """Fetch user activity data from SyriaBot API (includes channels)."""
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{SYRIABOT_API_URL}/{user_id}",
-                timeout=aiohttp.ClientTimeout(total=5)
-            ) as resp:
-                if resp.status == 200:
-                    return await resp.json()
+        async with http_session.session.get(
+            f"{SYRIABOT_API_URL}/{user_id}",
+            timeout=FAST_TIMEOUT
+        ) as resp:
+            if resp.status == 200:
+                return await resp.json()
     except Exception as e:
         logger.warning("SyriaBot API Fetch Failed", [
             ("User ID", str(user_id)),

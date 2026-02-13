@@ -230,22 +230,21 @@ class TicketsMixin:
 
     def get_ticket_stats(self: "DatabaseManager", guild_id: int) -> Dict[str, int]:
         """Get ticket statistics for a guild."""
-        open_count = self.fetchone(
-            "SELECT COUNT(*) as c FROM tickets WHERE guild_id = ? AND status = 'open'",
-            (guild_id,)
-        )
-        claimed_count = self.fetchone(
-            "SELECT COUNT(*) as c FROM tickets WHERE guild_id = ? AND status = 'claimed'",
-            (guild_id,)
-        )
-        closed_count = self.fetchone(
-            "SELECT COUNT(*) as c FROM tickets WHERE guild_id = ? AND status = 'closed'",
+        row = self.fetchone(
+            """
+            SELECT
+                SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open_count,
+                SUM(CASE WHEN status = 'claimed' THEN 1 ELSE 0 END) as claimed_count,
+                SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed_count
+            FROM tickets
+            WHERE guild_id = ?
+            """,
             (guild_id,)
         )
         return {
-            "open": open_count["c"] if open_count else 0,
-            "claimed": claimed_count["c"] if claimed_count else 0,
-            "closed": closed_count["c"] if closed_count else 0,
+            "open": row["open_count"] or 0 if row else 0,
+            "claimed": row["claimed_count"] or 0 if row else 0,
+            "closed": row["closed_count"] or 0 if row else 0,
         }
 
     def get_staff_ticket_stats(self: "DatabaseManager", staff_id: int, guild_id: int) -> Dict[str, int]:

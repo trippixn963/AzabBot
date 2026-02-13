@@ -554,11 +554,8 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         async with self._cooldowns_lock:
             keys_to_remove = [k for k in self._claim_reminder_cooldowns if k.startswith(prefix)]
             for key in keys_to_remove:
-                try:
-                    del self._claim_reminder_cooldowns[key]
+                if self._claim_reminder_cooldowns.pop(key, None) is not None:
                     cleared += 1
-                except KeyError:
-                    pass  # Already removed by another coroutine
 
         if cleared > 0:
             logger.debug("Claim Cooldowns Cleared", [("Ticket", ticket_id), ("Cleared", str(cleared))])

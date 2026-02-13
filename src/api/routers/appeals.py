@@ -11,10 +11,10 @@ Server: discord.gg/syria
 from datetime import datetime
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from starlette.status import HTTP_404_NOT_FOUND
+from fastapi import APIRouter, Depends, Query
 
 from src.core.logger import logger
+from src.api.errors import APIError, ErrorCode
 from src.core.config import NY_TZ
 from src.api.dependencies import get_bot, require_auth, get_pagination, PaginationParams
 from src.api.models.base import APIResponse, PaginatedResponse
@@ -206,10 +206,7 @@ async def get_appeal(
             ("Appeal ID", appeal_id),
             ("User", str(payload.sub)),
         ])
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail=f"Appeal {appeal_id} not found",
-        )
+        raise APIError(ErrorCode.APPEAL_NOT_FOUND)
 
     # Get user info
     user_info = await _get_user_info(bot, row["user_id"])

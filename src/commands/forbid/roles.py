@@ -176,10 +176,7 @@ class RolesMixin:
                     if discord.utils.get(guild.roles, id=role.id):
                         return role
                     # Role was deleted, invalidate cache
-                    try:
-                        del self._roles_cache[guild.id]
-                    except KeyError:
-                        pass  # Already removed by another coroutine
+                    self._roles_cache.pop(guild.id, None)
 
         # Try to find role by name
         role_name = self._get_role_name(restriction)

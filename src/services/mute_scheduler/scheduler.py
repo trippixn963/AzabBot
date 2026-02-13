@@ -419,8 +419,10 @@ class MuteScheduler:
 
             # Calculate time served
             time_served = None
-            if mute.get("muted_at") and mute.get("expires_at"):
-                duration_minutes = int((mute["expires_at"] - mute["muted_at"]) / 60)
+            muted_at = mute["muted_at"] if "muted_at" in mute.keys() else None
+            expires_at = mute["expires_at"] if "expires_at" in mute.keys() else None
+            if muted_at and expires_at:
+                duration_minutes = int((expires_at - muted_at) / 60)
                 time_served = format_duration_from_minutes(duration_minutes)
 
             await send_release_announcement(

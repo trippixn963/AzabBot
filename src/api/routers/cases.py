@@ -13,14 +13,26 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
-from starlette.status import HTTP_404_NOT_FOUND
+from fastapi import APIRouter, Depends, Query
 
 from src.core.logger import logger
 from src.core.config import NY_TZ
 from src.api.dependencies import get_bot, require_auth, get_pagination, PaginationParams
 from src.api.models.auth import TokenPayload
+from src.api.models.cases import (
+    CaseListItem,
+    CaseListData,
+    CaseListResponse,
+    CaseStatsData,
+    CaseStatsResponse,
+    EvidenceItem,
+    AppealInfo,
+    TranscriptMessage,
+    CaseTranscript,
+    CaseDetailData,
+    CaseDetailResponse,
+)
+from src.api.errors import APIError, ErrorCode
 from src.api.utils.discord import (
     batch_fetch_users,
     fetch_user_info,
@@ -39,7 +51,7 @@ router = APIRouter(prefix="/cases", tags=["Cases"])
 # List & Search
 # =============================================================================
 
-@router.get("")
+@router.get("", response_model=CaseListResponse)
 async def list_cases(
     bot: Any = Depends(get_bot),
     pagination: PaginationParams = Depends(get_pagination),
@@ -50,7 +62,7 @@ async def list_cases(
     sort_by: Optional[str] = Query("created_at", description="Sort by: created_at, case_id, action_type, status"),
     sort_dir: Optional[str] = Query("desc", description="Sort direction: asc, desc"),
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> CaseListResponse:
     """
     List moderation cases with pagination and filtering.
     """
@@ -134,21 +146,21 @@ async def list_cases(
         user_name, user_avatar = user_info.get(user_id, (None, None))
         mod_name, mod_avatar = user_info.get(mod_id, (None, None))
 
-        cases.append({
-            "id": row["id"],
-            "case_id": row["case_id"],
-            "case_type": row["action_type"],
-            "status": calculate_case_status(row["status"], row["duration_seconds"], row["created_at"], now),
-            "user_id": str(user_id),
-            "user_name": user_name or f"User {user_id}",
-            "user_avatar": user_avatar,
-            "moderator_id": str(mod_id),
-            "moderator_name": mod_name or f"Mod {mod_id}",
-            "moderator_avatar": mod_avatar,
-            "reason": row["reason"] or "No reason provided",
-            "created_at": to_iso_string(row["created_at"]),
-            "expires_at": calculate_expires_at(row["duration_seconds"], row["created_at"]),
-        })
+        cases.append(CaseListItem(
+            id=row["id"],
+            case_id=row["case_id"],
+            case_type=row["action_type"],
+            status=calculate_case_status(row["status"], row["duration_seconds"], row["created_at"], now),
+            user_id=str(user_id),
+            user_name=user_name or f"User {user_id}",
+            user_avatar=user_avatar,
+            moderator_id=str(mod_id),
+            moderator_name=mod_name or f"Mod {mod_id}",
+            moderator_avatar=mod_avatar,
+            reason=row["reason"] or "No reason provided",
+            created_at=to_iso_string(row["created_at"]),
+            expires_at=calculate_expires_at(row["duration_seconds"], row["created_at"]),
+        ))
 
     total_pages = (total + pagination.per_page - 1) // pagination.per_page
 
@@ -159,24 +171,24 @@ async def list_cases(
         ("Total", str(total)),
     ])
 
-    return JSONResponse(content={
-        "success": True,
-        "data": {
-            "cases": cases,
-            "total": total,
-            "total_pages": total_pages,
-        }
-    })
+    return CaseListResponse(
+        success=True,
+        data=CaseListData(
+            cases=cases,
+            total=total,
+            total_pages=total_pages,
+        )
+    )
 
 
 # =============================================================================
 # Case Statistics
 # =============================================================================
 
-@router.get("/stats")
+@router.get("/stats", response_model=CaseStatsResponse)
 async def get_case_stats(
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> CaseStatsResponse:
     """
     Get case statistics for dashboard cards.
     Uses optimized single-query approach.
@@ -208,17 +220,14 @@ async def get_case_stats(
         "SELECT COUNT(*) FROM appeals WHERE status = 'pending'"
     )[0]
 
-    response = {
-        "success": True,
-        "data": {
-            "total_cases": stats_row[0] or 0,
-            "active_mutes": stats_row[1] or 0,
-            "active_bans": stats_row[2] or 0,
-            "cases_today": stats_row[3] or 0,
-            "cases_this_week": stats_row[4] or 0,
-            "pending_appeals": pending_appeals,
-        }
-    }
+    stats_data = CaseStatsData(
+        total_cases=stats_row[0] or 0,
+        active_mutes=stats_row[1] or 0,
+        active_bans=stats_row[2] or 0,
+        cases_today=stats_row[3] or 0,
+        cases_this_week=stats_row[4] or 0,
+        pending_appeals=pending_appeals,
+    )
 
     logger.debug("Case Stats Fetched", [
         ("User", str(payload.sub)),
@@ -227,21 +236,21 @@ async def get_case_stats(
         ("Pending Appeals", str(pending_appeals)),
     ])
 
-    return JSONResponse(content=response)
+    return CaseStatsResponse(success=True, data=stats_data)
 
 
 # =============================================================================
 # Individual Case
 # =============================================================================
 
-@router.get("/{case_id}")
+@router.get("/{case_id}", response_model=CaseDetailResponse)
 async def get_case(
     case_id: str,
     include_transcript: bool = Query(True, description="Include thread transcript"),
     transcript_limit: int = Query(100, ge=1, le=500, description="Max messages to return"),
     bot: Any = Depends(get_bot),
     payload: TokenPayload = Depends(require_auth),
-) -> JSONResponse:
+) -> CaseDetailResponse:
     """
     Get detailed information about a specific case.
     """
@@ -261,10 +270,7 @@ async def get_case(
             ("Case ID", str(case_id)),
             ("User", str(payload.sub)),
         ])
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail=f"Case #{case_id} not found",
-        )
+        raise APIError(ErrorCode.CASE_NOT_FOUND)
 
     # Collect user IDs to fetch
     user_ids = [row["user_id"], row["moderator_id"]]
@@ -285,23 +291,23 @@ async def get_case(
         for i, url in enumerate(urls):
             url = url.strip()
             if url:
-                evidence.append({
-                    "id": i + 1,
-                    "type": "image" if url.lower().endswith(image_extensions) else "link",
-                    "content": url,
-                    "added_by": mod_name or f"Mod {row['moderator_id']}",
-                    "added_at": to_iso_string(row["created_at"]),
-                })
+                evidence.append(EvidenceItem(
+                    id=i + 1,
+                    type="image" if url.lower().endswith(image_extensions) else "link",
+                    content=url,
+                    added_by=mod_name or f"Mod {row['moderator_id']}",
+                    added_at=to_iso_string(row["created_at"]),
+                ))
 
     # Add text evidence if present
     if row["evidence"]:
-        evidence.append({
-            "id": len(evidence) + 1,
-            "type": "text",
-            "content": row["evidence"],
-            "added_by": mod_name or f"Mod {row['moderator_id']}",
-            "added_at": to_iso_string(row["created_at"]),
-        })
+        evidence.append(EvidenceItem(
+            id=len(evidence) + 1,
+            type="text",
+            content=row["evidence"],
+            added_by=mod_name or f"Mod {row['moderator_id']}",
+            added_at=to_iso_string(row["created_at"]),
+        ))
 
     # Get appeal info if exists
     appeal = None
@@ -319,15 +325,15 @@ async def get_case(
             else:
                 _, reviewed_by_name, _ = await fetch_user_info(bot, appeal_row["resolved_by"])
 
-        appeal = {
-            "id": appeal_row["id"],
-            "status": appeal_row["status"],
-            "reason": appeal_row["reason"],
-            "submitted_at": to_iso_string(appeal_row["created_at"]),
-            "reviewed_by": reviewed_by_name,
-            "reviewed_at": to_iso_string(appeal_row["resolved_at"]),
-            "response": appeal_row["resolution_reason"],
-        }
+        appeal = AppealInfo(
+            id=appeal_row["id"],
+            status=appeal_row["status"],
+            reason=appeal_row["reason"],
+            submitted_at=to_iso_string(appeal_row["created_at"]),
+            reviewed_by=reviewed_by_name,
+            reviewed_at=to_iso_string(appeal_row["resolved_at"]),
+            response=appeal_row["resolution_reason"],
+        )
 
     # Get related cases (same user)
     related_rows = db.fetchall(
@@ -364,59 +370,56 @@ async def get_case(
                 if not content and not attachments and not embed_text:
                     continue
 
-                messages.append({
-                    "id": msg.get("message_id"),
-                    "author_id": str(msg.get("author_id")),
-                    "author_name": msg.get("author_display_name") or msg.get("author_name"),
-                    "author_avatar": msg.get("author_avatar_url"),
-                    "content": content or embed_text,
-                    "timestamp": to_iso_string(msg.get("timestamp")),
-                    "attachments": attachments,
-                    "is_bot": msg.get("author_name") == "Azab",
-                })
+                messages.append(TranscriptMessage(
+                    id=msg.get("message_id"),
+                    author_id=str(msg.get("author_id")),
+                    author_name=msg.get("author_display_name") or msg.get("author_name"),
+                    author_avatar=msg.get("author_avatar_url"),
+                    content=content or embed_text,
+                    timestamp=to_iso_string(msg.get("timestamp")),
+                    attachments=attachments,
+                    is_bot=msg.get("author_name") == "Azab",
+                ))
 
             # Apply limit
             total_messages = len(messages)
             messages = messages[:transcript_limit]
 
-            transcript = {
-                "thread_id": str(transcript_data.get("thread_id")),
-                "thread_name": transcript_data.get("thread_name"),
-                "message_count": len(messages),
-                "total_messages": total_messages,
-                "has_more": total_messages > transcript_limit,
-                "messages": messages,
-            }
+            transcript = CaseTranscript(
+                thread_id=str(transcript_data.get("thread_id")),
+                thread_name=transcript_data.get("thread_name"),
+                message_count=len(messages),
+                total_messages=total_messages,
+                has_more=total_messages > transcript_limit,
+                messages=messages,
+            )
         except (json.JSONDecodeError, TypeError):
             pass
 
     updated_at = row["resolved_at"] or row["created_at"]
 
-    response = {
-        "success": True,
-        "data": {
-            "id": row["id"],
-            "case_id": row["case_id"],
-            "case_type": row["action_type"],
-            "status": calculate_case_status(row["status"], row["duration_seconds"], row["created_at"], now),
-            "user_id": str(row["user_id"]),
-            "user_name": user_name or f"User {row['user_id']}",
-            "user_avatar": user_avatar,
-            "moderator_id": str(row["moderator_id"]),
-            "moderator_name": mod_name or f"Mod {row['moderator_id']}",
-            "moderator_avatar": mod_avatar,
-            "reason": row["reason"] or "No reason provided",
-            "duration": format_duration(row["duration_seconds"]),
-            "created_at": to_iso_string(row["created_at"]),
-            "updated_at": to_iso_string(updated_at),
-            "expires_at": calculate_expires_at(row["duration_seconds"], row["created_at"]),
-            "notes": row["resolved_reason"],
-            "evidence": evidence,
-            "appeal": appeal,
-            "related_cases": related_cases,
-            "transcript": transcript,
-        }
-    }
+    case_data = CaseDetailData(
+        id=row["id"],
+        case_id=row["case_id"],
+        case_type=row["action_type"],
+        status=calculate_case_status(row["status"], row["duration_seconds"], row["created_at"], now),
+        user_id=str(row["user_id"]),
+        user_name=user_name or f"User {row['user_id']}",
+        user_avatar=user_avatar,
+        moderator_id=str(row["moderator_id"]),
+        moderator_name=mod_name or f"Mod {row['moderator_id']}",
+        moderator_avatar=mod_avatar,
+        reason=row["reason"] or "No reason provided",
+        duration=format_duration(row["duration_seconds"]),
+        created_at=to_iso_string(row["created_at"]),
+        updated_at=to_iso_string(updated_at),
+        expires_at=calculate_expires_at(row["duration_seconds"], row["created_at"]),
+        notes=row["resolved_reason"],
+        evidence=evidence,
+        appeal=appeal,
+        related_cases=related_cases,
+        transcript=transcript,
+    )
 
     logger.debug("Case Fetched", [
         ("Case ID", str(case_id)),
@@ -424,7 +427,7 @@ async def get_case(
         ("Type", row["action_type"]),
     ])
 
-    return JSONResponse(content=response)
+    return CaseDetailResponse(success=True, data=case_data)
 
 
 __all__ = ["router"]

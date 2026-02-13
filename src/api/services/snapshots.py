@@ -19,6 +19,7 @@ from src.core.logger import logger
 from src.core.config import get_config
 from src.core.database import get_db
 from src.utils.async_utils import create_safe_task
+from src.utils.http import http_session, FAST_TIMEOUT
 
 
 # TrippixnBot API for accurate online count
@@ -134,22 +135,21 @@ class SnapshotService:
         # Get online count from TrippixnBot
         online_count = 0
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    TRIPPIXN_API_URL,
-                    timeout=aiohttp.ClientTimeout(total=5)
-                ) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        guild_data = data.get("data", {}).get("guild", {})
-                        online_count = guild_data.get("online_count", 0)
-                        # Also update member count if TrippixnBot has it
-                        if guild_data.get("member_count"):
-                            member_count = guild_data.get("member_count")
-                    else:
-                        logger.warning("Snapshot TrippixnBot Bad Response", [
-                            ("Status", str(resp.status)),
-                        ])
+            async with http_session.session.get(
+                TRIPPIXN_API_URL,
+                timeout=FAST_TIMEOUT
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    guild_data = data.get("data", {}).get("guild", {})
+                    online_count = guild_data.get("online_count", 0)
+                    # Also update member count if TrippixnBot has it
+                    if guild_data.get("member_count"):
+                        member_count = guild_data.get("member_count")
+                else:
+                    logger.warning("Snapshot TrippixnBot Bad Response", [
+                        ("Status", str(resp.status)),
+                    ])
         except asyncio.TimeoutError:
             logger.warning("Snapshot TrippixnBot Timeout", [
                 ("Timeout", "5s"),

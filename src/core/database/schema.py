@@ -654,6 +654,9 @@ class SchemaMixin:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_appeals_status ON appeals(status)"
         )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_appeals_guild_stats ON appeals(guild_id, status, resolution)"
+        )
 
         # Migration: Add email column if missing
         try:

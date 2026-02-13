@@ -298,23 +298,23 @@ class AppealsMixin:
         Returns:
             Dict with pending, approved, denied counts.
         """
-        pending = self.fetchone(
-            "SELECT COUNT(*) as c FROM appeals WHERE guild_id = ? AND status = 'pending'",
-            (guild_id,)
-        )
-        approved = self.fetchone(
-            "SELECT COUNT(*) as c FROM appeals WHERE guild_id = ? AND resolution = 'approved'",
-            (guild_id,)
-        )
-        denied = self.fetchone(
-            "SELECT COUNT(*) as c FROM appeals WHERE guild_id = ? AND resolution = 'denied'",
+        # Single query with conditional aggregation (replaces 3 separate queries)
+        row = self.fetchone(
+            """
+            SELECT
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN resolution = 'approved' THEN 1 ELSE 0 END) as approved,
+                SUM(CASE WHEN resolution = 'denied' THEN 1 ELSE 0 END) as denied
+            FROM appeals
+            WHERE guild_id = ?
+            """,
             (guild_id,)
         )
 
         return {
-            "pending": pending["c"] if pending else 0,
-            "approved": approved["c"] if approved else 0,
-            "denied": denied["c"] if denied else 0,
+            "pending": row["pending"] or 0 if row else 0,
+            "approved": row["approved"] or 0 if row else 0,
+            "denied": row["denied"] or 0 if row else 0,
         }
 
 

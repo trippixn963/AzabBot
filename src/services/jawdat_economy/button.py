@@ -360,8 +360,7 @@ class CoinUnjailButton(
 
             await prison_channel.send(
                 f"<:coins:{COINS_EMOJI_ID}> **{member.mention} bought their way out of jail!**\n"
-                f"-# They paid {cost:,} coins to be released. "
-                f"Earn coins in Jawdat Casino to unlock this option!"
+                f"-# They paid {cost:,} coins to be released."
             )
 
             logger.tree("Prison Announcement Posted", [
@@ -393,7 +392,15 @@ class CoinUnjailButton(
                 ])
                 return
 
-            case_data = db.get_active_mute_case(member.id, self.guild_id)
+            # Find the active mute case - check ops guild first, then main guild
+            config = get_config()
+            case_data = None
+            for guild_id in [config.ops_guild_id, config.main_guild_id, self.guild_id]:
+                if guild_id:
+                    case_data = db.get_active_mute_case(member.id, guild_id)
+                    if case_data and case_data.get("thread_id"):
+                        break
+
             if not case_data or not case_data.get("thread_id"):
                 logger.debug("Case Note Skipped", [
                     ("User", f"{member.name} ({member.id})"),
@@ -401,10 +408,20 @@ class CoinUnjailButton(
                 ])
                 return
 
-            thread = interaction.guild.get_thread(case_data["thread_id"])
+            # Use the guild_id from the case record itself
+            case_guild_id = case_data.get("guild_id")
+            case_guild = bot.get_guild(case_guild_id) if case_guild_id else None
+            if not case_guild:
+                logger.debug("Case Note Skipped", [
+                    ("User", f"{member.name} ({member.id})"),
+                    ("Reason", f"Case guild {case_guild_id} not found"),
+                ])
+                return
+
+            thread = case_guild.get_thread(case_data["thread_id"])
             if not thread:
                 try:
-                    thread = await interaction.guild.fetch_channel(case_data["thread_id"])
+                    thread = await case_guild.fetch_channel(case_data["thread_id"])
                 except discord.NotFound:
                     logger.warning("Case Note Failed", [
                         ("User", f"{member.name} ({member.id})"),

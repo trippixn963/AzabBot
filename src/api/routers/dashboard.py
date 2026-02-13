@@ -12,7 +12,6 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
-import aiohttp
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
@@ -23,6 +22,7 @@ from src.api.dependencies import get_bot, require_auth
 from src.api.models.base import APIResponse
 from src.api.models.auth import TokenPayload
 from src.api.services.snapshots import get_snapshot_service
+from src.utils.http import http_session, FAST_TIMEOUT
 
 
 # TrippixnBot API for guild stats (has accurate online count)
@@ -52,10 +52,7 @@ class DashboardCache:
 
         cached_at, data = self._cache[cache_key]
         if time.time() - cached_at > CACHE_TTL_SECONDS:
-            try:
-                del self._cache[cache_key]
-            except KeyError:
-                pass
+            self._cache.pop(cache_key, None)
             return None
 
         return data
@@ -572,13 +569,12 @@ async def get_dashboard_stats(
     online_members = 0
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(TRIPPIXN_API_URL, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    guild_data = data.get("data", {}).get("guild", {})
-                    total_members = guild_data.get("member_count", 0)
-                    online_members = guild_data.get("online_count", 0)
+        async with http_session.session.get(TRIPPIXN_API_URL, timeout=FAST_TIMEOUT) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                guild_data = data.get("data", {}).get("guild", {})
+                total_members = guild_data.get("member_count", 0)
+                online_members = guild_data.get("online_count", 0)
     except Exception as e:
         logger.warning("Dashboard TrippixnBot Fetch Failed", [
             ("Error Type", type(e).__name__),

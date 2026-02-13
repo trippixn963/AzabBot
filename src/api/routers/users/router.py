@@ -12,8 +12,9 @@ from datetime import datetime
 from typing import Any, List, Optional
 
 import discord
-from fastapi import APIRouter, Depends, HTTPException, Query
-from starlette.status import HTTP_404_NOT_FOUND
+from fastapi import APIRouter, Depends, Query
+
+from src.api.errors import APIError, ErrorCode
 
 from src.core.logger import logger
 from src.core.config import get_config
@@ -130,10 +131,7 @@ async def lookup_user(
             ("Query", query[:30]),
             ("Requested By", str(payload.sub)),
         ])
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail=f"User not found: {query}",
-        )
+        raise APIError(ErrorCode.USER_NOT_FOUND, message=f"User not found: {query}")
 
     # Set user_id from user or snapshot
     if user:
@@ -526,10 +524,7 @@ async def get_user_profile(
             ("User ID", str(user_id)),
             ("Requested By", str(payload.sub)),
         ])
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail=f"User {user_id} not found",
-        )
+        raise APIError(ErrorCode.USER_NOT_FOUND, message=f"User {user_id} not found")
 
     now = datetime.utcnow().timestamp()
 

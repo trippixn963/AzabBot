@@ -11,16 +11,11 @@ Server: discord.gg/syria
 from typing import Any
 
 import discord
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from starlette.status import (
-    HTTP_400_BAD_REQUEST,
-    HTTP_401_UNAUTHORIZED,
-    HTTP_403_FORBIDDEN,
-    HTTP_423_LOCKED,
-    HTTP_429_TOO_MANY_REQUESTS,
-    HTTP_500_INTERNAL_SERVER_ERROR,
-)
+from starlette.status import HTTP_423_LOCKED, HTTP_429_TOO_MANY_REQUESTS
+
+from src.api.errors import APIError, ErrorCode
 
 from src.core.config import get_config
 from src.core.logger import logger
@@ -71,20 +66,14 @@ async def check_moderator(
 
     if not config.mod_server_id:
         logger.error("Mod Server ID Not Configured", [])
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Mod server not configured",
-        )
+        raise APIError(ErrorCode.SERVER_ERROR, message="Mod server not configured")
 
     guild = bot.get_guild(config.mod_server_id)
     if not guild:
         logger.error("Mod Guild Not Found", [
             ("Guild ID", str(config.mod_server_id)),
         ])
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Mod server not accessible",
-        )
+        raise APIError(ErrorCode.SERVER_DISCORD_ERROR, message="Mod server not accessible")
 
     # Check if user is a member of the mod server
     member = guild.get_member(request_body.discord_id)
@@ -156,10 +145,7 @@ async def register(
             ("Reason", "Not a moderator"),
             ("IP", client_ip),
         ])
-        raise HTTPException(
-            status_code=HTTP_403_FORBIDDEN,
-            detail="Only moderators can register for the dashboard",
-        )
+        raise APIError(ErrorCode.PERMISSION_DENIED, message="Only moderators can register for the dashboard")
 
     # Attempt registration
     success, message = auth_service.register(request_body.discord_id, request_body.password)
@@ -170,10 +156,7 @@ async def register(
             ("Reason", message),
             ("IP", client_ip),
         ])
-        raise HTTPException(
-            status_code=HTTP_400_BAD_REQUEST,
-            detail=message,
-        )
+        raise APIError(ErrorCode.VALIDATION_ERROR, message=message)
 
     # Auto-login after successful registration
     login_success, token, expires_at = auth_service.login(
@@ -189,10 +172,7 @@ async def register(
             ("User ID", str(request_body.discord_id)),
             ("IP", client_ip),
         ])
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Registration succeeded but auto-login failed",
-        )
+        raise APIError(ErrorCode.SERVER_ERROR, message="Registration succeeded but auto-login failed")
 
     logger.tree("Dashboard User Registered", [
         ("User ID", str(request_body.discord_id)),
@@ -302,10 +282,7 @@ async def login(
             ("Reason", "Invalid credentials"),
             ("IP", client_ip),
         ])
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-        )
+        raise APIError(ErrorCode.AUTH_INVALID_TOKEN, message="Invalid credentials")
 
     # Success - clear failed login tracking
     auth_service.clear_failed_logins(discord_id)
@@ -364,10 +341,7 @@ async def get_current_user(
         logger.warning("Dashboard User Not Found", [
             ("User ID", str(payload.sub)),
         ])
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-        )
+        raise APIError(ErrorCode.USER_NOT_FOUND, message="User not found")
 
     return APIResponse(success=True, data=user)
 

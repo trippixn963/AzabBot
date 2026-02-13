@@ -184,9 +184,9 @@ class MutesMixin:
                 try:
                     oldest_key = min(self._prisoner_stats_cache.keys(),
                                    key=lambda k: self._prisoner_stats_cache[k][1])
-                    del self._prisoner_stats_cache[oldest_key]
-                except (KeyError, ValueError):
-                    pass  # Entry already removed by another coroutine
+                    self._prisoner_stats_cache.pop(oldest_key, None)
+                except ValueError:
+                    pass  # Cache empty
 
         return stats
 

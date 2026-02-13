@@ -229,10 +229,7 @@ class CaseLogService(
             if now - cached_at < THREAD_CACHE_TTL:
                 return cached_thread
             else:
-                try:
-                    del self._thread_cache[thread_id]
-                except KeyError:
-                    pass
+                self._thread_cache.pop(thread_id, None)
 
         channel = await safe_fetch_channel(self.bot, thread_id)
         if channel is None:
@@ -246,9 +243,9 @@ class CaseLogService(
             if len(self._thread_cache) > THREAD_CACHE_MAX_SIZE:
                 try:
                     oldest = min(self._thread_cache.keys(), key=lambda k: self._thread_cache[k][1])
-                    del self._thread_cache[oldest]
-                except (KeyError, ValueError):
-                    pass
+                    self._thread_cache.pop(oldest, None)
+                except ValueError:
+                    pass  # Cache empty
             return channel
 
         logger.warning("Invalid Case Thread Channel", [

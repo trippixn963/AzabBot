@@ -18,11 +18,137 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 from src.core.logger import logger
 from src.api.config import get_api_config
+from src.api.errors import ErrorCode, error_response
 from src.api.middleware.rate_limit import RateLimitMiddleware, get_rate_limiter
 from src.api.middleware.logging import LoggingMiddleware
 from src.api.services.websocket import get_ws_manager
 from src.api.services.event_storage import get_event_storage
 from src.api.dependencies import set_bot
+
+
+# =============================================================================
+# OpenAPI Documentation
+# =============================================================================
+
+API_DESCRIPTION = """
+## AzabBot Moderation Dashboard API
+
+Backend API for the AzabBot moderation dashboard, providing real-time access to
+moderation cases, tickets, appeals, and server statistics.
+
+### Authentication
+
+All endpoints (except `/health` and public appeal forms) require JWT authentication.
+
+**Getting a Token:**
+1. Authenticate via Discord OAuth at `/api/azab/auth/discord`
+2. Use the returned access token in the `Authorization` header
+
+**Token Format:**
+```
+Authorization: Bearer <access_token>
+```
+
+### Rate Limits
+
+| Endpoint Type | Limit | Window |
+|--------------|-------|--------|
+| Default | 60 requests | 1 minute |
+| Auth endpoints | 5 requests | 1 minute |
+| Stats endpoints | 120 requests | 1 minute |
+
+Rate limit headers are included in all responses:
+- `X-RateLimit-Limit`: Maximum requests allowed
+- `X-RateLimit-Remaining`: Requests remaining
+- `Retry-After`: Seconds to wait (on 429)
+
+### WebSocket
+
+Real-time updates are available via WebSocket at `/api/azab/ws`.
+
+**Events:**
+- `case.created`, `case.updated`, `case.resolved`
+- `ticket.created`, `ticket.claimed`, `ticket.closed`
+- `appeal.submitted`, `appeal.approved`, `appeal.denied`
+- `stats.updated`, `bot_status`
+
+### Error Responses
+
+All errors follow a consistent format:
+```json
+{
+    "success": false,
+    "error_code": "CASE_NOT_FOUND",
+    "message": "Moderation case not found",
+    "details": null
+}
+```
+
+See the error code reference for all possible codes.
+"""
+
+OPENAPI_TAGS = [
+    {
+        "name": "Health",
+        "description": "Health check and status endpoints",
+    },
+    {
+        "name": "Auth",
+        "description": "Authentication and authorization via Discord OAuth",
+    },
+    {
+        "name": "Dashboard",
+        "description": "Dashboard overview and summary statistics",
+    },
+    {
+        "name": "Cases",
+        "description": "Moderation case management (mutes, bans, warns, etc.)",
+    },
+    {
+        "name": "Tickets",
+        "description": "Support ticket system",
+    },
+    {
+        "name": "Appeals",
+        "description": "Punishment appeal management",
+    },
+    {
+        "name": "Users",
+        "description": "User lookup and moderation history",
+    },
+    {
+        "name": "Bans",
+        "description": "Server ban management",
+    },
+    {
+        "name": "Stats",
+        "description": "Moderation statistics and analytics",
+    },
+    {
+        "name": "Server",
+        "description": "Server configuration and info",
+    },
+    {
+        "name": "Bot",
+        "description": "Bot status and management",
+    },
+    {
+        "name": "Events",
+        "description": "Discord event stream",
+    },
+    {
+        "name": "WebSocket",
+        "description": "Real-time WebSocket connections",
+    },
+    {
+        "name": "Transcripts",
+        "description": "Case and ticket transcript access",
+    },
+    {
+        "name": "Logs",
+        "description": "Frontend logging endpoints",
+    },
+]
 from src.api.routers import (
     health_router,
     auth_router,
@@ -58,7 +184,7 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.tree("API Starting", [
-        ("Version", "1.0.0"),
+        ("Version", "2.0.0"),
     ], emoji="🚀")
 
     # Start WebSocket heartbeat
@@ -106,15 +232,24 @@ def create_app(bot: Optional[Any] = None) -> FastAPI:
     """
     config = get_api_config()
 
-    # Create app
+    # Create app with enhanced OpenAPI documentation
     app = FastAPI(
         title="AzabBot API",
-        description="Moderation dashboard API for AzabBot",
-        version="1.0.0",
+        description=API_DESCRIPTION,
+        version="2.0.0",
         docs_url="/api/azab/docs" if config.debug else None,
         redoc_url="/api/azab/redoc" if config.debug else None,
         openapi_url="/api/azab/openapi.json" if config.debug else None,
+        openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
+        license_info={
+            "name": "Private",
+            "url": "https://discord.gg/syria",
+        },
+        contact={
+            "name": "AzabBot Support",
+            "url": "https://discord.gg/syria",
+        },
     )
 
     # Set bot reference
@@ -146,19 +281,17 @@ def create_app(bot: Optional[Any] = None) -> FastAPI:
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
-        """Handle uncaught exceptions."""
+        """Handle uncaught exceptions with consistent error format."""
         logger.error("Unhandled API Error", [
             ("Path", str(request.url.path)[:50]),
+            ("Method", request.method),
+            ("Error Type", type(exc).__name__),
             ("Error", str(exc)[:100]),
         ])
 
-        return JSONResponse(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            content={
-                "success": False,
-                "message": "Internal server error",
-                "data": None,
-            },
+        return error_response(
+            ErrorCode.SERVER_ERROR,
+            details={"path": str(request.url.path)} if config.debug else None,
         )
 
     # ==========================================================================

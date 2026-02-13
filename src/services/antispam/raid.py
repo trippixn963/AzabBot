@@ -219,10 +219,7 @@ class RaidDetectionMixin:
                     if j.join_time > cutoff
                 ]
                 if not self._recent_joins[guild_id]:
-                    try:
-                        del self._recent_joins[guild_id]
-                    except KeyError:
-                        pass
+                    self._recent_joins.pop(guild_id, None)
 
 
 # =============================================================================

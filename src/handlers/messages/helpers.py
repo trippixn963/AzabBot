@@ -84,11 +84,20 @@ class HelpersMixin:
             ])
             return
         except discord.HTTPException as e:
-            log_http_error(e, "Prisoner Ping Delete", [
-                ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
-                ("ID", str(message.author.id)),
-            ])
-            return
+            # 404 is expected if message was already deleted (by automod, another mod, etc.)
+            # Still track the violation - prisoner attempted to ping regardless
+            if e.status == 404:
+                logger.debug("Prisoner Ping Delete - Already Gone", [
+                    ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                    ("ID", str(message.author.id)),
+                ])
+                # Don't return - continue to track the violation
+            else:
+                log_http_error(e, "Prisoner Ping Delete", [
+                    ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
+                    ("ID", str(message.author.id)),
+                ])
+                return
 
         # Track violations with lock for thread safety
         async with self._ping_lock:
