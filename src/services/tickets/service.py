@@ -183,8 +183,14 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
                 channel = await self._get_ticket_channel(channel_id)
                 if channel:
                     await channel.delete()
-                    logger.debug("Ticket Deletion Recovered", [("Ticket", ticket_id)])
-                    recovered += 1
+
+                # Always delete from database (channel may already be gone)
+                self.db.delete_ticket(ticket_id)
+                logger.tree("Ticket Deletion Recovered", [
+                    ("Ticket", ticket_id),
+                    ("Channel Deleted", "Yes" if channel else "Already Gone"),
+                ], emoji="🗑️")
+                recovered += 1
             except Exception as e:
                 logger.warning("Failed to recover ticket deletion", [
                     ("Ticket ID", ticket_id),

@@ -53,6 +53,24 @@ TIME_MULTIPLIERS = {
     "s": 1,
 }
 
+# Full word aliases mapping to short forms
+TIME_UNIT_ALIASES = {
+    # Years
+    "year": "y", "years": "y", "yr": "y", "yrs": "y",
+    # Months
+    "month": "mo", "months": "mo", "mon": "mo",
+    # Weeks
+    "week": "w", "weeks": "w", "wk": "w", "wks": "w",
+    # Days
+    "day": "d", "days": "d",
+    # Hours
+    "hour": "h", "hours": "h", "hr": "h", "hrs": "h",
+    # Minutes
+    "minute": "m", "minutes": "m", "min": "m", "mins": "m",
+    # Seconds
+    "second": "s", "seconds": "s", "sec": "s", "secs": "s",
+}
+
 
 # =============================================================================
 # Duration Suggestions for Autocomplete
@@ -76,6 +94,37 @@ DURATION_SUGGESTIONS = [
 # Parsing Functions
 # =============================================================================
 
+def _normalize_duration_string(duration_str: str) -> str:
+    """
+    Normalize duration string by converting full words to short forms.
+
+    Uses word boundaries to avoid mangling unrelated words.
+
+    Examples:
+        "1 day" -> "1d"
+        "1day" -> "1d"
+        "2 hours" -> "2h"
+        "1 week 2 days" -> "1w2d"
+        "1 monday" -> "1 monday" (not mangled, will fail validation)
+    """
+    result = duration_str.lower().strip()
+
+    # Remove extra spaces around numbers (but keep word separation)
+    result = re.sub(r"(\d+)\s+", r"\1", result)
+
+    # Replace full words with short forms using word boundaries
+    # Sort by length (longest first) to avoid partial matches
+    for word, short in sorted(TIME_UNIT_ALIASES.items(), key=lambda x: -len(x[0])):
+        # Use word boundary \b to only match whole words
+        # Also handle case where word is attached to a number (e.g., "1day")
+        result = re.sub(rf"(?<=\d){word}\b|(?<!\w){word}\b", short, result)
+
+    # Remove any remaining spaces
+    result = result.replace(" ", "")
+
+    return result
+
+
 def parse_duration(duration_str: str) -> Optional[int]:
     """
     Parse a duration string into seconds.
@@ -90,6 +139,7 @@ def parse_duration(duration_str: str) -> Optional[int]:
         - Combined: "1d12h30m", "2w3d"
         - "permanent", "perm", "forever" for None (no expiry)
         - Plain number: "30" -> 30 minutes
+        - Full words: "1 day", "2 hours", "1day", "3 weeks"
 
     Args:
         duration_str: Duration string to parse.
@@ -106,6 +156,10 @@ def parse_duration(duration_str: str) -> Optional[int]:
         None
         >>> parse_duration("30")
         1800
+        >>> parse_duration("1 day")
+        86400
+        >>> parse_duration("2hours")
+        7200
     """
     if not duration_str:
         return None
@@ -116,9 +170,12 @@ def parse_duration(duration_str: str) -> Optional[int]:
     if duration_str in PERMANENT_KEYWORDS:
         return None
 
+    # Normalize full words to short forms
+    normalized = _normalize_duration_string(duration_str)
+
     # Try combined format like "1y2w3d12h30m" (with optional month support)
     pattern = r"(?:(\d+)y)?(?:(\d+)mo)?(?:(\d+)w)?(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?"
-    match = re.fullmatch(pattern, duration_str)
+    match = re.fullmatch(pattern, normalized)
 
     if match and any(match.groups()):
         years = int(match.group(1) or 0)
@@ -141,7 +198,7 @@ def parse_duration(duration_str: str) -> Optional[int]:
         return total if total > 0 else None
 
     # Try single unit format (e.g., "30m", "2h", "1d", "1mo")
-    single_match = re.match(r"^(\d+)\s*(y|mo|w|d|h|m|s)?$", duration_str)
+    single_match = re.match(r"^(\d+)\s*(y|mo|w|d|h|m|s)?$", normalized)
     if single_match:
         value = int(single_match.group(1))
         unit = single_match.group(2) or "m"  # Default to minutes

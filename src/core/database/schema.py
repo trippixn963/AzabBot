@@ -774,6 +774,36 @@ class SchemaMixin:
         )
 
         # -----------------------------------------------------------------
+        # Ticket History Table (archived tickets with transcripts)
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_id TEXT UNIQUE NOT NULL,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                category TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                claimed_by INTEGER,
+                closed_by INTEGER,
+                close_reason TEXT,
+                created_at REAL NOT NULL,
+                claimed_at REAL,
+                closed_at REAL,
+                archived_at REAL NOT NULL,
+                transcript TEXT,
+                transcript_html TEXT,
+                transcript_token TEXT
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ticket_history_user ON ticket_history(user_id, guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ticket_history_token ON ticket_history(transcript_token)"
+        )
+
+        # -----------------------------------------------------------------
         # AI Conversations Table (for ticket AI assistant persistence)
         # -----------------------------------------------------------------
         cursor.execute("""

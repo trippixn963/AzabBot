@@ -263,12 +263,25 @@ class HelpersMixin:
         Uses a single channel.edit() call to update all permissions at once,
         rather than multiple set_permissions() calls.
         """
+        ticket_id = ticket.get("ticket_id", "unknown")
         bot_id = self.bot.user.id if self.bot.user else None
         new_overwrites = {}
-        locked_count = 0
+
+        # Track what we're doing for logging
+        locked_users = []
+        locked_objects = []
+        skipped_staff = []
+        skipped_roles = []
 
         # Build new overwrites dict with users locked out
         for target, overwrite in channel.overwrites.items():
+            # Keep role overwrites unchanged (check first since Member inherits from Object)
+            if isinstance(target, discord.Role):
+                new_overwrites[target] = overwrite
+                skipped_roles.append(target.name)
+                continue
+
+            # Handle Members (resolved users in cache)
             if isinstance(target, discord.Member):
                 # Skip the bot itself
                 if bot_id and target.id == bot_id:
@@ -278,6 +291,7 @@ class HelpersMixin:
                 # Skip staff members (they keep full access)
                 if self.has_staff_permission(target):
                     new_overwrites[target] = overwrite
+                    skipped_staff.append(f"{target.name} ({target.id})")
                     continue
 
                 # Lock out this user (can view but not send)
@@ -288,20 +302,48 @@ class HelpersMixin:
                     embed_links=False,
                     read_message_history=True,
                 )
-                locked_count += 1
-            else:
-                # Keep role overwrites unchanged
+                locked_users.append(f"{target.name} ({target.id})")
+                continue
+
+            # Handle Objects (unresolved user IDs not in member cache)
+            # These are users who were added but aren't resolved - lock them out too
+            if bot_id and target.id == bot_id:
                 new_overwrites[target] = overwrite
+                continue
+
+            # Lock out unresolved user (can view but not send)
+            new_overwrites[target] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=False,
+                attach_files=False,
+                embed_links=False,
+                read_message_history=True,
+            )
+            locked_objects.append(str(target.id))
+
+        locked_count = len(locked_users) + len(locked_objects)
 
         # Apply all permission changes in a single API call
         if locked_count > 0:
             try:
                 await channel.edit(overwrites=new_overwrites)
-                logger.debug("Ticket Locked on Close", [("Users", str(locked_count))])
+                logger.tree("Ticket Permissions Locked", [
+                    ("Ticket ID", ticket_id),
+                    ("Locked Users", ", ".join(locked_users) if locked_users else "None"),
+                    ("Locked Objects", ", ".join(locked_objects) if locked_objects else "None"),
+                    ("Skipped Staff", ", ".join(skipped_staff) if skipped_staff else "None"),
+                    ("Skipped Roles", ", ".join(skipped_roles) if skipped_roles else "None"),
+                ], emoji="🔐")
             except discord.HTTPException as e:
                 log_http_error(e, "Lock Ticket on Close", [
-                    ("Ticket ID", ticket.get("ticket_id", "unknown")),
+                    ("Ticket ID", ticket_id),
+                    ("Attempted Locks", str(locked_count)),
                 ])
+        else:
+            logger.debug("Ticket Lock Skipped (No Users)", [
+                ("Ticket ID", ticket_id),
+                ("Skipped Staff", ", ".join(skipped_staff) if skipped_staff else "None"),
+            ])
 
     # =========================================================================
     # Control Panel Management

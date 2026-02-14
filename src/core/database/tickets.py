@@ -25,18 +25,22 @@ class TicketsMixin:
         """
         Generate next sequential ticket ID (T001, T002, etc.).
 
+        Checks both active tickets and archived ticket_history to prevent
+        ID collisions after tickets are deleted.
+
         Returns:
             Next available ticket ID.
         """
-        row = self.fetchone(
-            "SELECT ticket_id FROM tickets ORDER BY id DESC LIMIT 1"
-        )
-        if row and row["ticket_id"]:
-            try:
-                num = int(row["ticket_id"][1:])
-                return f"T{num + 1:03d}"
-            except (ValueError, IndexError):
-                pass
+        row = self.fetchone("""
+            SELECT MAX(CAST(SUBSTR(ticket_id, 2) AS INTEGER)) as max_num
+            FROM (
+                SELECT ticket_id FROM tickets
+                UNION ALL
+                SELECT ticket_id FROM ticket_history
+            )
+        """)
+        if row and row["max_num"]:
+            return f"T{row['max_num'] + 1:03d}"
         return "T001"
 
     def create_ticket(
@@ -381,14 +385,28 @@ class TicketsMixin:
         return [TicketRecord(**dict(row)) for row in rows]
 
     def delete_ticket(self: "DatabaseManager", ticket_id: str) -> bool:
-        """Delete a ticket and all related records from the database."""
-        # Delete related records first (foreign key constraints)
+        """Archive and delete a ticket and all related records from the database."""
+        # Archive ticket to history first (preserves transcripts)
+        self.execute(
+            """INSERT OR REPLACE INTO ticket_history
+               (ticket_id, user_id, guild_id, category, subject, claimed_by, closed_by,
+                close_reason, created_at, claimed_at, closed_at, archived_at,
+                transcript, transcript_html, transcript_token)
+               SELECT ticket_id, user_id, guild_id, category, subject, claimed_by, closed_by,
+                      close_reason, created_at, claimed_at, closed_at, ?,
+                      transcript, transcript_html, transcript_token
+               FROM tickets WHERE ticket_id = ?""",
+            (time.time(), ticket_id)
+        )
+
+        # Delete related records (foreign key constraints)
         self.execute("DELETE FROM ticket_messages WHERE ticket_id = ?", (ticket_id,))
         self.execute("DELETE FROM ai_conversations WHERE ticket_id = ?", (ticket_id,))
+
         # Now delete the ticket
         cursor = self.execute("DELETE FROM tickets WHERE ticket_id = ?", (ticket_id,))
         if cursor.rowcount > 0:
-            logger.debug("Ticket Deleted", [("Ticket ID", ticket_id)])
+            logger.debug("Ticket Archived & Deleted", [("Ticket ID", ticket_id)])
         return cursor.rowcount > 0
 
     def mark_ticket_warned(self: "DatabaseManager", ticket_id: str) -> bool:
@@ -422,9 +440,17 @@ class TicketsMixin:
         return cursor.rowcount > 0
 
     def get_ticket_transcript(self: "DatabaseManager", ticket_id: str) -> Optional[str]:
-        """Get HTML transcript for a ticket."""
+        """Get HTML transcript for a ticket (checks active tickets and history)."""
+        # Check active tickets first
         row = self.fetchone(
             "SELECT transcript_html FROM tickets WHERE ticket_id = ?",
+            (ticket_id,)
+        )
+        if row and row["transcript_html"]:
+            return row["transcript_html"]
+        # Check archived tickets
+        row = self.fetchone(
+            "SELECT transcript_html FROM ticket_history WHERE ticket_id = ?",
             (ticket_id,)
         )
         return row["transcript_html"] if row and row["transcript_html"] else None
@@ -440,8 +466,13 @@ class TicketsMixin:
         return cursor.rowcount > 0
 
     def get_ticket_transcript_json(self: "DatabaseManager", ticket_id: str) -> Optional[str]:
-        """Get JSON transcript for a ticket."""
+        """Get JSON transcript for a ticket (checks active tickets and history)."""
+        # Check active tickets first
         row = self.fetchone("SELECT transcript FROM tickets WHERE ticket_id = ?", (ticket_id,))
+        if row and row["transcript"]:
+            return row["transcript"]
+        # Check archived tickets
+        row = self.fetchone("SELECT transcript FROM ticket_history WHERE ticket_id = ?", (ticket_id,))
         return row["transcript"] if row and row["transcript"] else None
 
     def set_control_panel_message(self: "DatabaseManager", ticket_id: str, message_id: int) -> bool:

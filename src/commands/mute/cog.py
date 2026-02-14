@@ -97,9 +97,9 @@ class MuteCog(HelpersMixin, AutocompleteMixin, MuteOpsMixin, UnmuteOpsMixin, com
     @app_commands.command(name="mute", description="Mute a user by assigning the muted role")
     @app_commands.describe(
         user="The user to mute",
-        duration="How long to mute (e.g., 10m, 1h, 1d, permanent)",
+        duration="How long to mute (e.g., 10m, 1h, 1d, 1 day, permanent)",
         reason="Reason for the mute (required)",
-        evidence="Screenshot or video evidence (image/video only)",
+        evidence="Screenshot or video evidence (required, image/video only)",
     )
     @app_commands.autocomplete(duration=AutocompleteMixin.duration_autocomplete, reason=AutocompleteMixin.reason_autocomplete)
     async def mute(
@@ -108,7 +108,7 @@ class MuteCog(HelpersMixin, AutocompleteMixin, MuteOpsMixin, UnmuteOpsMixin, com
         user: discord.User,
         duration: str,
         reason: str,
-        evidence: Optional[discord.Attachment] = None,
+        evidence: discord.Attachment,
     ) -> None:
         """Mute a user by assigning the muted role (supports cross-server from mod server)."""
         # Validate evidence attachment (content type, file size, CDN expiry warning)

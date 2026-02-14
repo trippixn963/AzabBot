@@ -96,7 +96,12 @@ def parse_duration_to_seconds(duration: str) -> Optional[int]:
     """
     Parse duration string to seconds.
 
-    Supports formats like: 1h, 30m, 1d, 2d12h, permanent, perm, forever
+    This is a wrapper around the centralized parse_duration utility.
+
+    Supports formats like:
+        - Short: 1h, 30m, 1d, 2d12h, 1w, 1mo
+        - Full words: 1 hour, 30 minutes, 1 day, 2 days 12 hours
+        - Permanent: permanent, perm, forever
 
     Args:
         duration: Duration string.
@@ -104,30 +109,8 @@ def parse_duration_to_seconds(duration: str) -> Optional[int]:
     Returns:
         Total seconds, or None for permanent/invalid durations.
     """
-    if not duration:
-        return None
-
-    duration_lower = duration.lower().strip()
-
-    # Permanent durations
-    if duration_lower in ("permanent", "perm", "forever", "indefinite"):
-        return None
-
-    total_seconds = 0
-
-    # Match patterns like 1d, 2h, 30m, 15s
-    pattern = r"(\d+)\s*(d|h|m|s)"
-    matches = re.findall(pattern, duration_lower)
-
-    if not matches:
-        return None
-
-    multipliers = {"d": 86400, "h": 3600, "m": 60, "s": 1}
-
-    for value, unit in matches:
-        total_seconds += int(value) * multipliers.get(unit, 0)
-
-    return total_seconds if total_seconds > 0 else None
+    from src.utils.duration import parse_duration
+    return parse_duration(duration)
 
 
 def format_duration_precise(seconds: float) -> str:
