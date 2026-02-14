@@ -73,46 +73,46 @@ class StatsMixin:
     # =========================================================================
 
     def get_staff_tickets_claimed(self: "DatabaseManager", staff_id: int, guild_id: int) -> int:
-        """Get total tickets claimed by a staff member (permanent counter)."""
-        key = f"staff_tickets_claimed:{staff_id}:{guild_id}"
+        """Get total tickets claimed by a staff member from staff_ticket_stats."""
         row = self.fetchone(
-            "SELECT value FROM bot_state WHERE key = ?",
-            (key,)
+            "SELECT tickets_claimed FROM staff_ticket_stats WHERE staff_id = ? AND guild_id = ?",
+            (str(staff_id), str(guild_id))
         )
-        return int(row["value"]) if row and row["value"] else 0
+        return int(row["tickets_claimed"]) if row and row["tickets_claimed"] else 0
 
     def increment_staff_tickets_claimed(self: "DatabaseManager", staff_id: int, guild_id: int) -> int:
         """Increment tickets claimed counter for a staff member."""
-        key = f"staff_tickets_claimed:{staff_id}:{guild_id}"
-        current = self.get_staff_tickets_claimed(staff_id, guild_id)
-        new_value = current + 1
+        now = time.time()
         self.execute(
-            """INSERT OR REPLACE INTO bot_state (key, value, updated_at)
-               VALUES (?, ?, ?)""",
-            (key, str(new_value), time.time())
+            """INSERT INTO staff_ticket_stats (staff_id, guild_id, tickets_claimed, tickets_closed, created_at, updated_at)
+               VALUES (?, ?, 1, 0, ?, ?)
+               ON CONFLICT(staff_id, guild_id) DO UPDATE SET
+                   tickets_claimed = tickets_claimed + 1,
+                   updated_at = ?""",
+            (str(staff_id), str(guild_id), now, now, now)
         )
-        return new_value
+        return self.get_staff_tickets_claimed(staff_id, guild_id)
 
     def get_staff_tickets_closed(self: "DatabaseManager", staff_id: int, guild_id: int) -> int:
-        """Get total tickets closed by a staff member (permanent counter)."""
-        key = f"staff_tickets_closed:{staff_id}:{guild_id}"
+        """Get total tickets closed by a staff member from staff_ticket_stats."""
         row = self.fetchone(
-            "SELECT value FROM bot_state WHERE key = ?",
-            (key,)
+            "SELECT tickets_closed FROM staff_ticket_stats WHERE staff_id = ? AND guild_id = ?",
+            (str(staff_id), str(guild_id))
         )
-        return int(row["value"]) if row and row["value"] else 0
+        return int(row["tickets_closed"]) if row and row["tickets_closed"] else 0
 
     def increment_staff_tickets_closed(self: "DatabaseManager", staff_id: int, guild_id: int) -> int:
         """Increment tickets closed counter for a staff member."""
-        key = f"staff_tickets_closed:{staff_id}:{guild_id}"
-        current = self.get_staff_tickets_closed(staff_id, guild_id)
-        new_value = current + 1
+        now = time.time()
         self.execute(
-            """INSERT OR REPLACE INTO bot_state (key, value, updated_at)
-               VALUES (?, ?, ?)""",
-            (key, str(new_value), time.time())
+            """INSERT INTO staff_ticket_stats (staff_id, guild_id, tickets_claimed, tickets_closed, created_at, updated_at)
+               VALUES (?, ?, 0, 1, ?, ?)
+               ON CONFLICT(staff_id, guild_id) DO UPDATE SET
+                   tickets_closed = tickets_closed + 1,
+                   updated_at = ?""",
+            (str(staff_id), str(guild_id), now, now, now)
         )
-        return new_value
+        return self.get_staff_tickets_closed(staff_id, guild_id)
 
     def initialize_staff_ticket_counters(self: "DatabaseManager") -> int:
         """

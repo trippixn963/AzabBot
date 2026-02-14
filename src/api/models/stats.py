@@ -183,6 +183,8 @@ class PublicStatsResponse(BaseModel):
     moderator_spotlight: Optional[Dict[str, Any]] = Field(None, description="Spotlight moderator")
     system: Dict[str, Any] = Field(description="System info")
     changelog: List[Dict[str, Any]] = Field(description="Changelog entries")
+    prison_time: Optional[Dict[str, Any]] = Field(None, description="Prison time stats")
+    owner: Optional[Dict[str, Any]] = Field(None, description="Owner personal stats")
     generated_at: str = Field(description="ISO timestamp")
 
 

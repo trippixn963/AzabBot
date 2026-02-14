@@ -128,9 +128,39 @@ async def get_public_stats(
     claimed_tickets = ticket_stats[1] or 0
     closed_tickets = ticket_stats[2] or 0
 
-    # Use permanent counter for total (tickets are auto-deleted after close)
+    # Use ticket_stats table for total (tickets are auto-deleted after close)
     config = get_config()
-    total_tickets = db.get_total_tickets_opened(config.main_guild_id) if config.main_guild_id else 0
+    ticket_total_row = db.fetchone(
+        "SELECT total_opened FROM ticket_stats WHERE guild_id = ?",
+        (config.main_guild_id,)
+    ) if config.main_guild_id else None
+    total_tickets = ticket_total_row[0] if ticket_total_row else 0
+
+    # Calculate total prison time (filter out bad data > 1 year)
+    prison_time_stats = db.fetchone(
+        """
+        SELECT
+            COUNT(*) as total_sentences,
+            COALESCE(SUM(CASE WHEN duration_seconds < 31536000 THEN duration_seconds ELSE 0 END), 0) as total_seconds
+        FROM mute_history
+        WHERE duration_seconds IS NOT NULL
+        """
+    )
+    total_sentences = prison_time_stats[0] or 0
+    total_prison_seconds = int(prison_time_stats[1] or 0)
+    total_prison_hours = total_prison_seconds // 3600
+
+    # Calculate total XP drained (from actual recorded drains)
+    xp_drain_result = db.fetchone(
+        """SELECT COALESCE(SUM(xp_drained), 0) FROM mute_history WHERE xp_drained > 0"""
+    )
+    total_xp_drained = int(xp_drain_result[0] or 0)
+
+    # Owner personal stats
+    owner_id = 259725211664908288
+    owner_ticket_stats = db.get_staff_ticket_stats(owner_id, config.main_guild_id) if config.main_guild_id else {}
+    owner_tickets_claimed = owner_ticket_stats.get("claimed", 0)
+    owner_tickets_closed = owner_ticket_stats.get("closed", 0)
 
     # Top offenders (users with most punishments)
     offenders_rows = db.fetchall(
@@ -336,6 +366,16 @@ async def get_public_stats(
             "disk_total_gb": 0,
         },
         changelog=[],
+        prison_time={
+            "total_sentences": total_sentences,
+            "total_hours": total_prison_hours,
+            "total_seconds": total_prison_seconds,
+            "total_xp_drained": total_xp_drained,
+        },
+        owner={
+            "tickets_claimed": owner_tickets_claimed,
+            "tickets_closed": owner_tickets_closed,
+        },
         generated_at=datetime.now(NY_TZ).isoformat(),
     )
 
