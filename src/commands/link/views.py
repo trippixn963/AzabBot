@@ -34,8 +34,7 @@ class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"la
                 label="Approve",
                 style=discord.ButtonStyle.secondary,
                 emoji=APPROVE_EMOJI,
-                custom_id=f"la:{message_id}:{channel_id}:{member_id}:{guild_id}",
-            )
+                custom_id=f"la:{message_id}:{channel_id}:{member_id}:{guild_id}")
         )
         self.message_id = message_id
         self.channel_id = channel_id
@@ -48,8 +47,7 @@ class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"la
             int(match.group("msg")),
             int(match.group("chan")),
             int(match.group("mem")),
-            int(match.group("gid")),
-        )
+            int(match.group("gid")))
 
     async def callback(self, interaction: discord.Interaction) -> None:
         # Check if user has permission (developer or in link_allowed_user_ids)
@@ -61,8 +59,7 @@ class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"la
         if interaction.user.id not in allowed_ids:
             await interaction.response.send_message(
                 "You don't have permission to approve links.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         db = get_db()
@@ -74,15 +71,13 @@ class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"la
             channel_id=self.channel_id,
             member_id=self.member_id,
             guild_id=self.guild_id,
-            linked_by=interaction.user.id,
-        )
+            linked_by=interaction.user.id)
 
         if not saved:
             await interaction.response.edit_message(
                 content="Failed to save link. Message may already be linked.",
                 embed=None,
-                view=None,
-            )
+                view=None)
             return
 
         # Get member for display
@@ -105,24 +100,20 @@ class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"la
                 f"Successfully linked message to {member_mention}.\n"
                 f"The message will be deleted if they leave the server."
             ),
-            color=EmbedColors.GREEN,
-            timestamp=datetime.now(NY_TZ),
+            color=EmbedColors.GREEN
         )
         success_embed.add_field(
             name="Message",
             value=f"[Jump to Message]({message_url})",
-            inline=True,
-        )
+            inline=True)
         success_embed.add_field(
             name="Member",
             value=f"{member_mention}\n`{self.member_id}`",
-            inline=True,
-        )
+            inline=True)
 
         await interaction.response.edit_message(
             embed=success_embed,
-            view=None,
-        )
+            view=None)
 
 
 class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ld:(?P<msg>\d+):(?P<mem>\d+)"):
@@ -134,8 +125,7 @@ class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ld:(?
                 label="Deny",
                 style=discord.ButtonStyle.secondary,
                 emoji=DENY_EMOJI,
-                custom_id=f"ld:{message_id}:{member_id}",
-            )
+                custom_id=f"ld:{message_id}:{member_id}")
         )
         self.message_id = message_id
         self.member_id = member_id
@@ -144,8 +134,7 @@ class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ld:(?
     async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match) -> "LinkDenyButton":
         return cls(
             int(match.group("msg")),
-            int(match.group("mem")),
-        )
+            int(match.group("mem")))
 
     async def callback(self, interaction: discord.Interaction) -> None:
         # Check if user has permission
@@ -157,8 +146,7 @@ class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ld:(?
         if interaction.user.id not in allowed_ids:
             await interaction.response.send_message(
                 "You don't have permission to deny links.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         logger.tree("Link Denied", [
@@ -170,14 +158,12 @@ class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ld:(?
         deny_embed = discord.Embed(
             title="Link Cancelled",
             description="The link request was cancelled.",
-            color=EmbedColors.GOLD,
-            timestamp=datetime.now(NY_TZ),
+            color=EmbedColors.GOLD
         )
 
         await interaction.response.edit_message(
             embed=deny_embed,
-            view=None,
-        )
+            view=None)
 
 
 class LinkConfirmView(discord.ui.View):
@@ -190,8 +176,7 @@ class LinkConfirmView(discord.ui.View):
         member: discord.Member,
         moderator: discord.Member,
         target_guild: discord.Guild,
-        is_cross_server: bool,
-    ):
+        is_cross_server: bool):
         super().__init__(timeout=None)
         self.bot = bot
         self.message = message
@@ -214,37 +199,31 @@ class LinkConfirmView(discord.ui.View):
         try:
             embed = discord.Embed(
                 title="🔗 Message Linked",
-                color=EmbedColors.BLUE,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.BLUE
             )
 
             embed.add_field(
                 name="Moderator",
                 value=f"{self.moderator.mention}\n`{self.moderator.id}`",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Linked Member",
                 value=f"{self.member.mention}\n`{self.member.id}`",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Channel",
                 value=f"{self.message.channel.mention}",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Message",
                 value=f"[Jump to Message]({self.message.jump_url})",
-                inline=True,
-            )
+                inline=True)
 
             if self.is_cross_server:
                 embed.add_field(
                     name="Cross-Server",
                     value=f"From {interaction.guild.name} → {self.target_guild.name}",
-                    inline=True,
-                )
+                    inline=True)
 
             # Show message preview if available
             if self.message.content:
@@ -254,13 +233,11 @@ class LinkConfirmView(discord.ui.View):
                 embed.add_field(
                     name="Message Preview",
                     value=f"```{preview}```",
-                    inline=False,
-                )
+                    inline=False)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.ALLIANCES,
-                embed,
-            )
+                embed)
 
         except Exception as e:
             logger.debug("Link Log Failed", [("Error", str(e)[:50])])

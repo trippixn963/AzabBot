@@ -21,8 +21,7 @@ from .constants import (
     BULK_BAN_THRESHOLD,
     BULK_DELETE_THRESHOLD,
     BULK_TIMEOUT_THRESHOLD,
-    PRIORITY_CRITICAL,
-)
+    PRIORITY_CRITICAL)
 
 if TYPE_CHECKING:
     from .service import ModTrackerService
@@ -89,8 +88,7 @@ class BulkDetectionMixin:
                 mod_id=mod_id,
                 alert_type="Bulk Action Detected",
                 description=description,
-                color=EmbedColors.ERROR,
-            )
+                color=EmbedColors.ERROR)
 
             # Send @everyone alert to alert channel
             if role_removed and member:
@@ -154,8 +152,7 @@ class BulkDetectionMixin:
         member: discord.Member,
         action_type: str,
         count: int,
-        threshold: int,
-    ) -> None:
+        threshold: int) -> None:
         """
         Send a public alert to the alert channel when mod role is removed.
 
@@ -183,8 +180,7 @@ class BulkDetectionMixin:
             # Build embed
             embed = discord.Embed(
                 title="🚨 MOD ROLE AUTOMATICALLY REMOVED",
-                color=EmbedColors.ERROR,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.ERROR
             )
             embed.add_field(name="Moderator", value=f"{member.mention}\n`{member.name}`", inline=True)
             embed.add_field(name="Action", value=action_display, inline=True)
@@ -226,8 +222,7 @@ class BulkDetectionMixin:
         description: str,
         color: int = EmbedColors.WARNING,
         priority: int = PRIORITY_CRITICAL,
-        ping_owner: bool = True,
-    ) -> None:
+        ping_owner: bool = True) -> None:
         """
         Send an alert to a mod's thread with optional ping via priority queue.
 
@@ -252,8 +247,7 @@ class BulkDetectionMixin:
         embed = discord.Embed(
             title=f"⚠️ {alert_type}",
             description=description,
-            color=color,
-            timestamp=datetime.now(NY_TZ),
+            color=color
         )
 
         # Queue with high priority - alerts bypass regular log queue
@@ -262,8 +256,7 @@ class BulkDetectionMixin:
             embed=embed,
             priority=priority,
             content=f"<@{self.config.owner_id}>" if ping_owner else None,
-            is_alert=True,
-        )
+            is_alert=True)
 
         logger.tree("Mod Tracker: Alert Queued", [
             ("Mod ID", str(mod_id)),

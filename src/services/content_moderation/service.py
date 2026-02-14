@@ -22,8 +22,7 @@ from src.core.constants import (
     RELIGION_OFFENSE_THRESHOLD,
     RELIGION_AUTO_MUTE_MINUTES,
     RELIGION_WARNING_DELETE_AFTER,
-    RELIGION_MUTE_MSG_DELETE_AFTER,
-)
+    RELIGION_MUTE_MSG_DELETE_AFTER)
 from src.core.logger import logger
 from src.api.services.event_logger import event_logger
 from src.utils.async_utils import create_safe_task
@@ -42,8 +41,7 @@ from .constants import (
     MIN_MESSAGE_LENGTH,
     USER_CHECK_COOLDOWN,
     VIOLATION_EMOJI,
-    VIOLATION_TYPE,
-)
+    VIOLATION_TYPE)
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -491,8 +489,7 @@ class ContentModerationService:
     async def handle_violation(
         self,
         message: discord.Message,
-        result: ClassificationResult,
-    ) -> None:
+        result: ClassificationResult) -> None:
         """
         Handle a detected content violation.
 
@@ -510,8 +507,7 @@ class ContentModerationService:
     async def _handle_high_confidence(
         self,
         message: discord.Message,
-        result: ClassificationResult,
-    ) -> None:
+        result: ClassificationResult) -> None:
         """
         Handle high-confidence violation (auto-delete + warn).
 
@@ -528,8 +524,7 @@ class ContentModerationService:
                 message.id,
                 reason="Religion talk",
                 user_id=message.author.id,
-                channel_name=f"#{message.channel.name}" if hasattr(message.channel, "name") else None,
-            )
+                channel_name=f"#{message.channel.name}" if hasattr(message.channel, "name") else None)
 
             # Delete the message
             await message.delete()
@@ -585,8 +580,7 @@ class ContentModerationService:
     async def _handle_medium_confidence(
         self,
         message: discord.Message,
-        result: ClassificationResult,
-    ) -> None:
+        result: ClassificationResult) -> None:
         """
         Handle medium-confidence violation (alert mods only).
 
@@ -682,8 +676,7 @@ class ContentModerationService:
                 guild_id=message.guild.id,
                 moderator_id=self.bot.user.id,
                 reason=reason,
-                duration_seconds=duration_mins * 60,
-            )
+                duration_seconds=duration_mins * 60)
 
             # Log to permanent audit log
             self.bot.db.log_moderation_action(
@@ -694,8 +687,7 @@ class ContentModerationService:
                 action_source="auto_religion",
                 reason=reason,
                 duration_seconds=duration_mins * 60,
-                details={"offense_count": offense_count, "window_minutes": window_mins},
-            )
+                details={"offense_count": offense_count, "window_minutes": window_mins})
 
             # NOTE: Automated mutes don't create case forum threads (too verbose)
             # They are logged to moderation_audit_log instead
@@ -719,8 +711,7 @@ class ContentModerationService:
                 target=member,
                 moderator=None,  # Auto-action
                 reason=reason,
-                duration_seconds=duration_mins * 60 if duration_mins else None,
-            )
+                duration_seconds=duration_mins * 60 if duration_mins else None)
 
             # Fire-and-forget DM (no appeal button)
             # Build fields - include unmute time if we have expires_at
@@ -737,8 +728,7 @@ class ContentModerationService:
                 moderator=None,  # Auto-mute, no moderator
                 reason=reason,
                 fields=dm_fields,
-                context="Religion Auto-Mute DM",
-            ))
+                context="Religion Auto-Mute DM"))
 
             # Send mute notification to channel
             try:
@@ -797,8 +787,7 @@ class ContentModerationService:
 
         embed = discord.Embed(
             title="🔇 Auto-Mute: Repeated Religion Talk",
-            color=EmbedColors.LOG_NEGATIVE,
-            timestamp=datetime.now(NY_TZ),
+            color=EmbedColors.LOG_NEGATIVE
         )
         embed.add_field(name="User", value=f"{message.author.mention}\n{message.author.id}", inline=True)
         embed.add_field(name="Channel", value=f"<#{message.channel.id}>", inline=True)
@@ -806,20 +795,17 @@ class ContentModerationService:
         embed.add_field(
             name="Reason",
             value=f"{offense_count} religion talk violations in {window_mins} minutes",
-            inline=False,
-        )
+            inline=False)
         embed.add_field(
             name="Last Message",
             value=f"```{message.content[:500]}```" if message.content else "(no text)",
-            inline=False,
-        )
+            inline=False)
 
         try:
             await self.bot.logging_service._send_log(
                 LogCategory.AUTOMOD,
                 embed,
-                user_id=message.author.id,
-            )
+                user_id=message.author.id)
             logger.debug("Auto-Mute Alert Sent", [("User", str(message.author.id))])
         except discord.HTTPException as e:
             log_http_error(e, "Send Auto-Mute Alert", [
@@ -835,8 +821,7 @@ class ContentModerationService:
     async def _send_violation_dm(
         self,
         message: discord.Message,
-        result: ClassificationResult,
-    ) -> None:
+        result: ClassificationResult) -> None:
         """
         Send DM to user about their violation.
 
@@ -848,14 +833,12 @@ class ContentModerationService:
             dm_embed = discord.Embed(
                 title=f"{VIOLATION_EMOJI} Message Removed",
                 description=f"Your message in **{message.guild.name}** was removed for discussing religion.",
-                color=EmbedColors.WARNING,
-            )
+                color=EmbedColors.WARNING)
             dm_embed.add_field(name="Server Rule", value="No religion discussions allowed", inline=False)
             dm_embed.add_field(
                 name="Your Message",
                 value=f"```{message.content[:500]}```" if message.content else "(no text)",
-                inline=False,
-            )
+                inline=False)
             await message.author.send(embed=dm_embed)
             logger.debug("Violation DM Sent", [("User", str(message.author.id))])
         except discord.Forbidden:
@@ -870,8 +853,7 @@ class ContentModerationService:
         self,
         message: discord.Message,
         result: ClassificationResult,
-        deleted: bool,
-    ) -> None:
+        deleted: bool) -> None:
         """
         Send alert to automod log thread.
 
@@ -893,8 +875,7 @@ class ContentModerationService:
 
         embed = discord.Embed(
             title=title,
-            color=color,
-            timestamp=datetime.now(NY_TZ),
+            color=color
         )
         embed.add_field(name="User", value=f"{message.author.mention}\n{message.author.id}", inline=True)
         embed.add_field(name="Channel", value=f"<#{message.channel.id}>", inline=True)
@@ -903,22 +884,19 @@ class ContentModerationService:
         embed.add_field(
             name="Message Content",
             value=f"```{message.content[:800]}```" if message.content else "(no text)",
-            inline=False,
-        )
+            inline=False)
 
         if not deleted:
             embed.add_field(
                 name="Action Required",
                 value=f"[Jump to Message]({message.jump_url})\nPlease review and take action if needed.",
-                inline=False,
-            )
+                inline=False)
 
         try:
             await self.bot.logging_service._send_log(
                 LogCategory.AUTOMOD,
                 embed,
-                user_id=message.author.id,
-            )
+                user_id=message.author.id)
             logger.debug("Mod Alert Sent", [("User", str(message.author.id))])
         except discord.HTTPException as e:
             log_http_error(e, "Send Mod Alert", [])

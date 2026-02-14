@@ -36,8 +36,7 @@ class TicketsLogsMixin:
         category: str,
         subject: str,
         thread_id: int,
-        guild_id: int,
-    ) -> None:
+        guild_id: int) -> None:
         """Log a ticket creation."""
         if not self.enabled:
             return
@@ -46,8 +45,7 @@ class TicketsLogsMixin:
             "🎫 Ticket Created",
             EmbedColors.SUCCESS,
             category="Ticket",
-            user_id=user.id,
-        )
+            user_id=user.id)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Category", value=category.title(), inline=True)
         embed.add_field(name="User", value=self._format_user_field(user), inline=True)
@@ -67,8 +65,7 @@ class TicketsLogsMixin:
         category: str,
         thread_id: int,
         guild_id: int,
-        created_at: float,
-    ) -> None:
+        created_at: float) -> None:
         """Log a ticket claim."""
         if not self.enabled:
             return
@@ -91,8 +88,7 @@ class TicketsLogsMixin:
             "✋ Ticket Claimed",
             EmbedColors.GOLD,
             category="Ticket",
-            user_id=user.id,
-        )
+            user_id=user.id)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Category", value=category.title(), inline=True)
         embed.add_field(name="Response Time", value=f"⏱️ {response_time}", inline=True)
@@ -113,8 +109,7 @@ class TicketsLogsMixin:
         category: str,
         thread_id: int,
         guild_id: int,
-        reason: Optional[str] = None,
-    ) -> None:
+        reason: Optional[str] = None) -> None:
         """Log a ticket close."""
         if not self.enabled:
             return
@@ -123,8 +118,7 @@ class TicketsLogsMixin:
             "🔒 Ticket Closed",
             EmbedColors.LOG_NEGATIVE,
             category="Ticket",
-            user_id=user.id,
-        )
+            user_id=user.id)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Category", value=category.title(), inline=True)
         embed.add_field(name="Opened By", value=self._format_user_field(user), inline=True)
@@ -141,8 +135,7 @@ class TicketsLogsMixin:
                 label="Transcript",
                 url=transcript_url,
                 style=discord.ButtonStyle.link,
-                emoji=TRANSCRIPT_EMOJI,
-            ))
+                emoji=TRANSCRIPT_EMOJI))
         db = get_db()
         case = db.get_case_log(user.id)
         if case:
@@ -151,8 +144,7 @@ class TicketsLogsMixin:
                 label="Case",
                 url=case_url,
                 style=discord.ButtonStyle.link,
-                emoji=CASE_EMOJI,
-            ))
+                emoji=CASE_EMOJI))
         view.add_item(UserIdButton(user.id))
 
         await self._send_log(LogCategory.TICKETS, embed, view=view)
@@ -164,8 +156,7 @@ class TicketsLogsMixin:
         reopened_by: discord.Member,
         category: str,
         thread_id: int,
-        guild_id: int,
-    ) -> None:
+        guild_id: int) -> None:
         """Log a ticket reopen."""
         if not self.enabled:
             return
@@ -174,8 +165,7 @@ class TicketsLogsMixin:
             "🔓 Ticket Reopened",
             EmbedColors.SUCCESS,
             category="Ticket",
-            user_id=user.id,
-        )
+            user_id=user.id)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Category", value=category.title(), inline=True)
         embed.add_field(name="Opened By", value=self._format_user_field(user), inline=True)
@@ -194,8 +184,7 @@ class TicketsLogsMixin:
         added_user: discord.User,
         added_by: discord.Member,
         thread_id: int,
-        guild_id: int,
-    ) -> None:
+        guild_id: int) -> None:
         """Log a user being added to a ticket."""
         if not self.enabled:
             return
@@ -204,8 +193,7 @@ class TicketsLogsMixin:
             "👤 User Added to Ticket",
             EmbedColors.BLUE,
             category="Ticket",
-            user_id=added_user.id,
-        )
+            user_id=added_user.id)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Ticket Owner", value=self._format_user_field(ticket_user), inline=True)
         embed.add_field(name="User Added", value=self._format_user_field(added_user), inline=True)
@@ -225,8 +213,7 @@ class TicketsLogsMixin:
         transferred_by: discord.Member,
         category: str,
         thread_id: int,
-        guild_id: int,
-    ) -> None:
+        guild_id: int) -> None:
         """Log a ticket transfer."""
         if not self.enabled:
             return
@@ -235,8 +222,7 @@ class TicketsLogsMixin:
             "↔️ Ticket Transferred",
             EmbedColors.BLUE,
             category="Ticket",
-            user_id=ticket_user.id,
-        )
+            user_id=ticket_user.id)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Category", value=category.title(), inline=True)
         embed.add_field(name="Ticket Owner", value=self._format_user_field(ticket_user), inline=True)
@@ -258,8 +244,7 @@ class TicketsLogsMixin:
         new_priority: str,
         category: str,
         thread_id: int,
-        guild_id: int,
-    ) -> None:
+        guild_id: int) -> None:
         """Log a ticket priority change."""
         if not self.enabled:
             return
@@ -275,8 +260,7 @@ class TicketsLogsMixin:
             "📊 Ticket Priority Changed",
             priority_colors.get(new_priority, EmbedColors.BLUE),
             category="Ticket",
-            user_id=ticket_user.id,
-        )
+            user_id=ticket_user.id)
         embed.add_field(name="Ticket", value=f"`{ticket_id}`", inline=True)
         embed.add_field(name="Category", value=category.title(), inline=True)
         embed.add_field(name="Priority", value=f"{old_priority.title()} → **{new_priority.title()}**", inline=True)
@@ -298,8 +282,7 @@ class TicketsLogsMixin:
         messages: list,
         closed_by: discord.Member,
         created_at: float,
-        closed_at: float,
-    ) -> None:
+        closed_at: float) -> None:
         """Log a ticket transcript when closed."""
         if not self.enabled:
             logger.warning("Logging Service Disabled For Transcript", [("Ticket ID", ticket_id)])
@@ -327,8 +310,7 @@ class TicketsLogsMixin:
 
         embed = discord.Embed(
             title=f"🎫 Ticket Transcript - {ticket_id}",
-            color=EmbedColors.SUCCESS,
-            timestamp=datetime.now(NY_TZ),
+            color=EmbedColors.SUCCESS
         )
 
         self._set_user_thumbnail(embed, user)
@@ -348,13 +330,11 @@ class TicketsLogsMixin:
             created_dt=created_dt,
             closed_dt=closed_dt,
             duration_str=duration_str,
-            messages=messages,
-        )
+            messages=messages)
 
         transcript_file = discord.File(
             io.BytesIO(html_content.encode("utf-8")),
-            filename=f"transcript_{ticket_id}.html",
-        )
+            filename=f"transcript_{ticket_id}.html")
 
         config = get_config()
         view = None
@@ -385,8 +365,7 @@ class TicketsLogsMixin:
         created_at: float,
         approved_by: discord.Member,
         transcript_url: Optional[str] = None,
-        case_thread_url: Optional[str] = None,
-    ) -> None:
+        case_thread_url: Optional[str] = None) -> None:
         """Log a case transcript when approved."""
         if not self.enabled:
             return
@@ -398,8 +377,7 @@ class TicketsLogsMixin:
 
         embed = discord.Embed(
             title=f"{action_emoji} Case Transcript - {case_id}",
-            color=EmbedColors.SUCCESS,
-            timestamp=datetime.now(NY_TZ),
+            color=EmbedColors.SUCCESS
         )
 
         self._set_user_thumbnail(embed, user)
@@ -416,15 +394,13 @@ class TicketsLogsMixin:
                 label="View Transcript",
                 url=transcript_url,
                 style=discord.ButtonStyle.link,
-                emoji="📜",
-            ))
+                emoji="📜"))
         if case_thread_url:
             view.add_item(discord.ui.Button(
                 label="Case Thread",
                 url=case_thread_url,
                 style=discord.ButtonStyle.link,
-                emoji=CASE_EMOJI,
-            ))
+                emoji=CASE_EMOJI))
 
         await self._send_log(LogCategory.TRANSCRIPTS, embed, view=view if view.children else None, user_id=user.id)
 

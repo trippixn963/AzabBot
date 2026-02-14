@@ -143,8 +143,7 @@ class GenderRoleTask(MaintenanceTask):
         member: discord.Member,
         gender_name: str,
         removed_role: discord.Role,
-        kept_role: Optional[discord.Role],
-    ) -> None:
+        kept_role: Optional[discord.Role]) -> None:
         """Log gender role resolution to server logs."""
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
             return
@@ -153,8 +152,7 @@ class GenderRoleTask(MaintenanceTask):
             embed = discord.Embed(
                 title="🔧 Maintenance: Gender Role Conflict Resolved",
                 description="Conflict detected during midnight maintenance scan.",
-                color=EmbedColors.LOG_INFO,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.LOG_INFO
             )
             embed.add_field(name="Member", value=f"{member.mention}\n`{member.id}`", inline=True)
             embed.add_field(name="Gender", value=gender_name, inline=True)
@@ -162,15 +160,13 @@ class GenderRoleTask(MaintenanceTask):
             embed.add_field(
                 name="Kept Role",
                 value=f"{kept_role.mention} (verified)" if kept_role else "Unknown",
-                inline=True,
-            )
+                inline=True)
             embed.set_thumbnail(url=member.display_avatar.url)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.AUTOMOD,
                 embed,
-                user_id=member.id,
-            )
+                user_id=member.id)
         except Exception as e:
             logger.debug("Gender Resolution Log Failed", [("Error", str(e)[:50])])
 

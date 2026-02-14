@@ -51,14 +51,12 @@ class LinkCog(commands.Cog):
     @app_commands.command(name="link", description="Link an alliance message to a member")
     @app_commands.describe(
         message_id="The message ID to link",
-        member_id="The member ID to link the message to",
-    )
+        member_id="The member ID to link the message to")
     async def link(
         self,
         interaction: discord.Interaction,
         message_id: str,
-        member_id: str,
-    ) -> None:
+        member_id: str) -> None:
         """Link a message to a member for auto-deletion on leave."""
         try:
             # Permission check - only specific user IDs can use this command
@@ -73,8 +71,7 @@ class LinkCog(commands.Cog):
                 ], emoji="🚫")
                 await interaction.response.send_message(
                     "You don't have permission to use this command.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             # Check if alliances channel is configured
@@ -85,8 +82,7 @@ class LinkCog(commands.Cog):
                 ])
                 await interaction.response.send_message(
                     "Alliance channel is not configured.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             # Parse message ID with range validation
@@ -103,8 +99,7 @@ class LinkCog(commands.Cog):
                 ])
                 await interaction.response.send_message(
                     "Invalid message ID. Please provide a valid Discord ID.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             # Parse member ID with range validation
@@ -121,8 +116,7 @@ class LinkCog(commands.Cog):
                 ])
                 await interaction.response.send_message(
                     "Invalid member ID. Please provide a valid Discord ID.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             # Get target guild (supports cross-server)
@@ -140,8 +134,7 @@ class LinkCog(commands.Cog):
                 ])
                 await interaction.response.send_message(
                     f"Member with ID `{parsed_member_id}` not found in {target_guild.name}.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             logger.tree("Link Command Started", [
@@ -163,8 +156,7 @@ class LinkCog(commands.Cog):
                 ])
                 await interaction.response.send_message(
                     f"Alliance channel not found in {target_guild.name}.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             # Verify message exists
@@ -178,8 +170,7 @@ class LinkCog(commands.Cog):
                 ])
                 await interaction.response.send_message(
                     "Message not found in the alliance channel.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
             except discord.HTTPException as e:
                 log_http_error(e, "Link Message Fetch", [
@@ -188,8 +179,7 @@ class LinkCog(commands.Cog):
                 ])
                 await interaction.response.send_message(
                     f"Failed to fetch message: {e}",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             # Check if already linked
@@ -203,35 +193,30 @@ class LinkCog(commands.Cog):
                 ])
                 await interaction.response.send_message(
                     f"This message is already linked to <@{existing['member_id']}>.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             # Create confirmation embed
             confirm_embed = discord.Embed(
                 title="Confirm Message Link",
                 description="Review the details below and click **Approve** to link this message.",
-                color=EmbedColors.GOLD,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.GOLD
             )
 
             confirm_embed.add_field(
                 name="Member",
                 value=f"{member.mention}\n`{member.id}`",
-                inline=True,
-            )
+                inline=True)
             confirm_embed.add_field(
                 name="Message",
                 value=f"[Jump to Message]({message.jump_url})",
-                inline=True,
-            )
+                inline=True)
 
             if cross_server:
                 confirm_embed.add_field(
                     name="Server",
                     value=target_guild.name,
-                    inline=True,
-                )
+                    inline=True)
 
             # Show message preview
             if message.content:
@@ -241,20 +226,17 @@ class LinkCog(commands.Cog):
                 confirm_embed.add_field(
                     name="Message Preview",
                     value=f"```{preview}```",
-                    inline=False,
-                )
+                    inline=False)
             elif message.attachments:
                 confirm_embed.add_field(
                     name="Message Content",
                     value=f"*{len(message.attachments)} attachment(s)*",
-                    inline=False,
-                )
+                    inline=False)
             elif message.embeds:
                 confirm_embed.add_field(
                     name="Message Content",
                     value=f"*{len(message.embeds)} embed(s)*",
-                    inline=False,
-                )
+                    inline=False)
 
             # Create view with buttons
             view = LinkConfirmView(
@@ -263,14 +245,12 @@ class LinkCog(commands.Cog):
                 member=member,
                 moderator=interaction.user,
                 target_guild=target_guild,
-                cross_server=cross_server,
-            )
+                cross_server=cross_server)
 
             await interaction.response.send_message(
                 embed=confirm_embed,
                 view=view,
-                ephemeral=True,
-            )
+                ephemeral=True)
 
         except Exception as e:
             logger.error("Link Command Failed", [
@@ -280,8 +260,7 @@ class LinkCog(commands.Cog):
             await safe_respond(
                 interaction,
                 "An error occurred. Please try again.",
-                ephemeral=True,
-            )
+                ephemeral=True)
 
 
 __all__ = ["LinkCog"]

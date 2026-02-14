@@ -18,8 +18,7 @@ from src.core.config import EmbedColors, NY_TZ
 from .utils import format_age
 from .constants import (
     NEW_ACCOUNT_WARNING_DAYS,
-    SUSPICIOUS_ACCOUNT_DAYS,
-)
+    SUSPICIOUS_ACCOUNT_DAYS)
 
 
 # =============================================================================
@@ -34,8 +33,7 @@ def build_mute_embed(
     mute_count: int = 1,
     is_extension: bool = False,
     evidence: Optional[str] = None,
-    expires_at: Optional[datetime] = None,
-) -> discord.Embed:
+    expires_at: Optional[datetime] = None) -> discord.Embed:
     """
     Build a mute action embed.
 
@@ -61,8 +59,7 @@ def build_mute_embed(
 
     embed = discord.Embed(
         title=title,
-        color=EmbedColors.ERROR,
-        timestamp=datetime.now(NY_TZ),
+        color=EmbedColors.ERROR
     )
     embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
     embed.set_thumbnail(url=user.display_avatar.url)
@@ -114,8 +111,7 @@ def build_timeout_embed(
     reason: Optional[str] = None,
     mute_count: int = 1,
     moderator: Optional[discord.Member] = None,
-    evidence_url: Optional[str] = None,
-) -> discord.Embed:
+    evidence_url: Optional[str] = None) -> discord.Embed:
     """
     Build a timeout action embed.
 
@@ -139,8 +135,7 @@ def build_timeout_embed(
 
     embed = discord.Embed(
         title=title,
-        color=EmbedColors.WARNING,
-        timestamp=datetime.now(NY_TZ),
+        color=EmbedColors.WARNING
     )
     if moderator:
         embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
@@ -183,8 +178,7 @@ def build_warn_embed(
     total_warns: int = 1,
     evidence: Optional[str] = None,
     mute_count: int = 0,
-    ban_count: int = 0,
-) -> discord.Embed:
+    ban_count: int = 0) -> discord.Embed:
     """
     Build a warning action embed.
 
@@ -208,8 +202,7 @@ def build_warn_embed(
 
     embed = discord.Embed(
         title=title,
-        color=EmbedColors.WARNING,
-        timestamp=datetime.now(NY_TZ),
+        color=EmbedColors.WARNING
     )
     embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
     embed.set_thumbnail(url=user.display_avatar.url)
@@ -261,8 +254,7 @@ def build_unmute_embed(
     user_avatar_url: Optional[str] = None,
     time_served: Optional[str] = None,
     original_duration: Optional[str] = None,
-    original_moderator_name: Optional[str] = None,
-) -> discord.Embed:
+    original_moderator_name: Optional[str] = None) -> discord.Embed:
     """
     Build an unmute action embed.
 
@@ -279,8 +271,7 @@ def build_unmute_embed(
     """
     embed = discord.Embed(
         title="🔊 User Unmuted",
-        color=EmbedColors.SUCCESS,
-        timestamp=datetime.now(NY_TZ),
+        color=EmbedColors.SUCCESS
     )
     embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
     if user_avatar_url:
@@ -310,8 +301,7 @@ def build_unmute_embed(
 # =============================================================================
 
 def build_expired_embed(
-    user_avatar_url: Optional[str] = None,
-) -> discord.Embed:
+    user_avatar_url: Optional[str] = None) -> discord.Embed:
     """
     Build a mute expired (auto-unmute) embed.
 
@@ -323,8 +313,7 @@ def build_expired_embed(
     """
     embed = discord.Embed(
         title="⏰ Mute Expired (Auto-Unmute)",
-        color=EmbedColors.INFO,
-        timestamp=datetime.now(NY_TZ),
+        color=EmbedColors.INFO
     )
     if user_avatar_url:
         embed.set_thumbnail(url=user_avatar_url)
@@ -341,8 +330,7 @@ def build_ban_embed(
     moderator: discord.Member,
     reason: Optional[str] = None,
     ban_count: int = 1,
-    evidence: Optional[str] = None,
-) -> discord.Embed:
+    evidence: Optional[str] = None) -> discord.Embed:
     """
     Build a ban action embed.
 
@@ -363,8 +351,7 @@ def build_ban_embed(
 
     embed = discord.Embed(
         title=title,
-        color=EmbedColors.ERROR,
-        timestamp=datetime.now(NY_TZ),
+        color=EmbedColors.ERROR
     )
     embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
 
@@ -396,8 +383,7 @@ def build_unban_embed(
     moderator: discord.Member,
     reason: Optional[str] = None,
     user_avatar_url: Optional[str] = None,
-    time_banned: Optional[str] = None,
-) -> discord.Embed:
+    time_banned: Optional[str] = None) -> discord.Embed:
     """
     Build an unban action embed.
 
@@ -412,8 +398,7 @@ def build_unban_embed(
     """
     embed = discord.Embed(
         title="🔓 User Unbanned",
-        color=EmbedColors.SUCCESS,
-        timestamp=datetime.now(NY_TZ),
+        color=EmbedColors.SUCCESS
     )
     embed.set_author(name=moderator.display_name, icon_url=moderator.display_avatar.url)
     if user_avatar_url:
@@ -438,8 +423,7 @@ def build_forbid_embed(
     moderator: discord.Member,
     restrictions: List[str],
     reason: Optional[str] = None,
-    duration: Optional[str] = None,
-) -> discord.Embed:
+    duration: Optional[str] = None) -> discord.Embed:
     """Build a forbid action embed."""
     # Restriction display info
     restriction_info = {
@@ -455,8 +439,7 @@ def build_forbid_embed(
 
     embed = discord.Embed(
         title="🚫 User Restricted",
-        color=EmbedColors.WARNING,
-        timestamp=datetime.now(NY_TZ),
+        color=EmbedColors.WARNING
     )
 
     embed.set_thumbnail(url=user.display_avatar.url)
@@ -464,18 +447,15 @@ def build_forbid_embed(
     embed.add_field(
         name="User",
         value=f"{user.mention}\n`{user.id}`",
-        inline=True,
-    )
+        inline=True)
     embed.add_field(
         name="Moderator",
         value=f"{moderator.mention}\n`{moderator.id}`",
-        inline=True,
-    )
+        inline=True)
     embed.add_field(
         name="Duration",
         value=duration or "Permanent",
-        inline=True,
-    )
+        inline=True)
 
     # Build restrictions list
     restrictions_text = []
@@ -489,8 +469,7 @@ def build_forbid_embed(
     embed.add_field(
         name="Restrictions Applied",
         value="\n".join(restrictions_text) or "None",
-        inline=False,
-    )
+        inline=False)
 
     if reason:
         embed.add_field(name="Reason", value=reason, inline=False)
@@ -507,8 +486,7 @@ def build_forbid_embed(
 def build_unforbid_embed(
     user: discord.Member,
     moderator: discord.Member,
-    restrictions: List[str],
-) -> discord.Embed:
+    restrictions: List[str]) -> discord.Embed:
     """Build an unforbid action embed."""
     restriction_info = {
         "reactions": ("🚫", "Add Reactions"),
@@ -523,8 +501,7 @@ def build_unforbid_embed(
 
     embed = discord.Embed(
         title="✅ Restrictions Removed",
-        color=EmbedColors.SUCCESS,
-        timestamp=datetime.now(NY_TZ),
+        color=EmbedColors.SUCCESS
     )
 
     embed.set_thumbnail(url=user.display_avatar.url)
@@ -532,13 +509,11 @@ def build_unforbid_embed(
     embed.add_field(
         name="User",
         value=f"{user.mention}\n`{user.id}`",
-        inline=True,
-    )
+        inline=True)
     embed.add_field(
         name="Moderator",
         value=f"{moderator.mention}\n`{moderator.id}`",
-        inline=True,
-    )
+        inline=True)
 
     # Build restrictions list
     restrictions_text = []
@@ -552,8 +527,7 @@ def build_unforbid_embed(
     embed.add_field(
         name="Restrictions Removed",
         value="\n".join(restrictions_text) or "None",
-        inline=False,
-    )
+        inline=False)
 
     return embed
 
@@ -566,8 +540,7 @@ def build_profile_embed(
     user: discord.Member,
     previous_names: List[str] = None,
     mute_count: int = 0,
-    ban_count: int = 0,
-) -> discord.Embed:
+    ban_count: int = 0) -> discord.Embed:
     """
     Build a user profile embed for case threads.
 
@@ -585,8 +558,7 @@ def build_profile_embed(
     embed = discord.Embed(
         title="📋 User Profile",
         color=EmbedColors.INFO,
-        timestamp=now,
-    )
+        timestamp=now)
 
     embed.set_thumbnail(url=user.display_avatar.url)
 
@@ -625,14 +597,12 @@ def build_profile_embed(
 # =============================================================================
 
 def build_mute_evasion_embed(
-    member: discord.Member,
-) -> discord.Embed:
+    member: discord.Member) -> discord.Embed:
     """Build an embed for mute evasion (rejoin while muted)."""
     embed = discord.Embed(
         title="⚠️ Rejoined While Muted",
         description="User rejoined the server with an active mute. Muted role has been re-applied.",
-        color=EmbedColors.WARNING,
-        timestamp=datetime.now(NY_TZ),
+        color=EmbedColors.WARNING
     )
 
     embed.set_thumbnail(url=member.display_avatar.url)
@@ -643,14 +613,12 @@ def build_mute_evasion_embed(
 def build_vc_violation_embed(
     display_name: str,
     channel_name: str,
-    avatar_url: Optional[str] = None,
-) -> discord.Embed:
+    avatar_url: Optional[str] = None) -> discord.Embed:
     """Build an embed for voice channel violation by muted user."""
     embed = discord.Embed(
         title="🔇 Voice Channel Violation",
         description="User attempted to join a voice channel while muted. They have been disconnected and given a 1-hour timeout.",
-        color=EmbedColors.ERROR,
-        timestamp=datetime.now(NY_TZ),
+        color=EmbedColors.ERROR
     )
 
     if avatar_url:
@@ -659,13 +627,11 @@ def build_vc_violation_embed(
     embed.add_field(
         name="Attempted Channel",
         value=f"`{channel_name}`",
-        inline=True,
-    )
+        inline=True)
     embed.add_field(
         name="Action Taken",
         value="`1 hour timeout`",
-        inline=True,
-    )
+        inline=True)
 
     return embed
 
@@ -673,14 +639,12 @@ def build_vc_violation_embed(
 def build_member_left_embed(
     display_name: str,
     muted_duration: Optional[str] = None,
-    avatar_url: Optional[str] = None,
-) -> discord.Embed:
+    avatar_url: Optional[str] = None) -> discord.Embed:
     """Build an embed for member leaving while muted."""
     embed = discord.Embed(
         title="🚪 Left While Muted",
         description="User left the server while still muted.",
-        color=EmbedColors.WARNING,
-        timestamp=datetime.now(NY_TZ),
+        color=EmbedColors.WARNING
     )
 
     if avatar_url:
@@ -690,8 +654,7 @@ def build_member_left_embed(
         embed.add_field(
             name="Was Muted For",
             value=f"`{muted_duration}`",
-            inline=True,
-        )
+            inline=True)
 
     return embed
 
@@ -723,8 +686,7 @@ def build_control_panel_embed(
     user: Optional[discord.Member] = None,
     moderator: Optional[discord.Member] = None,
     status: str = "active",
-    expires_at: Optional[datetime] = None,
-) -> discord.Embed:
+    expires_at: Optional[datetime] = None) -> discord.Embed:
     """
     Build the persistent control panel embed for a case.
 
@@ -749,8 +711,7 @@ def build_control_panel_embed(
 
     embed = discord.Embed(
         title=f"🎛️ Case Control Panel",
-        color=color,
-        timestamp=datetime.now(NY_TZ),
+        color=color
     )
 
     # Set thumbnail to user avatar if available

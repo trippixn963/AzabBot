@@ -33,8 +33,7 @@ class DMMixin:
         restrictions: List[str],
         duration_display: str,
         reason: Optional[str],
-        guild: discord.Guild,
-    ) -> bool:
+        guild: discord.Guild) -> bool:
         """Send DM notification to user when forbidden. Returns True if sent successfully."""
         # Build restrictions list
         restrictions_text = "\n".join([
@@ -45,15 +44,13 @@ class DMMixin:
         embed = discord.Embed(
             title="🚫 You've Been Restricted",
             description=f"A moderator has applied restrictions to your account in **{guild.name}**.",
-            color=EmbedColors.GOLD,
-            timestamp=datetime.now(NY_TZ),
+            color=EmbedColors.GOLD
         )
 
         embed.add_field(
             name="Restrictions Applied",
             value=restrictions_text,
-            inline=False,
-        )
+            inline=False)
 
         embed.add_field(name="Duration", value=duration_display, inline=True)
 
@@ -63,15 +60,13 @@ class DMMixin:
         embed.add_field(
             name="What This Means",
             value="These restrictions limit specific features. You can still participate in the server otherwise.",
-            inline=False,
-        )
+            inline=False)
 
         # Add appeal information
         embed.add_field(
             name="Want to Appeal?",
             value="If you believe this was a mistake, you can appeal using the button below or by contacting a moderator.",
-            inline=False,
-        )
+            inline=False)
 
         # Create appeal button view
         view = ForbidAppealView(guild.id, user.id)
@@ -98,8 +93,7 @@ class DMMixin:
         self: "ForbidCog",
         user: discord.Member,
         restrictions: List[str],
-        guild: discord.Guild,
-    ) -> bool:
+        guild: discord.Guild) -> bool:
         """Send DM notification to user when restrictions are removed. Returns True if sent successfully."""
         # Build restrictions list
         restrictions_text = "\n".join([
@@ -110,21 +104,18 @@ class DMMixin:
         embed = discord.Embed(
             title="Restrictions Removed",
             description=f"Your restrictions in **{guild.name}** have been lifted.",
-            color=EmbedColors.SUCCESS,
-            timestamp=datetime.now(NY_TZ),
+            color=EmbedColors.SUCCESS
         )
 
         embed.add_field(
             name="Removed Restrictions",
             value=restrictions_text,
-            inline=False,
-        )
+            inline=False)
 
         embed.add_field(
             name="What This Means",
             value="You now have full access to these features again.",
-            inline=False,
-        )
+            inline=False)
 
         result = await safe_send_dm(user, embed=embed, context="Unforbid DM")
 

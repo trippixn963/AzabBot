@@ -61,15 +61,13 @@ class PurgeCog(commands.Cog):
         amount: int,
         check: Optional[Callable[[discord.Message], bool]] = None,
         description: str = "messages",
-        reason: Optional[str] = None,
-    ) -> None:
+        reason: Optional[str] = None) -> None:
         """Execute a purge operation with the given filter."""
         channel = interaction.channel
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
             await interaction.followup.send(
                 "Purge can only be used in text channels or threads.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         # Calculate cutoff time for bulk delete
@@ -105,8 +103,7 @@ class PurgeCog(commands.Cog):
             ], emoji="🚫")
             await interaction.followup.send(
                 "I don't have permission to read message history in this channel.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
         except discord.HTTPException as e:
             log_http_error(e, "Purge History Fetch", [
@@ -114,15 +111,13 @@ class PurgeCog(commands.Cog):
             ])
             await interaction.followup.send(
                 "Failed to fetch messages. Please try again.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         if not messages_to_delete and not old_messages:
             await interaction.followup.send(
                 f"No {description} found to delete.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         # Bulk delete messages (in chunks of 100)
@@ -146,8 +141,7 @@ class PurgeCog(commands.Cog):
                 ], emoji="🚫")
                 await interaction.followup.send(
                     "I don't have permission to delete messages in this channel.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
             except discord.HTTPException as e:
                 logger.warning("Bulk Delete Failed", [
@@ -182,8 +176,7 @@ class PurgeCog(commands.Cog):
         # Build response embed
         embed = discord.Embed(
             title="🗑️ Messages Purged",
-            color=EmbedColors.SUCCESS,
-            timestamp=datetime.now(NY_TZ),
+            color=EmbedColors.SUCCESS
         )
         embed.add_field(name="Deleted", value=f"`{total_deleted}`", inline=True)
         embed.add_field(name="Type", value=f"`{description}`", inline=True)
@@ -196,15 +189,13 @@ class PurgeCog(commands.Cog):
             embed.add_field(
                 name="Note",
                 value=f"`{old_deleted}` messages were older than 14 days (deleted individually)",
-                inline=False,
-            )
+                inline=False)
 
         if failed_count > 0:
             embed.add_field(
                 name="Failed",
                 value=f"`{failed_count}` messages could not be deleted",
-                inline=False,
-            )
+                inline=False)
 
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -227,8 +218,7 @@ class PurgeCog(commands.Cog):
                 guild=interaction.guild,
                 channel=channel,
                 count=total_deleted,
-                moderator=interaction.user,
-            )
+                moderator=interaction.user)
 
         # Log to server logs (embed)
         await log_purge_usage(
@@ -239,8 +229,7 @@ class PurgeCog(commands.Cog):
             purge_type=description,
             old_deleted=old_deleted,
             failed_count=failed_count,
-            reason=reason,
-        )
+            reason=reason)
 
         # Log to mod tracker (pings owner for review)
         if self.bot.mod_tracker and isinstance(interaction.user, discord.Member):
@@ -250,8 +239,7 @@ class PurgeCog(commands.Cog):
                     channel=channel,
                     deleted_count=total_deleted,
                     purge_type=description,
-                    reason=reason,
-                )
+                    reason=reason)
 
     # =========================================================================
     # Purge Command
@@ -263,8 +251,7 @@ class PurgeCog(commands.Cog):
         filter_type="Type of messages to delete",
         user="User to delete messages from (only for 'From User' filter)",
         text="Text to search for (only for 'Containing Text' filter)",
-        reason="Reason for the purge",
-    )
+        reason="Reason for the purge")
     @app_commands.choices(filter_type=FILTER_CHOICES)
     async def purge(
         self,
@@ -273,8 +260,7 @@ class PurgeCog(commands.Cog):
         filter_type: Optional[app_commands.Choice[str]] = None,
         user: Optional[discord.Member] = None,
         text: Optional[str] = None,
-        reason: Optional[str] = None,
-    ) -> None:
+        reason: Optional[str] = None) -> None:
         """Delete messages from the channel with optional filters."""
         try:
             if not interaction.response.is_done():
@@ -310,8 +296,7 @@ class PurgeCog(commands.Cog):
                 ], emoji="⚠️")
                 await interaction.followup.send(
                     "You must specify a user when using the 'From User' filter.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
             target_user_id = user.id
             check = lambda msg, uid=target_user_id: msg.author.id == uid
@@ -335,8 +320,7 @@ class PurgeCog(commands.Cog):
                 ], emoji="⚠️")
                 await interaction.followup.send(
                     "You must specify text when using the 'Containing Text' filter.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
             search_text = text.lower()
             check = lambda msg, st=search_text: st in msg.content.lower()

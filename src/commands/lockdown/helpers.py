@@ -27,8 +27,7 @@ if TYPE_CHECKING:
 async def send_public_announcement(
     guild: discord.Guild,
     action: str,
-    config: "Config",
-) -> bool:
+    config: "Config") -> bool:
     """
     Send public announcement to general channel.
 
@@ -55,15 +54,13 @@ async def send_public_announcement(
             embed = discord.Embed(
                 title="🔒 Server Locked",
                 description="This server is currently in **lockdown mode**.\nPlease stand by while moderators handle the situation.",
-                color=EmbedColors.ERROR,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.ERROR
             )
         else:
             embed = discord.Embed(
                 title="🔓 Server Unlocked",
                 description="The lockdown has been lifted.\nYou may now resume normal activity.",
-                color=EmbedColors.SUCCESS,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.SUCCESS
             )
 
         await channel.send(embed=embed)

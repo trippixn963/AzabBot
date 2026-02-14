@@ -29,8 +29,7 @@ class HelpersMixin:
         case_id: str,
         user: discord.User,
         action_type: str,
-        reason: str,
-    ) -> None:
+        reason: str) -> None:
         """Log appeal creation to server logs."""
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
             return
@@ -38,8 +37,7 @@ class HelpersMixin:
         try:
             embed = discord.Embed(
                 title="📝 Appeal Submitted",
-                color=EmbedColors.WARNING,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.WARNING
             )
 
             embed.add_field(name="Appeal ID", value=f"`{appeal_id}`", inline=True)
@@ -48,16 +46,14 @@ class HelpersMixin:
             embed.add_field(
                 name="User",
                 value=f"{user.mention}\n`{user.id}`",
-                inline=True,
-            )
+                inline=True)
             if reason:
                 preview = (reason[:100] + "...") if len(reason) > 100 else reason
                 embed.add_field(name="Reason Preview", value=f"```{preview}```", inline=False)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.APPEALS,
-                embed,
-            )
+                embed)
         except Exception as e:
             logger.debug("Appeal Creation Log Failed", [("Error", str(e)[:50])])
 
@@ -68,8 +64,7 @@ class HelpersMixin:
         user_id: int,
         moderator: discord.Member,
         resolution: str,
-        reason: Optional[str],
-    ) -> None:
+        reason: Optional[str]) -> None:
         """Log appeal resolution to server logs."""
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
             return
@@ -80,8 +75,7 @@ class HelpersMixin:
 
             embed = discord.Embed(
                 title=f"{emoji} Appeal {resolution.title()}",
-                color=color,
-                timestamp=datetime.now(NY_TZ),
+                color=color
             )
 
             embed.add_field(name="Appeal ID", value=f"`{appeal_id}`", inline=True)
@@ -90,15 +84,13 @@ class HelpersMixin:
             embed.add_field(
                 name="Resolved By",
                 value=f"{moderator.mention}\n`{moderator.id}`",
-                inline=True,
-            )
+                inline=True)
             if reason:
                 embed.add_field(name="Reason", value=f"```{reason[:200]}```", inline=False)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.APPEALS,
-                embed,
-            )
+                embed)
         except Exception as e:
             logger.debug("Appeal Resolution Log Failed", [("Error", str(e)[:50])])
 

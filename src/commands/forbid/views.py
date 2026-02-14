@@ -31,8 +31,7 @@ class ForbidAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"f
                 label="Appeal Restriction",
                 style=discord.ButtonStyle.secondary,
                 emoji=APPEAL_EMOJI,
-                custom_id=f"forbid_appeal:{guild_id}:{user_id}",
-            )
+                custom_id=f"forbid_appeal:{guild_id}:{user_id}")
         )
         self.guild_id = guild_id
         self.user_id = user_id
@@ -42,8 +41,7 @@ class ForbidAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"f
         cls,
         interaction: discord.Interaction,
         item: discord.ui.Button,
-        match,
-    ) -> "ForbidAppealButton":
+        match) -> "ForbidAppealButton":
         guild_id = int(match.group("guild_id"))
         user_id = int(match.group("user_id"))
         return cls(guild_id, user_id)
@@ -80,8 +78,7 @@ class ForbidAppealModal(discord.ui.Modal):
             style=discord.TextStyle.paragraph,
             placeholder="Explain why you believe the restriction was unfair or provide context...",
             required=True,
-            max_length=MODAL_FIELD_LONG,
-        )
+            max_length=MODAL_FIELD_LONG)
         self.add_item(self.reason)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
@@ -103,8 +100,7 @@ class ForbidAppealModal(discord.ui.Modal):
             if not guild:
                 await interaction.response.send_message(
                     "Unable to submit appeal - server not found.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             # Try to send to alert channel or mod logs
@@ -117,30 +113,25 @@ class ForbidAppealModal(discord.ui.Modal):
                 try:
                     embed = discord.Embed(
                         title="📝 Forbid Appeal Submitted",
-                        color=EmbedColors.INFO,
-                        timestamp=datetime.now(NY_TZ),
+                        color=EmbedColors.INFO
                     )
                     embed.add_field(
                         name="User",
                         value=f"{interaction.user.mention}\n`{interaction.user.id}`",
-                        inline=True,
-                    )
+                        inline=True)
                     embed.add_field(
                         name="Appeal Reason",
                         value=self.reason.value,
-                        inline=False,
-                    )
+                        inline=False)
                     embed.set_thumbnail(url=interaction.user.display_avatar.url)
 
                     await bot.logging_service._send_log(
                         bot.logging_service.LogCategory.MOD_ACTIONS,
-                        embed,
-                    )
+                        embed)
 
                     await interaction.response.send_message(
                         "Your appeal has been submitted! A moderator will review it soon.",
-                        ephemeral=True,
-                    )
+                        ephemeral=True)
                     return
 
                 except Exception as e:
@@ -149,34 +140,29 @@ class ForbidAppealModal(discord.ui.Modal):
             if alert_channel:
                 embed = discord.Embed(
                     title="📝 Forbid Appeal Submitted",
-                    color=EmbedColors.INFO,
-                    timestamp=datetime.now(NY_TZ),
+                    color=EmbedColors.INFO
                 )
                 embed.add_field(
                     name="User",
                     value=f"{interaction.user.mention}\n`{interaction.user.id}`",
-                    inline=True,
-                )
+                    inline=True)
                 embed.add_field(
                     name="Appeal Reason",
                     value=self.reason.value,
-                    inline=False,
-                )
+                    inline=False)
                 embed.set_thumbnail(url=interaction.user.display_avatar.url)
 
                 await alert_channel.send(embed=embed)
 
             await interaction.response.send_message(
                 "Your appeal has been submitted! A moderator will review it soon.",
-                ephemeral=True,
-            )
+                ephemeral=True)
 
         except Exception as e:
             logger.debug("Forbid Appeal Submit Failed", [("Error", str(e)[:50])])
             await interaction.response.send_message(
                 "Failed to submit appeal. Please contact a moderator directly.",
-                ephemeral=True,
-            )
+                ephemeral=True)
 
 
 def setup_forbid_views(bot: "AzabBot") -> None:

@@ -105,8 +105,7 @@ class CaseLogUpdatesMixin:
 
             embed = discord.Embed(
                 title="📋 User Profile",
-                color=EmbedColors.INFO,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.INFO
             )
 
             if member:
@@ -138,8 +137,7 @@ class CaseLogUpdatesMixin:
                 embed.add_field(
                     name="Last Action",
                     value=f"<t:{int(last_action)}:R>",
-                    inline=True,
-                )
+                    inline=True)
 
             if mute_count >= 3 or ban_count >= 2:
                 warnings = []
@@ -150,8 +148,7 @@ class CaseLogUpdatesMixin:
                 embed.add_field(
                     name="⚠️ Repeat Offender",
                     value=f"{', '.join(warnings)}",
-                    inline=False,
-                )
+                    inline=False)
 
             previous_names = self.db.get_previous_names(user_id, limit=PREVIOUS_NAMES_LIMIT)
             if previous_names:
@@ -176,8 +173,7 @@ class CaseLogUpdatesMixin:
         new_status: Optional[str] = None,
         user: Optional[discord.Member] = None,
         moderator: Optional[discord.Member] = None,
-        transcript_url: Optional[str] = None,
-    ) -> bool:
+        transcript_url: Optional[str] = None) -> bool:
         """
         Update the control panel message in place.
 
@@ -245,8 +241,7 @@ class CaseLogUpdatesMixin:
                 case=case,
                 user=user,
                 moderator=moderator,
-                status=status,
-            )
+                status=status)
 
             # Build updated view
             action_type = case.get("action_type", "")
@@ -270,8 +265,7 @@ class CaseLogUpdatesMixin:
                 status=status,
                 is_mute=is_mute,
                 has_evidence=has_evidence,
-                transcript_url=final_transcript_url,
-            )
+                transcript_url=final_transcript_url)
 
             # Edit the message
             await safe_edit(control_msg, embed=control_embed, view=control_view)

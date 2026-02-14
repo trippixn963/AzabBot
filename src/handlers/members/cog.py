@@ -111,8 +111,7 @@ class MemberEvents(commands.Cog):
                 await self.bot.mod_tracker.log_avatar_change(
                     after,
                     before.display_avatar if before.avatar else None,
-                    after.display_avatar if after.avatar else None,
-                )
+                    after.display_avatar if after.avatar else None)
 
             if before.name != after.name:
                 await self.bot.mod_tracker.log_name_change(
@@ -133,8 +132,7 @@ class MemberEvents(commands.Cog):
                 try:
                     async for entry in after.guild.audit_logs(
                         action=discord.AuditLogAction.member_role_update,
-                        limit=QUERY_LIMIT_TINY,
-                    ):
+                        limit=QUERY_LIMIT_TINY):
                         if entry.target and entry.target.id == after.id:
                             changed_by_id = entry.user.id if entry.user else None
                             if entry.user:
@@ -193,15 +191,13 @@ class MemberEvents(commands.Cog):
                     guild=after.guild,
                     target=after,
                     old_nick=before.nick,
-                    new_nick=after.nick,
-                )
+                    new_nick=after.nick)
                 self.bot.db.save_nickname_change(
                     user_id=after.id,
                     guild_id=after.guild.id,
                     old_nickname=before.nick,
                     new_nickname=after.nick,
-                    changed_by=None,
-                )
+                    changed_by=None)
 
                 # Save old nickname to username history (if it existed)
                 if before.nick:
@@ -209,8 +205,7 @@ class MemberEvents(commands.Cog):
                     db.save_username_change(
                         user_id=after.id,
                         display_name=before.nick,
-                        guild_id=after.guild.id,
-                    )
+                        guild_id=after.guild.id)
 
             if before.premium_since is None and after.premium_since is not None:
                 await self.bot.logging_service.log_boost(after)
@@ -265,8 +260,7 @@ class MemberEvents(commands.Cog):
             invite_code=invite_code,
             inviter_id=inviter.id if inviter else None,
             joined_at=member.joined_at.timestamp() if member.joined_at else None,
-            avatar_hash=member.avatar.key if member.avatar else None,
-        )
+            avatar_hash=member.avatar.key if member.avatar else None)
 
         await self._check_mute_evasion(member)
 
@@ -303,8 +297,7 @@ class MemberEvents(commands.Cog):
                 try:
                     await asyncio.wait_for(
                         self.bot.case_log_service.log_mute_evasion_return(member, [mod_id]),
-                        timeout=CASE_LOG_TIMEOUT,
-                    )
+                        timeout=CASE_LOG_TIMEOUT)
                 except asyncio.TimeoutError:
                     logger.warning("Case Log Timeout", [
                         ("Action", "Mute Evasion Return"),
@@ -446,10 +439,8 @@ class MemberEvents(commands.Cog):
                         user_id=member.id,
                         display_name=member.display_name,
                         muted_at=active_mute["muted_at"],
-                        avatar_url=member.display_avatar.url,
-                    ),
-                    timeout=CASE_LOG_TIMEOUT,
-                )
+                        avatar_url=member.display_avatar.url),
+                    timeout=CASE_LOG_TIMEOUT)
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
                     ("Action", "Member Left Muted"),
@@ -514,16 +505,14 @@ class MemberEvents(commands.Cog):
                 member=member,
                 deleted_count=deleted_count,
                 failed_count=failed_count,
-                message_ids=deleted_message_ids,
-            )
+                message_ids=deleted_message_ids)
 
     async def _log_linked_messages_deleted(
         self,
         member: discord.Member,
         deleted_count: int,
         failed_count: int,
-        message_ids: list,
-    ) -> None:
+        message_ids: list) -> None:
         """Log linked message deletion to server logs."""
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
             return
@@ -532,26 +521,22 @@ class MemberEvents(commands.Cog):
             embed = discord.Embed(
                 title="🗑️ Linked Messages Deleted",
                 description=f"Messages linked to {member.mention} were deleted because they left the server.",
-                color=EmbedColors.RED,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.RED
             )
 
             embed.add_field(
                 name="Member",
                 value=f"{member}\n`{member.id}`",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Messages Deleted",
                 value=f"`{deleted_count}`",
-                inline=True,
-            )
+                inline=True)
             if failed_count > 0:
                 embed.add_field(
                     name="Failed",
                     value=f"`{failed_count}`",
-                    inline=True,
-                )
+                    inline=True)
 
             if message_ids:
                 ids_text = "\n".join(message_ids[:10])  # Show first 10
@@ -560,13 +545,11 @@ class MemberEvents(commands.Cog):
                 embed.add_field(
                     name="Message IDs",
                     value=f"```{ids_text}```",
-                    inline=False,
-                )
+                    inline=False)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.ALLIANCES,
-                embed,
-            )
+                embed)
 
         except Exception as e:
             logger.debug("Linked Message Deletion Log Failed", [("Error", str(e)[:50])])
@@ -614,8 +597,7 @@ class MemberEvents(commands.Cog):
         try:
             async for entry in guild.audit_logs(
                 action=discord.AuditLogAction.ban,
-                limit=QUERY_LIMIT_TINY,
-            ):
+                limit=QUERY_LIMIT_TINY):
                 if entry.target and entry.target.id == user.id:
                     moderator = entry.user
                     reason = entry.reason
@@ -652,8 +634,7 @@ class MemberEvents(commands.Cog):
         try:
             async for entry in guild.audit_logs(
                 action=discord.AuditLogAction.unban,
-                limit=QUERY_LIMIT_TINY,
-            ):
+                limit=QUERY_LIMIT_TINY):
                 if entry.target and entry.target.id == user.id:
                     moderator = entry.user
                     reason = entry.reason
@@ -687,8 +668,7 @@ class MemberEvents(commands.Cog):
         before: discord.Member,
         after: discord.Member,
         before_role_ids: set,
-        after_role_ids: set,
-    ) -> None:
+        after_role_ids: set) -> None:
         """
         Resolve conflicts between verified and non-verified gender roles.
 
@@ -783,8 +763,7 @@ class MemberEvents(commands.Cog):
         gender_name: str,
         removed_role: discord.Role,
         kept_role: discord.Role,
-        action: str,
-    ) -> None:
+        action: str) -> None:
         """Log gender role conflict resolution to server logs."""
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
             return
@@ -792,41 +771,34 @@ class MemberEvents(commands.Cog):
         try:
             embed = discord.Embed(
                 title="🔄 Gender Role Conflict Resolved",
-                color=EmbedColors.LOG_INFO,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.LOG_INFO
             )
             embed.add_field(
                 name="Member",
                 value=f"{member.mention}\n`{member.id}`",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Gender",
                 value=gender_name,
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Action",
                 value=action,
-                inline=False,
-            )
+                inline=False)
             embed.add_field(
                 name="Removed Role",
                 value=f"{removed_role.mention} (non-verified)",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Kept Role",
                 value=f"{kept_role.mention} (verified)" if kept_role else "Unknown",
-                inline=True,
-            )
+                inline=True)
             embed.set_thumbnail(url=member.display_avatar.url)
 
             await self.bot.logging_service._send_log(
                 LogCategory.AUTOMOD,
                 embed,
-                user_id=member.id,
-            )
+                user_id=member.id)
             logger.debug("Gender Role Resolution Logged", [("User", str(member.id))])
 
         except discord.HTTPException as e:

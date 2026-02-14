@@ -51,8 +51,7 @@ class QuarantineCog(commands.Cog):
     async def quarantine(
         self,
         interaction: discord.Interaction,
-        reason: Optional[str] = None,
-    ) -> None:
+        reason: Optional[str] = None) -> None:
         """
         Activate quarantine mode.
 
@@ -62,31 +61,27 @@ class QuarantineCog(commands.Cog):
         if not interaction.guild:
             await interaction.response.send_message(
                 "This command can only be used in a server.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         # Only owner can activate quarantine
         if not is_owner(interaction.user.id):
             await interaction.response.send_message(
                 "Only the bot owner can activate quarantine mode.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         if not self.bot.antinuke_service:
             await interaction.response.send_message(
                 "Anti-nuke service is not available.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         guild = get_target_guild(interaction, self.bot)
         if not guild:
             await interaction.response.send_message(
                 "Could not find the target server.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         # Check if already quarantined
@@ -94,8 +89,7 @@ class QuarantineCog(commands.Cog):
             await interaction.response.send_message(
                 "Server is already in quarantine mode.\n"
                 "Use `/unquarantine` to lift it.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         try:
@@ -113,8 +107,7 @@ class QuarantineCog(commands.Cog):
         try:
             success = await self.bot.antinuke_service.quarantine_guild(
                 guild,
-                reason=reason or "Manual activation via command",
-            )
+                reason=reason or "Manual activation via command")
 
             if success:
                 embed = discord.Embed(
@@ -125,8 +118,7 @@ class QuarantineCog(commands.Cog):
                         "Only the server owner and this bot retain full permissions.\n\n"
                         "Use `/unquarantine` to restore permissions when safe."
                     ),
-                    color=EmbedColors.ERROR,
-                    timestamp=datetime.now(NY_TZ),
+                    color=EmbedColors.ERROR
                 )
                 if reason:
                     embed.add_field(name="Reason", value=reason, inline=False)
@@ -138,8 +130,7 @@ class QuarantineCog(commands.Cog):
                     event_logger.log_quarantine(
                         guild=guild,
                         moderator=interaction.user,
-                        reason=reason,
-                    )
+                        reason=reason)
 
                 # Log to server logs
                 await log_quarantine_action(self.bot, interaction.user, guild, "activate", reason)
@@ -151,8 +142,7 @@ class QuarantineCog(commands.Cog):
                 ])
                 await interaction.followup.send(
                     "Failed to activate quarantine mode. Check logs for details.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
 
         except discord.HTTPException as e:
             log_http_error(e, "Quarantine Command", [
@@ -161,8 +151,7 @@ class QuarantineCog(commands.Cog):
             ])
             await interaction.followup.send(
                 f"Failed to activate quarantine: {e.text[:100] if e.text else 'HTTP error'}",
-                ephemeral=True,
-            )
+                ephemeral=True)
         except Exception as e:
             logger.error("Quarantine Command Failed", [
                 ("Guild", f"{guild.name} ({guild.id})"),
@@ -172,8 +161,7 @@ class QuarantineCog(commands.Cog):
             ])
             await interaction.followup.send(
                 "An unexpected error occurred. Check logs for details.",
-                ephemeral=True,
-            )
+                ephemeral=True)
 
     # =========================================================================
     # Unquarantine Command
@@ -183,45 +171,39 @@ class QuarantineCog(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     async def unquarantine(
         self,
-        interaction: discord.Interaction,
-    ) -> None:
+        interaction: discord.Interaction) -> None:
         """Lift quarantine mode and restore original role permissions."""
         if not interaction.guild:
             await interaction.response.send_message(
                 "This command can only be used in a server.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         # Only owner can lift quarantine
         if not is_owner(interaction.user.id):
             await interaction.response.send_message(
                 "Only the bot owner can lift quarantine mode.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         if not self.bot.antinuke_service:
             await interaction.response.send_message(
                 "Anti-nuke service is not available.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         guild = get_target_guild(interaction, self.bot)
         if not guild:
             await interaction.response.send_message(
                 "Could not find the target server.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         # Check if quarantined
         if not self.bot.antinuke_service.is_quarantined(guild.id):
             await interaction.response.send_message(
                 "Server is not in quarantine mode.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         try:
@@ -246,8 +228,7 @@ class QuarantineCog(commands.Cog):
                         "All role permissions have been restored to their "
                         "original state before the lockdown."
                     ),
-                    color=EmbedColors.SUCCESS,
-                    timestamp=datetime.now(NY_TZ),
+                    color=EmbedColors.SUCCESS
                 )
 
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -256,8 +237,7 @@ class QuarantineCog(commands.Cog):
                 if isinstance(interaction.user, discord.Member):
                     event_logger.log_unquarantine(
                         guild=guild,
-                        moderator=interaction.user,
-                    )
+                        moderator=interaction.user)
 
                 # Log to server logs
                 await log_quarantine_action(self.bot, interaction.user, guild, "lift", None)
@@ -269,8 +249,7 @@ class QuarantineCog(commands.Cog):
                 ])
                 await interaction.followup.send(
                     "Failed to lift quarantine mode. Check logs for details.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
 
         except discord.HTTPException as e:
             log_http_error(e, "Unquarantine Command", [
@@ -279,8 +258,7 @@ class QuarantineCog(commands.Cog):
             ])
             await interaction.followup.send(
                 f"Failed to lift quarantine: {e.text[:100] if e.text else 'HTTP error'}",
-                ephemeral=True,
-            )
+                ephemeral=True)
         except Exception as e:
             logger.error("Unquarantine Command Failed", [
                 ("Guild", f"{guild.name} ({guild.id})"),
@@ -290,8 +268,7 @@ class QuarantineCog(commands.Cog):
             ])
             await interaction.followup.send(
                 "An unexpected error occurred. Check logs for details.",
-                ephemeral=True,
-            )
+                ephemeral=True)
 
     # =========================================================================
     # Quarantine Status Command
@@ -301,29 +278,25 @@ class QuarantineCog(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     async def quarantine_status(
         self,
-        interaction: discord.Interaction,
-    ) -> None:
+        interaction: discord.Interaction) -> None:
         """Check quarantine status."""
         if not interaction.guild:
             await interaction.response.send_message(
                 "This command can only be used in a server.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         if not self.bot.antinuke_service:
             await interaction.response.send_message(
                 "Anti-nuke service is not available.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         guild = get_target_guild(interaction, self.bot)
         if not guild:
             await interaction.response.send_message(
                 "Could not find the target server.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         try:
@@ -344,15 +317,13 @@ class QuarantineCog(commands.Cog):
                         f"Roles with stripped permissions: **{roles_affected}**\n\n"
                         f"Use `/unquarantine` to restore permissions."
                     ),
-                    color=EmbedColors.ERROR,
-                    timestamp=datetime.now(NY_TZ),
+                    color=EmbedColors.ERROR
                 )
             else:
                 embed = discord.Embed(
                     title="🔓 Quarantine Status: Inactive",
                     description=f"**{guild.name}** is not in quarantine mode.",
-                    color=EmbedColors.SUCCESS,
-                    timestamp=datetime.now(NY_TZ),
+                    color=EmbedColors.SUCCESS
                 )
 
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -364,8 +335,7 @@ class QuarantineCog(commands.Cog):
             ])
             await interaction.response.send_message(
                 "Failed to check quarantine status.",
-                ephemeral=True,
-            )
+                ephemeral=True)
         except Exception as e:
             logger.error("Quarantine Status Failed", [
                 ("Guild", f"{guild.name} ({guild.id})"),
@@ -375,8 +345,7 @@ class QuarantineCog(commands.Cog):
             ])
             await interaction.response.send_message(
                 "An unexpected error occurred.",
-                ephemeral=True,
-            )
+                ephemeral=True)
 
 
 __all__ = ["QuarantineCog"]

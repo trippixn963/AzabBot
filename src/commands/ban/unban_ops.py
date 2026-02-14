@@ -23,8 +23,7 @@ from src.core.database import get_db
 from src.utils.validation import (
     validate_evidence,
     get_target_guild,
-    is_cross_server,
-)
+    is_cross_server)
 from src.views import CaseButtonView
 from src.utils.duration import format_duration
 from src.utils.dm_helpers import safe_send_dm
@@ -46,24 +45,21 @@ class UnbanOpsMixin:
     @app_commands.describe(
         user="The banned user to unban",
         reason="Reason for the unban",
-        evidence="Screenshot or video evidence (image/video only)",
-    )
+        evidence="Screenshot or video evidence (image/video only)")
     @app_commands.autocomplete(user=banned_user_autocomplete, reason=removal_reason_autocomplete)
     async def unban(
         self: "BanCog",
         interaction: discord.Interaction,
         user: str,
         reason: Optional[str] = None,
-        evidence: Optional[discord.Attachment] = None,
-    ) -> None:
+        evidence: Optional[discord.Attachment] = None) -> None:
         """Unban a user from the server (supports cross-server from mod server)."""
         # Validate evidence attachment (content type, file size, CDN expiry warning)
         evidence_result = validate_evidence(evidence, "unban")
         if not evidence_result.is_valid:
             await interaction.response.send_message(
                 evidence_result.error_message,
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         try:
@@ -128,8 +124,7 @@ class UnbanOpsMixin:
             user_id=target_user.id,
             guild_id=target_guild.id,
             moderator_id=interaction.user.id,
-            reason=reason,
-        )
+            reason=reason)
 
         # Log to permanent audit log
         db.log_moderation_action(
@@ -139,8 +134,7 @@ class UnbanOpsMixin:
             action_type="unban",
             action_source="manual",
             reason=reason,
-            details={"cross_server": cross_server},
-        )
+            details={"cross_server": cross_server})
 
         # -----------------------------------------------------------------
         # DM User About Unban
@@ -149,8 +143,7 @@ class UnbanOpsMixin:
         dm_embed = discord.Embed(
             title="You've Been Unbanned",
             description=f"Your ban from **{target_guild.name}** has been lifted.",
-            color=EmbedColors.SUCCESS,
-            timestamp=datetime.now(NY_TZ),
+            color=EmbedColors.SUCCESS
         )
         dm_embed.add_field(name="Server", value=target_guild.name, inline=True)
         if reason:
@@ -158,8 +151,7 @@ class UnbanOpsMixin:
         dm_embed.add_field(
             name="What's Next?",
             value="You can now rejoin the server if you have an invite link.",
-            inline=False,
-        )
+            inline=False)
 
         dm_sent = await safe_send_dm(target_user, embed=dm_embed, context="Unban DM")
         logger.tree("Unban DM Sent", [
@@ -188,8 +180,7 @@ class UnbanOpsMixin:
             guild=target_guild,
             target=target_user,
             moderator=interaction.user,
-            reason=reason,
-        )
+            reason=reason)
 
         # -----------------------------------------------------------------
         # Log to Case Forum (finds active ban case and resolves it)
@@ -203,11 +194,9 @@ class UnbanOpsMixin:
                     user_id=target_user.id,
                     username=str(target_user),
                     moderator=interaction.user,
-                    reason=reason,
-                ),
+                    reason=reason),
                 action_type="Unban",
-                target=target_user,
-            )
+                target=target_user)
 
         # Server logs (after case creation to include case_id)
         if self.bot.logging_service and self.bot.logging_service.enabled:
@@ -216,10 +205,8 @@ class UnbanOpsMixin:
                     self.bot.logging_service.log_unban(
                         user=target_user,
                         moderator=interaction.user,
-                        case_id=case_info["case_id"] if case_info else None,
-                    ),
-                    timeout=GUILD_FETCH_TIMEOUT,
-                )
+                        case_id=case_info["case_id"] if case_info else None),
+                    timeout=GUILD_FETCH_TIMEOUT)
             except Exception as e:
                 logger.debug("Server Log Failed (Unban)", [("Error", str(e)[:50])])
 
@@ -238,8 +225,7 @@ class UnbanOpsMixin:
 
         embed = discord.Embed(
             title="🔓 User Unbanned",
-            color=EmbedColors.GREEN,
-        )
+            color=EmbedColors.GREEN)
         embed.add_field(name="User", value=target_user.mention, inline=True)
         embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
 

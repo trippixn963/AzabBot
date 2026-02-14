@@ -25,8 +25,7 @@ from .constants import (
     RAID_JOIN_LIMIT,
     RAID_SIMILAR_CREATION_WINDOW,
     RAID_SIMILAR_NAME_THRESHOLD,
-    RAID_TIME_WINDOW,
-)
+    RAID_TIME_WINDOW)
 from .models import JoinRecord
 
 if TYPE_CHECKING:
@@ -70,8 +69,7 @@ class RaidDetectionMixin:
             account_created=account_created,
             has_default_avatar=has_default,
             avatar_hash=avatar_hash,
-            join_time=now,
-        )
+            join_time=now)
 
         # Use lock to prevent race conditions when modifying _recent_joins
         async with self._raid_detection_lock:
@@ -157,20 +155,17 @@ class RaidDetectionMixin:
                     title="🚨 Raid Detected",
                     description=raid_descriptions.get(raid_type, "Suspicious activity detected.") +
                                 "\nConsider running `/lockdown`.",
-                    color=EmbedColors.ERROR,
-                    timestamp=datetime.now(NY_TZ),
+                    color=EmbedColors.ERROR
                 )
                 embed.add_field(name="Type", value=raid_type.replace("_", " ").title(), inline=True)
                 embed.add_field(
                     name="Detected",
                     value=f"{RAID_JOIN_LIMIT}+ suspicious joins in {RAID_TIME_WINDOW}s",
-                    inline=True,
-                )
+                    inline=True)
 
                 await bot.logging_service._send_log(
                     bot.logging_service.LogCategory.ALERTS,
-                    embed,
-                )
+                    embed)
 
                 if config.owner_id:
                     thread = await bot.logging_service._get_or_create_thread(
@@ -192,8 +187,7 @@ class RaidDetectionMixin:
                     embed = discord.Embed(
                         title="🚨 RAID ALERT",
                         description=raid_descriptions.get(raid_type, "Suspicious activity detected."),
-                        color=EmbedColors.ERROR,
-                        timestamp=datetime.now(NY_TZ),
+                        color=EmbedColors.ERROR
                     )
                     embed.add_field(name="Type", value=raid_type.replace("_", " ").title(), inline=True)
                     embed.add_field(name="Action", value="Consider `/lockdown`", inline=True)

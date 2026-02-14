@@ -21,8 +21,7 @@ from src.core.database import get_db
 from src.core.constants import (
     AUTO_CLOSE_CHECK_INTERVAL,
     THREAD_DELETE_DELAY,
-    CLOSE_REQUEST_COOLDOWN,
-)
+    CLOSE_REQUEST_COOLDOWN)
 from src.utils.async_utils import create_safe_task
 from src.utils.discord_rate_limit import log_http_error
 
@@ -30,8 +29,7 @@ from .constants import (
     INACTIVE_WARNING_DAYS,
     INACTIVE_CLOSE_DAYS,
     DELETE_AFTER_CLOSE_DAYS,
-    CLAIM_REMINDER_COOLDOWN,
-)
+    CLAIM_REMINDER_COOLDOWN)
 from .buttons.helpers import _is_ticket_staff
 
 # Import mixins
@@ -235,8 +233,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
                     ticket_id=ticket["ticket_id"],
                     closed_by=member.guild.me,
                     reason="Ticket opener left the server",
-                    ticket=ticket,
-                )
+                    ticket=ticket)
 
                 if not success:
                     continue
@@ -297,8 +294,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         self,
         staff: discord.Member,
         ticket: dict,
-        member: discord.Member,
-    ) -> bool:
+        member: discord.Member) -> bool:
         """Send DM notification to staff that ticket OP left."""
         try:
             from src.core.config import EmbedColors, NY_TZ
@@ -309,24 +305,20 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
                     "A ticket has been automatically closed because the "
                     "opener left the server."
                 ),
-                color=EmbedColors.WARNING,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.WARNING
             )
             embed.add_field(
                 name="Ticket",
                 value=f"`{ticket['ticket_id']}` - {ticket['category'].title()}",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Opener",
                 value=f"{member.name} (`{member.id}`)",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Subject",
                 value=ticket.get("subject", "No subject")[:100],
-                inline=False,
-            )
+                inline=False)
             status_text = "Was claimed by you" if ticket["status"] == "claimed" else "Was unclaimed"
             embed.add_field(name="Status", value=status_text, inline=True)
 
@@ -467,8 +459,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
             is_bot=message.author.bot,
             is_staff=is_staff,
             attachments=attachments if attachments else None,
-            embeds=embeds if embeds else None,
-        )
+            embeds=embeds if embeds else None)
 
     async def _check_claim_reminder(self, message: discord.Message, ticket: dict) -> None:
         """
@@ -524,8 +515,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         try:
             await message.reply(
                 f"Hey {message.author.mention}, don't forget to **claim** this ticket before helping!",
-                mention_author=False,
-            )
+                mention_author=False)
             logger.tree("Claim Reminder Sent", [
                 ("Ticket ID", ticket["ticket_id"]),
                 ("Staff", f"{message.author.name} ({message.author.id})"),
@@ -628,14 +618,12 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
                 # Generate AI follow-up response
                 ai_response = await self.bot.ai_service.generate_followup_response(
                     ticket_id=ticket["ticket_id"],
-                    user_message=message.content,
-                )
+                    user_message=message.content)
         except discord.HTTPException:
             # Typing failed, still try to generate response
             ai_response = await self.bot.ai_service.generate_followup_response(
                 ticket_id=ticket["ticket_id"],
-                user_message=message.content,
-            )
+                user_message=message.content)
 
         if ai_response:
             try:
@@ -667,8 +655,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         self,
         channel: discord.TextChannel,
         ticket: dict,
-        summary: str,
-    ) -> None:
+        summary: str) -> None:
         """Send summary to staff and ping them after AI questions are complete."""
         # Build staff ping
         ping_parts = []
@@ -685,8 +672,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         summary_embed = discord.Embed(
             title="📋 Ticket Summary",
             description=summary,
-            color=0x3b82f6,
-        )
+            color=0x3b82f6)
 
         try:
             if ping_content:

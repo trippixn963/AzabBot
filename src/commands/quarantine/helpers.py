@@ -29,8 +29,7 @@ async def log_quarantine_action(
     moderator: discord.User,
     guild: discord.Guild,
     action: str,
-    reason: Optional[str],
-) -> None:
+    reason: Optional[str]) -> None:
     """Log quarantine action to server logs."""
     if not bot.logging_service or not bot.logging_service.enabled:
         return
@@ -40,8 +39,7 @@ async def log_quarantine_action(
             embed = discord.Embed(
                 title="🔒 Quarantine Mode Activated",
                 description="Server quarantine was manually activated.",
-                color=EmbedColors.ERROR,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.ERROR
             )
             embed.add_field(name="Moderator", value=moderator.mention, inline=True)
             embed.add_field(name="Guild", value=guild.name, inline=True)
@@ -51,16 +49,14 @@ async def log_quarantine_action(
             embed = discord.Embed(
                 title="🔓 Quarantine Mode Lifted",
                 description="Server quarantine was lifted.",
-                color=EmbedColors.SUCCESS,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.SUCCESS
             )
             embed.add_field(name="Moderator", value=moderator.mention, inline=True)
             embed.add_field(name="Guild", value=guild.name, inline=True)
 
         await bot.logging_service._send_log(
             bot.logging_service.LogCategory.MOD_ACTIONS,
-            embed,
-        )
+            embed)
 
         logger.debug("Quarantine Action Logged", [
             ("Action", action),

@@ -29,8 +29,7 @@ from .constants import (
     QUEUE_PROCESS_INTERVAL,
     QUEUE_BATCH_SIZE,
     QUEUE_MAX_SIZE,
-    CACHE_CLEANUP_INTERVAL,
-)
+    CACHE_CLEANUP_INTERVAL)
 from .helpers import QueueItem
 
 if TYPE_CHECKING:
@@ -100,8 +99,7 @@ class QueueMixin:
         priority: int = PRIORITY_NORMAL,
         content: Optional[str] = None,
         view: Optional[discord.ui.View] = None,
-        is_alert: bool = False,
-    ) -> None:
+        is_alert: bool = False) -> None:
         """
         Add a message to the priority queue.
 
@@ -130,14 +128,12 @@ class QueueMixin:
                     return
 
             item = QueueItem(
-                priority=priority,
-                timestamp=datetime.now(NY_TZ).timestamp(),
+                priority=priority.timestamp(),
                 thread_id=thread_id,
                 content=content,
                 embed=embed,
                 view=view,
-                is_alert=is_alert,
-            )
+                is_alert=is_alert)
             heapq.heappush(self._message_queue, item)
 
         # Ensure processor is running
@@ -198,8 +194,7 @@ class QueueMixin:
             await thread.send(
                 content=item.content,
                 embed=item.embed,
-                view=item.view,
-            )
+                view=item.view)
 
             if item.is_alert:
                 logger.tree("Mod Tracker: Priority Alert Sent", [

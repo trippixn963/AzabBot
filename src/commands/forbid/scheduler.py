@@ -257,8 +257,7 @@ class SchedulerMixin:
                 expiry_embed = discord.Embed(
                     title="Restriction Expired",
                     description=f"Your **{RESTRICTIONS[restriction_type]['display']}** restriction has expired.",
-                    color=EmbedColors.SUCCESS,
-                    timestamp=datetime.now(NY_TZ),
+                    color=EmbedColors.SUCCESS
                 )
                 expiry_embed.add_field(name="Server", value=guild.name, inline=True)
                 expiry_embed.add_field(name="Restriction", value=RESTRICTIONS[restriction_type]['display'], inline=True)

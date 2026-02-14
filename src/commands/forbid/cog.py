@@ -23,8 +23,7 @@ from src.core.database import get_db
 from src.utils.validation import (
     validate_moderation_target,
     get_target_guild,
-    is_cross_server,
-)
+    is_cross_server)
 from src.views import CaseButtonView
 from src.utils.duration import parse_duration, format_duration_short as format_duration
 from src.utils.async_utils import create_safe_task
@@ -79,8 +78,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
     async def restriction_autocomplete(
         self,
         interaction: discord.Interaction,
-        current: str,
-    ) -> List[app_commands.Choice[str]]:
+        current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for restriction types."""
         choices = []
 
@@ -92,16 +90,14 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             if current.lower() in key.lower() or current.lower() in config["display"].lower():
                 choices.append(app_commands.Choice(
                     name=f"{config['emoji']} {key} - {config['description']}",
-                    value=key,
-                ))
+                    value=key))
 
         return choices[:25]
 
     async def reason_autocomplete(
         self,
         interaction: discord.Interaction,
-        current: str,
-    ) -> List[app_commands.Choice[str]]:
+        current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for reason parameter."""
         choices = []
         current_lower = current.lower()
@@ -119,8 +115,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
     async def removal_reason_autocomplete(
         self,
         interaction: discord.Interaction,
-        current: str,
-    ) -> List[app_commands.Choice[str]]:
+        current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for removal reason parameter (unforbid)."""
         choices = []
         current_lower = current.lower()
@@ -144,8 +139,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
         user="The user to restrict",
         restriction="What to forbid (reactions, embeds, attachments, voice_messages, polls, external_emojis, stickers, threads, voice, streaming, all)",
         duration="Duration (e.g., 7d, 24h, 1w) - leave empty for permanent",
-        reason="Reason for the restriction",
-    )
+        reason="Reason for the restriction")
     @app_commands.autocomplete(restriction=restriction_autocomplete, reason=reason_autocomplete)
     async def forbid(
         self,
@@ -153,14 +147,12 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
         user: discord.User,
         restriction: str,
         duration: Optional[str] = None,
-        reason: Optional[str] = None,
-    ) -> None:
+        reason: Optional[str] = None) -> None:
         """Forbid a user from using a specific feature (supports cross-server from mod server)."""
         if not interaction.guild:
             await interaction.response.send_message(
                 "This command can only be used in a server.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         try:
@@ -182,8 +174,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 guild_name = target_guild.name if cross_server else "this server"
                 await interaction.followup.send(
                     f"User is not a member of {guild_name}.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
             user = target_member  # Use member for role operations
 
@@ -192,8 +183,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             if restriction != "all" and restriction not in RESTRICTIONS:
                 await interaction.followup.send(
                     f"Invalid restriction. Choose from: `{', '.join(RESTRICTIONS.keys())}` or `all`",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             # Validation using centralized module (self, bot, hierarchy, management)
@@ -219,8 +209,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 if duration_seconds is None:
                     await interaction.followup.send(
                         "Invalid duration format. Use: `7d`, `24h`, `1w`, `30m`, etc.",
-                        ephemeral=True,
-                    )
+                        ephemeral=True)
                     return
                 expires_at = datetime.now(NY_TZ).timestamp() + duration_seconds
                 duration_display = format_duration(duration_seconds)
@@ -260,8 +249,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             if not applied and not already_had:
                 await interaction.followup.send(
                     "Failed to apply any restrictions. Check bot permissions.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             # Tree logging
@@ -286,8 +274,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                     moderator=moderator,
                     restrictions=applied,
                     reason=reason,
-                    duration=duration_display,
-                )
+                    duration=duration_display)
 
             # Create case log FIRST (need case_info for public embed)
             case_info = None
@@ -299,10 +286,8 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                             moderator=moderator,
                             restrictions=applied,
                             reason=reason,
-                            duration=duration_display,
-                        ),
-                        timeout=CASE_LOG_TIMEOUT,
-                    )
+                            duration=duration_display),
+                        timeout=CASE_LOG_TIMEOUT)
                 except asyncio.TimeoutError:
                     logger.warning("Case Log Timeout", [
                         ("Action", "Forbid"),
@@ -320,8 +305,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             # Build embed response
             embed = discord.Embed(
                 title="🚫 User Restricted",
-                color=EmbedColors.WARNING,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.WARNING
             )
             embed.add_field(name="User", value=f"{user.mention}\n`{user.id}`", inline=True)
             embed.add_field(name="Moderator", value=f"{moderator.mention}", inline=True)
@@ -355,8 +339,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                     restrictions=applied,
                     duration_display=duration_display,
                     reason=reason,
-                    guild=guild,
-                )
+                    guild=guild)
                 if dm_sent:
                     logger.debug("Forbid DM Sent", [("User", str(user))])
 
@@ -366,8 +349,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 user=user,
                 restrictions=applied,
                 reason=reason,
-                action="forbid",
-            )
+                action="forbid")
 
         except discord.HTTPException as e:
             log_http_error(e, "Forbid Command", [
@@ -379,8 +361,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             try:
                 await interaction.followup.send(
                     "An error occurred while applying restrictions.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
             except Exception as e:
                 logger.debug("Error Response Failed", [("Error", str(e)[:50])])
 
@@ -401,22 +382,19 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
     @app_commands.describe(
         user="The user to unrestrict",
         restriction="What to unforbid (or 'all' to remove all)",
-        reason="Reason for removing the restriction",
-    )
+        reason="Reason for removing the restriction")
     @app_commands.autocomplete(restriction=restriction_autocomplete, reason=removal_reason_autocomplete)
     async def unforbid(
         self,
         interaction: discord.Interaction,
         user: discord.User,
         restriction: str,
-        reason: Optional[str] = None,
-    ) -> None:
+        reason: Optional[str] = None) -> None:
         """Remove a restriction from a user (supports cross-server from mod server)."""
         if not interaction.guild:
             await interaction.response.send_message(
                 "This command can only be used in a server.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         try:
@@ -438,8 +416,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 guild_name = target_guild.name if cross_server else "this server"
                 await interaction.followup.send(
                     f"User is not a member of {guild_name}.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
             user = target_member  # Use member for role operations
 
@@ -448,8 +425,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             if restriction != "all" and restriction not in RESTRICTIONS:
                 await interaction.followup.send(
                     f"Invalid restriction. Choose from: `{', '.join(RESTRICTIONS.keys())}` or `all`",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             # Determine which restrictions to remove
@@ -490,8 +466,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             if not removed:
                 await interaction.followup.send(
                     f"{user.mention} doesn't have any of those restrictions.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
                 return
 
             # Tree logging
@@ -514,8 +489,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                     target=user,
                     moderator=moderator,
                     restrictions=removed,
-                    reason=reason,
-                )
+                    reason=reason)
 
             # Create case log FIRST (need case_info for public embed)
             case_info = None
@@ -526,10 +500,8 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                             user=user,
                             moderator=moderator,
                             restrictions=removed,
-                            reason=reason,
-                        ),
-                        timeout=CASE_LOG_TIMEOUT,
-                    )
+                            reason=reason),
+                        timeout=CASE_LOG_TIMEOUT)
                 except asyncio.TimeoutError:
                     logger.warning("Case Log Timeout", [
                         ("Action", "Unforbid"),
@@ -550,8 +522,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             # Build embed response
             embed = discord.Embed(
                 title="✅ Restrictions Removed",
-                color=EmbedColors.SUCCESS,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.SUCCESS
             )
             embed.add_field(name="User", value=f"{user.mention}\n`{user.id}`", inline=True)
             embed.add_field(name="Moderator", value=f"{moderator.mention}", inline=True)
@@ -580,8 +551,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
                 user=user,
                 restrictions=removed,
                 reason=None,
-                action="unforbid",
-            )
+                action="unforbid")
 
         except Exception as e:
             logger.error("Unforbid Command Failed", [
@@ -602,8 +572,7 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
         user: discord.Member,
         restrictions: List[str],
         reason: Optional[str],
-        action: str,
-    ) -> None:
+        action: str) -> None:
         """Log forbid/unforbid to server logs."""
         if not self.bot.logging_service or not self.bot.logging_service.enabled:
             return
@@ -621,25 +590,21 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
 
             embed = discord.Embed(
                 title=title,
-                color=color,
-                timestamp=datetime.now(NY_TZ),
+                color=color
             )
 
             embed.add_field(
                 name="Moderator",
                 value=f"{interaction.user.mention}\n`{interaction.user.id}`",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Target",
                 value=f"{user.mention}\n`{user.id}`",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Channel",
                 value=f"{interaction.channel.mention}" if interaction.channel else "Unknown",
-                inline=True,
-            )
+                inline=True)
 
             restrictions_text = "\n".join([
                 f"{RESTRICTIONS[r]['emoji']} {RESTRICTIONS[r]['display']}"
@@ -648,16 +613,14 @@ class ForbidCog(RolesMixin, SchedulerMixin, DMMixin, commands.Cog):
             embed.add_field(
                 name="Restrictions",
                 value=restrictions_text or "None",
-                inline=False,
-            )
+                inline=False)
 
             if reason:
                 embed.add_field(name="Reason", value=reason, inline=False)
 
             await self.bot.logging_service._send_log(
                 self.bot.logging_service.LogCategory.MOD_ACTIONS,
-                embed,
-            )
+                embed)
 
         except Exception as e:
             logger.debug("Forbid Log Failed", [("Error", str(e)[:50])])

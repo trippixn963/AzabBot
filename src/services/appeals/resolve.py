@@ -34,8 +34,7 @@ class ResolveMixin:
         self: "AppealService",
         appeal_id: str,
         moderator: discord.Member,
-        reason: Optional[str] = None,
-    ) -> tuple[bool, str]:
+        reason: Optional[str] = None) -> tuple[bool, str]:
         """
         Approve an appeal (ban or mute) and reverse the punishment.
 
@@ -60,8 +59,7 @@ class ResolveMixin:
             appeal_id=appeal_id,
             resolution="approved",
             resolved_by=moderator.id,
-            resolution_reason=reason,
-        )
+            resolution_reason=reason)
         if not resolved:
             return (False, "Appeal was already processed by another moderator")
 
@@ -102,8 +100,7 @@ class ResolveMixin:
                     guild=guild,
                     moderator=moderator,
                     reason=reason,
-                    is_ban=True,
-                )
+                    is_ban=True)
             else:
                 # Handle mute appeal - unmute the user
                 member = guild.get_member(user_id)
@@ -137,8 +134,7 @@ class ResolveMixin:
                 self.db.resolve_case(
                     case_id=case_id,
                     resolved_by=moderator.id,
-                    reason=f"Appeal approved: {reason}" if reason else "Appeal approved",
-                )
+                    reason=f"Appeal approved: {reason}" if reason else "Appeal approved")
 
             # Update thread
             thread = await self._get_appeal_thread(appeal["thread_id"])
@@ -147,8 +143,7 @@ class ResolveMixin:
                 embed = discord.Embed(
                     title="✅ Appeal Approved",
                     description=f"This appeal has been **approved** by {moderator.mention}.",
-                    color=EmbedColors.SUCCESS,
-                    timestamp=datetime.now(NY_TZ),
+                    color=EmbedColors.SUCCESS
                 )
                 if reason:
                     embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
@@ -180,8 +175,7 @@ class ResolveMixin:
                 user_id=user_id,
                 moderator=moderator,
                 resolution="approved",
-                reason=reason,
-            )
+                reason=reason)
 
             # Send email notification if user provided email
             appeal_email = appeal.get("email")
@@ -192,8 +186,7 @@ class ResolveMixin:
                     resolution="approved",
                     resolution_reason=reason,
                     server_name=guild.name,
-                    server_invite_url=self.config.server_invite_url,
-                )
+                    server_invite_url=self.config.server_invite_url)
 
             result_msg = "Appeal approved. User has been unbanned." if is_ban else "Appeal approved. User has been unmuted."
             return (True, result_msg)
@@ -209,8 +202,7 @@ class ResolveMixin:
         self: "AppealService",
         appeal_id: str,
         moderator: discord.Member,
-        reason: Optional[str] = None,
-    ) -> tuple[bool, str]:
+        reason: Optional[str] = None) -> tuple[bool, str]:
         """
         Deny an appeal.
 
@@ -235,8 +227,7 @@ class ResolveMixin:
             appeal_id=appeal_id,
             resolution="denied",
             resolved_by=moderator.id,
-            resolution_reason=reason,
-        )
+            resolution_reason=reason)
         if not resolved:
             return (False, "Appeal was already processed by another moderator")
 
@@ -258,8 +249,7 @@ class ResolveMixin:
                     guild=guild,
                     moderator=moderator,
                     reason=reason,
-                    is_ban=is_ban,
-                )
+                    is_ban=is_ban)
 
             # Update thread
             thread = await self._get_appeal_thread(appeal["thread_id"])
@@ -267,8 +257,7 @@ class ResolveMixin:
                 embed = discord.Embed(
                     title="❌ Appeal Denied",
                     description=f"This appeal has been **denied** by {moderator.mention}.",
-                    color=EmbedColors.ERROR,
-                    timestamp=datetime.now(NY_TZ),
+                    color=EmbedColors.ERROR
                 )
                 if reason:
                     embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
@@ -278,8 +267,7 @@ class ResolveMixin:
                 embed.add_field(
                     name="⏰ Re-appeal Cooldown",
                     value=f"You may submit a new appeal in **{cooldown_hours} hours**.",
-                    inline=False,
-                )
+                    inline=False)
 
                 # Add contact staff button if ticket channel is configured
                 if self.config.ticket_channel_id:
@@ -310,8 +298,7 @@ class ResolveMixin:
                 user_id=user_id,
                 moderator=moderator,
                 resolution="denied",
-                reason=reason,
-            )
+                reason=reason)
 
             # Send email notification if user provided email
             appeal_email = appeal.get("email")
@@ -321,8 +308,7 @@ class ResolveMixin:
                     appeal_id=appeal_id,
                     resolution="denied",
                     resolution_reason=reason,
-                    server_name=guild.name,
-                )
+                    server_name=guild.name)
 
             return (True, "Appeal denied.")
 
@@ -339,8 +325,7 @@ class ResolveMixin:
         guild: discord.Guild,
         moderator: discord.Member,
         reason: Optional[str],
-        is_ban: bool,
-    ) -> None:
+        is_ban: bool) -> None:
         """Send DM to user when their appeal is approved."""
         try:
             user = await self.bot.fetch_user(user_id)
@@ -356,8 +341,7 @@ class ResolveMixin:
         # Build the embed
         embed = discord.Embed(
             title="✅ Your Appeal Has Been Approved",
-            color=EmbedColors.SUCCESS,
-            timestamp=datetime.now(NY_TZ),
+            color=EmbedColors.SUCCESS
         )
 
         if is_ban:
@@ -389,8 +373,7 @@ class ResolveMixin:
         guild: discord.Guild,
         moderator: discord.Member,
         reason: Optional[str],
-        is_ban: bool,
-    ) -> None:
+        is_ban: bool) -> None:
         """Send DM to user when their appeal is denied."""
         try:
             user = await self.bot.fetch_user(user_id)
@@ -406,8 +389,7 @@ class ResolveMixin:
         # Build the embed
         embed = discord.Embed(
             title="❌ Your Appeal Has Been Denied",
-            color=EmbedColors.ERROR,
-            timestamp=datetime.now(NY_TZ),
+            color=EmbedColors.ERROR
         )
 
         action_type = "ban" if is_ban else "mute"
@@ -421,8 +403,7 @@ class ResolveMixin:
         embed.add_field(
             name="⏰ Re-appeal",
             value=f"You may submit a new appeal in **{cooldown_hours} hours**.",
-            inline=False,
-        )
+            inline=False)
 
         embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
 

@@ -28,8 +28,7 @@ from src.core.constants import (
     PARTNERSHIP_COOLDOWN,
     PRISONER_PING_WINDOW,
     PRISONER_PING_MAX,
-    PRISONER_WARNING_COOLDOWN,
-)
+    PRISONER_WARNING_COOLDOWN)
 from src.utils.snipe_blocker import block_from_snipe
 from src.utils.dm_helpers import send_moderation_dm
 from src.utils.async_utils import create_safe_task
@@ -73,8 +72,7 @@ class HelpersMixin:
                 message.id,
                 reason="Prisoner ping violation",
                 user_id=message.author.id,
-                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
-            )
+                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None)
             await message.delete()
         except discord.Forbidden:
             logger.warning("Prisoner Ping Delete Failed", [
@@ -131,8 +129,7 @@ class HelpersMixin:
                         moderator_id=self.bot.user.id,
                         reason=f"Ping spam in prison ({violation_count} pings in {PRISONER_PING_WINDOW}s)",
                         duration_seconds=3600,  # 1 hour
-                        until_timestamp=(datetime.now(NY_TZ) + PRISONER_PING_TIMEOUT).timestamp(),
-                    )
+                        until_timestamp=(datetime.now(NY_TZ) + PRISONER_PING_TIMEOUT).timestamp())
 
                     # Log to permanent audit log
                     self.bot.db.log_moderation_action(
@@ -143,8 +140,7 @@ class HelpersMixin:
                         action_source="auto_ping_spam",
                         reason=f"Ping spam in prison ({violation_count} pings in {PRISONER_PING_WINDOW}s)",
                         duration_seconds=3600,
-                        details={"violation_count": violation_count, "window_seconds": PRISONER_PING_WINDOW},
-                    )
+                        details={"violation_count": violation_count, "window_seconds": PRISONER_PING_WINDOW})
 
                     logger.tree("PRISONER PING SPAM - TIMEOUT", [
                         ("User", f"{message.author.name} ({message.author.nick})" if hasattr(message.author, 'nick') and message.author.nick else message.author.name),
@@ -159,8 +155,7 @@ class HelpersMixin:
                         target=message.author,
                         moderator=None,
                         reason=f"Ping spam in prison ({violation_count} pings in {PRISONER_PING_WINDOW}s)",
-                        duration_seconds=3600,
-                    )
+                        duration_seconds=3600)
 
                     # NOTE: Automated mutes don't create case forum threads (too verbose)
                     # They are logged to moderation_audit_log instead (see below)
@@ -174,15 +169,13 @@ class HelpersMixin:
                         moderator=None,
                         reason=f"Ping spam in prison ({violation_count} pings in {PRISONER_PING_WINDOW}s)",
                         fields=[("Duration", "`1 hour`", True)],
-                        context="Prisoner Ping Spam DM",
-                    ))
+                        context="Prisoner Ping Spam DM"))
 
                     # Send timeout notification
                     try:
                         await message.channel.send(
                             f"🔇 {message.author.mention} has been timed out for 1 hour for ping spam.",
-                            delete_after=DELETE_AFTER_MEDIUM,
-                        )
+                            delete_after=DELETE_AFTER_MEDIUM)
                     except discord.HTTPException:
                         pass
 
@@ -217,8 +210,7 @@ class HelpersMixin:
                 await message.channel.send(
                     f"{message.author.mention} Prisoners cannot ping others. "
                     f"({remaining} more = 1h timeout)",
-                    delete_after=DELETE_AFTER_SHORT,
-                )
+                    delete_after=DELETE_AFTER_SHORT)
             except discord.HTTPException:
                 pass
 
@@ -280,8 +272,7 @@ class HelpersMixin:
 
             await message.reply(
                 f"👋 Looking for a partnership? Head over to {ticket_channel.mention} and select the **Partnership** ticket option to get started!",
-                mention_author=False,
-            )
+                mention_author=False)
 
             # Update cooldown
             self._partnership_cooldowns[cooldown_key] = datetime.now(NY_TZ).timestamp()
@@ -357,8 +348,7 @@ class HelpersMixin:
                 message.id,
                 reason="External invite link",
                 user_id=member.id,
-                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
-            )
+                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None)
             await message.delete()
             message_deleted = True
         except discord.Forbidden:
@@ -424,8 +414,7 @@ class HelpersMixin:
                 guild=guild,
                 target=member,
                 moderator=None,  # Auto-action
-                reason="Auto-mute: Advertising external Discord server",
-            )
+                reason="Auto-mute: Advertising external Discord server")
 
         # -----------------------------------------------------------------
         # 3. Record mute in database
@@ -434,8 +423,7 @@ class HelpersMixin:
             user_id=member.id,
             moderator_id=self.bot.user.id,
             duration="permanent",
-            reason="Auto-mute: Advertising external Discord server",
-        )
+            reason="Auto-mute: Advertising external Discord server")
 
         # Log to permanent audit log
         self.bot.db.log_moderation_action(
@@ -446,8 +434,7 @@ class HelpersMixin:
             action_source="auto_invite",
             reason="Auto-mute: Advertising external Discord server",
             duration_seconds=None,  # Permanent
-            details={"invite_code": invite_code, "channel": message.channel.name if hasattr(message.channel, 'name') else str(message.channel.id)},
-        )
+            details={"invite_code": invite_code, "channel": message.channel.name if hasattr(message.channel, 'name') else str(message.channel.id)})
 
         logger.tree("DATABASE RECORD", [
             ("Action", "Mute recorded"),
@@ -470,24 +457,20 @@ class HelpersMixin:
         if prison_channel:
             embed = discord.Embed(
                 title="🔗 Auto-Muted: External Invite Link",
-                color=EmbedColors.ERROR,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.ERROR
             )
             embed.add_field(
                 name="User",
                 value=f"{member.mention}\n`{member.name}`",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Violation",
                 value="`Advertising`",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Duration",
                 value="`Permanent`",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Reason",
                 value=(
@@ -496,8 +479,7 @@ class HelpersMixin:
                     "whether to remove the mute.\n\n"
                     "⚠️ **Do not attempt to evade this mute.**"
                 ),
-                inline=False,
-            )
+                inline=False)
             embed.set_thumbnail(url=member.display_avatar.url)
 
             try:
@@ -538,8 +520,7 @@ class HelpersMixin:
                 ("Duration", "`Permanent`", True),
                 ("Violation", "`Advertising`", True),
             ],
-            context="External Invite Auto-Mute DM",
-        ))
+            context="External Invite Auto-Mute DM"))
 
 
 __all__ = ["HelpersMixin", "INVITE_PATTERN"]

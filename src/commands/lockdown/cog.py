@@ -58,8 +58,7 @@ class LockdownCog(commands.Cog):
     async def lockdown(
         self,
         interaction: discord.Interaction,
-        reason: Optional[str] = None,
-    ) -> None:
+        reason: Optional[str] = None) -> None:
         """
         Lock server by setting channel permission overwrites.
 
@@ -71,8 +70,7 @@ class LockdownCog(commands.Cog):
         if not interaction.guild:
             await interaction.response.send_message(
                 "This command can only be used in a server.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         # Get target guild (cross-server support)
@@ -84,8 +82,7 @@ class LockdownCog(commands.Cog):
             ])
             await interaction.response.send_message(
                 "Could not find the target server.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         # Check if already locked
@@ -101,8 +98,7 @@ class LockdownCog(commands.Cog):
             await interaction.response.send_message(
                 f"Server is already locked since <t:{int(locked_at)}:R>.\n"
                 f"Use `/unlock` to restore permissions.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         # Defer response (this may take a while for large servers)
@@ -138,15 +134,13 @@ class LockdownCog(commands.Cog):
                 guild_id=guild.id,
                 locked_by=interaction.user.id,
                 reason=reason,
-                channel_count=result.success_count,
-            )
+                channel_count=result.success_count)
 
             # Build response embed
             embed = discord.Embed(
                 title="🔒 Server Locked",
                 description="**Server is now in lockdown mode.**\nMembers cannot send messages or join voice channels.",
-                color=EmbedColors.ERROR,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.ERROR
             )
             embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
             embed.add_field(name="Channels Locked", value=f"`{result.success_count}`", inline=True)
@@ -166,8 +160,7 @@ class LockdownCog(commands.Cog):
             embed.add_field(
                 name="Restore",
                 value="Use `/unlock` to restore permissions",
-                inline=False,
-            )
+                inline=False)
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -186,8 +179,7 @@ class LockdownCog(commands.Cog):
                     guild=guild,
                     moderator=interaction.user,
                     channel_count=result.success_count,
-                    reason=reason,
-                )
+                    reason=reason)
 
             # Log to server logs service
             if self.bot.logging_service and self.bot.logging_service.enabled:
@@ -196,8 +188,7 @@ class LockdownCog(commands.Cog):
                         moderator=interaction.user,
                         reason=reason,
                         channel_count=result.success_count,
-                        action="lock",
-                    )
+                        action="lock")
                 except Exception as e:
                     logger.warning("Server Log Failed", [
                         ("Error", str(e)[:100]),
@@ -214,8 +205,7 @@ class LockdownCog(commands.Cog):
             try:
                 await interaction.followup.send(
                     "An error occurred during lockdown.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
             except discord.HTTPException:
                 pass
 
@@ -229,8 +219,7 @@ class LockdownCog(commands.Cog):
             try:
                 await interaction.followup.send(
                     "An unexpected error occurred.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
             except discord.HTTPException:
                 pass
 
@@ -242,8 +231,7 @@ class LockdownCog(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     async def unlock(
         self,
-        interaction: discord.Interaction,
-    ) -> None:
+        interaction: discord.Interaction) -> None:
         """
         Restore original channel permission overwrites.
 
@@ -254,8 +242,7 @@ class LockdownCog(commands.Cog):
         if not interaction.guild:
             await interaction.response.send_message(
                 "This command can only be used in a server.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         # Get target guild (cross-server support)
@@ -267,8 +254,7 @@ class LockdownCog(commands.Cog):
             ])
             await interaction.response.send_message(
                 "Could not find the target server.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         # Check if locked
@@ -279,8 +265,7 @@ class LockdownCog(commands.Cog):
             ])
             await interaction.response.send_message(
                 "Server is not currently locked.",
-                ephemeral=True,
-            )
+                ephemeral=True)
             return
 
         # Defer response
@@ -328,8 +313,7 @@ class LockdownCog(commands.Cog):
             embed = discord.Embed(
                 title="🔓 Server Unlocked",
                 description="**Server lockdown has ended.**\nMembers can now send messages and join voice channels.",
-                color=EmbedColors.SUCCESS,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.SUCCESS
             )
             embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
             embed.add_field(name="Channels Unlocked", value=f"`{result.success_count}`", inline=True)
@@ -359,8 +343,7 @@ class LockdownCog(commands.Cog):
                 event_logger.log_unlock(
                     guild=guild,
                     moderator=interaction.user,
-                    channel_count=result.success_count,
-                )
+                    channel_count=result.success_count)
 
             # Log to server logs service
             if self.bot.logging_service and self.bot.logging_service.enabled:
@@ -369,8 +352,7 @@ class LockdownCog(commands.Cog):
                         moderator=interaction.user,
                         reason=None,
                         channel_count=result.success_count,
-                        action="unlock",
-                    )
+                        action="unlock")
                 except Exception as e:
                     logger.warning("Server Log Failed", [
                         ("Error", str(e)[:100]),
@@ -387,8 +369,7 @@ class LockdownCog(commands.Cog):
             try:
                 await interaction.followup.send(
                     "An error occurred during unlock.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
             except discord.HTTPException:
                 pass
 
@@ -402,8 +383,7 @@ class LockdownCog(commands.Cog):
             try:
                 await interaction.followup.send(
                     "An unexpected error occurred.",
-                    ephemeral=True,
-                )
+                    ephemeral=True)
             except discord.HTTPException:
                 pass
 

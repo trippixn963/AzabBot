@@ -29,8 +29,7 @@ from .constants import (
     BOT_ADD_THRESHOLD,
     TIME_WINDOW,
     DANGEROUS_PERMISSIONS,
-    EXEMPT_ROLE_NAMES,
-)
+    EXEMPT_ROLE_NAMES)
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -282,8 +281,7 @@ class AntiNukeService:
         self,
         guild: discord.Guild,
         user_id: int,
-        bot_member: discord.Member,
-    ) -> bool:
+        bot_member: discord.Member) -> bool:
         """
         Track when a bot is added to the server.
 
@@ -322,8 +320,7 @@ class AntiNukeService:
         self,
         guild: discord.Guild,
         bot_member: discord.Member,
-        added_by: int,
-    ) -> None:
+        added_by: int) -> None:
         """Kick a bot that was added during suspicious activity."""
         try:
             await bot_member.kick(reason=f"Anti-nuke: Suspicious bot add by user {added_by}")
@@ -349,8 +346,7 @@ class AntiNukeService:
         user_id: int,
         role: discord.Role,
         before_perms: discord.Permissions,
-        after_perms: discord.Permissions,
-    ) -> bool:
+        after_perms: discord.Permissions) -> bool:
         """
         Track permission changes on roles.
 
@@ -410,8 +406,7 @@ class AntiNukeService:
         self,
         guild: discord.Guild,
         role: discord.Role,
-        original_perms: discord.Permissions,
-    ) -> None:
+        original_perms: discord.Permissions) -> None:
         """Revert a role's permissions to their original state."""
         try:
             await role.edit(
@@ -445,8 +440,7 @@ class AntiNukeService:
     async def quarantine_guild(
         self,
         guild: discord.Guild,
-        reason: str = "Nuke attempt detected",
-    ) -> bool:
+        reason: str = "Nuke attempt detected") -> bool:
         """
         Put the guild in quarantine mode.
 
@@ -596,8 +590,7 @@ class AntiNukeService:
         self,
         guild: discord.Guild,
         reason: str,
-        activated: bool,
-    ) -> None:
+        activated: bool) -> None:
         """Send alert about quarantine status change."""
         if activated:
             embed = discord.Embed(
@@ -610,8 +603,7 @@ class AntiNukeService:
                     f"• Use `/antinuke lift` to restore when safe\n\n"
                     f"**Roles affected:** {len(self._quarantine_backup.get(guild.id, {}))}"
                 ),
-                color=0xFF0000,
-                timestamp=datetime.now(NY_TZ),
+                color=0xFF0000
             )
         else:
             embed = discord.Embed(
@@ -621,8 +613,7 @@ class AntiNukeService:
                     f"All role permissions have been restored to their "
                     f"original state before the lockdown."
                 ),
-                color=0x00FF00,
-                timestamp=datetime.now(NY_TZ),
+                color=0x00FF00
             )
 
         # Send to alert channel
@@ -632,8 +623,7 @@ class AntiNukeService:
                 if alert_channel:
                     await alert_channel.send(
                         content=f"<@{self.config.owner_id}>" if activated else None,
-                        embed=embed,
-                    )
+                        embed=embed)
                     logger.debug("Quarantine Alert Sent", [
                         ("Guild", guild.name),
                         ("Activated", str(activated)),
@@ -659,8 +649,7 @@ class AntiNukeService:
         guild: discord.Guild,
         user_id: int,
         nuke_type: str,
-        count: int,
-    ) -> None:
+        count: int) -> None:
         """Handle detected nuke attempt."""
         member = guild.get_member(user_id)
         if not member:
@@ -758,8 +747,7 @@ class AntiNukeService:
         guild: discord.Guild,
         offender: discord.Member,
         nuke_type: str,
-        count: int,
-    ) -> None:
+        count: int) -> None:
         """Send alert to owner and server logs."""
         # Format nuke type
         nuke_display = {
@@ -776,7 +764,6 @@ class AntiNukeService:
             title="🚨 NUKE ATTEMPT DETECTED",
             description=f"Suspicious activity detected and stopped.",
             color=0xFF0000,  # Red
-            timestamp=datetime.now(NY_TZ),
         )
         embed.add_field(name="Offender", value=f"{offender.mention}", inline=True)
         embed.add_field(name="Type", value=nuke_display, inline=True)
@@ -789,8 +776,7 @@ class AntiNukeService:
             try:
                 await self.bot.logging_service._send_log(
                     self.bot.logging_service.LogCategory.ALERTS,
-                    embed,
-                )
+                    embed)
 
                 # Ping developer in alerts thread
                 if self.config.owner_id:

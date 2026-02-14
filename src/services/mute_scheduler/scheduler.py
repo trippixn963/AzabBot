@@ -32,8 +32,7 @@ from src.core.constants import (
     STARTUP_SYNC_BACKOFF_MIN,
     STARTUP_SYNC_BACKOFF_MAX,
     LOG_TRUNCATE_MEDIUM,
-    SECONDS_PER_HOUR,
-)
+    SECONDS_PER_HOUR)
 from src.utils.duration import format_duration_from_minutes
 
 if TYPE_CHECKING:
@@ -232,8 +231,7 @@ class MuteScheduler:
                         user_id=mute["user_id"],
                         guild_id=guild_id,
                         moderator_id=self._bot_user_id,
-                        reason="Auto-unmute (guild not accessible)",
-                    )
+                        reason="Auto-unmute (guild not accessible)")
                 skipped_guild += len(guild_mutes)
                 continue
 
@@ -276,8 +274,7 @@ class MuteScheduler:
         self,
         mute: dict,
         guild: Optional[discord.Guild],
-        muted_role: Optional[discord.Role],
-    ) -> None:
+        muted_role: Optional[discord.Role]) -> None:
         """Wrapper for _auto_unmute with error handling."""
         try:
             await self._auto_unmute(mute, guild, muted_role)
@@ -292,8 +289,7 @@ class MuteScheduler:
         self,
         mute: dict,
         guild: Optional[discord.Guild],
-        muted_role: Optional[discord.Role],
-    ) -> None:
+        muted_role: Optional[discord.Role]) -> None:
         """
         Automatically unmute a user whose mute has expired.
 
@@ -308,8 +304,7 @@ class MuteScheduler:
                 user_id=mute["user_id"],
                 guild_id=mute["guild_id"],
                 moderator_id=self._bot_user_id,
-                reason="Auto-unmute (guild not accessible)",
-            )
+                reason="Auto-unmute (guild not accessible)")
             return
 
         member = guild.get_member(mute["user_id"])
@@ -319,8 +314,7 @@ class MuteScheduler:
                 user_id=mute["user_id"],
                 guild_id=mute["guild_id"],
                 moderator_id=self._bot_user_id,
-                reason="Auto-unmute (user left server)",
-            )
+                reason="Auto-unmute (user left server)")
             return
 
         if not muted_role:
@@ -329,8 +323,7 @@ class MuteScheduler:
                 user_id=mute["user_id"],
                 guild_id=mute["guild_id"],
                 moderator_id=self._bot_user_id,
-                reason="Auto-unmute (role not found)",
-            )
+                reason="Auto-unmute (role not found)")
             return
 
         # Remove the muted role
@@ -354,8 +347,7 @@ class MuteScheduler:
             user_id=mute["user_id"],
             guild_id=mute["guild_id"],
             moderator_id=self._bot_user_id,
-            reason="Auto-unmute: Mute duration expired",
-        )
+            reason="Auto-unmute: Mute duration expired")
 
         logger.tree("AUTO-UNMUTE", [
             ("User", str(member)),
@@ -379,10 +371,8 @@ class MuteScheduler:
                         user_id=member.id,
                         display_name=member.display_name,
                         user_avatar_url=member.display_avatar.url,
-                        guild_id=guild.id,
-                    ),
-                    timeout=CASE_LOG_TIMEOUT,
-                )
+                        guild_id=guild.id),
+                    timeout=CASE_LOG_TIMEOUT)
             except asyncio.TimeoutError:
                 logger.warning("Case Log Timeout", [
                     ("Action", "Mute Expired"),
@@ -402,8 +392,7 @@ class MuteScheduler:
             dm_embed = discord.Embed(
                 title="You have been unmuted",
                 description=f"Your mute in **{guild.name}** has expired.",
-                color=EmbedColors.SUCCESS,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.SUCCESS
             )
             await member.send(embed=dm_embed)
         except (discord.Forbidden, discord.HTTPException):
@@ -429,8 +418,7 @@ class MuteScheduler:
                 bot=self.bot,
                 member=member,
                 release_type=ReleaseType.TIME_SERVED,
-                time_served=time_served,
-            )
+                time_served=time_served)
             # Note: send_release_announcement handles its own logging
         except Exception as e:
             logger.warning("Release Announcement Failed", [
@@ -441,8 +429,7 @@ class MuteScheduler:
     async def _post_auto_unmute_log(
         self,
         user: discord.Member,
-        guild: discord.Guild,
-    ) -> None:
+        guild: discord.Guild) -> None:
         """
         Post auto-unmute to server logs via logging service.
 
@@ -457,8 +444,7 @@ class MuteScheduler:
             await self.bot.logging_service.log_unmute(
                 user=user,
                 moderator=None,  # System/auto unmute
-                reason="Mute duration expired",
-            )
+                reason="Mute duration expired")
         except Exception as e:
             logger.debug("Auto-Unmute Log Failed", [("Error", str(e)[:50])])
 
@@ -503,8 +489,7 @@ class MuteScheduler:
                         user_id=mute["user_id"],
                         guild_id=guild_id,
                         moderator_id=self._bot_user_id,
-                        reason="Sync: Guild not accessible",
-                    )
+                        reason="Sync: Guild not accessible")
                 removed_guild_inaccessible += len(guild_mutes)
                 continue
 
@@ -523,8 +508,7 @@ class MuteScheduler:
                         user_id=mute["user_id"],
                         guild_id=guild_id,
                         moderator_id=self._bot_user_id,
-                        reason="Sync: Role not found",
-                    )
+                        reason="Sync: Role not found")
                 removed_role_missing += len(guild_mutes)
                 continue
 
@@ -536,8 +520,7 @@ class MuteScheduler:
                         user_id=mute["user_id"],
                         guild_id=guild_id,
                         moderator_id=self._bot_user_id,
-                        reason="Sync: User left server",
-                    )
+                        reason="Sync: User left server")
                     removed_user_left += 1
                     continue
 
@@ -546,8 +529,7 @@ class MuteScheduler:
                         user_id=mute["user_id"],
                         guild_id=guild_id,
                         moderator_id=self._bot_user_id,
-                        reason="Sync: Role manually removed",
-                    )
+                        reason="Sync: Role manually removed")
                     removed_role_removed += 1
                     continue
 
@@ -640,14 +622,12 @@ class MuteScheduler:
             send_messages=False,
             view_channel=False,
             add_reactions=False,
-            speak=False,
-        )
+            speak=False)
 
         # Overwrites for prison channels (allow)
         allow_overwrite = discord.PermissionOverwrite(
             send_messages=True,
-            view_channel=True,
-        )
+            view_channel=True)
 
         for channel in guild.channels:
             try:

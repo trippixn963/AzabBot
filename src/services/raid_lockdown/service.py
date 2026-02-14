@@ -22,8 +22,7 @@ from src.core.config import get_config, EmbedColors, NY_TZ
 from src.core.constants import (
     AUTO_UNLOCK_DURATION,
     LOCKDOWN_COOLDOWN,
-    DELETE_AFTER_EXTENDED,
-)
+    DELETE_AFTER_EXTENDED)
 from src.core.database import get_db
 from src.utils.async_utils import create_safe_task
 from src.utils.discord_rate_limit import log_http_error
@@ -84,8 +83,7 @@ class RaidLockdownService:
         channel: discord.TextChannel,
         everyone_role: discord.Role,
         mod_role: Optional[discord.Role],
-        reason: str,
-    ) -> Tuple[bool, Optional[str]]:
+        reason: str) -> Tuple[bool, Optional[str]]:
         """Lock a single text channel."""
         try:
             current_overwrite: discord.PermissionOverwrite = channel.overwrites_for(everyone_role)
@@ -96,8 +94,7 @@ class RaidLockdownService:
                 channel_id=channel.id,
                 channel_type="text",
                 send_messages=current_overwrite.send_messages,
-                connect=None,
-            )
+                connect=None)
 
             # Set overwrite to deny messaging
             current_overwrite.send_messages = False
@@ -109,8 +106,7 @@ class RaidLockdownService:
             await channel.set_permissions(
                 everyone_role,
                 overwrite=current_overwrite,
-                reason=reason,
-            )
+                reason=reason)
 
             # Give mod role explicit allow so they can still communicate
             if mod_role:
@@ -120,8 +116,7 @@ class RaidLockdownService:
                 await channel.set_permissions(
                     mod_role,
                     overwrite=mod_overwrite,
-                    reason=f"{reason} (mod access)",
-                )
+                    reason=f"{reason} (mod access)")
 
             logger.debug("Auto-Lock Channel", [
                 ("Channel", f"#{channel.name}"),
@@ -159,8 +154,7 @@ class RaidLockdownService:
         channel: discord.VoiceChannel,
         everyone_role: discord.Role,
         mod_role: Optional[discord.Role],
-        reason: str,
-    ) -> Tuple[bool, Optional[str]]:
+        reason: str) -> Tuple[bool, Optional[str]]:
         """Lock a single voice channel."""
         try:
             current_overwrite: discord.PermissionOverwrite = channel.overwrites_for(everyone_role)
@@ -170,8 +164,7 @@ class RaidLockdownService:
                 channel_id=channel.id,
                 channel_type="voice",
                 send_messages=None,
-                connect=current_overwrite.connect,
-            )
+                connect=current_overwrite.connect)
 
             current_overwrite.connect = False
             current_overwrite.speak = False
@@ -179,8 +172,7 @@ class RaidLockdownService:
             await channel.set_permissions(
                 everyone_role,
                 overwrite=current_overwrite,
-                reason=reason,
-            )
+                reason=reason)
 
             # Give mod role explicit allow so they can still use voice
             if mod_role:
@@ -190,8 +182,7 @@ class RaidLockdownService:
                 await channel.set_permissions(
                     mod_role,
                     overwrite=mod_overwrite,
-                    reason=f"{reason} (mod access)",
-                )
+                    reason=f"{reason} (mod access)")
 
             logger.debug("Auto-Lock Channel", [
                 ("Channel", f"🔊{channel.name}"),
@@ -230,8 +221,7 @@ class RaidLockdownService:
         everyone_role: discord.Role,
         mod_role: Optional[discord.Role],
         saved_perms: Optional[Dict[str, Any]],
-        reason: str,
-    ) -> Tuple[bool, Optional[str]]:
+        reason: str) -> Tuple[bool, Optional[str]]:
         """Unlock a single text channel."""
         try:
             current_overwrite: discord.PermissionOverwrite = channel.overwrites_for(everyone_role)
@@ -300,8 +290,7 @@ class RaidLockdownService:
         everyone_role: discord.Role,
         mod_role: Optional[discord.Role],
         saved_perms: Optional[Dict[str, Any]],
-        reason: str,
-    ) -> Tuple[bool, Optional[str]]:
+        reason: str) -> Tuple[bool, Optional[str]]:
         """Unlock a single voice channel."""
         try:
             current_overwrite: discord.PermissionOverwrite = channel.overwrites_for(everyone_role)
@@ -362,8 +351,7 @@ class RaidLockdownService:
         guild: discord.Guild,
         everyone_role: discord.Role,
         mod_role: Optional[discord.Role],
-        reason: str,
-    ) -> LockdownResult:
+        reason: str) -> LockdownResult:
         """Lock all channels in a guild concurrently."""
         result = LockdownResult()
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_OPS)
@@ -377,15 +365,13 @@ class RaidLockdownService:
         for channel in guild.text_channels:
             task = create_safe_task(
                 lock_with_semaphore(self._lock_text_channel(channel, everyone_role, mod_role, reason)),
-                f"Lock #{channel.name}",
-            )
+                f"Lock #{channel.name}")
             tasks.append(task)
 
         for channel in guild.voice_channels:
             task = create_safe_task(
                 lock_with_semaphore(self._lock_voice_channel(channel, everyone_role, mod_role, reason)),
-                f"Lock 🔊{channel.name}",
-            )
+                f"Lock 🔊{channel.name}")
             tasks.append(task)
 
         if tasks:
@@ -415,8 +401,7 @@ class RaidLockdownService:
         guild: discord.Guild,
         everyone_role: discord.Role,
         mod_role: Optional[discord.Role],
-        reason: str,
-    ) -> LockdownResult:
+        reason: str) -> LockdownResult:
         """Unlock all channels in a guild concurrently."""
         result = LockdownResult()
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_OPS)
@@ -435,16 +420,14 @@ class RaidLockdownService:
             saved = saved_lookup.get(channel.id)
             task = create_safe_task(
                 unlock_with_semaphore(self._unlock_text_channel(channel, everyone_role, mod_role, saved, reason)),
-                f"Unlock #{channel.name}",
-            )
+                f"Unlock #{channel.name}")
             tasks.append(task)
 
         for channel in guild.voice_channels:
             saved = saved_lookup.get(channel.id)
             task = create_safe_task(
                 unlock_with_semaphore(self._unlock_voice_channel(channel, everyone_role, mod_role, saved, reason)),
-                f"Unlock 🔊{channel.name}",
-            )
+                f"Unlock 🔊{channel.name}")
             tasks.append(task)
 
         if tasks:
@@ -477,8 +460,7 @@ class RaidLockdownService:
         self,
         guild: discord.Guild,
         join_count: int,
-        time_window: int,
-    ) -> bool:
+        time_window: int) -> bool:
         """Trigger automatic lockdown due to raid."""
         # Check cooldown
         if self._last_auto_lockdown:
@@ -524,8 +506,7 @@ class RaidLockdownService:
                 guild_id=guild.id,
                 locked_by=bot_id,
                 reason=f"Raid detected: {join_count} joins in {time_window}s",
-                channel_count=result.success_count,
-            )
+                channel_count=result.success_count)
 
             # Update cooldown
             self._last_auto_lockdown = datetime.now(NY_TZ)
@@ -544,8 +525,7 @@ class RaidLockdownService:
                     await self.bot.logging_service.log_auto_lockdown(
                         join_count=join_count,
                         time_window=time_window,
-                        auto_unlock_in=AUTO_UNLOCK_DURATION,
-                    )
+                        auto_unlock_in=AUTO_UNLOCK_DURATION)
                 except Exception as e:
                     logger.warning("Auto-Lockdown Server Log Failed", [
                         ("Error", str(e)[:LOG_TRUNCATE_MEDIUM]),
@@ -653,8 +633,7 @@ class RaidLockdownService:
         self,
         guild: discord.Guild,
         join_count: int,
-        time_window: int,
-    ) -> bool:
+        time_window: int) -> bool:
         """Send lockdown announcement to general channel."""
         if not self.config.general_channel_id:
             return False
@@ -674,21 +653,18 @@ class RaidLockdownService:
                     "The server has been automatically locked to protect members.\n\n"
                     f"Detected: `{join_count}` accounts joined in `{time_window}` seconds"
                 ),
-                color=EmbedColors.GOLD,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.GOLD
             )
 
             unlock_timestamp: int = int(datetime.now(NY_TZ).timestamp()) + AUTO_UNLOCK_DURATION
             embed.add_field(
                 name="Auto-Unlock",
                 value=f"<t:{unlock_timestamp}:R>",
-                inline=True,
-            )
+                inline=True)
             embed.add_field(
                 name="Manual Unlock",
                 value="Moderators can use `/unlock`",
-                inline=True,
-            )
+                inline=True)
 
             await channel.send(embed=embed)
 
@@ -728,8 +704,7 @@ class RaidLockdownService:
                     "The automatic lockdown has expired.\n"
                     "You may now resume normal activity."
                 ),
-                color=EmbedColors.SUCCESS,
-                timestamp=datetime.now(NY_TZ),
+                color=EmbedColors.SUCCESS
             )
 
             await channel.send(embed=embed)
@@ -758,8 +733,7 @@ class RaidLockdownService:
         self,
         guild: discord.Guild,
         join_count: int,
-        time_window: int,
-    ) -> bool:
+        time_window: int) -> bool:
         """Alert mods in alert channel about the raid."""
         if not self.config.alert_channel_id:
             return False
@@ -775,8 +749,7 @@ class RaidLockdownService:
             embed = discord.Embed(
                 title="🚨 RAID AUTO-LOCKDOWN TRIGGERED",
                 description=f"Server **{guild.name}** has been automatically locked.",
-                color=0xFF0000,
-                timestamp=datetime.now(NY_TZ),
+                color=0xFF0000
             )
             embed.add_field(name="Detected", value=f"`{join_count}` joins in `{time_window}s`", inline=True)
             embed.add_field(name="Auto-Unlock", value=f"In `{AUTO_UNLOCK_DURATION}s`", inline=True)

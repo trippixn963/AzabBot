@@ -18,8 +18,7 @@ from src.core.config import EmbedColors, NY_TZ
 from src.core.constants import (
     CASE_LOG_TIMEOUT,
     DELETE_AFTER_MEDIUM,
-    DELETE_AFTER_LONG,
-)
+    DELETE_AFTER_LONG)
 from src.core.logger import logger
 from src.api.services.event_logger import event_logger
 from src.utils.snipe_blocker import block_from_snipe
@@ -31,8 +30,7 @@ from .constants import (
     REP_LOSS_MUTE,
     REP_LOSS_WARNING,
     SPAM_DISPLAY_NAMES,
-    STICKER_SPAM_TIME_WINDOW,
-)
+    STICKER_SPAM_TIME_WINDOW)
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -46,8 +44,7 @@ class SpamHandlerMixin:
     async def handle_spam(
         self,
         message: discord.Message,
-        spam_type: str,
-    ) -> None:
+        spam_type: str) -> None:
         """Handle a detected spam message."""
         if not message.guild or not isinstance(message.author, discord.Member):
             return
@@ -73,8 +70,7 @@ class SpamHandlerMixin:
                 message.id,
                 reason=f"Spam ({spam_type})",
                 user_id=message.author.id,
-                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
-            )
+                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None)
             await message.delete()
         except discord.HTTPException as e:
             log_http_error(e, "Spam Message Delete", [
@@ -98,8 +94,7 @@ class SpamHandlerMixin:
                 mute_duration,
                 spam_display,
                 message.channel,
-                violation_count,
-            )
+                violation_count)
             await self._log_spam(message, spam_type, "mute", violation_count, mute_duration)
 
     async def _handle_sticker_spam(self, message: discord.Message) -> None:
@@ -134,8 +129,7 @@ class SpamHandlerMixin:
                 message.id,
                 reason="Sticker spam",
                 user_id=message.author.id,
-                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
-            )
+                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None)
             await message.delete()
         except discord.HTTPException as e:
             log_http_error(e, "Sticker Spam Message Delete", [
@@ -168,8 +162,7 @@ class SpamHandlerMixin:
         member: discord.Member,
         deleted_count: int,
         channel: discord.abc.Messageable,
-        now: datetime,
-    ) -> None:
+        now: datetime) -> None:
         """Log sticker spam warning to automod thread."""
         bot: "AzabBot" = self.bot  # type: ignore
         if bot.logging_service and bot.logging_service.enabled:
@@ -178,8 +171,7 @@ class SpamHandlerMixin:
                 embed = discord.Embed(
                     title="⚠️ Auto-Spam Warning (Sticker Spam)",
                     color=EmbedColors.WARNING,
-                    timestamp=now,
-                )
+                    timestamp=now)
                 embed.add_field(name="User", value=f"{member.mention}\n{member.id}", inline=True)
                 embed.add_field(name="Stickers Deleted", value=str(deleted_count), inline=True)
                 embed.add_field(name="Channel", value=f"<#{channel.id}>", inline=True)
@@ -188,8 +180,7 @@ class SpamHandlerMixin:
                 await bot.logging_service._send_log(
                     LogCategory.AUTOMOD,
                     embed,
-                    user_id=member.id,
-                )
+                    user_id=member.id)
                 logger.debug("Sticker Spam Warning Logged", [("User", str(member.id))])
             except Exception as e:
                 logger.debug("Sticker Spam Warning Log Failed", [("Error", str(e)[:50])])
@@ -200,8 +191,7 @@ class SpamHandlerMixin:
         message: discord.Message,
         violation_count: int,
         now: datetime,
-        config: "Config",
-    ) -> None:
+        config: "Config") -> None:
         """Apply 10-minute mute for sticker spam."""
         mute_duration = 600  # 10 minutes
         bot: "AzabBot" = self.bot  # type: ignore
@@ -223,8 +213,7 @@ class SpamHandlerMixin:
         try:
             await member.add_roles(
                 mute_role,
-                reason=f"Sticker spam (violation #{violation_count})",
-            )
+                reason=f"Sticker spam (violation #{violation_count})")
 
             logger.debug("Sticker Spam Mute Role Added", [("User", str(member.id))])
 
@@ -233,8 +222,7 @@ class SpamHandlerMixin:
                 guild_id=message.guild.id,
                 moderator_id=bot.user.id,
                 reason="Auto-spam: Sticker Spam",
-                duration_seconds=mute_duration,
-            )
+                duration_seconds=mute_duration)
 
             # Log to permanent audit log
             db.log_moderation_action(
@@ -245,8 +233,7 @@ class SpamHandlerMixin:
                 action_source="auto_spam",
                 reason="Auto-spam: Sticker Spam",
                 duration_seconds=mute_duration,
-                details={"spam_type": "sticker_spam", "violation_count": violation_count},
-            )
+                details={"spam_type": "sticker_spam", "violation_count": violation_count})
 
             # Log to dashboard events
             event_logger.log_timeout(
@@ -254,8 +241,7 @@ class SpamHandlerMixin:
                 target=member,
                 moderator=None,
                 reason="Auto-spam: Sticker Spam",
-                duration_seconds=mute_duration,
-            )
+                duration_seconds=mute_duration)
 
             # Open case
             case_info = await self._open_spam_case(member, "Sticker Spam", mute_duration, violation_count)
@@ -263,8 +249,7 @@ class SpamHandlerMixin:
             embed = discord.Embed(
                 title="🔇 Sticker Spam",
                 description=f"{member.mention} has been muted.",
-                color=EmbedColors.WARNING,
-            )
+                color=EmbedColors.WARNING)
             embed.add_field(name="Duration", value="10 minutes", inline=True)
             embed.add_field(name="Violation", value=f"#{violation_count}", inline=True)
             if expires_at:
@@ -279,8 +264,7 @@ class SpamHandlerMixin:
                     label="Case",
                     url=case_url,
                     style=discord.ButtonStyle.link,
-                    emoji=CASE_EMOJI,
-                ))
+                    emoji=CASE_EMOJI))
 
             await message.channel.send(embed=embed, view=view, delete_after=DELETE_AFTER_LONG)
 
@@ -289,8 +273,7 @@ class SpamHandlerMixin:
             try:
                 dm_embed = discord.Embed(
                     title=f"🔇 You've been muted in {member.guild.name}",
-                    color=EmbedColors.WARNING,
-                )
+                    color=EmbedColors.WARNING)
                 dm_embed.add_field(name="Reason", value="Sticker Spam", inline=True)
                 dm_embed.add_field(name="Duration", value="10 minutes", inline=True)
                 dm_embed.add_field(name="Violation", value=f"#{violation_count}", inline=True)
@@ -320,8 +303,7 @@ class SpamHandlerMixin:
                     log_embed = discord.Embed(
                         title="🔇 Auto-Spam Mute (Sticker Spam)",
                         color=EmbedColors.WARNING,
-                        timestamp=now,
-                    )
+                        timestamp=now)
                     log_embed.add_field(name="User", value=f"{member.mention}\n{member.id}", inline=True)
                     log_embed.add_field(name="Duration", value="10 minutes", inline=True)
                     log_embed.add_field(name="Violations", value=f"#{violation_count}", inline=True)
@@ -330,8 +312,7 @@ class SpamHandlerMixin:
                     await bot.logging_service._send_log(
                         LogCategory.AUTOMOD,
                         log_embed,
-                        user_id=member.id,
-                    )
+                        user_id=member.id)
                     logger.debug("Sticker Spam Mute Logged", [("User", str(member.id))])
                 except Exception as e:
                     logger.debug("Sticker Spam Mute Log Failed", [("Error", str(e)[:50])])
@@ -364,8 +345,7 @@ class SpamHandlerMixin:
                 message.id,
                 reason="Webhook spam",
                 user_id=None,  # Webhook messages don't have a real user
-                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None,
-            )
+                channel_name=f"#{message.channel.name}" if hasattr(message.channel, 'name') else None)
             await message.delete()
         except discord.HTTPException as e:
             log_http_error(e, "Webhook Spam Message Delete", [
@@ -384,8 +364,7 @@ class SpamHandlerMixin:
                 from src.services.server_logs.categories import LogCategory
                 embed = discord.Embed(
                     title="🛡️ Webhook Spam Detected",
-                    color=EmbedColors.WARNING,
-                    timestamp=datetime.now(NY_TZ),
+                    color=EmbedColors.WARNING
                 )
                 embed.add_field(name="Webhook ID", value=str(message.webhook_id), inline=True)
                 embed.add_field(name="Channel", value=f"<#{message.channel.id}>", inline=True)
@@ -396,8 +375,7 @@ class SpamHandlerMixin:
 
                 await bot.logging_service._send_log(
                     LogCategory.AUTOMOD,
-                    embed,
-                )
+                    embed)
                 logger.debug("Webhook Spam Logged", [("Webhook", str(message.webhook_id))])
             except Exception as e:
                 logger.debug("Webhook Spam Log Failed", [("Error", str(e)[:50])])
@@ -406,15 +384,13 @@ class SpamHandlerMixin:
         self,
         member: discord.Member,
         spam_type: str,
-        channel: discord.abc.Messageable,
-    ) -> None:
+        channel: discord.abc.Messageable) -> None:
         """Send a warning embed to the user."""
         try:
             embed = discord.Embed(
                 title=f"⚠️ {spam_type}",
                 description=f"{member.mention}, your message was deleted.",
-                color=EmbedColors.WARNING,
-            )
+                color=EmbedColors.WARNING)
             embed.add_field(name="Action", value="Warning", inline=True)
 
             await channel.send(embed=embed, delete_after=DELETE_AFTER_MEDIUM)
@@ -438,8 +414,7 @@ class SpamHandlerMixin:
         duration: int,
         spam_type: str,
         channel: discord.abc.Messageable,
-        violation_count: int,
-    ) -> None:
+        violation_count: int) -> None:
         """Apply mute role to the user."""
         config: "Config" = self.config  # type: ignore
         db: "Database" = self.db  # type: ignore
@@ -454,8 +429,7 @@ class SpamHandlerMixin:
         try:
             await member.add_roles(
                 mute_role,
-                reason=f"Anti-spam: {spam_type} (violation #{violation_count})",
-            )
+                reason=f"Anti-spam: {spam_type} (violation #{violation_count})")
 
             if duration >= 3600:
                 duration_str = f"{duration // 3600}h"
@@ -467,8 +441,7 @@ class SpamHandlerMixin:
                 guild_id=member.guild.id,
                 moderator_id=self.bot.user.id,
                 reason=f"Auto-spam: {spam_type}",
-                duration_seconds=duration,
-            )
+                duration_seconds=duration)
 
             # Log to permanent audit log
             db.log_moderation_action(
@@ -479,8 +452,7 @@ class SpamHandlerMixin:
                 action_source="auto_spam",
                 reason=f"Auto-spam: {spam_type}",
                 duration_seconds=duration,
-                details={"spam_type": spam_type, "violation_count": violation_count},
-            )
+                details={"spam_type": spam_type, "violation_count": violation_count})
 
             # Log to dashboard events
             event_logger.log_timeout(
@@ -488,16 +460,14 @@ class SpamHandlerMixin:
                 target=member,
                 moderator=None,
                 reason=f"Auto-spam: {spam_type}",
-                duration_seconds=duration,
-            )
+                duration_seconds=duration)
 
             case_info = await self._open_spam_case(member, spam_type, duration, violation_count)
 
             embed = discord.Embed(
                 title=f"🔇 {spam_type}",
                 description=f"{member.mention} has been muted.",
-                color=EmbedColors.WARNING,
-            )
+                color=EmbedColors.WARNING)
             embed.add_field(name="Duration", value=duration_str, inline=True)
             embed.add_field(name="Violation", value=f"#{violation_count}", inline=True)
             if expires_at:
@@ -512,8 +482,7 @@ class SpamHandlerMixin:
                     label="Case",
                     url=case_url,
                     style=discord.ButtonStyle.link,
-                    emoji=CASE_EMOJI,
-                ))
+                    emoji=CASE_EMOJI))
 
             await channel.send(embed=embed, view=view, delete_after=DELETE_AFTER_LONG)
 
@@ -522,8 +491,7 @@ class SpamHandlerMixin:
             try:
                 dm_embed = discord.Embed(
                     title=f"🔇 You've been muted in {member.guild.name}",
-                    color=EmbedColors.WARNING,
-                )
+                    color=EmbedColors.WARNING)
                 dm_embed.add_field(name="Reason", value=spam_type, inline=True)
                 dm_embed.add_field(name="Duration", value=duration_str, inline=True)
                 dm_embed.add_field(name="Violation", value=f"#{violation_count}", inline=True)
@@ -552,8 +520,7 @@ class SpamHandlerMixin:
                 target=member,
                 moderator=None,  # Auto-action
                 reason=f"Auto-mute: {spam_type} (violation #{violation_count})",
-                duration_seconds=duration,
-            )
+                duration_seconds=duration)
 
         except discord.Forbidden:
             logger.warning("Auto-Mute Permission Denied", [
@@ -581,8 +548,7 @@ class SpamHandlerMixin:
         member: discord.Member,
         spam_type: str,
         duration: int,
-        violation_count: int,
-    ) -> Optional[dict]:
+        violation_count: int) -> Optional[dict]:
         """
         Open a case for the spam violation.
 
@@ -598,8 +564,7 @@ class SpamHandlerMixin:
         spam_type: str,
         action: str,
         violation_count: int,
-        mute_duration: int = 0,
-    ) -> None:
+        mute_duration: int = 0) -> None:
         """Log spam incident to automod thread."""
         bot: "AzabBot" = self.bot  # type: ignore
         spam_display = SPAM_DISPLAY_NAMES.get(spam_type, spam_type)
@@ -628,8 +593,7 @@ class SpamHandlerMixin:
 
                     embed = discord.Embed(
                         title=f"🔇 Auto-Spam Mute ({spam_display})",
-                        color=EmbedColors.WARNING,
-                        timestamp=datetime.now(NY_TZ),
+                        color=EmbedColors.WARNING
                     )
                     embed.add_field(name="User", value=f"{message.author.mention}\n{message.author.id}", inline=True)
                     embed.add_field(name="Type", value=spam_display, inline=True)
@@ -643,15 +607,13 @@ class SpamHandlerMixin:
                     await bot.logging_service._send_log(
                         LogCategory.AUTOMOD,
                         embed,
-                        user_id=message.author.id,
-                    )
+                        user_id=message.author.id)
                     logger.debug("Auto-Spam Mute Logged", [("User", str(message.author.id))])
                 else:
                     # Warning action
                     embed = discord.Embed(
                         title=f"⚠️ Auto-Spam Warning ({spam_display})",
-                        color=EmbedColors.WARNING,
-                        timestamp=datetime.now(NY_TZ),
+                        color=EmbedColors.WARNING
                     )
                     embed.add_field(name="User", value=f"{message.author.mention}\n{message.author.id}", inline=True)
                     embed.add_field(name="Type", value=spam_display, inline=True)
@@ -665,8 +627,7 @@ class SpamHandlerMixin:
                     await bot.logging_service._send_log(
                         LogCategory.AUTOMOD,
                         embed,
-                        user_id=message.author.id,
-                    )
+                        user_id=message.author.id)
                     logger.debug("Auto-Spam Warning Logged", [("User", str(message.author.id))])
             except Exception as e:
                 logger.warning("AutoMod Log Failed", [

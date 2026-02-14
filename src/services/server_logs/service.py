@@ -26,8 +26,7 @@ from .categories import LogCategory, THREAD_DESCRIPTIONS
 from .views import (
     UserIdButton,
     LogView,
-    setup_log_views,
-)
+    setup_log_views)
 from .handlers import (
     ModerationLogsMixin,
     MutesLogsMixin,
@@ -50,8 +49,7 @@ from .handlers import (
     TicketsLogsMixin,
     AppealsLogsMixin,
     WarningsLogsMixin,
-    AuditLogsMixin,
-)
+    AuditLogsMixin)
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -83,8 +81,7 @@ class LoggingService(
     TicketsLogsMixin,
     AppealsLogsMixin,
     WarningsLogsMixin,
-    AuditLogsMixin,
-):
+    AuditLogsMixin):
     """
     Server activity logging service using forum threads.
 
@@ -222,8 +219,7 @@ class LoggingService(
                 try:
                     thread = await self._forum.create_thread(
                         name=thread_name,
-                        content=THREAD_DESCRIPTIONS.get(category, "Server activity logs"),
-                    )
+                        content=THREAD_DESCRIPTIONS.get(category, "Server activity logs"))
                     self._threads[category] = thread.thread
                     await rate_limit("thread_create")
                 except discord.HTTPException as e:
@@ -350,14 +346,12 @@ class LoggingService(
         color: int,
         description: Optional[str] = None,
         category: Optional[str] = None,
-        user_id: Optional[int] = None,
-    ) -> discord.Embed:
+        user_id: Optional[int] = None) -> discord.Embed:
         """Create a standardized log embed."""
         embed = discord.Embed(
             title=title,
             description=description,
-            color=color,
-            timestamp=datetime.now(NY_TZ),
+            color=color
         )
         footer_parts = []
         return embed
@@ -423,8 +417,7 @@ class LoggingService(
         embed: discord.Embed,
         files: Optional[List[discord.File]] = None,
         user_id: Optional[int] = None,
-        view: Optional[discord.ui.View] = None,
-    ) -> Optional[discord.Message]:
+        view: Optional[discord.ui.View] = None) -> Optional[discord.Message]:
         """Send a log to the appropriate thread. Returns the message if successful."""
         if not self._initialized:
             logger.warning("Logging Service Not Initialized", [("Category", category.value)])
@@ -461,8 +454,7 @@ class LoggingService(
         created_dt,
         closed_dt,
         duration_str: str,
-        messages: list,
-    ) -> str:
+        messages: list) -> str:
         """Generate a beautiful HTML transcript."""
         html_output = f'''<!DOCTYPE html>
 <html lang="en">
