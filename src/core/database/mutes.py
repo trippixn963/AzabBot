@@ -245,8 +245,8 @@ class MutesMixin:
         # Log to history
         self.execute(
             """INSERT INTO mute_history
-               (user_id, guild_id, moderator_id, action, reason, duration_seconds, timestamp)
-               VALUES (?, ?, ?, 'mute', ?, ?, ?)""",
+               (user_id, guild_id, moderator_id, action, reason, duration_seconds, timestamp, xp_drained)
+               VALUES (?, ?, ?, 'mute', ?, ?, ?, 0)""",
             (user_id, guild_id, moderator_id, reason, duration_seconds, now)
         )
 
@@ -258,6 +258,55 @@ class MutesMixin:
         ], emoji="🔇")
 
         return expires_at
+
+    def update_mute_xp_drained(
+        self: "DatabaseManager",
+        user_id: int,
+        guild_id: int,
+        xp_drained: int,
+    ) -> bool:
+        """
+        Update the xp_drained value for the most recent mute of a user.
+
+        Called after XP drain API succeeds to record the amount for stats.
+
+        Args:
+            user_id: Discord user ID.
+            guild_id: Guild ID.
+            xp_drained: Amount of XP drained.
+
+        Returns:
+            True if updated, False otherwise.
+        """
+        try:
+            cursor = self.execute(
+                """UPDATE mute_history SET xp_drained = ?
+                   WHERE id = (
+                       SELECT id FROM mute_history
+                       WHERE user_id = ? AND guild_id = ? AND action = 'mute'
+                       ORDER BY timestamp DESC LIMIT 1
+                   )""",
+                (xp_drained, user_id, guild_id)
+            )
+            if cursor.rowcount > 0:
+                logger.tree("XP Drain Recorded", [
+                    ("User ID", str(user_id)),
+                    ("Guild ID", str(guild_id)),
+                    ("Amount", f"{xp_drained:,}"),
+                ], emoji="📊")
+                return True
+            logger.warning("XP Drain Record Failed", [
+                ("User ID", str(user_id)),
+                ("Reason", "No matching mute found"),
+            ])
+            return False
+        except Exception as e:
+            logger.error("XP Drain Record Error", [
+                ("User ID", str(user_id)),
+                ("Amount", str(xp_drained)),
+                ("Error", str(e)[:100]),
+            ])
+            return False
 
     def remove_mute(
         self,

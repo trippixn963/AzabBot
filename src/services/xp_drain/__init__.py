@@ -172,6 +172,7 @@ async def process_mute_xp_drain(
 
     Handles all checks (extension, exemptions) before draining.
     This is the main entry point called from mute_ops.py.
+    Also records the drain amount to the database for stats tracking.
 
     Args:
         member: Discord member who was muted.
@@ -182,6 +183,8 @@ async def process_mute_xp_drain(
     Returns:
         API response dict on success, None if skipped/failed.
     """
+    from src.core.database import get_db
+
     # Skip for mute extensions (no double penalty)
     if is_extension:
         logger.debug("XP Drain Skipped", [
@@ -207,11 +210,25 @@ async def process_mute_xp_drain(
     ])
 
     # Execute drain
-    return await drain_user_xp(
+    result = await drain_user_xp(
         user_id=member.id,
         offense_count=offense_count,
         reason="Muted in server",
     )
+
+    # Record drain amount to database if successful
+    if result is not None:
+        try:
+            db = get_db()
+            db.update_mute_xp_drained(member.id, guild_id, drain_amount)
+        except Exception as e:
+            logger.error("XP Drain DB Update Failed", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Amount", f"{drain_amount:,}"),
+                ("Error", str(e)[:100]),
+            ])
+
+    return result
 
 
 # =============================================================================

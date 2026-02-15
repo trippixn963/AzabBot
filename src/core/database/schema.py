@@ -166,6 +166,11 @@ class SchemaMixin:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_mute_history_moderator ON mute_history(moderator_id, action)"
         )
+        # Add xp_drained column if missing (migration)
+        try:
+            cursor.execute("ALTER TABLE mute_history ADD COLUMN xp_drained INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
         # -----------------------------------------------------------------
         # Case Logs Table
