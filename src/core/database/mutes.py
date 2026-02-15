@@ -505,8 +505,10 @@ class MutesMixin:
                 # Completed mute - use stored duration
                 total_minutes += row["duration_minutes"]
             elif row["unmuted_at"] and row["muted_at"]:
-                # Calculate from timestamps
-                minutes = (row["unmuted_at"] - row["muted_at"]) / 60
+                # Calculate from timestamps (convert to float in case stored as string)
+                unmuted = float(row["unmuted_at"])
+                muted = float(row["muted_at"])
+                minutes = (unmuted - muted) / 60
                 total_minutes += max(0, int(minutes))
 
         return total_minutes

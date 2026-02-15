@@ -204,16 +204,21 @@ class WebSocketManager:
 
         connection = self._connections[connection_id]
         try:
-            if connection.websocket.client_state == WebSocketState.CONNECTED:
-                await connection.websocket.send_json(message.model_dump(mode="json"))
-                return True
+            # Check state before sending
+            if connection.websocket.client_state != WebSocketState.CONNECTED:
+                return False
+            await connection.websocket.send_json(message.model_dump(mode="json"))
+            return True
+        except (WebSocketDisconnect, RuntimeError):
+            # Connection dead or not accepted - silently clean up
+            pass
         except Exception as e:
             logger.debug("WebSocket Send Failed", [
                 ("Connection", connection_id[:8]),
                 ("Error", str(e)[:50]),
             ])
-            # Schedule disconnect (outside lock to avoid deadlock)
-            create_safe_task(self.disconnect(connection_id), "WS Disconnect")
+        # Schedule disconnect (outside lock to avoid deadlock)
+        create_safe_task(self.disconnect(connection_id), "WS Disconnect")
         return False
 
     async def _send_to_connection(self, connection_id: str, message: WSMessage) -> bool:

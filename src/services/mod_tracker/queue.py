@@ -128,7 +128,7 @@ class QueueMixin:
                     return
 
             item = QueueItem(
-                priority=priority.timestamp(),
+                priority=priority,
                 thread_id=thread_id,
                 content=content,
                 embed=embed,

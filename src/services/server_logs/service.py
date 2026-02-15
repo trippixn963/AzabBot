@@ -112,8 +112,8 @@ class LoggingService(
 
     @property
     def enabled(self) -> bool:
-        """Check if logging is enabled."""
-        return self.config.server_logs_forum_id is not None
+        """Check if logging is enabled and initialized."""
+        return self.config.server_logs_forum_id is not None and self._initialized
 
     def _should_log(self, guild_id: Optional[int], user_id: Optional[int] = None) -> bool:
         """Check if we should log for this guild and user."""
