@@ -245,7 +245,7 @@ class LinkCog(commands.Cog):
                 member=member,
                 moderator=interaction.user,
                 target_guild=target_guild,
-                cross_server=cross_server)
+                is_cross_server=cross_server)
 
             await interaction.response.send_message(
                 embed=confirm_embed,

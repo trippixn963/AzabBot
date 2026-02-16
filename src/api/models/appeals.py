@@ -72,6 +72,8 @@ class AppealDetail(BaseModel):
     resolver_name: Optional[str] = None
     resolution_reason: Optional[str] = None
     thread_id: Optional[int] = None
+    email: Optional[str] = None
+    attachments: Optional[list[dict[str, str]]] = None
 
 
 class AppealFormData(BaseModel):

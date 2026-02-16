@@ -547,18 +547,46 @@ class MutesMixin:
         for row in rows:
             if row["is_active"]:
                 # Active mute - calculate time from muted_at to now
-                muted_at = row["muted_at"] or cutoff
+                # muted_at may be stored as datetime string or timestamp
+                muted_at_raw = row["muted_at"]
+                if muted_at_raw is None:
+                    muted_at = cutoff
+                elif isinstance(muted_at_raw, str):
+                    # Parse datetime string "YYYY-MM-DD HH:MM:SS"
+                    try:
+                        dt = datetime.strptime(muted_at_raw, "%Y-%m-%d %H:%M:%S")
+                        dt = dt.replace(tzinfo=NY_TZ)
+                        muted_at = dt.timestamp()
+                    except ValueError:
+                        muted_at = cutoff
+                else:
+                    muted_at = float(muted_at_raw)
                 minutes = (now_ts - muted_at) / 60
                 total_minutes += max(0, int(minutes))
             elif row["duration_minutes"]:
                 # Completed mute - use stored duration
                 total_minutes += row["duration_minutes"]
             elif row["unmuted_at"] and row["muted_at"]:
-                # Calculate from timestamps (convert to float in case stored as string)
-                unmuted = float(row["unmuted_at"])
-                muted = float(row["muted_at"])
-                minutes = (unmuted - muted) / 60
-                total_minutes += max(0, int(minutes))
+                # Calculate from timestamps (handle both datetime strings and floats)
+                unmuted_raw = row["unmuted_at"]
+                muted_raw = row["muted_at"]
+                try:
+                    if isinstance(unmuted_raw, str):
+                        dt = datetime.strptime(unmuted_raw, "%Y-%m-%d %H:%M:%S")
+                        dt = dt.replace(tzinfo=NY_TZ)
+                        unmuted = dt.timestamp()
+                    else:
+                        unmuted = float(unmuted_raw)
+                    if isinstance(muted_raw, str):
+                        dt = datetime.strptime(muted_raw, "%Y-%m-%d %H:%M:%S")
+                        dt = dt.replace(tzinfo=NY_TZ)
+                        muted = dt.timestamp()
+                    else:
+                        muted = float(muted_raw)
+                    minutes = (unmuted - muted) / 60
+                    total_minutes += max(0, int(minutes))
+                except (ValueError, TypeError):
+                    pass  # Skip invalid records
 
         return total_minutes
 

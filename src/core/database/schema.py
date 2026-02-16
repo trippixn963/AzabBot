@@ -638,7 +638,7 @@ class SchemaMixin:
                 case_id TEXT NOT NULL,
                 user_id INTEGER NOT NULL,
                 guild_id INTEGER NOT NULL,
-                thread_id INTEGER NOT NULL,
+                thread_id INTEGER,
                 action_type TEXT NOT NULL,
                 reason TEXT,
                 status TEXT DEFAULT 'pending',

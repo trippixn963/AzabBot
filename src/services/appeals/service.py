@@ -28,15 +28,15 @@ if TYPE_CHECKING:
 
 class AppealService(HelpersMixin, EligibilityMixin, CreateMixin, ResolveMixin):
     """
-    Service for managing ban and mute appeals.
+    Service for managing ban appeals.
 
     DESIGN:
-        Appeals are created in a dedicated forum channel in the mods server.
-        Each appeal gets its own thread using the original case ID.
-        All bans can be appealed, mutes over 6 hours can be appealed.
+        Ban appeals are submitted via web form and managed through the dashboard.
+        Mute appeals use the separate ticket system.
+        No Discord forum threads are created for appeals.
     """
 
-    # Thread cache TTL
+    # Thread cache TTL (kept for legacy compatibility)
     THREAD_CACHE_TTL = timedelta(minutes=5)
 
     def __init__(self, bot: "AzabBot") -> None:
@@ -49,8 +49,8 @@ class AppealService(HelpersMixin, EligibilityMixin, CreateMixin, ResolveMixin):
 
         if self.enabled:
             logger.tree("Appeal Service Initialized", [
-                ("Forum ID", str(self.config.appeal_forum_id)),
-                ("Min Mute Duration", "6 hours"),
+                ("Mode", "Web Dashboard Only"),
+                ("Mute Appeals", "Use ticket system"),
             ], emoji="📨")
         else:
             logger.debug("Appeal Service Disabled (no forum configured)")

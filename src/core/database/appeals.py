@@ -48,11 +48,11 @@ class AppealsMixin:
         case_id: str,
         user_id: int,
         guild_id: int,
-        thread_id: int,
         action_type: str,
         reason: Optional[str] = None,
         email: Optional[str] = None,
         attachments: Optional[List[Dict[str, str]]] = None,
+        thread_id: Optional[int] = None,
     ) -> None:
         """
         Create a new appeal.
@@ -62,11 +62,11 @@ class AppealsMixin:
             case_id: Original case ID being appealed.
             user_id: User submitting the appeal.
             guild_id: Guild ID.
-            thread_id: Forum thread ID for this appeal.
             action_type: Type of action being appealed (ban/mute).
             reason: User's appeal reason.
             email: Optional email for notifications.
             attachments: Optional list of attachment metadata (name, type - no base64 data).
+            thread_id: Optional forum thread ID (None for web-only appeals).
         """
         # Store only attachment metadata (name, type), not the actual data
         attachments_json = json.dumps(attachments) if attachments else None

@@ -328,8 +328,14 @@ class MuteOpsMixin:
                 await interaction.followup.send(embed=embed, view=view)
             else:
                 await interaction.followup.send(embed=embed)
+        except discord.NotFound:
+            # Interaction token expired or webhook deleted - expected for slow operations
+            logger.warning("Mute Followup Expired", [
+                ("User", f"{user.name} ({user.id})"),
+                ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
+            ])
         except Exception as e:
-            logger.error("Mute Followup Failed", [
+            logger.warning("Mute Followup Failed", [
                 ("User", f"{user.name} ({user.id})"),
                 ("Moderator", f"{interaction.user.name} ({interaction.user.id})"),
                 ("Error", str(e)[:100]),

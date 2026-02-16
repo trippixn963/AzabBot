@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import json
 from datetime import datetime
 from typing import Any, Optional
 
@@ -200,7 +201,8 @@ async def get_appeal(
     row = db.fetchone(
         """SELECT appeal_id, case_id, user_id, action_type, status,
                   reason, created_at, resolved_at,
-                  resolved_by, resolution_reason, thread_id
+                  resolved_by, resolution_reason, thread_id,
+                  email, attachments
            FROM appeals WHERE appeal_id = ?""",
         (appeal_id,)
     )
@@ -236,6 +238,14 @@ async def get_appeal(
                 "duration_seconds": case_row["duration_seconds"],
             }
 
+    # Parse attachments JSON if present
+    attachments = None
+    if row["attachments"]:
+        try:
+            attachments = json.loads(row["attachments"])
+        except (json.JSONDecodeError, TypeError):
+            attachments = None
+
     appeal = AppealDetail(
         appeal_id=row["appeal_id"],
         case_id=row["case_id"],
@@ -253,6 +263,8 @@ async def get_appeal(
         resolver_name=resolver_info.get("name"),
         resolution_reason=row["resolution_reason"],
         thread_id=row["thread_id"],
+        email=row["email"],
+        attachments=attachments,
     )
 
     logger.debug("Appeal Fetched", [

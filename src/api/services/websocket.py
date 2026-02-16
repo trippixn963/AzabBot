@@ -247,13 +247,27 @@ class WebSocketManager:
         connection = self._connections[connection_id]
         try:
             # Check state before sending
-            if connection.websocket.client_state != WebSocketState.CONNECTED:
+            ws_state = connection.websocket.client_state
+            if ws_state != WebSocketState.CONNECTED:
                 return False
+
+            # Also check application state to avoid "Need to call accept first" errors
+            app_state = connection.websocket.application_state
+            if hasattr(app_state, 'value') and app_state.value < 2:  # Not yet accepted
+                return False
+
             await connection.websocket.send_json(message.model_dump(mode="json"))
             return True
-        except (WebSocketDisconnect, RuntimeError):
-            # Connection dead or not accepted - silently clean up
-            pass
+        except (WebSocketDisconnect, RuntimeError) as e:
+            # Connection dead, not accepted, or race condition - silently clean up
+            # RuntimeError includes "WebSocket is not connected. Need to call accept first"
+            error_msg = str(e)
+            if "accept" not in error_msg.lower():
+                # Only log unexpected RuntimeErrors
+                logger.debug("WebSocket Send Failed", [
+                    ("Connection", connection_id[:8]),
+                    ("Error", error_msg[:50]),
+                ])
         except Exception as e:
             logger.debug("WebSocket Send Failed", [
                 ("Connection", connection_id[:8]),
