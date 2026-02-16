@@ -9,7 +9,7 @@ Server: discord.gg/syria
 """
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Query
 
@@ -37,14 +37,14 @@ router = APIRouter(prefix="/appeals", tags=["Appeals"])
 # List & Search
 # =============================================================================
 
-@router.get("", response_model=PaginatedResponse[List[AppealBrief]])
+@router.get("", response_model=PaginatedResponse[AppealBrief])
 async def list_appeals(
     pagination: PaginationParams = Depends(get_pagination),
     status: Optional[AppealStatus] = Query(None, description="Filter by status"),
     appeal_type: Optional[AppealType] = Query(None, description="Filter by appeal type"),
     user_id: Optional[int] = Query(None, description="Filter by appellant"),
     payload: TokenPayload = Depends(require_auth),
-) -> PaginatedResponse[List[AppealBrief]]:
+) -> PaginatedResponse[AppealBrief]:
     """
     List appeals with optional filters.
     """
