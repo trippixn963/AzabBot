@@ -44,6 +44,8 @@ class AppealBrief(BaseModel):
     appeal_id: str = Field(description="Unique appeal ID")
     case_id: Optional[str] = None
     user_id: int
+    user_name: Optional[str] = None
+    user_avatar: Optional[str] = None
     appeal_type: AppealType = AppealType.BAN
     status: AppealStatus = AppealStatus.PENDING
     created_at: datetime

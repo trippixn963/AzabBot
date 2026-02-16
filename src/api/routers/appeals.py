@@ -43,6 +43,7 @@ async def list_appeals(
     status: Optional[AppealStatus] = Query(None, description="Filter by status"),
     appeal_type: Optional[AppealType] = Query(None, description="Filter by appeal type"),
     user_id: Optional[int] = Query(None, description="Filter by appellant"),
+    bot: Any = Depends(get_bot),
     payload: TokenPayload = Depends(require_auth),
 ) -> PaginatedResponse[AppealBrief]:
     """
@@ -91,13 +92,16 @@ async def list_appeals(
     params.extend([pagination.per_page, pagination.offset])
     rows = db.fetchall(query, params)
 
-    # Convert to models
+    # Convert to models with user info
     appeals = []
     for row in rows:
+        user_info = await _get_user_info(bot, row["user_id"])
         appeals.append(AppealBrief(
             appeal_id=row["appeal_id"],
             case_id=row["case_id"],
             user_id=row["user_id"],
+            user_name=user_info.get("name"),
+            user_avatar=user_info.get("avatar"),
             appeal_type=AppealType(row["action_type"]) if row["action_type"] else AppealType.BAN,
             status=AppealStatus(row["status"]) if row["status"] else AppealStatus.PENDING,
             created_at=datetime.fromtimestamp(row["created_at"]),
