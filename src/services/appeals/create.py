@@ -317,5 +317,73 @@ class CreateMixin:
                     ("Appeal ID", appeal_id),
                 ])
 
+    async def submit_appeal(
+        self: "AppealService",
+        case_id: str,
+        user_id: int,
+        reason: str,
+        email: Optional[str] = None,
+        attachments: Optional[List[str]] = None,
+        client_ip: Optional[str] = None,
+    ) -> tuple[bool, Optional[str], Optional[str]]:
+        """
+        Submit an appeal from the web form.
+
+        This is a wrapper around create_appeal that fetches the user
+        from Discord first.
+
+        Args:
+            case_id: Case ID to appeal.
+            user_id: User ID submitting the appeal.
+            reason: User's appeal reason.
+            email: Optional email for notifications.
+            attachments: Optional list of attachment URLs.
+            client_ip: Client IP for logging.
+
+        Returns:
+            Tuple of (success, appeal_id, error_message).
+        """
+        try:
+            # Fetch user from Discord
+            user = await self.bot.fetch_user(user_id)
+            if not user:
+                return (False, None, "Could not verify your Discord account")
+
+            # Convert URL attachments to the format create_appeal expects
+            attachment_data = None
+            if attachments:
+                attachment_data = [
+                    {"name": f"attachment_{i}.png", "type": "image/png", "url": url}
+                    for i, url in enumerate(attachments)
+                ]
+
+            # Call create_appeal
+            success, message, appeal_id = await self.create_appeal(
+                case_id=case_id,
+                user=user,
+                reason=reason,
+                email=email,
+                attachments=attachment_data,
+            )
+
+            if success:
+                logger.tree("Web Appeal Submitted", [
+                    ("Appeal ID", appeal_id or "N/A"),
+                    ("Case ID", case_id),
+                    ("User", user.name),
+                    ("Client IP", client_ip or "Unknown"),
+                ], emoji="🌐")
+                return (True, appeal_id, None)
+            else:
+                return (False, None, message)
+
+        except Exception as e:
+            logger.error("Web Appeal Submit Error", [
+                ("Case ID", case_id),
+                ("User ID", str(user_id)),
+                ("Error", str(e)[:100]),
+            ])
+            return (False, None, "An unexpected error occurred")
+
 
 __all__ = ["CreateMixin"]
