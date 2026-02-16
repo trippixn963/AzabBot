@@ -220,14 +220,20 @@ async def get_appeal(
     case_info = None
     if row["case_id"]:
         case_row = db.fetchone(
-            "SELECT action_type, reason, created_at FROM cases WHERE case_id = ?",
+            "SELECT action_type, reason, created_at, moderator_id, duration_seconds FROM cases WHERE case_id = ?",
             (row["case_id"],)
         )
         if case_row:
+            # Get moderator info
+            mod_info = await _get_user_info(bot, case_row["moderator_id"]) if case_row["moderator_id"] else {}
             case_info = {
                 "case_type": case_row["action_type"],
                 "reason": case_row["reason"],
                 "created_at": datetime.fromtimestamp(case_row["created_at"]).isoformat(),
+                "moderator_id": case_row["moderator_id"],
+                "moderator_name": mod_info.get("name"),
+                "moderator_avatar": mod_info.get("avatar"),
+                "duration_seconds": case_row["duration_seconds"],
             }
 
     appeal = AppealDetail(
