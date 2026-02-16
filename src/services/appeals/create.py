@@ -91,8 +91,8 @@ class CreateMixin:
             if not forum:
                 return (False, "Appeal system is not properly configured", None)
 
-            # Generate appeal ID
-            appeal_id = self.db.get_next_appeal_id()
+            # Use case_id as appeal_id (1:1 relationship)
+            appeal_id = case_id
             action_type = case.get("action_type", "unknown")
 
             # Create thread
