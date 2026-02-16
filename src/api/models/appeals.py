@@ -51,6 +51,8 @@ class AppealBrief(BaseModel):
     created_at: datetime
     resolved_at: Optional[datetime] = None
     resolved_by: Optional[int] = None
+    resolver_name: Optional[str] = None
+    resolver_avatar: Optional[str] = None
 
 
 class AppealDetail(BaseModel):
@@ -70,6 +72,7 @@ class AppealDetail(BaseModel):
     resolved_at: Optional[datetime] = None
     resolved_by: Optional[int] = None
     resolver_name: Optional[str] = None
+    resolver_avatar: Optional[str] = None
     resolution_reason: Optional[str] = None
     thread_id: Optional[int] = None
     email: Optional[str] = None

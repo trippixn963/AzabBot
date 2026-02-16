@@ -77,15 +77,14 @@ async def list_appeals(
     # Get page of results
     query = f"""
         SELECT appeal_id, case_id, user_id, action_type, status,
-               created_at, resolved_at, resolved_by
+               created_at, resolved_at, resolved_by, resolution
         FROM appeals
         WHERE {where_clause}
         ORDER BY
             CASE status
                 WHEN 'pending' THEN 1
                 WHEN 'under_review' THEN 2
-                WHEN 'approved' THEN 3
-                WHEN 'denied' THEN 4
+                WHEN 'resolved' THEN 3
             END,
             created_at DESC
         LIMIT ? OFFSET ?
@@ -97,6 +96,22 @@ async def list_appeals(
     appeals = []
     for row in rows:
         user_info = await _get_user_info(bot, row["user_id"])
+        resolver_info = await _get_user_info(bot, row["resolved_by"]) if row["resolved_by"] else {}
+
+        # Map database status to API status
+        # Database stores status='resolved' with resolution='approved'/'denied'
+        # API expects status to be 'pending', 'under_review', 'approved', or 'denied'
+        db_status = row["status"]
+        if db_status == "resolved":
+            resolution = row["resolution"] or "denied"
+            api_status = AppealStatus.APPROVED if resolution == "approved" else AppealStatus.DENIED
+        elif db_status == "under_review":
+            api_status = AppealStatus.UNDER_REVIEW
+        elif db_status == "pending":
+            api_status = AppealStatus.PENDING
+        else:
+            api_status = AppealStatus.PENDING
+
         appeals.append(AppealBrief(
             appeal_id=row["appeal_id"],
             case_id=row["case_id"],
@@ -104,10 +119,12 @@ async def list_appeals(
             user_name=user_info.get("name"),
             user_avatar=user_info.get("avatar"),
             appeal_type=AppealType(row["action_type"]) if row["action_type"] else AppealType.BAN,
-            status=AppealStatus(row["status"]) if row["status"] else AppealStatus.PENDING,
+            status=api_status,
             created_at=datetime.fromtimestamp(row["created_at"]),
             resolved_at=datetime.fromtimestamp(row["resolved_at"]) if row["resolved_at"] else None,
             resolved_by=row["resolved_by"],
+            resolver_name=resolver_info.get("name"),
+            resolver_avatar=resolver_info.get("avatar"),
         ))
 
     logger.debug("Appeals Listed", [
@@ -131,6 +148,7 @@ async def get_appeal_stats(
     today_start = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0).timestamp()
 
     # Status counts
+    # Database stores status='resolved' with resolution='approved'/'denied'
     pending_count = db.fetchone(
         "SELECT COUNT(*) FROM appeals WHERE status = 'pending'"
     )[0]
@@ -140,11 +158,11 @@ async def get_appeal_stats(
     )[0]
 
     approved_count = db.fetchone(
-        "SELECT COUNT(*) FROM appeals WHERE status = 'approved'"
+        "SELECT COUNT(*) FROM appeals WHERE status = 'resolved' AND resolution = 'approved'"
     )[0]
 
     denied_count = db.fetchone(
-        "SELECT COUNT(*) FROM appeals WHERE status = 'denied'"
+        "SELECT COUNT(*) FROM appeals WHERE status = 'resolved' AND resolution = 'denied'"
     )[0]
 
     # Today's appeals
@@ -202,7 +220,7 @@ async def get_appeal(
         """SELECT appeal_id, case_id, user_id, action_type, status,
                   reason, created_at, resolved_at,
                   resolved_by, resolution_reason, thread_id,
-                  email, attachments
+                  email, attachments, resolution
            FROM appeals WHERE appeal_id = ?""",
         (appeal_id,)
     )
@@ -246,6 +264,18 @@ async def get_appeal(
         except (json.JSONDecodeError, TypeError):
             attachments = None
 
+    # Map database status to API status
+    db_status = row["status"]
+    if db_status == "resolved":
+        resolution = row["resolution"] or "denied"
+        api_status = AppealStatus.APPROVED if resolution == "approved" else AppealStatus.DENIED
+    elif db_status == "under_review":
+        api_status = AppealStatus.UNDER_REVIEW
+    elif db_status == "pending":
+        api_status = AppealStatus.PENDING
+    else:
+        api_status = AppealStatus.PENDING
+
     appeal = AppealDetail(
         appeal_id=row["appeal_id"],
         case_id=row["case_id"],
@@ -254,13 +284,14 @@ async def get_appeal(
         user_name=user_info.get("name"),
         user_avatar=user_info.get("avatar"),
         appeal_type=AppealType(row["action_type"]) if row["action_type"] else AppealType.BAN,
-        status=AppealStatus(row["status"]) if row["status"] else AppealStatus.PENDING,
+        status=api_status,
         reason=row["reason"],
         additional_info=None,
         created_at=datetime.fromtimestamp(row["created_at"]),
         resolved_at=datetime.fromtimestamp(row["resolved_at"]) if row["resolved_at"] else None,
         resolved_by=row["resolved_by"],
         resolver_name=resolver_info.get("name"),
+        resolver_avatar=resolver_info.get("avatar"),
         resolution_reason=row["resolution_reason"],
         thread_id=row["thread_id"],
         email=row["email"],

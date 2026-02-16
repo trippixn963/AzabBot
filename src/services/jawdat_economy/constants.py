@@ -7,10 +7,10 @@ Cost tiers and configuration for coin-based features.
 Unjail cost is calculated as: OFFENSE_TIER × DURATION_MULTIPLIER
 
 Offense Tiers (based on weekly offense count):
-- 1st offense: 15,000 coins base
-- 2nd offense: 40,000 coins base
-- 3rd offense: 80,000 coins base
-- 4th+ offense: 150,000 coins base
+- 1st offense: 45,000 coins base
+- 2nd offense: 120,000 coins base
+- 3rd offense: 240,000 coins base
+- 4th+ offense: 450,000 coins base
 
 Duration Multipliers:
 - 1-3 hours: ×1.0
@@ -21,10 +21,10 @@ Duration Multipliers:
 - 7+ days: ×20.0
 
 Example costs:
-- 1st offense, 2h mute: 15,000 × 1.0 = 15,000 coins
-- 1st offense, 24h mute: 15,000 × 3.0 = 45,000 coins
-- 4th offense, 24h mute: 150,000 × 3.0 = 450,000 coins
-- 4th offense, 7d mute: 150,000 × 20.0 = 3,000,000 coins
+- 1st offense, 2h mute: 45,000 × 1.0 = 45,000 coins
+- 1st offense, 24h mute: 45,000 × 3.0 = 135,000 coins
+- 4th offense, 24h mute: 450,000 × 3.0 = 1,350,000 coins
+- 4th offense, 7d mute: 450,000 × 20.0 = 9,000,000 coins
 
 Offense count resets every Sunday at midnight EST (same as XP drain).
 
@@ -40,10 +40,10 @@ from typing import Dict, Optional, Tuple
 # =============================================================================
 
 UNJAIL_OFFENSE_TIERS: Dict[int, int] = {
-    1: 15_000,      # 1st offense: 15,000 coins base
-    2: 40_000,      # 2nd offense: 40,000 coins base
-    3: 80_000,      # 3rd offense: 80,000 coins base
-    4: 150_000,     # 4th+ offense: 150,000 coins base
+    1: 45_000,      # 1st offense: 45,000 coins base
+    2: 120_000,     # 2nd offense: 120,000 coins base
+    3: 240_000,     # 3rd offense: 240,000 coins base
+    4: 450_000,     # 4th+ offense: 450,000 coins base
 }
 
 # =============================================================================
@@ -61,7 +61,7 @@ DURATION_MULTIPLIERS: list[tuple[int | None, float, str]] = [
 ]
 
 # Base cost shown on button (minimum possible cost)
-UNJAIL_BASE_COST = 15_000
+UNJAIL_BASE_COST = 45_000
 
 # Legacy export for backwards compatibility
 UNJAIL_COST_TIERS = UNJAIL_OFFENSE_TIERS
