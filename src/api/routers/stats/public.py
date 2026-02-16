@@ -20,6 +20,7 @@ from src.api.dependencies import get_bot
 from src.api.models.stats import PublicStatsResponse
 from src.api.utils.discord import batch_fetch_users, format_relative_time
 from src.core.database import get_db
+from src.utils.moderation_stats import get_moderation_stats, get_total_tickets
 
 
 router = APIRouter(tags=["Statistics"])
@@ -59,44 +60,32 @@ async def get_public_stats(
         else:
             uptime_str = f"{minutes}m"
 
-    # Optimized: Single query for all case stats
-    # Status values: 'active' (thread exists), 'resolved' (thread deleted/archived)
-    case_stats = db.fetchone(
+    # Get moderation stats from shared module (single source of truth)
+    mod_stats = get_moderation_stats(today_start=today_start, week_start=week_start)
+
+    total_cases = mod_stats.total_cases
+    total_mutes = mod_stats.total_mutes
+    total_bans = mod_stats.total_bans
+    total_warns = mod_stats.total_warns
+    today_mutes = mod_stats.today_mutes
+    today_bans = mod_stats.today_bans
+    today_warns = mod_stats.today_warns
+    weekly_mutes = mod_stats.weekly_mutes
+    weekly_bans = mod_stats.weekly_bans
+    weekly_warns = mod_stats.weekly_warns
+    active_prisoners = mod_stats.active_prisoners
+
+    # Active/resolved cases (still need separate query for these)
+    case_status_row = db.fetchone(
         """
         SELECT
-            COUNT(*) as total,
-            SUM(CASE WHEN action_type = 'mute' THEN 1 ELSE 0 END) as total_mutes,
-            SUM(CASE WHEN action_type = 'ban' THEN 1 ELSE 0 END) as total_bans,
-            SUM(CASE WHEN action_type = 'warn' THEN 1 ELSE 0 END) as total_warns,
-            SUM(CASE WHEN action_type = 'mute' AND created_at >= ? THEN 1 ELSE 0 END) as today_mutes,
-            SUM(CASE WHEN action_type = 'ban' AND created_at >= ? THEN 1 ELSE 0 END) as today_bans,
-            SUM(CASE WHEN action_type = 'warn' AND created_at >= ? THEN 1 ELSE 0 END) as today_warns,
-            SUM(CASE WHEN action_type = 'mute' AND created_at >= ? THEN 1 ELSE 0 END) as weekly_mutes,
-            SUM(CASE WHEN action_type = 'ban' AND created_at >= ? THEN 1 ELSE 0 END) as weekly_bans,
-            SUM(CASE WHEN action_type = 'warn' AND created_at >= ? THEN 1 ELSE 0 END) as weekly_warns,
-            SUM(CASE WHEN action_type = 'mute' AND status = 'active'
-                AND (duration_seconds IS NULL OR created_at + duration_seconds > ?)
-                THEN 1 ELSE 0 END) as active_prisoners,
             SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_cases,
             SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved_cases
         FROM cases
-        """,
-        (today_start, today_start, today_start, week_start, week_start, week_start, now)
+        """
     )
-
-    total_cases = case_stats[0] or 0
-    total_mutes = case_stats[1] or 0
-    total_bans = case_stats[2] or 0
-    total_warns = case_stats[3] or 0
-    today_mutes = case_stats[4] or 0
-    today_bans = case_stats[5] or 0
-    today_warns = case_stats[6] or 0
-    weekly_mutes = case_stats[7] or 0
-    weekly_bans = case_stats[8] or 0
-    weekly_warns = case_stats[9] or 0
-    active_prisoners = case_stats[10] or 0
-    active_cases = case_stats[11] or 0
-    resolved_cases = case_stats[12] or 0
+    active_cases = case_status_row[0] or 0 if case_status_row else 0
+    resolved_cases = case_status_row[1] or 0 if case_status_row else 0
 
     # Optimized: Single query for appeals stats
     appeal_stats = db.fetchone(
@@ -128,13 +117,9 @@ async def get_public_stats(
     claimed_tickets = ticket_stats[1] or 0
     closed_tickets = ticket_stats[2] or 0
 
-    # Use ticket_stats table for total (tickets are auto-deleted after close)
+    # Use shared function for total tickets
     config = get_config()
-    ticket_total_row = db.fetchone(
-        "SELECT total_opened FROM ticket_stats WHERE guild_id = ?",
-        (config.main_guild_id,)
-    ) if config.main_guild_id else None
-    total_tickets = ticket_total_row[0] if ticket_total_row else 0
+    total_tickets = get_total_tickets(config.main_guild_id) if config.main_guild_id else 0
 
     # Calculate total prison time (filter out bad data > 1 year)
     prison_time_stats = db.fetchone(

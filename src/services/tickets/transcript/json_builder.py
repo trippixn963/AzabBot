@@ -16,7 +16,15 @@ import discord
 from src.core.logger import logger
 from src.utils.mention_resolver import collect_mentions_from_messages
 from ..constants import MAX_TRANSCRIPT_MESSAGES, MAX_TRANSCRIPT_USER_LOOKUPS
-from .models import TicketTranscript, TicketTranscriptMessage, TicketTranscriptAttachment
+from .models import (
+    TicketTranscript,
+    TicketTranscriptMessage,
+    TicketTranscriptAttachment,
+    TicketTranscriptEmbed,
+    TicketTranscriptReaction,
+    TicketTranscriptReplyTo,
+    TicketTranscriptSticker,
+)
 
 
 async def build_json_transcript(
@@ -64,21 +72,109 @@ async def build_json_transcript(
                     size=att.size,
                 ))
 
+            # Build embeds
+            embeds = []
+            for embed in msg.embeds:
+                embeds.append(TicketTranscriptEmbed(
+                    title=embed.title,
+                    description=embed.description,
+                    color=embed.color.value if embed.color else None,
+                    url=embed.url,
+                    image_url=embed.image.url if embed.image else None,
+                    thumbnail_url=embed.thumbnail.url if embed.thumbnail else None,
+                    author_name=embed.author.name if embed.author else None,
+                    author_icon_url=embed.author.icon_url if embed.author else None,
+                    footer_text=embed.footer.text if embed.footer else None,
+                    footer_icon_url=embed.footer.icon_url if embed.footer else None,
+                    fields=[
+                        {"name": f.name, "value": f.value, "inline": f.inline}
+                        for f in embed.fields
+                    ] if embed.fields else None,
+                ))
+
+            # Build reactions
+            reactions = []
+            for reaction in msg.reactions:
+                emoji_str = str(reaction.emoji)
+                emoji_id = None
+                emoji_name = None
+                is_animated = False
+                if hasattr(reaction.emoji, 'id'):
+                    emoji_id = str(reaction.emoji.id) if reaction.emoji.id else None
+                    emoji_name = reaction.emoji.name
+                    is_animated = getattr(reaction.emoji, 'animated', False)
+                reactions.append(TicketTranscriptReaction(
+                    emoji=emoji_str,
+                    emoji_id=emoji_id,
+                    emoji_name=emoji_name,
+                    count=reaction.count,
+                    is_animated=is_animated,
+                ))
+
+            # Build reply reference
+            reply_to = None
+            if msg.reference and msg.reference.message_id:
+                ref_msg = msg.reference.resolved
+                if ref_msg and isinstance(ref_msg, discord.Message):
+                    reply_to = TicketTranscriptReplyTo(
+                        message_id=str(ref_msg.id),
+                        author_name=ref_msg.author.display_name,
+                        content=ref_msg.content[:100] if ref_msg.content else "",
+                    )
+
+            # Build stickers
+            stickers = []
+            for sticker in msg.stickers:
+                stickers.append(TicketTranscriptSticker(
+                    id=str(sticker.id),
+                    name=sticker.name,
+                    format_type=sticker.format.value if hasattr(sticker.format, 'value') else 1,
+                ))
+
+            # Get role color
+            author_role_color = None
+            if hasattr(msg.author, 'top_role') and msg.author.top_role:
+                color = msg.author.top_role.color
+                if color and color.value != 0:
+                    author_role_color = f"#{color.value:06x}"
+
             # Check if staff
             is_staff = False
             if hasattr(msg.author, 'guild_permissions'):
                 is_staff = msg.author.guild_permissions.manage_messages
+
+            # Determine message type
+            msg_type = "default"
+            if msg.type == discord.MessageType.reply:
+                msg_type = "reply"
+            elif msg.type == discord.MessageType.new_member:
+                msg_type = "join"
+            elif msg.type == discord.MessageType.premium_guild_subscription:
+                msg_type = "boost"
+            elif msg.type == discord.MessageType.pins_add:
+                msg_type = "pin"
+            elif msg.type == discord.MessageType.thread_starter_message:
+                msg_type = "thread_starter"
 
             messages.append(TicketTranscriptMessage(
                 author_id=msg.author.id,
                 author_name=msg.author.name,
                 author_display_name=msg.author.display_name,
                 author_avatar_url=str(msg.author.display_avatar.url) if msg.author.display_avatar else None,
+                author_role_color=author_role_color,
                 content=msg.content,
                 timestamp=msg.created_at.timestamp(),
                 attachments=attachments,
+                embeds=embeds,
+                reactions=reactions,
+                reply_to=reply_to,
+                stickers=stickers,
                 is_bot=msg.author.bot,
                 is_staff=is_staff,
+                is_pinned=msg.pinned,
+                is_edited=msg.edited_at is not None,
+                edited_at=msg.edited_at.timestamp() if msg.edited_at else None,
+                type=msg_type,
             ))
 
         # Use shared utility to collect and resolve mentions

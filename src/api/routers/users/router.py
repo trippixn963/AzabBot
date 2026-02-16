@@ -21,14 +21,14 @@ from src.core.config import get_config
 from src.api.dependencies import get_bot, require_auth, get_pagination, PaginationParams
 from src.utils.async_utils import create_safe_task
 from src.api.models.base import APIResponse, PaginatedResponse
-from src.api.models.users import UserProfile, UserSearchResult, ModerationNote
+from src.api.models.users import UserProfile, UserSearchResult, UserSuggestion, ModerationNote
 from src.api.models.cases import CaseBrief, CaseType, CaseStatus
 from src.api.models.auth import TokenPayload
 from src.api.utils.pagination import create_paginated_response
 from src.core.database import get_db
 from src.services.user_snapshots import save_user_snapshot as save_snapshot
 
-from .models import UserLookupResult, UserPunishment, ChannelActivity
+from .models import UserLookupResult, UserPunishment, ChannelActivity, InvitedUser
 from .cache import lookup_cache
 from .helpers import (
     fetch_syriabot_data,
@@ -340,6 +340,140 @@ async def lookup_user(
         elif hasattr(user, 'accent_color') and user.accent_color:
             banner_color = f"#{user.accent_color.value:06x}"
 
+    # Online status
+    online_status = "offline"
+    if member and hasattr(member, 'status'):
+        status_str = str(member.status)
+        if status_str in ("online", "idle", "dnd", "offline"):
+            online_status = status_str
+
+    # Booster status
+    is_booster = False
+    boosting_since = None
+    if member and member.premium_since:
+        is_booster = True
+        boosting_since = member.premium_since.isoformat()
+
+    # Discord badges from public flags
+    badges: List[str] = []
+    if user and hasattr(user, 'public_flags') and user.public_flags:
+        flags = user.public_flags
+        if flags.staff:
+            badges.append("staff")
+        if flags.partner:
+            badges.append("partner")
+        if flags.hypesquad:
+            badges.append("hypesquad")
+        if flags.bug_hunter:
+            badges.append("bug_hunter")
+        if flags.bug_hunter_level_2:
+            badges.append("bug_hunter_level_2")
+        if flags.hypesquad_bravery:
+            badges.append("hypesquad_bravery")
+        if flags.hypesquad_brilliance:
+            badges.append("hypesquad_brilliance")
+        if flags.hypesquad_balance:
+            badges.append("hypesquad_balance")
+        if flags.early_supporter:
+            badges.append("early_supporter")
+        if flags.verified_bot_developer:
+            badges.append("verified_bot_developer")
+        if flags.discord_certified_moderator:
+            badges.append("certified_moderator")
+        if flags.active_developer:
+            badges.append("active_developer")
+
+    # Nitro detection (animated avatar or banner indicates Nitro)
+    if user:
+        has_nitro_features = False
+        # Check for animated avatar
+        if user.avatar and user.avatar.is_animated():
+            has_nitro_features = True
+        # Check for profile banner
+        if hasattr(user, 'banner') and user.banner:
+            has_nitro_features = True
+        if has_nitro_features:
+            badges.append("nitro")
+
+    # Boost badge based on boost duration
+    if member and member.premium_since:
+        boost_days = (now - member.premium_since.replace(tzinfo=None)).days
+        if boost_days >= 730:  # 24 months
+            badges.append("boost_24")
+        elif boost_days >= 540:  # 18 months
+            badges.append("boost_18")
+        elif boost_days >= 450:  # 15 months
+            badges.append("boost_15")
+        elif boost_days >= 365:  # 12 months
+            badges.append("boost_12")
+        elif boost_days >= 270:  # 9 months
+            badges.append("boost_9")
+        elif boost_days >= 180:  # 6 months
+            badges.append("boost_6")
+        elif boost_days >= 90:  # 3 months
+            badges.append("boost_3")
+        elif boost_days >= 60:  # 2 months
+            badges.append("boost_2")
+        else:
+            badges.append("boost_1")
+
+    # Activity percentile (from SyriaBot data only - no estimates)
+    activity_percentile = 0
+    if syriabot_data and syriabot_data.get("percentile"):
+        activity_percentile = syriabot_data.get("percentile", 0)
+
+    # Join position (permanent historical position from database)
+    # Only read from database - positions are assigned by backfill or on_member_join
+    join_position = 0
+    if user_id and guild_id:
+        stored_position = db.get_join_position(user_id, guild_id)
+        if stored_position:
+            join_position = stored_position
+        # If no position found, return 0 - backfill needs to run first
+
+    # Users invited by this person
+    users_invited: List[InvitedUser] = []
+    if guild_id:
+        try:
+            invited_rows = db.fetchall(
+                """
+                SELECT user_id, joined_at FROM user_invites
+                WHERE guild_id = ? AND inviter_id = ?
+                ORDER BY joined_at DESC
+                LIMIT 10
+                """,
+                (guild_id, user_id)
+            )
+        except Exception:
+            # Table may not exist
+            invited_rows = []
+        for row in invited_rows:
+            invited_user_id = row[0]
+            invited_joined_at = row[1]
+            # Try to get user info
+            invited_member = None
+            if guild:
+                invited_member = guild.get_member(invited_user_id)
+            if invited_member:
+                users_invited.append(InvitedUser(
+                    discord_id=str(invited_user_id),
+                    username=invited_member.name,
+                    display_name=invited_member.display_name,
+                    avatar_url=str(invited_member.display_avatar.url) if invited_member.display_avatar else None,
+                    joined_at=datetime.utcfromtimestamp(invited_joined_at).isoformat() if invited_joined_at else None,
+                ))
+            else:
+                # Try to get from snapshot
+                inv_snapshot = db.get_user_snapshot(invited_user_id, guild_id)
+                if inv_snapshot:
+                    users_invited.append(InvitedUser(
+                        discord_id=str(invited_user_id),
+                        username=inv_snapshot.get("username", "Unknown"),
+                        display_name=inv_snapshot.get("display_name", "Unknown"),
+                        avatar_url=inv_snapshot.get("avatar_url"),
+                        joined_at=datetime.utcfromtimestamp(invited_joined_at).isoformat() if invited_joined_at else None,
+                    ))
+
     # Build result
     if user:
         discord_id = str(user.id)
@@ -373,6 +507,10 @@ async def lookup_user(
         is_cached=is_cached,
         cached_at=cached_at,
         in_server=in_server,
+        online_status=online_status,
+        is_booster=is_booster,
+        boosting_since=boosting_since,
+        badges=badges,
         joined_server_at=joined_server_at,
         account_created_at=account_created_at,
         account_age_days=account_age_days,
@@ -390,11 +528,14 @@ async def lookup_user(
         messages_this_month=messages_this_month,
         voice_time_seconds=voice_time_seconds,
         voice_time_formatted=voice_time_formatted,
+        activity_percentile=activity_percentile,
+        join_position=join_position,
         risk_score=risk_score,
         risk_flags=risk_flags,
         invite_code=invite_code,
         invited_by=invited_by_name,
         invited_by_id=str(inviter_id) if inviter_id else None,
+        users_invited=users_invited,
         roles=roles,
         previous_usernames=previous_usernames,
         most_active_channels=most_active_channels,
@@ -419,6 +560,69 @@ async def lookup_user(
     ], emoji="🔍")
 
     return APIResponse(success=True, data=result)
+
+
+# =============================================================================
+# Suggestions (Server Members)
+# =============================================================================
+
+@router.get("/suggest", response_model=APIResponse[List[UserSuggestion]])
+async def suggest_users(
+    q: str = Query(..., min_length=1, max_length=50, description="Search query"),
+    limit: int = Query(10, ge=1, le=20, description="Max results"),
+    bot: Any = Depends(get_bot),
+    payload: TokenPayload = Depends(require_auth),
+) -> APIResponse[List[UserSuggestion]]:
+    """
+    Get user suggestions from server members.
+
+    Uses Discord's query_members API for efficient server-side search.
+    Searches by username, display name, or nickname prefix.
+    """
+    config = get_config()
+    guild_id = config.main_guild_id
+
+    if not guild_id:
+        return APIResponse(success=True, data=[])
+
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return APIResponse(success=True, data=[])
+
+    db = get_db()
+
+    try:
+        # Use Discord's server-side member search (efficient for large guilds)
+        members = await guild.query_members(query=q, limit=limit)
+
+        # Batch fetch case counts for all members
+        member_ids = [member.id for member in members]
+        case_counts: dict[int, int] = {}
+
+        if member_ids:
+            placeholders = ",".join("?" * len(member_ids))
+            rows = db.execute(
+                f"SELECT user_id, COUNT(*) as count FROM cases WHERE user_id IN ({placeholders}) GROUP BY user_id",
+                member_ids,
+            ).fetchall()
+            case_counts = {row["user_id"]: row["count"] for row in rows}
+
+        results = [
+            UserSuggestion(
+                discord_id=str(member.id),
+                username=member.name,
+                display_name=member.display_name,
+                avatar_url=str(member.display_avatar.url) if member.display_avatar else None,
+                case_count=case_counts.get(member.id, 0),
+            )
+            for member in members
+        ]
+
+        return APIResponse(success=True, data=results)
+
+    except discord.HTTPException as e:
+        logger.warning("User Suggest Failed", [("Error", str(e)[:50])])
+        return APIResponse(success=True, data=[])
 
 
 # =============================================================================
@@ -731,6 +935,67 @@ async def get_user_notes(
     ])
 
     return create_paginated_response(notes, total, pagination)
+
+
+# =============================================================================
+# Admin: Backfill Join Positions
+# =============================================================================
+
+@router.post("/backfill-join-positions", response_model=APIResponse[dict])
+async def backfill_join_positions(
+    bot: Any = Depends(get_bot),
+    payload: TokenPayload = Depends(require_auth),
+) -> APIResponse[dict]:
+    """
+    Backfill historical join positions for all current guild members.
+
+    This populates the member_join_positions table with positions based on
+    members' original join dates. Run this once to migrate existing members.
+    New members will have positions recorded automatically on join.
+
+    Returns count of positions backfilled.
+    """
+    config = get_config()
+    db = get_db()
+    guild_id = config.main_guild_id
+
+    if not guild_id:
+        raise APIError(ErrorCode.SERVER_ERROR, message="Guild ID not configured")
+
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        raise APIError(ErrorCode.SERVER_ERROR, message="Guild not found")
+
+    # Get all members with their join dates, sorted by join time
+    members_data = []
+    for member in guild.members:
+        if member.joined_at:
+            members_data.append((member.id, member.joined_at.timestamp()))
+
+    # Sort by join time (oldest first)
+    members_data.sort(key=lambda x: x[1])
+
+    # Backfill positions
+    backfilled = db.backfill_join_positions(guild_id, members_data)
+
+    total_tracked = db.get_total_join_positions(guild_id)
+    next_position = db.get_next_join_position(guild_id)
+
+    logger.tree("JOIN POSITIONS BACKFILLED", [
+        ("Guild", guild.name),
+        ("Members Processed", str(len(members_data))),
+        ("Newly Assigned", str(backfilled)),
+        ("Total Tracked", str(total_tracked)),
+        ("Next Position", str(next_position)),
+        ("Requested By", str(payload.sub)),
+    ], emoji="📊")
+
+    return APIResponse(success=True, data={
+        "members_processed": len(members_data),
+        "positions_backfilled": backfilled,
+        "total_tracked": total_tracked,
+        "next_position": next_position,
+    })
 
 
 __all__ = ["router"]

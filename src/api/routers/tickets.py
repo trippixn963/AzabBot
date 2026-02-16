@@ -4,14 +4,18 @@ AzabBot - Tickets Router
 
 Support ticket management endpoints.
 Optimized with request-scoped caching and consolidated queries.
+Stats endpoint has a 30-second TTL cache to reduce database load.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
+import time
+
 import discord
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Query, Request
 
@@ -28,6 +32,11 @@ from src.api.models.tickets import (
 from src.api.services.auth import get_auth_service
 from src.api.errors import APIError, ErrorCode
 from src.core.database import get_db
+
+
+# Stats cache with 30-second TTL
+_stats_cache: Optional[Tuple[Dict[str, Any], datetime]] = None
+_STATS_CACHE_TTL = timedelta(seconds=30)
 
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -56,8 +65,31 @@ def _to_iso(ts: float) -> str:
     return datetime.fromtimestamp(ts).isoformat()
 
 
+# Global user cache with TTL (5 minutes)
+_global_user_cache: dict[int, tuple[dict, float]] = {}
+_USER_CACHE_TTL = 300
+
+
+def _get_global_cached_user(user_id: int) -> Optional[dict]:
+    """Get user from global cache if not expired."""
+    if user_id in _global_user_cache:
+        info, expires_at = _global_user_cache[user_id]
+        if time.time() < expires_at:
+            return info
+        try:
+            del _global_user_cache[user_id]
+        except KeyError:
+            pass
+    return None
+
+
+def _set_global_cached_user(user_id: int, info: dict) -> None:
+    """Store user in global cache."""
+    _global_user_cache[user_id] = (info, time.time() + _USER_CACHE_TTL)
+
+
 class UserInfoCache:
-    """Request-scoped cache for Discord user info lookups."""
+    """Request-scoped cache with global backing cache for Discord user info."""
 
     def __init__(self, bot: Any):
         self.bot = bot
@@ -71,27 +103,58 @@ class UserInfoCache:
         if user_id in self._cache:
             return self._cache[user_id]
 
-        try:
-            user = await self.bot.fetch_user(user_id)
+        # Check global cache
+        cached = _get_global_cached_user(user_id)
+        if cached is not None:
+            self._cache[user_id] = cached
+            return cached
+
+        # Try bot's internal cache first (no API call)
+        user = self.bot.get_user(user_id)
+        if user:
             info = {
                 "name": user.name,
                 "avatar": str(user.display_avatar.url) if user.display_avatar else None,
             }
-        except Exception as e:
-            logger.debug("User Info Fetch Failed", [
-                ("User ID", str(user_id)),
-                ("Error Type", type(e).__name__),
-            ])
-            info = {}
+            self._cache[user_id] = info
+            _set_global_cached_user(user_id, info)
+            return info
+
+        # Fetch from API
+        try:
+            user = await asyncio.wait_for(self.bot.fetch_user(user_id), timeout=2.0)
+            info = {
+                "name": user.name,
+                "avatar": str(user.display_avatar.url) if user.display_avatar else None,
+            }
+        except Exception:
+            info = {"name": f"User {user_id}", "avatar": None}
 
         self._cache[user_id] = info
+        _set_global_cached_user(user_id, info)
         return info
 
+    async def _fetch_single(self, user_id: int) -> None:
+        """Fetch a single user into cache."""
+        if user_id and user_id not in self._cache:
+            await self.get(user_id)
+
     async def prefetch(self, user_ids: list[int]) -> None:
-        """Prefetch multiple users into cache."""
-        for uid in user_ids:
-            if uid and uid not in self._cache:
-                await self.get(uid)
+        """Prefetch multiple users into cache in parallel."""
+        # Filter to only IDs not already cached
+        to_fetch = [uid for uid in user_ids if uid and uid not in self._cache and _get_global_cached_user(uid) is None]
+
+        if not to_fetch:
+            # All in cache, just populate local cache from global
+            for uid in user_ids:
+                if uid and uid not in self._cache:
+                    cached = _get_global_cached_user(uid)
+                    if cached:
+                        self._cache[uid] = cached
+            return
+
+        # Fetch all in parallel
+        await asyncio.gather(*[self._fetch_single(uid) for uid in to_fetch], return_exceptions=True)
 
 
 # =============================================================================
@@ -101,7 +164,7 @@ class UserInfoCache:
 @router.get("", response_model=TicketListResponse)
 async def list_tickets(
     pagination: PaginationParams = Depends(get_pagination),
-    status: Optional[str] = Query(None, description="Filter by status"),
+    status: Optional[str] = Query(None, description="Filter by status: open, claimed, closed"),
     category: Optional[str] = Query(None, description="Filter by category"),
     claimed_by: Optional[int] = Query(None, description="Filter by claimer"),
     user_id: Optional[int] = Query(None, description="Filter by ticket creator"),
@@ -163,11 +226,10 @@ async def list_tickets(
         sort_by = "created_at"
     sort_direction = "ASC" if sort_dir == "asc" else "DESC"
 
-    # Get total count
+    # Simple single-table queries
     count_query = f"SELECT COUNT(*) FROM tickets WHERE {where_clause}"
     total = db.fetchone(count_query, params)[0]
 
-    # Get page of results
     query = f"""
         SELECT ticket_id, thread_id, user_id, claimed_by, status,
                subject, category, created_at, claimed_at, closed_at
@@ -176,8 +238,7 @@ async def list_tickets(
         ORDER BY {sort_by} {sort_direction}
         LIMIT ? OFFSET ?
     """
-    params.extend([pagination.per_page, pagination.offset])
-    rows = db.fetchall(query, params)
+    rows = db.fetchall(query, params + [pagination.per_page, pagination.offset])
 
     # Collect unique user IDs and prefetch
     user_ids = set()
@@ -228,12 +289,30 @@ async def list_tickets(
     )
 
 
+def _invalidate_stats_cache() -> None:
+    """Invalidate the stats cache (called when tickets change)."""
+    global _stats_cache
+    _stats_cache = None
+
+
 @router.get("/stats", response_model=TicketStatsResponse)
 async def get_ticket_stats(
     bot: Any = Depends(get_bot),
     payload: TokenPayload = Depends(require_auth),
 ) -> TicketStatsResponse:
-    """Get aggregate ticket statistics with moderator data."""
+    """Get aggregate ticket statistics with moderator data. Cached for 30 seconds."""
+    global _stats_cache
+
+    # Check cache
+    if _stats_cache is not None:
+        cached_stats, cached_at = _stats_cache
+        if datetime.now() - cached_at < _STATS_CACHE_TTL:
+            logger.debug("Ticket Stats Cache Hit", [
+                ("User", str(payload.sub)),
+                ("Age", f"{(datetime.now() - cached_at).total_seconds():.1f}s"),
+            ])
+            return TicketStatsResponse(data=cached_stats)
+
     db = get_db()
     user_cache = UserInfoCache(bot)
     now = datetime.now(NY_TZ)
@@ -242,7 +321,7 @@ async def get_ticket_stats(
     last_week_start = (now - timedelta(days=14)).timestamp()
     week_ago = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0).timestamp()
 
-    # Query 1: All counts and averages in one query
+    # Query 1: All counts and averages
     counts_row = db.fetchone("""
         SELECT
             COUNT(*) as total,
@@ -274,7 +353,7 @@ async def get_ticket_stats(
     else:
         weekly_trend_pct = 100.0 if week_count > 0 else 0.0
 
-    # Query 2: Daily activity (single query with grouping)
+    # Query 2: Daily activity
     daily_rows = db.fetchall("""
         SELECT DATE(created_at, 'unixepoch', 'localtime') as day_date, COUNT(*) as cnt
         FROM tickets
@@ -294,11 +373,16 @@ async def get_ticket_stats(
             "count": daily_map.get(day_str, 0),
         })
 
-    # Query 3: Category breakdown
+    # Query 3: Category breakdown (normalize by case to merge duplicates)
     category_rows = db.fetchall("""
-        SELECT COALESCE(category, 'Uncategorized') as cat, COUNT(*) as cnt
+        SELECT
+            COALESCE(
+                UPPER(SUBSTR(LOWER(category), 1, 1)) || SUBSTR(LOWER(category), 2),
+                'Uncategorized'
+            ) as cat,
+            COUNT(*) as cnt
         FROM tickets
-        GROUP BY category
+        GROUP BY LOWER(COALESCE(category, 'uncategorized'))
         ORDER BY cnt DESC
     """)
     category_breakdown = [{"name": row["cat"], "count": row["cnt"]} for row in category_rows]
@@ -318,17 +402,23 @@ async def get_ticket_stats(
         LIMIT 3
     """)
 
-    # Query 5: All moderator categories in one query
+    # Query 5: All moderator categories
     mod_ids = [row["claimed_by"] for row in mod_rows]
     mod_categories_map: dict[int, list] = {mid: [] for mid in mod_ids}
 
     if mod_ids:
         placeholders = ",".join("?" * len(mod_ids))
         mod_cat_rows = db.fetchall(f"""
-            SELECT claimed_by, COALESCE(category, 'Uncategorized') as cat, COUNT(*) as cnt
+            SELECT
+                claimed_by,
+                COALESCE(
+                    UPPER(SUBSTR(LOWER(category), 1, 1)) || SUBSTR(LOWER(category), 2),
+                    'Uncategorized'
+                ) as cat,
+                COUNT(*) as cnt
             FROM tickets
             WHERE claimed_by IN ({placeholders})
-            GROUP BY claimed_by, category
+            GROUP BY claimed_by, LOWER(COALESCE(category, 'uncategorized'))
             ORDER BY claimed_by, cnt DESC
         """, mod_ids)
 
@@ -385,10 +475,14 @@ async def get_ticket_stats(
         "top_moderators": top_moderators,
     }
 
+    # Cache the stats
+    _stats_cache = (stats, datetime.now())
+
     logger.debug("Ticket Stats Fetched", [
         ("User", str(payload.sub)),
         ("Total", str(total_tickets)),
         ("Top Mods", str(len(top_moderators))),
+        ("Cached", "Yes"),
     ])
 
     return TicketStatsResponse(data=stats)
@@ -562,4 +656,4 @@ async def get_ticket_messages(
     )
 
 
-__all__ = ["router"]
+__all__ = ["router", "_invalidate_stats_cache"]

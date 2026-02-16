@@ -1060,6 +1060,36 @@ class SchemaMixin:
             "CREATE INDEX IF NOT EXISTS idx_unjail_usage_time ON booster_unjail_usage(used_at)"
         )
 
+        # -----------------------------------------------------------------
+        # Member Join Positions Table
+        # DESIGN: Stores permanent historical join positions that persist
+        # even when users leave and rejoin the server
+        # -----------------------------------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS member_join_positions (
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                join_position INTEGER NOT NULL,
+                first_joined_at REAL NOT NULL,
+                recorded_at REAL NOT NULL,
+                PRIMARY KEY (user_id, guild_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_join_positions_guild ON member_join_positions(guild_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_join_positions_position ON member_join_positions(guild_id, join_position)"
+        )
+
+        # Guild join position counter - tracks the next position to assign
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS guild_join_counters (
+                guild_id INTEGER PRIMARY KEY,
+                next_position INTEGER NOT NULL DEFAULT 1
+            )
+        """)
+
         conn.commit()
 
         # Initialize staff ticket counters from existing data (runs once on startup)

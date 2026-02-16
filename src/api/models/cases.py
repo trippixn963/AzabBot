@@ -83,6 +83,23 @@ class CaseListResponse(BaseModel):
 # Case Stats Response
 # =============================================================================
 
+class ActionTypeBreakdown(BaseModel):
+    """Action type count for breakdown charts."""
+
+    name: str = Field(description="Action type name")
+    count: int = Field(description="Number of cases")
+
+
+class TopModerator(BaseModel):
+    """Top moderator stats."""
+
+    user_id: str = Field(description="Moderator user ID")
+    user_name: str = Field(description="Moderator name")
+    user_avatar: Optional[str] = Field(default=None, description="Avatar URL")
+    total_cases: int = Field(description="Total cases handled")
+    is_online: bool = Field(default=False, description="Currently online")
+
+
 class CaseStatsData(BaseModel):
     """Case statistics data."""
 
@@ -92,6 +109,8 @@ class CaseStatsData(BaseModel):
     cases_today: int = Field(description="Cases created today")
     cases_this_week: int = Field(description="Cases created this week")
     pending_appeals: int = Field(description="Appeals awaiting review")
+    action_type_breakdown: List[ActionTypeBreakdown] = Field(default_factory=list, description="Breakdown by action type")
+    top_moderators: List[TopModerator] = Field(default_factory=list, description="Top 3 moderators")
 
 
 class CaseStatsResponse(BaseModel):

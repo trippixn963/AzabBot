@@ -9,7 +9,7 @@ Server: discord.gg/syria
 """
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Optional, List, Dict, Any
 
 
@@ -23,6 +23,48 @@ class TicketTranscriptAttachment:
 
 
 @dataclass
+class TicketTranscriptEmbed:
+    """Represents an embed in a ticket transcript."""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[int] = None
+    url: Optional[str] = None
+    image_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    author_name: Optional[str] = None
+    author_icon_url: Optional[str] = None
+    footer_text: Optional[str] = None
+    footer_icon_url: Optional[str] = None
+    fields: Optional[List[Dict[str, Any]]] = None
+
+
+@dataclass
+class TicketTranscriptReaction:
+    """Represents a reaction on a message."""
+    emoji: str  # Unicode emoji or custom emoji name
+    emoji_id: Optional[str] = None  # Custom emoji ID
+    emoji_name: Optional[str] = None  # Custom emoji name
+    count: int = 1
+    is_animated: bool = False
+
+
+@dataclass
+class TicketTranscriptReplyTo:
+    """Represents a reply reference."""
+    message_id: str
+    author_name: str
+    content: str  # Truncated preview
+
+
+@dataclass
+class TicketTranscriptSticker:
+    """Represents a Discord sticker."""
+    id: str
+    name: str
+    format_type: int  # 1=PNG, 2=APNG, 3=Lottie, 4=GIF
+
+
+@dataclass
 class TicketTranscriptMessage:
     """Represents a single message in a ticket transcript."""
     author_id: int
@@ -32,8 +74,17 @@ class TicketTranscriptMessage:
     content: str
     timestamp: float
     attachments: List[TicketTranscriptAttachment]
+    embeds: List[TicketTranscriptEmbed] = field(default_factory=list)
+    reactions: List[TicketTranscriptReaction] = field(default_factory=list)
+    reply_to: Optional[TicketTranscriptReplyTo] = None
+    stickers: List[TicketTranscriptSticker] = field(default_factory=list)
+    author_role_color: Optional[str] = None  # Hex color like "#ff0000"
     is_bot: bool = False
     is_staff: bool = False
+    is_pinned: bool = False
+    is_edited: bool = False
+    edited_at: Optional[float] = None
+    type: str = "default"  # default, reply, join, boost, pin, thread_starter
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -42,11 +93,20 @@ class TicketTranscriptMessage:
             "author_name": self.author_name,
             "author_display_name": self.author_display_name,
             "author_avatar_url": self.author_avatar_url,
+            "author_role_color": self.author_role_color,
             "content": self.content,
             "timestamp": self.timestamp,
             "attachments": [asdict(a) for a in self.attachments],
+            "embeds": [asdict(e) for e in self.embeds] if self.embeds else [],
+            "reactions": [asdict(r) for r in self.reactions] if self.reactions else [],
+            "reply_to": asdict(self.reply_to) if self.reply_to else None,
+            "stickers": [asdict(s) for s in self.stickers] if self.stickers else [],
             "is_bot": self.is_bot,
             "is_staff": self.is_staff,
+            "is_pinned": self.is_pinned,
+            "is_edited": self.is_edited,
+            "edited_at": self.edited_at,
+            "type": self.type,
         }
 
 
@@ -108,17 +168,40 @@ class TicketTranscript:
             attachments = [
                 TicketTranscriptAttachment(**a) for a in m.get("attachments", [])
             ]
+            embeds = [
+                TicketTranscriptEmbed(**e) for e in m.get("embeds", [])
+            ]
+            reactions = [
+                TicketTranscriptReaction(**r) for r in m.get("reactions", [])
+            ]
+            stickers = [
+                TicketTranscriptSticker(**s) for s in m.get("stickers", [])
+            ]
+            reply_to = None
+            if m.get("reply_to"):
+                reply_to = TicketTranscriptReplyTo(**m["reply_to"])
+
             messages.append(TicketTranscriptMessage(
                 author_id=m["author_id"],
                 author_name=m["author_name"],
                 author_display_name=m["author_display_name"],
                 author_avatar_url=m.get("author_avatar_url"),
+                author_role_color=m.get("author_role_color"),
                 content=m["content"],
                 timestamp=m["timestamp"],
                 attachments=attachments,
+                embeds=embeds,
+                reactions=reactions,
+                reply_to=reply_to,
+                stickers=stickers,
                 is_bot=m.get("is_bot", False),
                 is_staff=m.get("is_staff", False),
+                is_pinned=m.get("is_pinned", False),
+                is_edited=m.get("is_edited", False),
+                edited_at=m.get("edited_at"),
+                type=m.get("type", "default"),
             ))
+
         # Convert mention_map keys back to integers
         mention_map = None
         if data.get("mention_map"):
@@ -147,6 +230,10 @@ class TicketTranscript:
 
 __all__ = [
     "TicketTranscriptAttachment",
+    "TicketTranscriptEmbed",
+    "TicketTranscriptReaction",
+    "TicketTranscriptReplyTo",
+    "TicketTranscriptSticker",
     "TicketTranscriptMessage",
     "TicketTranscript",
 ]

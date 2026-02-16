@@ -161,7 +161,7 @@ class LoggingService(
 
     async def initialize(self) -> bool:
         """Initialize the logging service by setting up forum and threads."""
-        if not self.enabled:
+        if not self.config.server_logs_forum_id:
             logger.info("Logging Service disabled (no forum ID configured)")
             return False
 

@@ -34,6 +34,16 @@ class ChannelActivity(BaseModel):
     message_count: int = Field(0, description="Messages in this channel")
 
 
+class InvitedUser(BaseModel):
+    """A user that was invited by another user."""
+
+    discord_id: str = Field(description="Discord user ID")
+    username: str = Field(description="Discord username")
+    display_name: str = Field(description="Display name")
+    avatar_url: Optional[str] = Field(None, description="Avatar URL")
+    joined_at: Optional[str] = Field(None, description="When they joined")
+
+
 class UserRole(BaseModel):
     """User's role info."""
 
@@ -57,6 +67,16 @@ class UserLookupResult(BaseModel):
     is_cached: bool = Field(False, description="True if data is from cache (user left/banned)")
     cached_at: Optional[str] = Field(None, description="When the cache was last updated")
     in_server: bool = Field(True, description="Whether user is currently in server")
+
+    # Online status
+    online_status: str = Field("offline", description="online, idle, dnd, or offline")
+
+    # Booster status
+    is_booster: bool = Field(False, description="Whether user is boosting the server")
+    boosting_since: Optional[str] = Field(None, description="ISO timestamp when started boosting")
+
+    # Discord badges
+    badges: List[str] = Field(default_factory=list, description="Discord badges: staff, partner, nitro, etc.")
 
     # Banner (Nitro feature)
     banner_url: Optional[str] = Field(None, description="Profile banner image URL (Nitro users)")
@@ -91,10 +111,15 @@ class UserLookupResult(BaseModel):
     risk_score: int = Field(0, description="Risk score 0-100")
     risk_flags: List[str] = Field(default_factory=list, description="Risk indicators")
 
+    # Activity comparison
+    activity_percentile: int = Field(0, description="More active than X% of members")
+    join_position: int = Field(0, description="Member join order number")
+
     # Invite info
     invite_code: Optional[str] = Field(None, description="Invite code used to join")
     invited_by: Optional[str] = Field(None, description="Who invited them (username)")
     invited_by_id: Optional[str] = Field(None, description="Inviter's Discord ID")
+    users_invited: List["InvitedUser"] = Field(default_factory=list, description="Users this person invited")
 
     # Roles
     roles: List[UserRole] = Field(default_factory=list, description="User's roles")
@@ -110,6 +135,7 @@ class UserLookupResult(BaseModel):
 __all__ = [
     "UserPunishment",
     "ChannelActivity",
+    "InvitedUser",
     "UserRole",
     "UserLookupResult",
 ]

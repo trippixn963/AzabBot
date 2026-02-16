@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
+import discord
 from fastapi import APIRouter, Depends, Query
 
 from src.core.logger import logger
@@ -187,11 +188,12 @@ async def list_cases(
 
 @router.get("/stats", response_model=CaseStatsResponse)
 async def get_case_stats(
+    bot: Any = Depends(get_bot),
     payload: TokenPayload = Depends(require_auth),
 ) -> CaseStatsResponse:
     """
     Get case statistics for dashboard cards.
-    Uses optimized single-query approach.
+    Includes action type breakdown and top moderators.
     """
     db = get_db()
     now = time.time()
@@ -220,6 +222,57 @@ async def get_case_stats(
         "SELECT COUNT(*) FROM appeals WHERE status = 'pending'"
     )[0]
 
+    # Action type breakdown (normalize case)
+    action_rows = db.fetchall(
+        """
+        SELECT
+            UPPER(SUBSTR(LOWER(action_type), 1, 1)) || SUBSTR(LOWER(action_type), 2) as action,
+            COUNT(*) as cnt
+        FROM cases
+        GROUP BY LOWER(action_type)
+        ORDER BY cnt DESC
+        """
+    )
+    action_breakdown = [{"name": row["action"], "count": row["cnt"]} for row in action_rows]
+
+    # Top 3 moderators (exclude bot's own actions - automod)
+    bot_user_id = bot.user.id if bot and bot.user else None
+    mod_rows = db.fetchall(
+        """
+        SELECT moderator_id, COUNT(*) as total_cases
+        FROM cases
+        WHERE moderator_id != ?
+        GROUP BY moderator_id
+        ORDER BY total_cases DESC
+        LIMIT 3
+        """,
+        (bot_user_id or 0,)
+    )
+
+    # Fetch moderator info
+    mod_ids = [row["moderator_id"] for row in mod_rows]
+    mod_info = await batch_fetch_users(bot, mod_ids) if mod_ids else {}
+
+    # Check online status
+    guild = bot.guilds[0] if bot and bot.guilds else None
+
+    top_moderators = []
+    for row in mod_rows:
+        mod_id = row["moderator_id"]
+        name, avatar = mod_info.get(mod_id, (None, None))
+        is_online = False
+        if guild:
+            member = guild.get_member(mod_id)
+            if member and member.status != discord.Status.offline:
+                is_online = True
+        top_moderators.append({
+            "user_id": str(mod_id),
+            "user_name": name or f"Mod {mod_id}",
+            "user_avatar": avatar,
+            "total_cases": row["total_cases"],
+            "is_online": is_online,
+        })
+
     stats_data = CaseStatsData(
         total_cases=stats_row[0] or 0,
         active_mutes=stats_row[1] or 0,
@@ -227,6 +280,8 @@ async def get_case_stats(
         cases_today=stats_row[3] or 0,
         cases_this_week=stats_row[4] or 0,
         pending_appeals=pending_appeals,
+        action_type_breakdown=action_breakdown,
+        top_moderators=top_moderators,
     )
 
     logger.debug("Case Stats Fetched", [
@@ -285,26 +340,33 @@ async def get_case(
 
     # Parse evidence URLs
     evidence = []
+    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
     if row["evidence_urls"]:
         urls = row["evidence_urls"].split(",") if isinstance(row["evidence_urls"], str) else []
-        image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
         for i, url in enumerate(urls):
             url = url.strip()
             if url:
+                # Remove query string to check extension (Discord CDN URLs have ?ex=... params)
+                url_path = url.split('?')[0].lower()
+                is_image = url_path.endswith(image_extensions)
                 evidence.append(EvidenceItem(
                     id=i + 1,
-                    type="image" if url.lower().endswith(image_extensions) else "link",
+                    type="image" if is_image else "link",
                     content=url,
                     added_by=mod_name or f"Mod {row['moderator_id']}",
                     added_at=to_iso_string(row["created_at"]),
                 ))
 
-    # Add text evidence if present
+    # Add text/image evidence if present
     if row["evidence"]:
+        ev_content = row["evidence"]
+        # Check if it's an image URL
+        ev_path = ev_content.split('?')[0].lower() if ev_content.startswith('http') else ""
+        ev_type = "image" if ev_path.endswith(image_extensions) else "text"
         evidence.append(EvidenceItem(
             id=len(evidence) + 1,
-            type="text",
-            content=row["evidence"],
+            type=ev_type,
+            content=ev_content,
             added_by=mod_name or f"Mod {row['moderator_id']}",
             added_at=to_iso_string(row["created_at"]),
         ))

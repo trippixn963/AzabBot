@@ -264,6 +264,18 @@ class MemberEvents(commands.Cog):
 
         await self._check_mute_evasion(member)
 
+        # Record permanent historical join position
+        if member.joined_at:
+            position = db.record_join_position(
+                user_id=member.id,
+                guild_id=member.guild.id,
+                joined_at=member.joined_at.timestamp()
+            )
+            logger.debug("Join Position Recorded", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Position", str(position)),
+            ])
+
         # Check for potential ban evasion (username similarity with banned users)
         if self.bot.mod_tracker:
             await self.bot.mod_tracker.check_ban_evasion_on_join(member)

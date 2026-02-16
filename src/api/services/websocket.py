@@ -66,6 +66,7 @@ class WebSocketManager:
     def __init__(self) -> None:
         self._connections: Dict[str, WSConnection] = {}
         self._user_connections: Dict[int, Set[str]] = {}  # user_id -> connection_ids
+        self._presence_watchers: Dict[int, Set[str]] = {}  # watched_user_id -> connection_ids
         self._lock = asyncio.Lock()
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._config = get_api_config()
@@ -147,6 +148,12 @@ class WebSocketManager:
                 if not self._user_connections[connection.user_id]:
                     self._user_connections.pop(connection.user_id, None)
 
+            # Remove from presence watchers
+            for user_id in list(self._presence_watchers.keys()):
+                self._presence_watchers[user_id].discard(connection_id)
+                if not self._presence_watchers[user_id]:
+                    del self._presence_watchers[user_id]
+
             logger.tree("WebSocket Disconnected", [
                 ("Connection ID", connection_id[:8]),
                 ("User ID", str(connection.user_id) if connection.user_id else "Anonymous"),
@@ -188,6 +195,41 @@ class WebSocketManager:
                 return False
             self._connections[connection_id].subscriptions.discard(channel)
             return True
+
+    # =========================================================================
+    # Presence Watching
+    # =========================================================================
+
+    async def watch_user_presence(self, connection_id: str, user_id: int) -> bool:
+        """Start watching a user's presence for a connection."""
+        async with self._lock:
+            if connection_id not in self._connections:
+                return False
+            if user_id not in self._presence_watchers:
+                self._presence_watchers[user_id] = set()
+            self._presence_watchers[user_id].add(connection_id)
+            return True
+
+    async def unwatch_user_presence(self, connection_id: str, user_id: int) -> bool:
+        """Stop watching a user's presence for a connection."""
+        async with self._lock:
+            if user_id in self._presence_watchers:
+                self._presence_watchers[user_id].discard(connection_id)
+                if not self._presence_watchers[user_id]:
+                    del self._presence_watchers[user_id]
+            return True
+
+    async def unwatch_all_presence(self, connection_id: str) -> None:
+        """Stop watching all presence for a connection (called on disconnect)."""
+        async with self._lock:
+            for user_id in list(self._presence_watchers.keys()):
+                self._presence_watchers[user_id].discard(connection_id)
+                if not self._presence_watchers[user_id]:
+                    del self._presence_watchers[user_id]
+
+    def get_watched_users(self) -> Set[int]:
+        """Get set of user IDs being watched for presence."""
+        return set(self._presence_watchers.keys())
 
     # =========================================================================
     # Message Sending
@@ -418,6 +460,24 @@ class WebSocketManager:
             type=WSEventType.DISCORD_EVENT,
             data=event_data,
         ), channel="events")
+
+    async def broadcast_user_presence(self, user_id: int, is_online: bool) -> int:
+        """Broadcast a user's presence update to connections watching them."""
+        if user_id not in self._presence_watchers:
+            return 0
+
+        message = WSMessage(
+            type=WSEventType.USER_PRESENCE,
+            data={"user_id": str(user_id), "is_online": is_online},
+        )
+
+        sent = 0
+        connection_ids = self._presence_watchers.get(user_id, set()).copy()
+        for conn_id in connection_ids:
+            if await self._send_to_connection(conn_id, message):
+                sent += 1
+
+        return sent
 
     async def broadcast_user_banned(self, ban_data: Dict[str, Any]) -> int:
         """Broadcast a user banned event for bans page."""

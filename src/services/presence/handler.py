@@ -59,50 +59,40 @@ class PresenceHandler(BasePresenceHandler):
     # =========================================================================
 
     def get_status_messages(self) -> List[str]:
-        """Get moderation stats for presence rotation."""
-        stats = []
+        """Get moderation stats for presence rotation (uses shared stats module)."""
+        messages = []
 
         try:
-            # Current prisoners
-            prisoners = self._count_prisoners()
-            if prisoners > 0:
-                stats.append(f"🔒 {prisoners:,} prisoners")
+            from src.utils.moderation_stats import get_moderation_stats, get_total_tickets
 
-            # Total cases logged
-            row = self.bot.db.fetchone("SELECT COUNT(*) as count FROM cases")
-            if row and row["count"] > 0:
-                stats.append(f"📋 {row['count']:,} cases logged")
+            # Get stats from shared module (single source of truth)
+            stats = get_moderation_stats()
 
-            # Total mutes (all time)
-            row = self.bot.db.fetchone("SELECT COUNT(*) as count FROM mute_history")
-            if row and row["count"] > 0:
-                stats.append(f"🔇 {row['count']:,} mutes")
+            if stats.active_prisoners > 0:
+                messages.append(f"🔒 {stats.active_prisoners:,} prisoners")
 
-            # Total bans
-            row = self.bot.db.fetchone(
-                "SELECT COUNT(*) as count FROM cases WHERE action_type = 'ban'"
-            )
-            if row and row["count"] > 0:
-                stats.append(f"🔨 {row['count']:,} bans")
+            if stats.total_cases > 0:
+                messages.append(f"📋 {stats.total_cases:,} cases logged")
 
-            # Total warns
-            row = self.bot.db.fetchone(
-                "SELECT COUNT(*) as count FROM cases WHERE action_type = 'warn'"
-            )
-            if row and row["count"] > 0:
-                stats.append(f"⚠️ {row['count']:,} warnings")
+            if stats.total_mutes > 0:
+                messages.append(f"🔇 {stats.total_mutes:,} mutes")
 
-            # Total tickets opened (all-time counter)
-            total_tickets = 0
-            for guild in self.bot.guilds:
-                total_tickets += self.bot.db.get_total_tickets_opened(guild.id)
-            if total_tickets > 0:
-                stats.append(f"🎫 {total_tickets:,} tickets")
+            if stats.total_bans > 0:
+                messages.append(f"🔨 {stats.total_bans:,} bans")
+
+            if stats.total_warns > 0:
+                messages.append(f"⚠️ {stats.total_warns:,} warnings")
+
+            # Total tickets
+            if self.config.main_guild_id:
+                total_tickets = get_total_tickets(self.config.main_guild_id)
+                if total_tickets > 0:
+                    messages.append(f"🎫 {total_tickets:,} tickets")
 
         except Exception as e:
             logger.debug("Stats Fetch Error", [("Error", str(e)[:50])])
 
-        return stats
+        return messages
 
     def get_promo_text(self) -> str:
         """Return AzabBot promo text."""
@@ -159,20 +149,6 @@ class PresenceHandler(BasePresenceHandler):
                 ("Error Type", type(error).__name__),
                 ("Error", str(error)[:50]),
             ])
-
-    # =========================================================================
-    # Helpers
-    # =========================================================================
-
-    def _count_prisoners(self) -> int:
-        """Count current prisoners across all servers."""
-        count = 0
-        for guild in self.bot.guilds:
-            muted_role = guild.get_role(self.config.muted_role_id)
-            if muted_role:
-                count += len(muted_role.members)
-        return count
-
 
     # =========================================================================
     # Event-Triggered Presence (AzabBot specific)

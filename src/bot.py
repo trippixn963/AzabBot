@@ -91,6 +91,7 @@ class AzabBot(commands.Bot):
             command_prefix="!",
             intents=intents,
             help_command=None,
+            chunk_guilds_at_startup=True,  # Load all members into cache for search
         )
 
         self.db = get_db()
@@ -292,6 +293,9 @@ class AzabBot(commands.Bot):
         await self._check_lockdown_state()
         self._cleanup_unjail_records()
 
+        # Backfill historical join positions (runs once in background)
+        create_safe_task(self._backfill_join_positions(), "Join Position Backfill")
+
         logger.tree("AZAB READY", [
             ("Prison Handler", "Ready" if self.prison else "Missing"),
             ("Mute Scheduler", "Running" if self.mute_scheduler else "Stopped"),
@@ -314,6 +318,25 @@ class AzabBot(commands.Bot):
     async def on_resumed(self) -> None:
         """Track resume after disconnect."""
         logger.info("Bot Connection Resumed")
+
+    async def on_presence_update(self, before: discord.Member, after: discord.Member) -> None:
+        """Broadcast presence changes to dashboard WebSocket clients watching this user."""
+        # Only care about online/offline transitions
+        was_online = str(before.status) != "offline"
+        is_online = str(after.status) != "offline"
+
+        if was_online == is_online:
+            return  # No change in online/offline state
+
+        try:
+            from src.api.services.websocket import get_ws_manager
+            ws_manager = get_ws_manager()
+
+            # Only broadcast if someone is watching this user
+            if after.id in ws_manager.get_watched_users():
+                await ws_manager.broadcast_user_presence(after.id, is_online)
+        except Exception:
+            pass  # Don't let presence errors affect bot operation
 
     # =========================================================================
     # Guild Protection
@@ -478,6 +501,13 @@ class AzabBot(commands.Bot):
                     ("Forum ID", str(self.config.server_logs_forum_id)),
                     ("Threads", "15 categories"),
                 ], emoji="📋")
+            elif self.config.server_logs_forum_id:
+                # Forum ID is configured but initialization failed - this is an error
+                logger.error("Logging Service FAILED", [
+                    ("Forum ID", str(self.config.server_logs_forum_id)),
+                    ("Impact", "Server logs will NOT be sent"),
+                    ("Check", "Forum exists, bot has access, correct guild"),
+                ])
             else:
                 logger.info("Logging Service Disabled (no forum configured)")
 
@@ -554,6 +584,82 @@ class AzabBot(commands.Bot):
     def is_user_muted(self, member: discord.Member) -> bool:
         """Check if user has the muted role."""
         return any(role.id == self.config.muted_role_id for role in member.roles)
+
+    async def _backfill_join_positions(self) -> None:
+        """
+        Backfill historical join positions for all guild members.
+
+        Runs once on startup. Positions are assigned based on original
+        join date, sorted oldest to newest. Positions are permanent and
+        persist even if members leave and rejoin.
+        """
+        guild_id = self.config.main_guild_id
+        if not guild_id:
+            return
+
+        guild = self.get_guild(guild_id)
+        if not guild:
+            return
+
+        member_count = guild.member_count or len(guild.members)
+
+        # Check if already backfilled (count should be close to member count)
+        existing_count = self.db.get_total_join_positions(guild_id)
+        if existing_count > member_count * 0.5:
+            logger.debug("Join Position Backfill Skipped", [
+                ("Reason", "Already backfilled"),
+                ("Existing", str(existing_count)),
+                ("Members", str(member_count)),
+            ])
+            return
+
+        # If we have very few positions but many members, clear the bad data
+        if existing_count > 0 and existing_count < 100:
+            logger.warning("Clearing Invalid Join Positions", [
+                ("Bad Count", str(existing_count)),
+                ("Expected", f"~{member_count}"),
+            ])
+            self.db.execute(
+                "DELETE FROM member_join_positions WHERE guild_id = ?",
+                (guild_id,)
+            )
+            self.db.execute(
+                "DELETE FROM guild_join_counters WHERE guild_id = ?",
+                (guild_id,)
+            )
+
+        # Get historical first_joined_at from member_activity (more accurate)
+        historical_joins = {}
+        rows = self.db.fetchall(
+            "SELECT user_id, first_joined_at FROM member_activity WHERE guild_id = ? AND first_joined_at IS NOT NULL",
+            (guild_id,)
+        )
+        for row in rows:
+            historical_joins[row["user_id"]] = row["first_joined_at"]
+
+        # Collect all members - prefer historical data, fall back to current joined_at
+        members_data = []
+        for member in guild.members:
+            first_join = historical_joins.get(member.id)
+            if first_join:
+                members_data.append((member.id, first_join))
+            elif member.joined_at:
+                members_data.append((member.id, member.joined_at.timestamp()))
+
+        if not members_data:
+            return
+
+        # Sort by join time (oldest first)
+        members_data.sort(key=lambda x: x[1])
+
+        # Backfill
+        backfilled = self.db.backfill_join_positions(guild_id, members_data)
+
+        logger.tree("JOIN POSITIONS BACKFILLED", [
+            ("Guild", guild.name),
+            ("Members", str(len(members_data))),
+            ("Positions Assigned", str(backfilled)),
+        ], emoji="📊")
 
     async def _cleanup_polls_channel(self) -> None:
         """Clean up poll result messages from polls channels on startup."""

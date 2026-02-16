@@ -78,6 +78,31 @@ async def safe_send_dm(
         return False
 
 
+def _is_image_url(url: str) -> bool:
+    """Check if a URL points to an image based on extension or Discord CDN patterns."""
+    if not url:
+        return False
+
+    # Common image extensions
+    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')
+
+    # Remove query parameters for extension check
+    url_lower = url.lower().split('?')[0]
+
+    # Check file extension
+    if url_lower.endswith(image_extensions):
+        return True
+
+    # Discord CDN attachments with format parameter are images
+    if 'cdn.discordapp.com/attachments/' in url or 'media.discordapp.net/attachments/' in url:
+        if 'format=' in url.lower():
+            return True
+        # Most Discord attachment URLs without extension are still images
+        return True
+
+    return False
+
+
 def build_moderation_dm(
     title: str,
     color: int,
@@ -98,7 +123,7 @@ def build_moderation_dm(
         guild: The guild where the action occurred.
         moderator: The moderator who performed the action (optional).
         reason: The reason for the action (optional).
-        evidence: Evidence URL/text (optional).
+        evidence: Evidence URL/text (optional, displays as image if URL).
         thumbnail_url: URL for thumbnail image (optional).
         fields: Additional fields as list of (name, value, inline) tuples.
         description: Optional description text.
@@ -150,9 +175,13 @@ def build_moderation_dm(
             inline=False,
         )
 
-    # Evidence (only shown in DMs, not public)
+    # Evidence - display as embed image if it's an image URL
     if evidence:
-        embed.add_field(name="Evidence", value=evidence, inline=False)
+        if _is_image_url(evidence):
+            embed.set_image(url=evidence)
+        else:
+            # Non-image evidence (text, links, etc.)
+            embed.add_field(name="Evidence", value=evidence, inline=False)
 
     # Thumbnail
     if thumbnail_url:

@@ -179,6 +179,9 @@ class WSEventType:
     # Discord events (for events panel)
     DISCORD_EVENT = "discord_event"
 
+    # Presence events (for user lookup)
+    USER_PRESENCE = "user.presence"
+
 
 __all__ = [
     "APIResponse",

@@ -113,18 +113,18 @@ async def post_mod_log(
 
         if action.lower() == "warn":
             await bot.logging_service.log_warning_issued(
-                guild=guild,
-                target=user,
+                user=user,
                 moderator=moderator,
                 reason=reason,
                 warning_count=active_warns,
+                guild_id=guild.id,
             )
         elif action.lower() == "unwarn":
             await bot.logging_service.log_warning_removed(
-                guild=guild,
-                target=user,
+                user=user,
                 moderator=moderator,
-                reason=reason,
+                warning_id=0,  # TODO: pass actual warning ID
+                remaining_count=active_warns,
             )
     except Exception as e:
         logger.error("Mod Log Post Failed", [("Error", str(e)[:50])])

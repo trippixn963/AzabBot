@@ -259,6 +259,91 @@ async def get_appeal(
 
 
 # =============================================================================
+# Actions
+# =============================================================================
+
+from pydantic import BaseModel
+
+class ResolveAppealRequest(BaseModel):
+    """Request body for resolving an appeal."""
+    reason: Optional[str] = None
+
+
+@router.post("/{appeal_id}/approve", response_model=APIResponse[dict])
+async def approve_appeal(
+    appeal_id: str,
+    request: ResolveAppealRequest,
+    bot: Any = Depends(get_bot),
+    payload: TokenPayload = Depends(require_auth),
+) -> APIResponse[dict]:
+    """
+    Approve an appeal. Removes the punishment from the user.
+    """
+    # Get moderator user
+    try:
+        moderator = await bot.fetch_user(payload.sub)
+    except Exception:
+        raise APIError(ErrorCode.USER_NOT_FOUND, "Could not fetch moderator info")
+
+    if not hasattr(bot, "appeal_service") or not bot.appeal_service:
+        raise APIError(ErrorCode.SERVICE_UNAVAILABLE, "Appeal service not available")
+
+    success, message = await bot.appeal_service.approve_appeal(
+        appeal_id=appeal_id,
+        moderator=moderator,
+        reason=request.reason,
+    )
+
+    if not success:
+        raise APIError(ErrorCode.OPERATION_FAILED, message)
+
+    logger.tree("Appeal Approved via API", [
+        ("Appeal ID", appeal_id),
+        ("Moderator", f"{moderator.name} ({moderator.id})"),
+        ("Reason", request.reason or "No reason"),
+    ], emoji="✅")
+
+    return APIResponse(success=True, message=message, data={"status": "approved"})
+
+
+@router.post("/{appeal_id}/deny", response_model=APIResponse[dict])
+async def deny_appeal(
+    appeal_id: str,
+    request: ResolveAppealRequest,
+    bot: Any = Depends(get_bot),
+    payload: TokenPayload = Depends(require_auth),
+) -> APIResponse[dict]:
+    """
+    Deny an appeal.
+    """
+    # Get moderator user
+    try:
+        moderator = await bot.fetch_user(payload.sub)
+    except Exception:
+        raise APIError(ErrorCode.USER_NOT_FOUND, "Could not fetch moderator info")
+
+    if not hasattr(bot, "appeal_service") or not bot.appeal_service:
+        raise APIError(ErrorCode.SERVICE_UNAVAILABLE, "Appeal service not available")
+
+    success, message = await bot.appeal_service.deny_appeal(
+        appeal_id=appeal_id,
+        moderator=moderator,
+        reason=request.reason,
+    )
+
+    if not success:
+        raise APIError(ErrorCode.OPERATION_FAILED, message)
+
+    logger.tree("Appeal Denied via API", [
+        ("Appeal ID", appeal_id),
+        ("Moderator", f"{moderator.name} ({moderator.id})"),
+        ("Reason", request.reason or "No reason"),
+    ], emoji="❌")
+
+    return APIResponse(success=True, message=message, data={"status": "denied"})
+
+
+# =============================================================================
 # Helpers
 # =============================================================================
 

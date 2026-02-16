@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import asyncio
 import heapq
+import time
 
 import discord
 
@@ -129,6 +130,7 @@ class QueueMixin:
 
             item = QueueItem(
                 priority=priority,
+                timestamp=time.time(),
                 thread_id=thread_id,
                 content=content,
                 embed=embed,

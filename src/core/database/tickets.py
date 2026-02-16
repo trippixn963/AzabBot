@@ -86,6 +86,31 @@ class TicketsMixin:
         row = self.fetchone("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,))
         return dict(row) if row else None
 
+    def get_archived_ticket(self: "DatabaseManager", ticket_id: str) -> Optional[Dict[str, Any]]:
+        """Get an archived ticket from ticket_history by its ID."""
+        row = self.fetchone("SELECT * FROM ticket_history WHERE ticket_id = ?", (ticket_id,))
+        return dict(row) if row else None
+
+    def get_ticket_or_archived(self: "DatabaseManager", ticket_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a ticket by ID, checking both active tickets and archived history.
+
+        This is useful for transcript retrieval where the ticket may have been
+        archived but we still need access to its metadata.
+
+        Args:
+            ticket_id: The ticket ID to look up.
+
+        Returns:
+            Ticket data dict, or None if not found in either table.
+        """
+        # Check active tickets first
+        ticket = self.get_ticket(ticket_id)
+        if ticket:
+            return ticket
+        # Fall back to archived tickets
+        return self.get_archived_ticket(ticket_id)
+
     def get_ticket_by_thread(self: "DatabaseManager", thread_id: int) -> Optional[TicketRecord]:
         """Get ticket by its forum thread ID."""
         row = self.fetchone("SELECT * FROM tickets WHERE thread_id = ?", (thread_id,))
@@ -385,28 +410,24 @@ class TicketsMixin:
         return [TicketRecord(**dict(row)) for row in rows]
 
     def delete_ticket(self: "DatabaseManager", ticket_id: str) -> bool:
-        """Archive and delete a ticket and all related records from the database."""
-        # Archive ticket to history first (preserves transcripts)
-        self.execute(
-            """INSERT OR REPLACE INTO ticket_history
-               (ticket_id, user_id, guild_id, category, subject, claimed_by, closed_by,
-                close_reason, created_at, claimed_at, closed_at, archived_at,
-                transcript, transcript_html, transcript_token)
-               SELECT ticket_id, user_id, guild_id, category, subject, claimed_by, closed_by,
-                      close_reason, created_at, claimed_at, closed_at, ?,
-                      transcript, transcript_html, transcript_token
-               FROM tickets WHERE ticket_id = ?""",
-            (time.time(), ticket_id)
+        """
+        Mark a ticket's Discord channel as deleted.
+
+        The ticket stays in the database forever (for transcript access).
+        Only clears the thread_id to indicate the channel no longer exists.
+        """
+        # Clear thread_id (channel deleted) but keep ticket data
+        cursor = self.execute(
+            "UPDATE tickets SET thread_id = 0 WHERE ticket_id = ?",
+            (ticket_id,)
         )
 
-        # Delete related records (foreign key constraints)
+        # Clean up related records (no longer needed)
         self.execute("DELETE FROM ticket_messages WHERE ticket_id = ?", (ticket_id,))
         self.execute("DELETE FROM ai_conversations WHERE ticket_id = ?", (ticket_id,))
 
-        # Now delete the ticket
-        cursor = self.execute("DELETE FROM tickets WHERE ticket_id = ?", (ticket_id,))
         if cursor.rowcount > 0:
-            logger.debug("Ticket Archived & Deleted", [("Ticket ID", ticket_id)])
+            logger.debug("Ticket Channel Cleared", [("Ticket ID", ticket_id)])
         return cursor.rowcount > 0
 
     def mark_ticket_warned(self: "DatabaseManager", ticket_id: str) -> bool:

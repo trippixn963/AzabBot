@@ -236,6 +236,39 @@ async def websocket_endpoint(
                         data={"message": f"Failed to fetch recent actions: {str(e)}"},
                     ))
 
+            elif action == "watch_presence":
+                # Watch a user's online presence
+                watch_user_id = data.get("user_id")
+                if watch_user_id:
+                    try:
+                        await ws_manager.watch_user_presence(connection_id, int(watch_user_id))
+                        # Send initial presence state
+                        bot = get_bot()
+                        from src.core.config import get_config
+                        config = get_config()
+                        is_online = False
+                        if config.main_guild_id:
+                            guild = bot.get_guild(config.main_guild_id)
+                            if guild:
+                                member = guild.get_member(int(watch_user_id))
+                                if member:
+                                    is_online = str(member.status) != "offline"
+                        await ws_manager._send_to_connection(connection_id, WSMessage(
+                            type=WSEventType.USER_PRESENCE,
+                            data={"user_id": str(watch_user_id), "is_online": is_online},
+                        ))
+                    except Exception as e:
+                        await ws_manager._send_to_connection(connection_id, WSMessage(
+                            type=WSEventType.ERROR,
+                            data={"message": f"Failed to watch presence: {str(e)}"},
+                        ))
+
+            elif action == "unwatch_presence":
+                # Stop watching a user's presence
+                watch_user_id = data.get("user_id")
+                if watch_user_id:
+                    await ws_manager.unwatch_user_presence(connection_id, int(watch_user_id))
+
     except WebSocketDisconnect:
         pass  # Normal disconnect, handled in finally
     except Exception as e:

@@ -65,6 +65,16 @@ class UserSearchResult(BaseModel):
     case_count: int = 0
 
 
+class UserSuggestion(BaseModel):
+    """Simple user suggestion for autocomplete."""
+
+    discord_id: str = Field(description="Discord user ID as string")
+    username: str = Field(description="Discord username")
+    display_name: str = Field(description="Display name or nickname")
+    avatar_url: Optional[str] = Field(None, description="Avatar URL")
+    case_count: int = Field(0, description="Number of moderation cases")
+
+
 class ModerationNote(BaseModel):
     """A moderator note on a user."""
 
@@ -79,5 +89,6 @@ class ModerationNote(BaseModel):
 __all__ = [
     "UserProfile",
     "UserSearchResult",
+    "UserSuggestion",
     "ModerationNote",
 ]
