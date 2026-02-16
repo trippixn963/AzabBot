@@ -42,7 +42,7 @@ class AppealBrief(BaseModel):
     """Brief appeal information for lists."""
 
     appeal_id: str = Field(description="Unique appeal ID")
-    case_id: Optional[int] = None
+    case_id: Optional[str] = None
     user_id: int
     appeal_type: AppealType = AppealType.BAN
     status: AppealStatus = AppealStatus.PENDING
@@ -55,7 +55,7 @@ class AppealDetail(BaseModel):
     """Detailed appeal information."""
 
     appeal_id: str
-    case_id: Optional[int] = None
+    case_id: Optional[str] = None
     case_info: Optional[dict[str, Any]] = None
     user_id: int
     user_name: Optional[str] = None
@@ -79,7 +79,7 @@ class AppealFormData(BaseModel):
     user_id: Optional[int] = None
     username: Optional[str] = None
     avatar_url: Optional[str] = None
-    case_id: Optional[int] = None
+    case_id: Optional[str] = None
     appeal_type: Optional[AppealType] = None
     original_reason: Optional[str] = None
     punishment_date: Optional[datetime] = None
