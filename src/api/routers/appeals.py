@@ -98,11 +98,11 @@ async def list_appeals(
             appeal_id=row["appeal_id"],
             case_id=row["case_id"],
             user_id=row["user_id"],
-            appeal_type=AppealType(row["action_type"]) if row.get("action_type") else AppealType.BAN,
+            appeal_type=AppealType(row["action_type"]) if row["action_type"] else AppealType.BAN,
             status=AppealStatus(row["status"]) if row["status"] else AppealStatus.PENDING,
             created_at=datetime.fromtimestamp(row["created_at"]),
-            resolved_at=datetime.fromtimestamp(row["resolved_at"]) if row.get("resolved_at") else None,
-            resolved_by=row.get("resolved_by"),
+            resolved_at=datetime.fromtimestamp(row["resolved_at"]) if row["resolved_at"] else None,
+            resolved_by=row["resolved_by"],
         ))
 
     logger.debug("Appeals Listed", [
@@ -210,7 +210,7 @@ async def get_appeal(
 
     # Get user info
     user_info = await _get_user_info(bot, row["user_id"])
-    resolver_info = await _get_user_info(bot, row["resolved_by"]) if row.get("resolved_by") else {}
+    resolver_info = await _get_user_info(bot, row["resolved_by"]) if row["resolved_by"] else {}
 
     # Get case info if exists
     case_info = None
@@ -233,16 +233,16 @@ async def get_appeal(
         user_id=row["user_id"],
         user_name=user_info.get("name"),
         user_avatar=user_info.get("avatar"),
-        appeal_type=AppealType(row["action_type"]) if row.get("action_type") else AppealType.BAN,
+        appeal_type=AppealType(row["action_type"]) if row["action_type"] else AppealType.BAN,
         status=AppealStatus(row["status"]) if row["status"] else AppealStatus.PENDING,
-        reason=row.get("reason"),
+        reason=row["reason"],
         additional_info=None,
         created_at=datetime.fromtimestamp(row["created_at"]),
-        resolved_at=datetime.fromtimestamp(row["resolved_at"]) if row.get("resolved_at") else None,
-        resolved_by=row.get("resolved_by"),
+        resolved_at=datetime.fromtimestamp(row["resolved_at"]) if row["resolved_at"] else None,
+        resolved_by=row["resolved_by"],
         resolver_name=resolver_info.get("name"),
-        resolution_reason=row.get("resolution_reason"),
-        thread_id=row.get("thread_id"),
+        resolution_reason=row["resolution_reason"],
+        thread_id=row["thread_id"],
     )
 
     logger.debug("Appeal Fetched", [
