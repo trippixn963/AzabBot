@@ -45,22 +45,13 @@ class AppealActionView(discord.ui.View):
         super().__init__(timeout=None)
 
         # =================================================================
-        # Row 0: User Info dropdown + View Case link
+        # Row 0: User Info dropdown (select takes full row width)
         # =================================================================
 
         self.add_item(UserInfoSelect(user_id, guild_id))
 
-        if case_url:
-            self.add_item(discord.ui.Button(
-                label="View Case",
-                style=discord.ButtonStyle.link,
-                emoji=CASE_EMOJI,
-                url=case_url,
-                row=0,
-            ))
-
         # =================================================================
-        # Row 1: Action buttons
+        # Row 1: Action buttons + View Case link
         # =================================================================
 
         approve_btn = ApproveAppealButton(appeal_id, case_id)
@@ -76,6 +67,16 @@ class AppealActionView(discord.ui.View):
             ticket_btn = OpenAppealTicketButton(appeal_id, user_id)
             ticket_btn.row = 1
             self.add_item(ticket_btn)
+
+        # View Case link button
+        if case_url:
+            self.add_item(discord.ui.Button(
+                label="View Case",
+                style=discord.ButtonStyle.link,
+                emoji=CASE_EMOJI,
+                url=case_url,
+                row=1,
+            ))
 
 
 class ApproveAppealButton(discord.ui.DynamicItem[discord.ui.Button], template=r"appeal_approve:(?P<appeal_id>[A-Z0-9]+):(?P<case_id>[A-Z0-9]+)"):
