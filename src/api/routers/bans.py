@@ -121,7 +121,10 @@ async def get_banned_users(
                 bh.timestamp,
                 us.username,
                 us.display_name,
-                us.avatar_url
+                us.avatar_url,
+                (SELECT c.case_id FROM cases c
+                 WHERE c.user_id = bh.user_id AND c.guild_id = bh.guild_id
+                 AND c.action_type = 'ban' ORDER BY c.created_at DESC LIMIT 1) as case_id
             FROM ban_history bh
             LEFT JOIN user_snapshots us ON us.user_id = bh.user_id AND us.guild_id = bh.guild_id
             WHERE bh.guild_id = ?
@@ -165,7 +168,10 @@ async def get_banned_users(
                 bh.timestamp,
                 us.username,
                 us.display_name,
-                us.avatar_url
+                us.avatar_url,
+                (SELECT c.case_id FROM cases c
+                 WHERE c.user_id = bh.user_id AND c.guild_id = bh.guild_id
+                 AND c.action_type = 'ban' ORDER BY c.created_at DESC LIMIT 1) as case_id
             FROM ban_history bh
             LEFT JOIN user_snapshots us ON us.user_id = bh.user_id AND us.guild_id = bh.guild_id
             WHERE bh.guild_id = ?
@@ -241,6 +247,7 @@ async def get_banned_users(
             "reason": row["reason"] or "No reason provided",
             "banned_at": row["timestamp"],
             "moderator_id": str(row["moderator_id"]) if row["moderator_id"] else None,
+            "case_id": row["case_id"] if row["case_id"] else None,
         }
 
         # Add moderator info

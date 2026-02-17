@@ -18,6 +18,7 @@ from src.core.config import EmbedColors, NY_TZ
 from src.utils.retry import safe_send
 from src.utils.dm_helpers import safe_send_dm, build_moderation_dm
 from src.utils.discord_rate_limit import log_http_error
+from src.utils.async_utils import create_safe_task
 
 from .constants import APPEAL_COOLDOWN_SECONDS
 from .views import AppealApprovedView, AppealDeniedView
@@ -279,6 +280,19 @@ class ResolveMixin:
                     server_name=guild.name,
                     server_invite_url=self.config.server_invite_url)
 
+            # Broadcast WebSocket event for real-time dashboard updates
+            if hasattr(self.bot, 'api_service') and self.bot.api_service:
+                async def broadcast_appeal_resolved_event():
+                    await self.bot.api_service.broadcast_appeal_resolved({
+                        'appeal_id': appeal_id,
+                        'case_id': case_id,
+                        'user_id': user_id,
+                        'action_type': action_type,
+                        'resolved_by': moderator.id,
+                        'resolution_reason': reason,
+                    }, approved=True)
+                create_safe_task(broadcast_appeal_resolved_event(), "Appeal Approved WebSocket Broadcast")
+
             # Final summary log
             logger.tree("APPEAL APPROVED", [
                 ("Appeal ID", appeal_id),
@@ -441,6 +455,19 @@ class ResolveMixin:
                     resolution="denied",
                     resolution_reason=reason,
                     server_name=guild.name)
+
+            # Broadcast WebSocket event for real-time dashboard updates
+            if hasattr(self.bot, 'api_service') and self.bot.api_service:
+                async def broadcast_appeal_denied_event():
+                    await self.bot.api_service.broadcast_appeal_resolved({
+                        'appeal_id': appeal_id,
+                        'case_id': case_id,
+                        'user_id': user_id,
+                        'action_type': action_type,
+                        'resolved_by': moderator.id,
+                        'resolution_reason': reason,
+                    }, approved=False)
+                create_safe_task(broadcast_appeal_denied_event(), "Appeal Denied WebSocket Broadcast")
 
             # Final summary log
             logger.tree("APPEAL DENIED", [

@@ -21,7 +21,7 @@ NY_TZ = ZoneInfo("America/New_York")
 
 async def batch_fetch_users(bot: Any, user_ids: List[int]) -> Dict[int, tuple]:
     """Batch fetch user info from Discord."""
-    from src.api.routers.stats import batch_fetch_users as _batch_fetch
+    from src.api.utils.discord import batch_fetch_users as _batch_fetch
     return await _batch_fetch(bot, user_ids)
 
 

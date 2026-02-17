@@ -44,6 +44,7 @@ class BanEntry(BaseModel):
     banned_at: float = Field(description="Unix timestamp when banned")
     moderator_id: Optional[str] = Field(None, description="Moderator who banned")
     moderator: Optional[ModeratorInfo] = Field(None, description="Moderator details")
+    case_id: Optional[str] = Field(None, description="Associated case ID")
 
 
 class BanHistoryEntry(BaseModel):

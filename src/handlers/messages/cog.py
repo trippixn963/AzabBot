@@ -20,7 +20,7 @@ from src.core.logger import logger
 from src.core.config import get_config, NY_TZ
 from src.core.database import get_db
 from src.utils.async_utils import create_safe_task
-from src.utils.snipe_blocker import should_block_snipe, is_snipe_clearer
+from src.utils.snipe_blocker import should_block_snipe, is_snipe_clearer, block_from_snipe
 from src.utils.discord_rate_limit import log_http_error
 from src.api.services.event_logger import event_logger
 
@@ -42,6 +42,106 @@ class MessageEvents(HelpersMixin, commands.Cog):
         self._prisoner_ping_violations: Dict[int, List[float]] = {}
         self._prisoner_warning_times: Dict[int, float] = {}
         self._ping_lock = asyncio.Lock()
+
+        # GIF domains to filter (when user can't embed)
+        self._gif_domains: List[str] = ["tenor.com", "giphy.com", "gfycat.com"]
+
+    # -------------------------------------------------------------------------
+    # GIF Link Filter
+    # -------------------------------------------------------------------------
+
+    async def _check_gif_link_filter(self, message: discord.Message) -> bool:
+        """
+        Check and delete GIF links from users who can't embed.
+
+        Deletes GIF links (tenor, giphy, gfycat) for:
+        - Users under level 5 (don't have gif_permission_role_id)
+        - Users with "Forbid: Embed Links" role
+
+        Args:
+            message: The message to check. Must have guild and Member author.
+
+        Returns:
+            True if message was deleted, False otherwise.
+        """
+        # Type narrowing - caller ensures these conditions
+        if not isinstance(message.author, discord.Member):
+            return False
+
+        author: discord.Member = message.author
+        content: str = message.content or ""
+
+        if not content:
+            return False
+
+        # Check user permissions (fast checks first)
+        has_level_5: bool = (
+            self.config.gif_permission_role_id is not None
+            and author.get_role(self.config.gif_permission_role_id) is not None
+        )
+        has_forbid_embeds: bool = any(
+            r.name == "Forbid: Embed Links" for r in author.roles
+        )
+
+        # User can embed - no filtering needed
+        if has_level_5 and not has_forbid_embeds:
+            return False
+
+        # Check for GIF domain links
+        content_lower: str = content.lower()
+        matched_domain: str | None = None
+        for domain in self._gif_domains:
+            if domain in content_lower:
+                matched_domain = domain
+                break
+
+        if not matched_domain:
+            return False
+
+        # Determine filter reason
+        filter_reason: str = "Forbid: Embed Links role" if has_forbid_embeds else "Under level 5"
+
+        # Delete the message
+        try:
+            await block_from_snipe(
+                message.id,
+                reason="GIF link filter",
+                user_id=author.id,
+                channel_name=getattr(message.channel, 'name', 'Unknown'),
+            )
+            await message.delete()
+
+            logger.tree("GIF LINK DELETED", [
+                ("User", f"{author.name} ({author.id})"),
+                ("Channel", f"#{getattr(message.channel, 'name', 'Unknown')}"),
+                ("Domain", matched_domain),
+                ("Reason", filter_reason),
+            ], emoji="🖼️")
+
+            return True
+
+        except discord.Forbidden:
+            logger.warning("GIF Link Delete Failed", [
+                ("User", f"{author.name} ({author.id})"),
+                ("Channel", f"#{getattr(message.channel, 'name', 'Unknown')}"),
+                ("Error", "Missing permissions"),
+            ])
+            return False
+
+        except discord.HTTPException as e:
+            log_http_error(e, "GIF Link Delete", [
+                ("User", f"{author.name} ({author.id})"),
+                ("Channel", f"#{getattr(message.channel, 'name', 'Unknown')}"),
+            ])
+            return False
+
+        except Exception as e:
+            logger.error("GIF Link Filter Error", [
+                ("User", f"{author.name} ({author.id})"),
+                ("Channel", f"#{getattr(message.channel, 'name', 'Unknown')}"),
+                ("Error", str(e)[:100]),
+            ])
+            return False
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -177,6 +277,19 @@ class MessageEvents(HelpersMixin, commands.Cog):
                 else:
                     await self.bot.antispam_service.handle_spam(message, spam_type)
                 return  # Don't process spam messages further
+
+        # -----------------------------------------------------------------
+        # GIF Link Filter: Delete GIF links from users who can't embed
+        # When embed_links is forbidden, GIFs show as plain links - delete them
+        # Applies to: users under level 5 OR users with "Forbid: Embed Links" role
+        # -----------------------------------------------------------------
+        if (
+            message.guild
+            and message.content
+            and isinstance(message.author, discord.Member)
+        ):
+            if await self._check_gif_link_filter(message):
+                return  # Message was deleted, stop processing
 
         # -----------------------------------------------------------------
         # Content Moderation Check (AI-powered religion talk detection)

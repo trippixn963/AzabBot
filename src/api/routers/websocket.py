@@ -156,6 +156,7 @@ async def websocket_endpoint(
                         data={"leaderboard": leaderboard, "period": period},
                     ))
                 except Exception as e:
+                    logger.error("WS get_leaderboard failed", [("Error", str(e)[:100])])
                     await ws_manager._send_to_connection(connection_id, WSMessage(
                         type=WSEventType.ERROR,
                         data={"message": f"Failed to fetch leaderboard: {str(e)}"},

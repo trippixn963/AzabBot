@@ -252,8 +252,10 @@ class WebSocketManager:
                 return False
 
             # Also check application state to avoid "Need to call accept first" errors
+            # WebSocketState: CONNECTING=0, CONNECTED=1, DISCONNECTED=2
+            # We want to ensure state is CONNECTED (value 1), not CONNECTING (value 0)
             app_state = connection.websocket.application_state
-            if hasattr(app_state, 'value') and app_state.value < 2:  # Not yet accepted
+            if hasattr(app_state, 'value') and app_state.value == 0:  # CONNECTING - not yet accepted
                 return False
 
             await connection.websocket.send_json(message.model_dump(mode="json"))

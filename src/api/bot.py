@@ -82,9 +82,9 @@ async def get_bot_status(
     python_version = platform.python_version()
     discord_py_version = discord.__version__
 
-    # Get shard info
-    shard_id = bot.shard_id if bot and hasattr(bot, 'shard_id') else 0
-    shard_count = bot.shard_count if bot and hasattr(bot, 'shard_count') else 1
+    # Get shard info (shard_id can be None for non-sharded bots)
+    shard_id = (bot.shard_id or 0) if bot and hasattr(bot, 'shard_id') else 0
+    shard_count = (bot.shard_count or 1) if bot and hasattr(bot, 'shard_count') else 1
 
     # Get health tracker data
     health_tracker = get_health_tracker()

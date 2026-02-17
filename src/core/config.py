@@ -88,6 +88,7 @@ class Config:
     # -------------------------------------------------------------------------
 
     moderation_role_id: Optional[int] = None
+    gif_permission_role_id: Optional[int] = None  # Level 5 role - users without this can't send GIF links
 
     # Gender role conflict pairs (verified role removes non-verified)
     male_role_id: Optional[int] = None
@@ -487,6 +488,7 @@ def load_config() -> Config:
     alliances_channel_id = _parse_int_optional(os.getenv("AZAB_ALLIANCES_CHANNEL_ID"))
     verification_role_id = _parse_int_optional(os.getenv("VERIFICATION_ROLE_ID"))
     moderation_role_id = _parse_int_optional(os.getenv("MODERATION_ROLE_ID"))
+    gif_permission_role_id = _parse_int_optional(os.getenv("GIF_PERMISSION_ROLE_ID"))
     male_role_id = _parse_int_optional(os.getenv("MALE_ROLE_ID"))
     male_verified_role_id = _parse_int_optional(os.getenv("MALE_VERIFIED_ROLE_ID"))
     female_role_id = _parse_int_optional(os.getenv("FEMALE_ROLE_ID"))
@@ -543,6 +545,7 @@ def load_config() -> Config:
         alliances_channel_id=alliances_channel_id,
         verification_role_id=verification_role_id,
         moderation_role_id=moderation_role_id,
+        gif_permission_role_id=gif_permission_role_id,
         male_role_id=male_role_id,
         male_verified_role_id=male_verified_role_id,
         female_role_id=female_role_id,
