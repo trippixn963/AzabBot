@@ -28,7 +28,6 @@ from src.utils.discord_rate_limit import log_http_error
 from .constants import (
     INACTIVE_WARNING_DAYS,
     INACTIVE_CLOSE_DAYS,
-    DELETE_AFTER_CLOSE_DAYS,
     CLAIM_REMINDER_COOLDOWN)
 from .buttons.helpers import _is_ticket_staff
 
@@ -116,7 +115,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
 
         logger.tree("Ticket Service Started", [
             ("Auto-close", f"Enabled (warn: {INACTIVE_WARNING_DAYS}d, close: {INACTIVE_CLOSE_DAYS}d)"),
-            ("Auto-delete", f"Enabled ({DELETE_AFTER_CLOSE_DAYS}d after close)"),
+            ("Auto-delete", f"Enabled ({THREAD_DELETE_DELAY}s after close)"),
             ("Check interval", f"{AUTO_CLOSE_CHECK_INTERVAL}s"),
             ("Recovered deletions", str(recovered)),
         ], emoji="🎫")

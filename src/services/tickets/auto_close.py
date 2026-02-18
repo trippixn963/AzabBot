@@ -15,13 +15,12 @@ from typing import TYPE_CHECKING
 import discord
 
 from src.core.logger import logger
-from src.core.constants import AUTO_CLOSE_CHECK_INTERVAL
+from src.core.constants import AUTO_CLOSE_CHECK_INTERVAL, THREAD_DELETE_DELAY
 from src.utils.discord_rate_limit import log_http_error
 
 from .constants import (
     INACTIVE_WARNING_DAYS,
     INACTIVE_CLOSE_DAYS,
-    DELETE_AFTER_CLOSE_DAYS,
 )
 from .embeds import build_inactivity_warning
 
@@ -53,7 +52,7 @@ class AutoCloseMixin:
         now = time.time()
         warning_threshold = now - (INACTIVE_WARNING_DAYS * 86400)
         close_threshold = now - (INACTIVE_CLOSE_DAYS * 86400)
-        delete_threshold = now - (DELETE_AFTER_CLOSE_DAYS * 86400)
+        delete_threshold = now - THREAD_DELETE_DELAY  # 1 hour after close
 
         # Get tickets that need warning
         unwarned_tickets = self.db.get_unwarned_inactive_tickets(
@@ -158,7 +157,7 @@ class AutoCloseMixin:
 
         logger.tree("Ticket Auto-Deleted", [
             ("Ticket ID", ticket_id),
-            ("Days After Close", str(DELETE_AFTER_CLOSE_DAYS)),
+            ("Delay", "1 hour after close"),
         ], emoji="🗑️")
 
 

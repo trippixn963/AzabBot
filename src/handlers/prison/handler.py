@@ -313,12 +313,18 @@ class PrisonHandler:
 
             bot_member = member.guild.get_member(self.bot.user.id)
             if bot_member:
+                # Use mute_reason from log scan, fall back to database record, then default
+                final_reason = (
+                    mute_reason
+                    or mute_record.get("reason")
+                    or "Manual mute (role added directly)"
+                )
                 case_info = await asyncio.wait_for(
                     self.bot.case_log_service.log_mute(
                         user=member,
                         moderator=bot_member,
                         duration=sentence_text,
-                        reason=mute_reason or "Manual mute (role added directly)",
+                        reason=final_reason,
                         is_extension=False,
                         evidence=None,
                     ),
