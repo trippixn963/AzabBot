@@ -393,8 +393,13 @@ class OperationsMixin:
         closed_by: discord.Member,
         reason: Optional[str] = None,
         ticket: Optional[dict] = None,
+        auto_close: bool = False,
     ) -> Tuple[bool, str]:
-        """Close a ticket."""
+        """Close a ticket.
+
+        Args:
+            auto_close: If True, don't set claimed_by (for auto-closes like user leaving)
+        """
         # Always fetch fresh data for status check (passed ticket may be stale)
         ticket = self.db.get_ticket(ticket_id)
         if not ticket:
@@ -410,7 +415,7 @@ class OperationsMixin:
             transcript_token = auth_service.generate_transcript_token(ticket_id)
 
         # Close in database (stores the token)
-        if not self.db.close_ticket(ticket_id, closed_by.id, reason, transcript_token):
+        if not self.db.close_ticket(ticket_id, closed_by.id, reason, transcript_token, auto_close=auto_close):
             return (False, "Failed to close ticket.")
 
         # Clear claim reminder cooldowns (no longer needed)

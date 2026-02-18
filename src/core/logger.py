@@ -36,6 +36,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import inspect
 import os
 import re
 import shutil
@@ -538,7 +539,6 @@ class Logger:
 
         Returns a short module name like 'moderation', 'tickets', 'api'.
         """
-        import inspect
 
         # Walk up the stack to find the first non-logger frame
         for frame_info in inspect.stack():

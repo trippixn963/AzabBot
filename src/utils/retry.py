@@ -25,16 +25,12 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    TYPE_CHECKING,
 )
 
 import aiohttp
 import discord
 
 from src.core.logger import logger
-
-if TYPE_CHECKING:
-    pass
 
 
 # =============================================================================

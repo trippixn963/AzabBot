@@ -10,6 +10,7 @@ Server: discord.gg/syria
 
 import asyncio
 import re
+import time as time_module
 from typing import TYPE_CHECKING, Optional
 
 import discord
@@ -360,8 +361,6 @@ class HistoryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"mod_hi
             # User may not exist or be fetchable
             pass
 
-        import time as time_module
-
         for record in history:
             # Format the entry
             action = record.get("action", "unknown")
@@ -527,8 +526,6 @@ class HistoryPaginationView(discord.ui.View):
         except discord.HTTPException:
             # User may not exist or be fetchable
             pass
-
-        import time as time_module
 
         for record in history:
             action = record.get("action", "unknown")

@@ -9,6 +9,7 @@ Server: discord.gg/syria
 """
 
 import asyncio
+import base64
 from datetime import datetime
 from collections import deque
 from typing import TYPE_CHECKING, Dict, List
@@ -75,15 +76,16 @@ class MessageEvents(HelpersMixin, commands.Cog):
             return False
 
         # Check user permissions (fast checks first)
-        has_level_5: bool = (
-            self.config.gif_permission_role_id is not None
-            and author.get_role(self.config.gif_permission_role_id) is not None
-        )
         has_forbid_embeds: bool = any(
             r.name == "Forbid: Embed Links" for r in author.roles
         )
 
-        # User can embed - no filtering needed
+        # Check level 5 role - default to True if not configured (only filter forbid users)
+        has_level_5: bool = True
+        if self.config.gif_permission_role_id is not None:
+            has_level_5 = author.get_role(self.config.gif_permission_role_id) is not None
+
+        # User can embed if they have level 5 AND don't have forbid embeds
         if has_level_5 and not has_forbid_embeds:
             return False
 
@@ -571,7 +573,6 @@ class MessageEvents(HelpersMixin, commands.Cog):
         # Store as base64 in database for reliable /snipe display
         attachment_data = None
         if message.id in self.bot._attachment_cache:
-            import base64
             attachment_data = []
             for filename, file_bytes in self.bot._attachment_cache[message.id]:
                 try:

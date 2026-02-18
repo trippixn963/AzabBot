@@ -159,23 +159,23 @@ class HTTPSessionManager:
     # Basic Request Methods
     # =========================================================================
 
-    def get(self, url: str, **kwargs):
+    def get(self, url: str, **kwargs) -> aiohttp.client._RequestContextManager:
         """Perform a GET request. Returns a context manager."""
         return self.session.get(url, **kwargs)
 
-    def post(self, url: str, **kwargs):
+    def post(self, url: str, **kwargs) -> aiohttp.client._RequestContextManager:
         """Perform a POST request. Returns a context manager."""
         return self.session.post(url, **kwargs)
 
-    def put(self, url: str, **kwargs):
+    def put(self, url: str, **kwargs) -> aiohttp.client._RequestContextManager:
         """Perform a PUT request. Returns a context manager."""
         return self.session.put(url, **kwargs)
 
-    def delete(self, url: str, **kwargs):
+    def delete(self, url: str, **kwargs) -> aiohttp.client._RequestContextManager:
         """Perform a DELETE request. Returns a context manager."""
         return self.session.delete(url, **kwargs)
 
-    def patch(self, url: str, **kwargs):
+    def patch(self, url: str, **kwargs) -> aiohttp.client._RequestContextManager:
         """Perform a PATCH request. Returns a context manager."""
         return self.session.patch(url, **kwargs)
 

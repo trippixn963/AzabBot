@@ -10,6 +10,7 @@ Server: discord.gg/syria
 """
 
 import asyncio
+import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -88,7 +89,6 @@ class ChannelEvents(commands.Cog):
 
             if ticket and ticket.get("status") not in ("closed",):
                 # Close the orphaned ticket
-                import time
                 db.execute(
                     """UPDATE tickets
                        SET status = 'closed', closed_at = ?, close_reason = 'Channel deleted'

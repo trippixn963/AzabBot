@@ -338,14 +338,14 @@ class BoosterUnjailButton(
                 if hasattr(bot, "case_log_service") and bot.case_log_service:
                     # Find case - check ops guild first (where cases are created)
                     case_data = None
-                    for gid in [config.ops_guild_id, self.guild_id]:
+                    for gid in [config.mod_server_id, self.guild_id]:
                         if gid:
                             case_data = db.get_active_mute_case(member.id, gid)
                             if case_data and case_data.get("thread_id"):
                                 break
                     if case_data and case_data.get("thread_id"):
                         # Thread is always in ops server
-                        ops_guild = bot.get_guild(config.ops_guild_id)
+                        ops_guild = bot.get_guild(config.mod_server_id)
                         if ops_guild:
                             thread = ops_guild.get_thread(case_data["thread_id"])
                             if not thread:

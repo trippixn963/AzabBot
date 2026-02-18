@@ -395,7 +395,7 @@ class CoinUnjailButton(
             # Find the active mute case - check ops guild first, then main guild
             config = get_config()
             case_data = None
-            for guild_id in [config.ops_guild_id, config.main_guild_id, self.guild_id]:
+            for guild_id in [config.mod_server_id, config.main_guild_id, self.guild_id]:
                 if guild_id:
                     case_data = db.get_active_mute_case(member.id, guild_id)
                     if case_data and case_data.get("thread_id"):
@@ -409,7 +409,7 @@ class CoinUnjailButton(
                 return
 
             # Threads are always in ops server (case forum location)
-            ops_guild = bot.get_guild(config.ops_guild_id) if config.ops_guild_id else None
+            ops_guild = bot.get_guild(config.mod_server_id) if config.mod_server_id else None
             if not ops_guild:
                 logger.debug("Case Note Skipped", [
                     ("User", f"{member.name} ({member.id})"),

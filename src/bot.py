@@ -10,6 +10,7 @@ Server: discord.gg/syria
 
 import os
 import asyncio
+import traceback
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 from collections import deque, OrderedDict
@@ -118,6 +119,7 @@ class AzabBot(commands.Bot):
         self.content_moderation = None
         self.maintenance = None
         self.prisoner_service = None
+        self.backup_scheduler = None
 
         # Message history tracking (LRU cache with limit)
         self._last_messages_lock = asyncio.Lock()
@@ -423,7 +425,6 @@ class AzabBot(commands.Bot):
         18. AppealService        - Ban/mute appeals (needs CaseLogService)
         19. AIService            - OpenAI integration (independent)
         20. TicketService        - Support tickets (needs AIService)
-        21. UserSnapshotsService - Avatar/name tracking (independent)
 
         IMPORTANT: Do not reorder without understanding dependencies.
         """
@@ -571,7 +572,6 @@ class AzabBot(commands.Bot):
             ], emoji="🚀")
 
         except Exception as e:
-            import traceback
             logger.error("Service Initialization Failed", [
                 ("Error", str(e)),
                 ("Traceback", traceback.format_exc()[:500]),
@@ -1004,7 +1004,7 @@ class AzabBot(commands.Bot):
         if self.api_service:
             await self.api_service.stop()
 
-        if hasattr(self, 'backup_scheduler') and self.backup_scheduler:
+        if self.backup_scheduler:
             await self.backup_scheduler.stop()
 
         # Close unified HTTP session

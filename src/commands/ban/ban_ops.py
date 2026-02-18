@@ -159,6 +159,77 @@ class BanOpsMixin:
             ], emoji="📨")
 
         # -----------------------------------------------------------------
+        # Close User's Tickets BEFORE Ban (to preserve transcripts)
+        # -----------------------------------------------------------------
+        # Ban deletes messages, including from ticket threads. Close tickets
+        # first so transcripts are saved before messages are deleted.
+
+        if hasattr(self.bot, "ticket_service") and self.bot.ticket_service:
+            try:
+                from typing import List, Dict, Any
+                user_tickets: List[Dict[str, Any]] = self.bot.ticket_service.db.get_user_tickets(
+                    user.id, target_guild.id
+                )
+                open_tickets: List[Dict[str, Any]] = [
+                    t for t in user_tickets if t["status"] in ("open", "claimed")
+                ]
+
+                closed_count: int = 0
+                failed_count: int = 0
+
+                for ticket in open_tickets:
+                    ticket_id: str = ticket["ticket_id"]
+                    try:
+                        success, msg = await self.bot.ticket_service.close_ticket(
+                            ticket_id=ticket_id,
+                            closed_by=interaction.user,
+                            reason="User banned - transcript saved before ban",
+                            ticket=ticket,
+                        )
+                        if success:
+                            closed_count += 1
+                            logger.tree("Ticket Closed (Pre-Ban)", [
+                                ("Ticket", ticket_id),
+                                ("User", f"{user.name} ({user.id})"),
+                                ("Moderator", f"{interaction.user.name}"),
+                            ], emoji="🎫")
+                        else:
+                            failed_count += 1
+                            logger.warning("Ticket Close Failed (Pre-Ban)", [
+                                ("Ticket", ticket_id),
+                                ("User", str(user.id)),
+                                ("Reason", msg[:50]),
+                            ])
+                    except discord.HTTPException as e:
+                        failed_count += 1
+                        log_http_error(e, "Ticket Close (Pre-Ban)", [
+                            ("Ticket", ticket_id),
+                            ("User", str(user.id)),
+                        ])
+                    except Exception as e:
+                        failed_count += 1
+                        logger.error("Ticket Close Error (Pre-Ban)", [
+                            ("Ticket", ticket_id),
+                            ("User", str(user.id)),
+                            ("Error", f"{type(e).__name__}: {str(e)[:50]}"),
+                        ])
+
+                if open_tickets:
+                    logger.tree("Pre-Ban Ticket Summary", [
+                        ("User", f"{user.name} ({user.id})"),
+                        ("Total", str(len(open_tickets))),
+                        ("Closed", str(closed_count)),
+                        ("Failed", str(failed_count)),
+                    ], emoji="📊")
+
+            except Exception as e:
+                logger.error("Pre-Ban Ticket Check Failed", [
+                    ("User", f"{user.name} ({user.id})"),
+                    ("Guild", target_guild.name),
+                    ("Error", f"{type(e).__name__}: {str(e)[:50]}"),
+                ])
+
+        # -----------------------------------------------------------------
         # Execute Ban (on target guild)
         # -----------------------------------------------------------------
 

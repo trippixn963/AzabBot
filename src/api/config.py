@@ -22,11 +22,11 @@ class APIConfig:
     port: int = 8081
     debug: bool = False
 
-    # CORS
-    cors_origins: list[str] = ("*",)
+    # CORS - defaults to dashboard origin for security
+    cors_origins: tuple[str, ...] = ("https://trippixn.com",)
     cors_allow_credentials: bool = True
-    cors_allow_methods: list[str] = ("*",)
-    cors_allow_headers: list[str] = ("*",)
+    cors_allow_methods: tuple[str, ...] = ("*",)
+    cors_allow_headers: tuple[str, ...] = ("*",)
 
     # Rate Limiting
     rate_limit_requests: int = 60
@@ -60,10 +60,19 @@ def load_api_config() -> APIConfig:
         ""
     )
 
+    # CORS origins - parse comma-separated list from env
+    cors_origins_env = os.getenv("AZAB_CORS_ORIGINS", "")
+    if cors_origins_env:
+        cors_origins = tuple(origin.strip() for origin in cors_origins_env.split(",") if origin.strip())
+    else:
+        # Default to dashboard origin for security (no wildcard with credentials)
+        cors_origins = ("https://trippixn.com",)
+
     return APIConfig(
         host=os.getenv("AZAB_API_HOST", "0.0.0.0"),
         port=int(os.getenv("AZAB_API_PORT", "8081")),
         debug=os.getenv("AZAB_API_DEBUG", "false").lower() == "true",
+        cors_origins=cors_origins,
         jwt_secret=jwt_secret,
         jwt_expiry_hours=int(os.getenv("AZAB_JWT_EXPIRY_HOURS", "24")),
     )

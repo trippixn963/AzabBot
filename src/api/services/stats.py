@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 from src.core.logger import logger
 from src.core.database import get_db
+from src.core.constants import SECONDS_PER_DAY
 
 NY_TZ = ZoneInfo("America/New_York")
 
@@ -27,7 +28,7 @@ async def batch_fetch_users(bot: Any, user_ids: List[int]) -> Dict[int, tuple]:
 
 def _get_previous_period_start(period: str, now: float) -> float:
     """Get the start time for the previous equivalent period."""
-    period_offsets = {"day": 86400, "week": 7 * 86400, "month": 30 * 86400, "year": 365 * 86400}
+    period_offsets = {"day": SECONDS_PER_DAY, "week": 7 * SECONDS_PER_DAY, "month": 30 * SECONDS_PER_DAY, "year": 365 * SECONDS_PER_DAY}
     offset = period_offsets.get(period, 0)
     if offset == 0:
         return 0  # "all" has no previous period
@@ -77,8 +78,8 @@ async def get_leaderboard_data(
     guild = None
     guild_member_ids = set()
     online_members = set()
-    if bot and hasattr(bot, 'config') and bot.config.ops_guild_id:
-        guild = bot.get_guild(bot.config.ops_guild_id)
+    if bot and hasattr(bot, 'config') and bot.config.mod_server_id:
+        guild = bot.get_guild(bot.config.mod_server_id)
         if guild:
             # Use cached members (fast) - cache is kept fresh by Discord gateway events
             for m in guild.members:
@@ -93,7 +94,7 @@ async def get_leaderboard_data(
         return []
 
     # Calculate time range
-    period_offsets = {"day": 86400, "week": 7 * 86400, "month": 30 * 86400, "year": 365 * 86400}
+    period_offsets = {"day": SECONDS_PER_DAY, "week": 7 * SECONDS_PER_DAY, "month": 30 * SECONDS_PER_DAY, "year": 365 * SECONDS_PER_DAY}
     start_time = now - period_offsets.get(period, 0) if period in period_offsets else 0
 
     # Get previous period rankings for comparison
@@ -175,7 +176,7 @@ async def get_leaderboard_data(
     # Get 7-day activity trend for sparkline (for each mod)
     activity_map = {}
     if mod_ids:
-        week_ago = now - (7 * 86400)
+        week_ago = now - (7 * SECONDS_PER_DAY)
         placeholders = ",".join("?" * len(mod_ids))
         trend_rows = db.fetchall(
             f"""
@@ -257,8 +258,8 @@ async def get_moderator_stats_data(
     db = get_db()
     now = time.time()
     today_start = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0).timestamp()
-    week_start = today_start - (7 * 86400)
-    month_start = today_start - (30 * 86400)
+    week_start = today_start - (7 * SECONDS_PER_DAY)
+    month_start = today_start - (30 * SECONDS_PER_DAY)
 
     # Get action stats
     action_stats = db.fetchone(
@@ -372,7 +373,7 @@ def get_activity_data(days: int = 30) -> List[Dict[str, Any]]:
     """
     db = get_db()
     now = time.time()
-    start_time = now - (days * 86400)
+    start_time = now - (days * SECONDS_PER_DAY)
 
     # Different grouping based on period
     if days <= 1:

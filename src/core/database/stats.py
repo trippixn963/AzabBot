@@ -34,7 +34,6 @@ class StatsMixin:
 
     def increment_permanent_counter(self: "DatabaseManager", key: str, guild_id: int) -> int:
         """Increment a permanent counter and return new value."""
-        import time
         full_key = f"{key}_{guild_id}"
         current = self.get_permanent_counter(key, guild_id)
         new_value = current + 1

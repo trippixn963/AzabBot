@@ -56,11 +56,6 @@ from .constants import (
     SNIPE_LIMIT,
     MAX_PURGE_AMOUNT,
     BULK_DELETE_LIMIT,
-    # Colors
-    COLOR_GREEN,
-    COLOR_RED,
-    COLOR_ORANGE,
-    COLOR_BLUE,
 )
 
 
@@ -98,8 +93,4 @@ __all__ = [
     "SNIPE_LIMIT",
     "MAX_PURGE_AMOUNT",
     "BULK_DELETE_LIMIT",
-    "COLOR_GREEN",
-    "COLOR_RED",
-    "COLOR_ORANGE",
-    "COLOR_BLUE",
 ]

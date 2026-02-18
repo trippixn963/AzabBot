@@ -559,9 +559,6 @@ class ContentModerationService:
                         ("Channel", channel_str),
                     ])
 
-            # Try to DM the user
-            await self._send_violation_dm(message, result)
-
             # Alert mods via logging service
             await self._send_mod_alert(message, result, deleted=True)
 
@@ -816,37 +813,6 @@ class ContentModerationService:
                 ("User", f"{message.author.id}"),
                 ("Error", str(e)[:50]),
                 ("Type", type(e).__name__),
-            ])
-
-    async def _send_violation_dm(
-        self,
-        message: discord.Message,
-        result: ClassificationResult) -> None:
-        """
-        Send DM to user about their violation.
-
-        Args:
-            message: The violating message.
-            result: The classification result.
-        """
-        try:
-            dm_embed = discord.Embed(
-                title=f"{VIOLATION_EMOJI} Message Removed",
-                description=f"Your message in **{message.guild.name}** was removed for discussing religion.",
-                color=EmbedColors.WARNING)
-            dm_embed.add_field(name="Server Rule", value="No religion discussions allowed", inline=False)
-            dm_embed.add_field(
-                name="Your Message",
-                value=f"```{message.content[:500]}```" if message.content else "(no text)",
-                inline=False)
-            await message.author.send(embed=dm_embed)
-            logger.debug("Violation DM Sent", [("User", str(message.author.id))])
-        except discord.Forbidden:
-            logger.debug("Violation DM Blocked", [("User", str(message.author.id))])
-        except discord.HTTPException as e:
-            logger.debug("Violation DM Failed", [
-                ("User", str(message.author.id)),
-                ("Error", str(e)[:50]),
             ])
 
     async def _send_mod_alert(

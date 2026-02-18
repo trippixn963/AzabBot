@@ -389,7 +389,7 @@ def not_found(resource: str = "Resource") -> APIError:
     return APIError(code)
 
 
-def forbidden(message: str = None) -> APIError:
+def forbidden(message: Optional[str] = None) -> APIError:
     """Shorthand for 403 errors."""
     return APIError(
         ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
@@ -397,7 +397,7 @@ def forbidden(message: str = None) -> APIError:
     )
 
 
-def bad_request(code: ErrorCode = ErrorCode.VALIDATION_FAILED, details: dict = None) -> APIError:
+def bad_request(code: ErrorCode = ErrorCode.VALIDATION_FAILED, details: Optional[Dict[str, Any]] = None) -> APIError:
     """Shorthand for 400 errors."""
     return APIError(code, details=details)
 

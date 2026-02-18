@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import json
 import time
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
@@ -221,18 +222,34 @@ class TicketsMixin:
         closed_by: int,
         close_reason: Optional[str] = None,
         transcript_token: Optional[str] = None,
+        auto_close: bool = False,
     ) -> bool:
-        """Close a ticket."""
+        """Close a ticket.
+
+        Args:
+            auto_close: If True, don't set claimed_by (for auto-closes like user leaving)
+        """
         # Get ticket info first for guild_id
         ticket = self.get_ticket(ticket_id)
         if not ticket:
             return False
 
-        cursor = self.execute(
-            """UPDATE tickets SET status = 'closed', closed_at = ?, closed_by = ?, close_reason = ?, transcript_token = ?
-               WHERE ticket_id = ? AND status != 'closed'""",
-            (time.time(), closed_by, close_reason, transcript_token, ticket_id)
-        )
+        # If ticket wasn't claimed and this isn't an auto-close, set claimed_by to whoever closed it
+        if auto_close:
+            # Auto-close: don't change claimed_by
+            cursor = self.execute(
+                """UPDATE tickets SET status = 'closed', closed_at = ?, closed_by = ?, close_reason = ?, transcript_token = ?
+                   WHERE ticket_id = ? AND status != 'closed'""",
+                (time.time(), closed_by, close_reason, transcript_token, ticket_id)
+            )
+        else:
+            # Manual close: set claimed_by if not already set
+            claimed_by = ticket.get("claimed_by") or closed_by
+            cursor = self.execute(
+                """UPDATE tickets SET status = 'closed', closed_at = ?, closed_by = ?, close_reason = ?, transcript_token = ?, claimed_by = COALESCE(claimed_by, ?)
+                   WHERE ticket_id = ? AND status != 'closed'""",
+                (time.time(), closed_by, close_reason, transcript_token, claimed_by, ticket_id)
+            )
         if cursor.rowcount > 0:
             # Increment permanent counters
             self.increment_total_tickets_closed(ticket["guild_id"])
@@ -552,8 +569,6 @@ class TicketsMixin:
         Returns:
             True if stored successfully, False if duplicate or error
         """
-        import json
-
         try:
             attachments_json = json.dumps(attachments) if attachments else None
             embeds_json = json.dumps(embeds) if embeds else None
@@ -597,8 +612,6 @@ class TicketsMixin:
         Returns:
             List of message dicts with all fields
         """
-        import json
-
         rows = self.fetchall(
             """
             SELECT * FROM ticket_messages

@@ -234,12 +234,13 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
 
         for ticket in open_tickets:
             try:
-                # Close the ticket using bot as the closer
+                # Close the ticket using bot as the closer (auto_close=True so claimed_by isn't set to bot)
                 success, _ = await self.close_ticket(
                     ticket_id=ticket["ticket_id"],
                     closed_by=member.guild.me,
                     reason="Ticket opener left the server",
-                    ticket=ticket)
+                    ticket=ticket,
+                    auto_close=True)
 
                 if not success:
                     continue

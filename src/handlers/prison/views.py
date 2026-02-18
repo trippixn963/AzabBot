@@ -199,7 +199,7 @@ async def build_appeal_view(
     config = get_config()
     case_data = None
     try:
-        for guild_id in [config.ops_guild_id, member.guild.id]:
+        for guild_id in [config.mod_server_id, member.guild.id]:
             if guild_id:
                 case_data = bot.db.get_active_mute_case(member.id, guild_id)
                 if case_data and case_data.get("case_id"):

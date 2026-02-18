@@ -483,8 +483,6 @@ class AuthService:
 
     def logout(self, token: str) -> bool:
         """Invalidate a token (add to blacklist and persist to database)."""
-        import hashlib
-
         try:
             # Get token expiry from payload
             payload = jwt.decode(
@@ -557,7 +555,6 @@ class AuthService:
 
     def _is_token_blacklisted(self, token: str) -> bool:
         """Check if a token is blacklisted (using hash for security)."""
-        import hashlib
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         return token_hash in self._blacklisted_token_hashes
 

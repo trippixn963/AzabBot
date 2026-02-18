@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import time
 from typing import TYPE_CHECKING, Optional
 
 import discord
@@ -57,7 +58,6 @@ class HelpersMixin:
         # Add coin unjail cost (for mutes >= 1 hour)
         try:
             from src.services.jawdat_economy import calculate_unjail_cost, COINS_EMOJI_ID
-            import time
 
             # Calculate duration in hours
             if expires_at and muted_at:

@@ -9,6 +9,7 @@ Server: discord.gg/syria
 """
 
 import asyncio
+import time
 from typing import TYPE_CHECKING
 
 import discord
@@ -225,7 +226,6 @@ class LoggingMixin:
                 )
 
                 # Calculate duration in seconds
-                import time
                 duration_seconds = None
                 until_timestamp = entry.after.timed_out_until.timestamp() if entry.after.timed_out_until else None
                 if until_timestamp:

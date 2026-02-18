@@ -23,6 +23,15 @@ SECONDS_PER_WEEK = 604800
 MS_PER_SECOND = 1000
 
 # =============================================================================
+# Byte Size Constants
+# =============================================================================
+
+BYTES_PER_KB = 1024
+BYTES_PER_MB = 1024 * 1024
+BYTES_PER_GB = 1024 * 1024 * 1024
+MAX_ATTACHMENT_CACHE_SIZE = 8 * BYTES_PER_MB  # 8 MB max attachment cache
+
+# =============================================================================
 # Network Constants
 # =============================================================================
 
@@ -121,6 +130,9 @@ RAID_WINDOW = 30                      # Window in seconds
 AUTO_UNLOCK_DURATION = 300            # 5 minutes - auto unlock
 LOCKDOWN_COOLDOWN = 600               # 10 minutes - lockdown cooldown
 
+# Anti-spam
+SPAM_AUTO_MUTE_DURATION = 600         # 10 minutes - auto mute for spam
+
 # Anti-nuke
 ANTINUKE_TIME_WINDOW = 60             # 1 minute - action window
 
@@ -158,6 +170,7 @@ SNIPE_LIMIT = 10                      # Max snipes per channel
 MAX_PURGE_AMOUNT = 500                # Max messages to purge
 DEFAULT_PURGE_AMOUNT = 100            # Default purge amount
 BULK_DELETE_LIMIT = 100               # Discord bulk delete limit
+PURGE_SCAN_BUFFER = 50                # Extra messages to scan for purge filtering
 
 # Thresholds
 BULK_DELETE_THRESHOLD = 10            # Deletes to trigger alert
@@ -216,6 +229,7 @@ QUERY_LIMIT_MEDIUM = 50               # Medium queries (leaderboards, lists)
 QUERY_LIMIT_LARGE = 100               # Large queries (bulk fetches)
 QUERY_LIMIT_XL = 200                  # Extra large queries (forum threads)
 QUERY_LIMIT_XXL = 500                 # Maximum queries (full scans)
+QUERY_LIMIT_TRANSCRIPT = 1000         # Transcript message fetch limit
 PREVIOUS_NAMES_LIMIT = 3              # Previous names to show in profiles
 
 # =============================================================================
@@ -259,6 +273,14 @@ AUTH_TOKEN_CLEANUP_AGE = SECONDS_PER_DAY  # Remove blacklisted tokens expired > 
 AUTH_RATE_LIMIT_CLEANUP_AGE = SECONDS_PER_HOUR  # Clean rate limit trackers older than 1 hour
 AUTH_LOCKOUT_CLEANUP_AGE = SECONDS_PER_HOUR  # Clean expired lockout trackers older than 1 hour
 WS_STALE_CONNECTION_THRESHOLD = 300  # 5 minutes - connection stale if no heartbeat
+RATE_LIMIT_STALE_THRESHOLD = 600     # 10 minutes - rate limit entry stale threshold
+
+# =============================================================================
+# Service Startup/Interval Constants
+# =============================================================================
+
+SNAPSHOT_STARTUP_DELAY = 30           # Delay before snapshot service starts
+PRESENCE_ERROR_RETRY_DELAY = 60       # Delay on presence update error
 
 # =============================================================================
 # Data Retention Constants
@@ -287,17 +309,6 @@ TOP_OFFENDERS_LIMIT = 10
 MODERATOR_LEADERBOARD_LIMIT = 10
 RECENT_ACTIONS_LIMIT = 10
 DEFAULT_QUERY_LIMIT = 25
-
-# =============================================================================
-# Discord Colors (decimal format)
-# =============================================================================
-
-COLOR_GREEN = 0x2ECC71                # Success/positive
-COLOR_RED = 0xE74C3C                  # Error/ban
-COLOR_ORANGE = 0xE67E22               # Warning/mute
-COLOR_BLUE = 0x3498DB                 # Info/neutral
-COLOR_GOLD = 0xF1C40F                 # Premium/highlight
-COLOR_PURPLE = 0x9B59B6               # Special actions
 
 # =============================================================================
 # HTTP Status Codes
@@ -554,13 +565,21 @@ __all__ = [
     "MODERATOR_LEADERBOARD_LIMIT",
     "RECENT_ACTIONS_LIMIT",
     "DEFAULT_QUERY_LIMIT",
-    # Colors
-    "COLOR_GREEN",
-    "COLOR_RED",
-    "COLOR_ORANGE",
-    "COLOR_BLUE",
-    "COLOR_GOLD",
-    "COLOR_PURPLE",
+    # Byte sizes
+    "BYTES_PER_KB",
+    "BYTES_PER_MB",
+    "BYTES_PER_GB",
+    "MAX_ATTACHMENT_CACHE_SIZE",
+    # Anti-spam
+    "SPAM_AUTO_MUTE_DURATION",
+    # Service intervals
+    "SNAPSHOT_STARTUP_DELAY",
+    "PRESENCE_ERROR_RETRY_DELAY",
+    "RATE_LIMIT_STALE_THRESHOLD",
+    # Query limits
+    "QUERY_LIMIT_TRANSCRIPT",
+    # Purge
+    "PURGE_SCAN_BUFFER",
     # HTTP
     "HTTP_OK",
     "HTTP_RATE_LIMITED",

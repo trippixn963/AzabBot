@@ -9,6 +9,7 @@ Server: discord.gg/syria
 """
 
 import asyncio
+import time
 from typing import TYPE_CHECKING, Optional
 
 import discord
@@ -144,7 +145,6 @@ class MuteOpsMixin:
         # If a DIFFERENT mod just muted this user within the last few seconds,
         # treat this as a duplicate operation, not an intentional extension
         if is_extension:
-            import time
             existing_mute = self.db.get_active_mute(user.id, target_guild.id)
             if existing_mute and existing_mute["muted_at"]:
                 mute_age = time.time() - existing_mute["muted_at"]

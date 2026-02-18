@@ -523,8 +523,6 @@ class MutesMixin:
         Returns:
             Total minutes served this week.
         """
-        import time as time_module
-
         # Calculate Sunday midnight EST for current week
         now_est = datetime.now(NY_TZ)
         days_since_sunday = now_est.weekday() + 1
@@ -533,7 +531,7 @@ class MutesMixin:
         sunday_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
         sunday_midnight = sunday_midnight - timedelta(days=days_since_sunday)
         cutoff = sunday_midnight.timestamp()
-        now_ts = time_module.time()
+        now_ts = time.time()
 
         # Get all mutes this week from prisoner_history
         rows = self.fetchall(

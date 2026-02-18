@@ -126,7 +126,7 @@ class Config:
     ticket_staff_role_id: Optional[int] = None  # Role that can manage tickets
     ticket_partnership_user_id: Optional[int] = None  # User to assign partnership tickets
     ticket_suggestion_user_id: Optional[int] = None  # User to assign suggestion tickets
-    ticket_support_user_ids: Set[int] = None  # Users to assign support tickets
+    ticket_support_user_ids: Optional[Set[int]] = None  # Users to assign support tickets
     transcript_base_url: Optional[str] = None  # Base URL for transcript viewer (e.g., https://example.com/api/azab/transcripts)
     case_transcript_base_url: Optional[str] = None  # Base URL for case transcript viewer
     transcript_assets_thread_id: Optional[int] = None  # Thread/post for permanent attachment storage
@@ -138,20 +138,19 @@ class Config:
 
     server_logs_forum_id: Optional[int] = None
     main_guild_id: Optional[int] = None  # Main Syria server (GUILD_ID)
-    ops_guild_id: Optional[int] = None  # Staff/ops server for mod tracking (MODS_GUILD_ID)
 
     # -------------------------------------------------------------------------
     # Optional: Lockdown Exclusions
     # -------------------------------------------------------------------------
 
-    lockdown_exclude_ids: Set[int] = None  # Channel/category IDs to exclude from lockdown
+    lockdown_exclude_ids: Optional[Set[int]] = None  # Channel/category IDs to exclude from lockdown
 
     # -------------------------------------------------------------------------
     # Optional: Command Permissions
     # -------------------------------------------------------------------------
 
-    link_allowed_user_ids: Set[int] = None  # User IDs allowed to use /link command
-    appeal_allowed_user_ids: Set[int] = None  # User IDs allowed to approve/deny appeals
+    link_allowed_user_ids: Optional[Set[int]] = None  # User IDs allowed to use /link command
+    appeal_allowed_user_ids: Optional[Set[int]] = None  # User IDs allowed to approve/deny appeals
 
     # -------------------------------------------------------------------------
     # Optional: Rate Limiting
@@ -193,7 +192,7 @@ class Config:
     # Optional: Permissions
     # -------------------------------------------------------------------------
 
-    moderator_ids: Set[int] = None
+    moderator_ids: Optional[Set[int]] = None
 
     # -------------------------------------------------------------------------
     # Optional: Webhooks
@@ -206,14 +205,14 @@ class Config:
     # Optional: Logging Exclusions
     # -------------------------------------------------------------------------
 
-    ignored_bot_ids: Set[int] = None  # Bot IDs to exclude from logging
+    ignored_bot_ids: Optional[Set[int]] = None  # Bot IDs to exclude from logging
 
     # -------------------------------------------------------------------------
     # Optional: Antispam Exclusions
     # -------------------------------------------------------------------------
 
-    whitelisted_webhook_ids: Set[int] = None  # Webhook IDs to exclude from spam detection
-    mention_spam_exempt_channel_ids: Set[int] = None  # Channel IDs exempt from mention spam detection
+    whitelisted_webhook_ids: Optional[Set[int]] = None  # Webhook IDs to exclude from spam detection
+    mention_spam_exempt_channel_ids: Optional[Set[int]] = None  # Channel IDs exempt from mention spam detection
 
     # -------------------------------------------------------------------------
     # Optional: Syria XP Integration
@@ -352,8 +351,11 @@ def _parse_int_set(value: Optional[str]) -> Set[int]:
             try:
                 result.add(int(part))
             except ValueError:
-                # Log warning for invalid entries instead of silent skip
-                print(f"[CONFIG WARNING] Invalid integer in comma-separated list: '{part}'")
+                # Log warning for invalid entries (deferred import to avoid circular dependency)
+                from src.core.logger import logger
+                logger.warning("Config Parse Warning", [
+                    ("Invalid integer in list", part),
+                ])
     return result
 
 
@@ -511,7 +513,6 @@ def load_config() -> Config:
     transcript_assets_thread_id = _parse_int_optional(os.getenv("AZAB_TRANSCRIPT_ASSETS_THREAD_ID"))
     case_transcripts_thread_id = _parse_int_optional(os.getenv("AZAB_CASE_TRANSCRIPTS_THREAD_ID"))
     server_logs_forum_id = _parse_int_optional(os.getenv("AZAB_SERVER_LOGS_FORUM_ID"))
-    ops_guild_id = _parse_int_optional(os.getenv("MODS_GUILD_ID"))  # Same as mod_server_id
     moderator_ids = _parse_int_set(os.getenv("AZAB_MODERATOR_IDS"))
     ignored_bot_ids = _parse_int_set(os.getenv("AZAB_IGNORED_BOT_IDS"))
     lockdown_exclude_ids = _parse_int_set(os.getenv("AZAB_LOCKDOWN_EXCLUDE_IDS"))
@@ -568,7 +569,6 @@ def load_config() -> Config:
         case_transcripts_thread_id=case_transcripts_thread_id,
         server_logs_forum_id=server_logs_forum_id,
         main_guild_id=main_guild_id,
-        ops_guild_id=ops_guild_id,
         cooldown_seconds=_parse_int_with_default(
             os.getenv("COOLDOWN_SECONDS"), 10, "COOLDOWN_SECONDS", min_val=0, max_val=300
         ),

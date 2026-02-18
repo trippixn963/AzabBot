@@ -18,17 +18,10 @@ from zoneinfo import ZoneInfo
 import discord
 
 from src.utils.async_utils import create_safe_task
+from src.core.constants import PROMO_DURATION_MINUTES, PRESENCE_UPDATE_INTERVAL
 
 if TYPE_CHECKING:
     from discord import Client
-
-
-# =============================================================================
-# Constants
-# =============================================================================
-
-DEFAULT_PROMO_DURATION_MINUTES = 10
-DEFAULT_UPDATE_INTERVAL = 60  # seconds
 
 
 # =============================================================================
@@ -54,8 +47,8 @@ class BasePresenceHandler(ABC):
         self,
         bot: "Client",
         *,
-        update_interval: int = DEFAULT_UPDATE_INTERVAL,
-        promo_duration_minutes: int = DEFAULT_PROMO_DURATION_MINUTES,
+        update_interval: int = PRESENCE_UPDATE_INTERVAL,
+        promo_duration_minutes: int = PROMO_DURATION_MINUTES,
     ) -> None:
         """
         Initialize the presence handler.
@@ -319,6 +312,4 @@ class BasePresenceHandler(ABC):
 
 __all__ = [
     "BasePresenceHandler",
-    "DEFAULT_PROMO_DURATION_MINUTES",
-    "DEFAULT_UPDATE_INTERVAL",
 ]
