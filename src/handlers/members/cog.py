@@ -376,18 +376,19 @@ class MemberEvents(commands.Cog):
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
         """Log member leaves, track muted users leaving, delete linked messages, save snapshot."""
+        # Log every member removal for debugging ticket auto-close issues
+        logger.tree("MEMBER REMOVE EVENT", [
+            ("User", f"{member.name} ({member.display_name})"),
+            ("ID", str(member.id)),
+            ("Guild", f"{member.guild.name} ({member.guild.id})"),
+        ], emoji="👋")
+
         # Save user snapshot BEFORE anything else (while we still have member data)
         save_member_snapshot(member, reason="leave")
 
         # Clean up prisoner tracking state
         if self.bot.prisoner_service:
             await self.bot.prisoner_service.cleanup_for_user(member.id)
-
-        # Auto-close any open tickets where this user is the OP
-        await self._handle_ticket_op_left(member)
-
-        # Delete linked messages (alliance channel posts)
-        await self._delete_linked_messages(member)
 
         # Calculate membership duration
         membership_duration = "Unknown"
@@ -403,22 +404,67 @@ class MemberEvents(commands.Cog):
         # Get role count (excluding @everyone)
         role_count = len([r for r in member.roles if r.name != "@everyone"])
 
-        # Check if this was a ban (check recent audit log)
+        # Check if this was a ban or kick (check recent audit log) BEFORE ticket auto-close
         was_banned = False
+        was_kicked = False
+        ban_moderator = None
+        kick_moderator = None
         try:
+            # Check for ban first
             async for entry in member.guild.audit_logs(action=discord.AuditLogAction.ban, limit=QUERY_LIMIT_TINY):
                 if entry.target and entry.target.id == member.id:
                     # Ban happened within last 5 seconds = this removal was a ban
-                    if (discord.utils.utcnow() - entry.created_at).total_seconds() < 5:
+                    time_diff = (discord.utils.utcnow() - entry.created_at).total_seconds()
+                    if time_diff < 5:
                         was_banned = True
+                        ban_moderator = entry.user
+                        logger.tree("REMOVAL TYPE: BAN DETECTED", [
+                            ("User", f"{member.name} ({member.id})"),
+                            ("Banned By", f"{ban_moderator.name} ({ban_moderator.id})" if ban_moderator else "Unknown"),
+                            ("Time Diff", f"{time_diff:.1f}s ago"),
+                        ], emoji="🔨")
                     break
+
+            # Check for kick if not banned
+            if not was_banned:
+                async for entry in member.guild.audit_logs(action=discord.AuditLogAction.kick, limit=QUERY_LIMIT_TINY):
+                    if entry.target and entry.target.id == member.id:
+                        # Kick happened within last 5 seconds = this removal was a kick
+                        time_diff = (discord.utils.utcnow() - entry.created_at).total_seconds()
+                        if time_diff < 5:
+                            was_kicked = True
+                            kick_moderator = entry.user
+                            logger.tree("REMOVAL TYPE: KICK DETECTED", [
+                                ("User", f"{member.name} ({member.id})"),
+                                ("Kicked By", f"{kick_moderator.name} ({kick_moderator.id})" if kick_moderator else "Unknown"),
+                                ("Time Diff", f"{time_diff:.1f}s ago"),
+                            ], emoji="👢")
+                        break
         except discord.Forbidden:
-            logger.debug("Audit Log Access Denied", [("Action", "ban_check"), ("Guild", member.guild.name)])
+            logger.debug("Audit Log Access Denied", [("Action", "ban_kick_check"), ("Guild", member.guild.name)])
         except discord.HTTPException as e:
             log_http_error(e, "Audit Log Fetch", [
-                ("Action", "ban_check"),
+                ("Action", "ban_kick_check"),
                 ("Guild", member.guild.name),
             ])
+
+        # Auto-close any open tickets where this user is the OP
+        # Pass removal reason so ticket close message is accurate
+        if was_banned:
+            removal_reason = "banned"
+        elif was_kicked:
+            removal_reason = "kicked"
+        else:
+            removal_reason = "left"
+            logger.tree("REMOVAL TYPE: VOLUNTARY LEAVE", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Duration", membership_duration),
+            ], emoji="🚪")
+
+        await self._handle_ticket_op_left(member, removal_reason=removal_reason)
+
+        # Delete linked messages (alliance channel posts)
+        await self._delete_linked_messages(member)
 
         # Log to dashboard (handles console logging too)
         # Ban is logged separately in on_member_ban
@@ -467,10 +513,15 @@ class MemberEvents(commands.Cog):
                     ("Error", str(e)[:100]),
                 ])
 
-    async def _handle_ticket_op_left(self, member: discord.Member) -> None:
-        """Auto-close any open tickets where the leaving member is the opener."""
+    async def _handle_ticket_op_left(self, member: discord.Member, removal_reason: str = "left") -> None:
+        """Auto-close any open tickets where the leaving member is the opener.
+
+        Args:
+            member: The member who was removed from the server
+            removal_reason: Why they were removed - "left", "kicked", or "banned"
+        """
         if self.bot.ticket_service and self.bot.ticket_service.enabled:
-            await self.bot.ticket_service.handle_op_left(member)
+            await self.bot.ticket_service.handle_op_left(member, removal_reason=removal_reason)
 
     async def _delete_linked_messages(self, member: discord.Member) -> None:
         """Delete all messages linked to a leaving member."""

@@ -74,6 +74,18 @@ class CloseButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tkt_clos
         is_ticket_owner = ticket["user_id"] == interaction.user.id
 
         if is_staff:
+            # Staff must claim ticket before closing
+            if not ticket.get("claimed_by"):
+                logger.tree("Close Blocked - Not Claimed", [
+                    ("Ticket ID", self.ticket_id),
+                    ("Staff", f"{interaction.user.name} ({interaction.user.id})"),
+                ], emoji="⚠️")
+                await interaction.response.send_message(
+                    "Please **claim** the ticket before closing it.",
+                    ephemeral=True,
+                )
+                return
+
             # Staff can close directly with modal
             logger.tree("Ticket Close Modal Opened", [
                 ("Ticket ID", self.ticket_id),

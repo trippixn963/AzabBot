@@ -202,7 +202,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
     # Event Handlers (called by cogs)
     # =========================================================================
 
-    async def handle_op_left(self, member: discord.Member) -> int:
+    async def handle_op_left(self, member: discord.Member, removal_reason: str = "left") -> int:
         """
         Handle when a ticket opener leaves the server.
 
@@ -211,6 +211,7 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
 
         Args:
             member: The member who left the server
+            removal_reason: Why they were removed - "left", "kicked", or "banned"
 
         Returns:
             Number of tickets closed
@@ -220,28 +221,73 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
 
         # Get all tickets for this user in this guild
         user_tickets = self.db.get_user_tickets(member.id, member.guild.id)
+
+        # Log ticket lookup for debugging
+        logger.tree("TICKET LOOKUP FOR REMOVED USER", [
+            ("User", f"{member.name} ({member.id})"),
+            ("Guild", f"{member.guild.name} ({member.guild.id})"),
+            ("Removal Reason", removal_reason.capitalize()),
+            ("Total Tickets Found", str(len(user_tickets)) if user_tickets else "0"),
+        ], emoji="🔍")
+
         if not user_tickets:
             return 0
 
         # Filter to only open or claimed tickets
         open_tickets = [t for t in user_tickets if t["status"] in ("open", "claimed")]
-        if not open_tickets:
+
+        # Log open tickets that will be closed
+        if open_tickets:
+            ticket_ids = ", ".join(t["ticket_id"] for t in open_tickets)
+            logger.tree("TICKETS TO AUTO-CLOSE", [
+                ("User", f"{member.name} ({member.id})"),
+                ("Removal Reason", removal_reason.capitalize()),
+                ("Open Tickets", ticket_ids),
+                ("Count", str(len(open_tickets))),
+            ], emoji="⚠️")
+        else:
+            logger.debug("No Open Tickets To Close", [
+                ("User", f"{member.name} ({member.id})"),
+                ("All Tickets", str(len(user_tickets))),
+            ])
             return 0
 
         closed_count = 0
         notified_users = set()
 
+        # Build close reason based on how user was removed
+        if removal_reason == "banned":
+            close_reason = "Ticket opener was banned from the server"
+        elif removal_reason == "kicked":
+            close_reason = "Ticket opener was kicked from the server"
+        else:
+            close_reason = "Ticket opener left the server"
+
         for ticket in open_tickets:
             try:
+                # Log each ticket being closed
+                logger.tree("CLOSING TICKET (User Removed)", [
+                    ("Ticket ID", ticket["ticket_id"]),
+                    ("Category", ticket.get("category", "Unknown")),
+                    ("Status", ticket.get("status", "Unknown")),
+                    ("User", f"{member.name} ({member.id})"),
+                    ("Reason", close_reason),
+                    ("Claimed By", str(ticket.get("claimed_by")) if ticket.get("claimed_by") else "Unclaimed"),
+                ], emoji="🔒")
+
                 # Close the ticket using bot as the closer (auto_close=True so claimed_by isn't set to bot)
                 success, _ = await self.close_ticket(
                     ticket_id=ticket["ticket_id"],
                     closed_by=member.guild.me,
-                    reason="Ticket opener left the server",
+                    reason=close_reason,
                     ticket=ticket,
                     auto_close=True)
 
                 if not success:
+                    logger.warning("Ticket Close Failed", [
+                        ("Ticket ID", ticket["ticket_id"]),
+                        ("User", f"{member.name} ({member.id})"),
+                    ])
                     continue
 
                 closed_count += 1
@@ -277,19 +323,21 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
                     if staff.id in notified_users:
                         continue
 
-                    await self._notify_staff_op_left(staff, ticket, member)
+                    await self._notify_staff_op_left(staff, ticket, member, removal_reason)
                     notified_users.add(staff.id)
 
             except Exception as e:
                 logger.error("Ticket Auto-Close Failed (OP Left)", [
                     ("Ticket", ticket["ticket_id"]),
                     ("User", str(member.id)),
+                    ("Reason", removal_reason),
                     ("Error", str(e)[:100]),
                 ])
 
         if closed_count > 0:
-            logger.tree("TICKETS AUTO-CLOSED (OP Left)", [
+            logger.tree("TICKETS AUTO-CLOSED (OP Removed)", [
                 ("User", f"{member.name} ({member.id})"),
+                ("Reason", removal_reason.capitalize()),
                 ("Tickets Closed", str(closed_count)),
                 ("Staff Notified", str(len(notified_users))),
             ], emoji="🎫")
@@ -300,17 +348,30 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
         self,
         staff: discord.Member,
         ticket: dict,
-        member: discord.Member) -> bool:
-        """Send DM notification to staff that ticket OP left."""
+        member: discord.Member,
+        removal_reason: str = "left") -> bool:
+        """Send DM notification to staff that ticket OP was removed from server.
+
+        Args:
+            staff: Staff member to notify
+            ticket: Ticket dict from database
+            member: The member who was removed
+            removal_reason: Why they were removed - "left", "kicked", or "banned"
+        """
         try:
             from src.core.config import EmbedColors, NY_TZ
 
+            # Build description based on removal reason
+            if removal_reason == "banned":
+                reason_text = "opener was **banned** from the server"
+            elif removal_reason == "kicked":
+                reason_text = "opener was **kicked** from the server"
+            else:
+                reason_text = "opener **left** the server"
+
             embed = discord.Embed(
                 title="🎫 Ticket Auto-Closed",
-                description=(
-                    "A ticket has been automatically closed because the "
-                    "opener left the server."
-                ),
+                description=f"A ticket has been automatically closed because the {reason_text}.",
                 color=EmbedColors.WARNING
             )
             embed.add_field(
@@ -325,8 +386,12 @@ class TicketService(AutoCloseMixin, HelpersMixin, OperationsMixin):
                 name="Subject",
                 value=ticket.get("subject", "No subject")[:100],
                 inline=False)
+            embed.add_field(
+                name="Removal Reason",
+                value=removal_reason.capitalize(),
+                inline=True)
             status_text = "Was claimed by you" if ticket["status"] == "claimed" else "Was unclaimed"
-            embed.add_field(name="Status", value=status_text, inline=True)
+            embed.add_field(name="Ticket Status", value=status_text, inline=True)
 
             await staff.send(embed=embed)
             return True
