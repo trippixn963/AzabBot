@@ -200,6 +200,7 @@ class Config:
 
     error_webhook_url: Optional[str] = None
     live_logs_webhook_url: Optional[str] = None
+    backup_webhook_url: Optional[str] = None
 
     # -------------------------------------------------------------------------
     # Optional: Logging Exclusions
@@ -225,7 +226,7 @@ class Config:
     # Optional: Jawdat Economy Integration
     # -------------------------------------------------------------------------
 
-    JAWDAT_API_PORT: int = 8082  # JawdatBot API port
+    JAWDAT_API_PORT: int = 8089  # JawdatBot API port
     JAWDAT_API_KEY: Optional[str] = None  # API key for currency operations
 
 
@@ -526,8 +527,11 @@ def load_config() -> Config:
     syria_xp_api_key = os.getenv("SYRIA_XP_API_KEY") or None
 
     # Jawdat Economy Integration
-    jawdat_api_port = _parse_int_with_default(os.getenv("JAWDAT_API_PORT"), 8082, "JAWDAT_API_PORT", min_val=1, max_val=65535)
+    jawdat_api_port = _parse_int_with_default(os.getenv("JAWDAT_API_PORT"), 8089, "JAWDAT_API_PORT", min_val=1, max_val=65535)
     jawdat_api_key = os.getenv("JAWDAT_API_KEY") or None
+
+    # Backup Webhook (shared across all bots)
+    backup_webhook_url = _validate_url(os.getenv("BACKUP_WEBHOOK_URL"), "BACKUP_WEBHOOK_URL")
 
     # -------------------------------------------------------------------------
     # Build Config Object
@@ -592,6 +596,7 @@ def load_config() -> Config:
         moderator_ids=moderator_ids if moderator_ids else None,
         error_webhook_url=_validate_url(os.getenv("AZAB_ERROR_WEBHOOK_URL"), "AZAB_ERROR_WEBHOOK_URL"),
         live_logs_webhook_url=_validate_url(os.getenv("AZAB_LIVE_LOGS_WEBHOOK_URL"), "AZAB_LIVE_LOGS_WEBHOOK_URL"),
+        backup_webhook_url=backup_webhook_url,
         ignored_bot_ids=ignored_bot_ids if ignored_bot_ids else None,
         lockdown_exclude_ids=lockdown_exclude_ids if lockdown_exclude_ids else None,
         link_allowed_user_ids=link_allowed_user_ids if link_allowed_user_ids else None,

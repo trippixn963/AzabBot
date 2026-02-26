@@ -1,8 +1,8 @@
 """
-AzabBot - Database Backup Package
-=================================
+AzabBot - R2 Backup Package
+===========================
 
-Wrapper around unified backup system with AzabBot-specific configuration.
+Hourly backups directly to Cloudflare R2.
 
 Author: حَـــــنَّـــــا
 Server: discord.gg/syria
@@ -10,22 +10,23 @@ Server: discord.gg/syria
 
 from .scheduler import (
     BackupScheduler,
-    create_backup,
-    cleanup_old_backups,
-    list_backups,
-    get_latest_backup,
-    BACKUP_DIR,
     DATABASE_PATH,
-    BACKUP_RETENTION_DAYS,
+    BOT_NAME,
+    R2_BUCKET,
+    RETENTION_HOURS,
+)
+
+from .base import (
+    R2BackupScheduler,
+    send_backup_notification,
 )
 
 __all__ = [
-    "create_backup",
-    "cleanup_old_backups",
-    "list_backups",
-    "get_latest_backup",
     "BackupScheduler",
-    "BACKUP_DIR",
+    "R2BackupScheduler",
+    "send_backup_notification",
     "DATABASE_PATH",
-    "BACKUP_RETENTION_DAYS",
+    "BOT_NAME",
+    "R2_BUCKET",
+    "RETENTION_HOURS",
 ]
