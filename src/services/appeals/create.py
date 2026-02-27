@@ -85,13 +85,36 @@ class CreateMixin:
             action_type = case.get("action_type", "unknown")
 
             # Store in database (only store metadata, not the actual attachment data)
-            # No Discord forum thread - appeals are handled via web dashboard only
             attachment_metadata = None
             if attachments:
                 attachment_metadata = [
                     {"name": att["name"], "type": att["type"]}
                     for att in attachments
                 ]
+
+            # Mute appeals create a ticket, ban appeals are web-only
+            thread_id = None
+            appeal_mode = "Web Dashboard"
+
+            if action_type == "mute" and hasattr(self.bot, "ticket_service"):
+                # Create a mute appeal ticket
+                guild = self.bot.get_guild(case["guild_id"])
+                if guild:
+                    member = guild.get_member(user.id)
+                    if member:
+                        success, msg, ticket_id = await self.bot.ticket_service.create_ticket(
+                            user=member,
+                            category="appeal",
+                            subject=f"Mute Appeal - Case {case_id}",
+                            description=reason,
+                            case_id=case_id,
+                        )
+                        if success and ticket_id:
+                            # Get the thread_id from the ticket
+                            ticket_data = self.db.get_ticket(ticket_id)
+                            if ticket_data:
+                                thread_id = ticket_data.get("thread_id")
+                                appeal_mode = "Ticket"
 
             self.db.create_appeal(
                 appeal_id=appeal_id,
@@ -102,7 +125,7 @@ class CreateMixin:
                 reason=reason,
                 email=email,
                 attachments=attachment_metadata,
-                thread_id=None,  # No Discord thread for ban appeals
+                thread_id=thread_id,
             )
 
             # Log
@@ -114,7 +137,7 @@ class CreateMixin:
                 ("ID", str(user.id)),
                 ("Action", action_type.title()),
                 ("Prior Appeals", f"{prior_appeals} this week"),
-                ("Mode", "Web Dashboard"),
+                ("Mode", appeal_mode),
             ], emoji="📝")
 
             # Log to server logs

@@ -173,24 +173,10 @@ class SnipeCmdMixin:
                 att_names = [att.get("filename", "file") for att in attachment_urls[:5]]
                 lines.append(f"📎 {', '.join(att_names)}")
 
-            # Try to get actual stickers to send
-            stickers_to_send: List[discord.GuildSticker] = []
-            if sticker_urls and interaction.guild:
-                for sticker_data in sticker_urls[:1]:  # Discord only allows 1 sticker per message
-                    sticker_id = sticker_data.get("id")
-                    if sticker_id:
-                        try:
-                            sticker = await interaction.guild.fetch_sticker(sticker_id)
-                            if sticker:
-                                stickers_to_send.append(sticker)
-                        except (discord.NotFound, discord.HTTPException):
-                            # Sticker not found or not accessible, show name instead
-                            pass
-
-                # If we couldn't get the sticker, show the name
-                if not stickers_to_send:
-                    sticker_names = [s.get("name", "sticker") for s in sticker_urls[:3]]
-                    lines.append(f"🎨 Stickers: {', '.join(sticker_names)}")
+            # Show sticker names (can't send actual stickers via interaction responses)
+            if sticker_urls:
+                sticker_names = [s.get("name", "sticker") for s in sticker_urls[:3]]
+                lines.append(f"🎨 Stickers: {', '.join(sticker_names)}")
 
             # Relative timestamp footer
             deleted_timestamp = int(deleted_at)
@@ -203,13 +189,10 @@ class SnipeCmdMixin:
             # and the bot (with admin) would then actually ping everyone
             no_mentions = discord.AllowedMentions.none()
 
-            # Send public message with files and/or stickers
-            if files_to_send and stickers_to_send:
-                await interaction.response.send_message(content=message_content, files=files_to_send, stickers=stickers_to_send, allowed_mentions=no_mentions)
-            elif files_to_send:
+            # Send public message with files
+            # Note: stickers parameter not supported in interaction responses
+            if files_to_send:
                 await interaction.response.send_message(content=message_content, files=files_to_send, allowed_mentions=no_mentions)
-            elif stickers_to_send:
-                await interaction.response.send_message(content=message_content, stickers=stickers_to_send, allowed_mentions=no_mentions)
             else:
                 await interaction.response.send_message(content=message_content, allowed_mentions=no_mentions)
 

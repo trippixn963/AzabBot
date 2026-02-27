@@ -61,19 +61,28 @@ def _get_timezone(timezone_name: Optional[str] = None) -> ZoneInfo:
         return ZoneInfo(DEFAULT_TIMEZONE)
 
 
-def _check_database_integrity(db_path: Path) -> tuple[bool, str]:
-    """Check SQLite database integrity before backup."""
-    try:
-        conn = sqlite3.connect(str(db_path), timeout=30)
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA integrity_check;")
-        result = cursor.fetchone()[0]
-        conn.close()
-        return (True, "ok") if result == "ok" else (False, result)
-    except sqlite3.DatabaseError as e:
-        return False, f"Database error: {e}"
-    except Exception as e:
-        return False, f"Check failed: {e}"
+def _check_database_integrity(db_path: Path, max_retries: int = 3) -> tuple[bool, str]:
+    """Check SQLite database integrity before backup with retry for transient errors."""
+    import time as time_module
+    transient_errors = ("disk I/O error", "database is locked", "unable to open")
+
+    for attempt in range(max_retries):
+        try:
+            conn = sqlite3.connect(str(db_path), timeout=30)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA integrity_check;")
+            result = cursor.fetchone()[0]
+            conn.close()
+            return (True, "ok") if result == "ok" else (False, result)
+        except sqlite3.DatabaseError as e:
+            error_str = str(e).lower()
+            if any(te in error_str for te in transient_errors) and attempt < max_retries - 1:
+                time_module.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                continue
+            return False, f"Database error: {e}"
+        except Exception as e:
+            return False, f"Check failed: {e}"
+    return False, "Max retries exceeded"
 
 
 def _format_tree_log(

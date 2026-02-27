@@ -8,6 +8,7 @@ Author: حَـــــنَّـــــا
 Server: discord.gg/syria
 """
 
+import asyncio
 import json
 import os
 from dataclasses import dataclass
@@ -26,6 +27,11 @@ from .constants import (
     TEMPERATURE,
     USER_PROMPT_TEMPLATE,
 )
+
+
+# Rate limit retry config
+MAX_RETRIES = 3
+BASE_RETRY_DELAY = 1.0  # seconds
 
 
 @dataclass
@@ -124,26 +130,66 @@ class ContentClassifier:
 
             logger.debug("OpenAI API Call", [("Chars", str(len(content)))])
 
-            async with http_session.post(
-                "https://api.openai.com/v1/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=WEBHOOK_TIMEOUT,  # 10s - OpenAI can be slow
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    logger.error("OpenAI API Error", [
-                        ("Status", str(response.status)),
-                        ("Error", error_text[:100]),
-                    ])
-                    return ClassificationResult(
-                        violation=False,
-                        confidence=0.0,
-                        reason="API error",
-                        error=f"HTTP {response.status}",
-                    )
+            # Retry loop for rate limits
+            data = None
+            last_error = None
+            for attempt in range(MAX_RETRIES):
+                try:
+                    async with http_session.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        json=payload,
+                        headers=headers,
+                        timeout=WEBHOOK_TIMEOUT,  # 10s - OpenAI can be slow
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            break
+                        elif response.status == 429:
+                            # Rate limited - get retry delay from header or use exponential backoff
+                            retry_after = response.headers.get("Retry-After")
+                            if retry_after:
+                                delay = float(retry_after)
+                            else:
+                                delay = BASE_RETRY_DELAY * (2 ** attempt)
 
-                data = await response.json()
+                            if attempt < MAX_RETRIES - 1:
+                                logger.debug("OpenAI Rate Limited", [
+                                    ("Attempt", f"{attempt + 1}/{MAX_RETRIES}"),
+                                    ("Retry After", f"{delay:.1f}s"),
+                                ])
+                                await asyncio.sleep(delay)
+                                continue
+                            else:
+                                error_text = await response.text()
+                                logger.warning("OpenAI Rate Limit Exhausted", [
+                                    ("Attempts", str(MAX_RETRIES)),
+                                    ("Error", error_text[:100]),
+                                ])
+                                last_error = f"Rate limited after {MAX_RETRIES} retries"
+                        else:
+                            error_text = await response.text()
+                            logger.error("OpenAI API Error", [
+                                ("Status", str(response.status)),
+                                ("Error", error_text[:100]),
+                            ])
+                            last_error = f"HTTP {response.status}"
+                            break  # Don't retry non-429 errors
+                except asyncio.TimeoutError:
+                    if attempt < MAX_RETRIES - 1:
+                        logger.debug("OpenAI Timeout, Retrying", [
+                            ("Attempt", f"{attempt + 1}/{MAX_RETRIES}"),
+                        ])
+                        await asyncio.sleep(BASE_RETRY_DELAY)
+                        continue
+                    last_error = "Timeout after retries"
+
+            if data is None:
+                return ClassificationResult(
+                    violation=False,
+                    confidence=0.0,
+                    reason="API error",
+                    error=last_error or "Unknown error",
+                )
 
             # Parse response
             response_text = data["choices"][0]["message"]["content"].strip()
@@ -192,16 +238,6 @@ class ContentClassifier:
                 reason="Network error",
                 error=str(e),
             )
-        except asyncio.TimeoutError:
-            logger.warning("Classification Timeout", [
-                ("Timeout", "10s"),
-            ])
-            return ClassificationResult(
-                violation=False,
-                confidence=0.0,
-                reason="Request timeout",
-                error="Timeout",
-            )
         except KeyError as e:
             logger.error("Classification Response Format Error", [
                 ("Missing Key", str(e)),
@@ -223,10 +259,6 @@ class ContentClassifier:
                 reason="Unknown error",
                 error=str(e),
             )
-
-
-# Required for asyncio.TimeoutError
-import asyncio
 
 
 # =============================================================================

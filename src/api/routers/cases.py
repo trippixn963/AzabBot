@@ -17,7 +17,7 @@ import discord
 from fastapi import APIRouter, Depends, Query
 
 from src.core.logger import logger
-from src.core.config import NY_TZ
+from src.core.config import NY_TZ, has_mod_role
 from src.api.dependencies import get_bot, require_auth, get_pagination, PaginationParams
 from src.api.models.auth import TokenPayload
 from src.api.models.cases import (
@@ -235,7 +235,17 @@ async def get_case_stats(
     )
     action_breakdown = [{"name": row["action"], "count": row["cnt"]} for row in action_rows]
 
-    # Top 3 moderators (exclude bot's own actions - automod)
+    # Get current mod IDs from main guild
+    current_mod_ids = set()
+    main_guild = None
+    if bot and hasattr(bot, 'config') and bot.config.main_guild_id:
+        main_guild = bot.get_guild(bot.config.main_guild_id)
+        if main_guild:
+            for m in main_guild.members:
+                if has_mod_role(m):
+                    current_mod_ids.add(m.id)
+
+    # Top 3 moderators (only current mods, exclude bot's own actions)
     bot_user_id = bot.user.id if bot and bot.user else None
     mod_rows = db.fetchall(
         """
@@ -244,25 +254,29 @@ async def get_case_stats(
         WHERE moderator_id != ?
         GROUP BY moderator_id
         ORDER BY total_cases DESC
-        LIMIT 3
         """,
         (bot_user_id or 0,)
     )
+
+    # Filter to only current mods and take top 3
+    mod_rows = [row for row in mod_rows if row["moderator_id"] in current_mod_ids][:3]
 
     # Fetch moderator info
     mod_ids = [row["moderator_id"] for row in mod_rows]
     mod_info = await batch_fetch_users(bot, mod_ids) if mod_ids else {}
 
-    # Check online status
-    guild = bot.guilds[0] if bot and bot.guilds else None
+    # Get mods guild for online status
+    mods_guild = None
+    if bot and hasattr(bot, 'config') and bot.config.mod_server_id:
+        mods_guild = bot.get_guild(bot.config.mod_server_id)
 
     top_moderators = []
     for row in mod_rows:
         mod_id = row["moderator_id"]
         name, avatar = mod_info.get(mod_id, (None, None))
         is_online = False
-        if guild:
-            member = guild.get_member(mod_id)
+        if mods_guild:
+            member = mods_guild.get_member(mod_id)
             if member and member.status != discord.Status.offline:
                 is_online = True
         top_moderators.append({

@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 from fastapi import APIRouter, Depends, Query, Request
 
 from src.core.logger import logger
-from src.core.config import NY_TZ
+from src.core.config import NY_TZ, has_mod_role
 from src.api.dependencies import get_bot, require_auth, get_pagination, PaginationParams
 from src.api.models.auth import TokenPayload
 from src.api.models.tickets import (
@@ -387,8 +387,18 @@ async def get_ticket_stats(
     """)
     category_breakdown = [{"name": row["cat"], "count": row["cnt"]} for row in category_rows]
 
-    # Query 4: Top 3 moderators
-    mod_rows = db.fetchall("""
+    # Get current mod IDs from main guild
+    current_mod_ids = set()
+    main_guild = None
+    if hasattr(bot, 'config') and bot.config.main_guild_id:
+        main_guild = bot.get_guild(bot.config.main_guild_id)
+        if main_guild:
+            for m in main_guild.members:
+                if has_mod_role(m):
+                    current_mod_ids.add(m.id)
+
+    # Query 4: Top 3 moderators (all, then filter by current mods)
+    all_mod_rows = db.fetchall("""
         SELECT
             claimed_by,
             COUNT(*) as total_claimed,
@@ -399,8 +409,10 @@ async def get_ticket_stats(
         WHERE claimed_by IS NOT NULL
         GROUP BY claimed_by
         ORDER BY total_closed DESC
-        LIMIT 3
     """)
+
+    # Filter to only current mods and take top 3
+    mod_rows = [row for row in all_mod_rows if row["claimed_by"] in current_mod_ids][:3]
 
     # Query 5: All moderator categories
     mod_ids = [row["claimed_by"] for row in mod_rows]
@@ -431,20 +443,20 @@ async def get_ticket_stats(
     # Prefetch user info for moderators
     await user_cache.prefetch(mod_ids)
 
-    # Get guild for online status (using correct config attribute)
-    guild = None
-    if hasattr(bot, 'config') and bot.config.main_guild_id:
-        guild = bot.get_guild(bot.config.main_guild_id)
+    # Get mods guild for online status
+    mods_guild = None
+    if hasattr(bot, 'config') and bot.config.mod_server_id:
+        mods_guild = bot.get_guild(bot.config.mod_server_id)
 
     top_moderators = []
     for row in mod_rows:
         user_id = row["claimed_by"]
         user_info = await user_cache.get(user_id)
 
-        # Check online status
+        # Check online status from mods guild
         is_online = False
-        if guild:
-            member = guild.get_member(user_id)
+        if mods_guild:
+            member = mods_guild.get_member(user_id)
             if member:
                 is_online = member.status in (discord.Status.online, discord.Status.idle, discord.Status.dnd)
 

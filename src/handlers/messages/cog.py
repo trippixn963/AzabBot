@@ -45,7 +45,15 @@ class MessageEvents(HelpersMixin, commands.Cog):
         self._ping_lock = asyncio.Lock()
 
         # GIF domains to filter (when user can't embed)
-        self._gif_domains: List[str] = ["tenor.com", "giphy.com", "gfycat.com"]
+        self._gif_domains: List[str] = [
+            "tenor.com",
+            "giphy.com",
+            "gfycat.com",
+            "imgur.com/a/",  # imgur albums often contain gifs
+            "i.imgur.com",   # direct imgur images/gifs
+            "media.discordapp.net",
+            "cdn.discordapp.com",
+        ]
 
     # -------------------------------------------------------------------------
     # GIF Link Filter
@@ -75,7 +83,27 @@ class MessageEvents(HelpersMixin, commands.Cog):
         if not content:
             return False
 
-        # Check user permissions (fast checks first)
+        # Check for GIF links FIRST (fast string check before role lookups)
+        content_lower: str = content.lower()
+        gif_reason: str | None = None
+
+        # Check for known GIF domains
+        for domain in self._gif_domains:
+            if domain in content_lower:
+                gif_reason = f"domain:{domain}"
+                break
+
+        # Check for .gif extension in URLs (catches any GIF link)
+        if not gif_reason and ".gif" in content_lower:
+            # Make sure it's in a URL context (has http or starts with domain pattern)
+            if "http" in content_lower or "www." in content_lower:
+                gif_reason = "extension:.gif"
+
+        # No GIF link found - nothing to filter
+        if not gif_reason:
+            return False
+
+        # GIF link found - now check if user is allowed to post it
         has_forbid_embeds: bool = any(
             r.name == "Forbid: Embed Links" for r in author.roles
         )
@@ -83,21 +111,20 @@ class MessageEvents(HelpersMixin, commands.Cog):
         # Check level 5 role - default to True if not configured (only filter forbid users)
         has_level_5: bool = True
         if self.config.gif_permission_role_id is not None:
-            has_level_5 = author.get_role(self.config.gif_permission_role_id) is not None
+            role = author.get_role(self.config.gif_permission_role_id)
+            has_level_5 = role is not None
+
+        # Debug logging to trace filter decisions
+        logger.debug("GIF Filter Check", [
+            ("User", f"{author.name} ({author.id})"),
+            ("Match", gif_reason),
+            ("Has Level 5", str(has_level_5)),
+            ("Has Forbid Embeds", str(has_forbid_embeds)),
+            ("Role ID Config", str(self.config.gif_permission_role_id)),
+        ])
 
         # User can embed if they have level 5 AND don't have forbid embeds
         if has_level_5 and not has_forbid_embeds:
-            return False
-
-        # Check for GIF domain links
-        content_lower: str = content.lower()
-        matched_domain: str | None = None
-        for domain in self._gif_domains:
-            if domain in content_lower:
-                matched_domain = domain
-                break
-
-        if not matched_domain:
             return False
 
         # Determine filter reason
@@ -116,8 +143,8 @@ class MessageEvents(HelpersMixin, commands.Cog):
             logger.tree("GIF LINK DELETED", [
                 ("User", f"{author.name} ({author.id})"),
                 ("Channel", f"#{getattr(message.channel, 'name', 'Unknown')}"),
-                ("Domain", matched_domain),
-                ("Reason", filter_reason),
+                ("Match", gif_reason),
+                ("Filter Reason", filter_reason),
             ], emoji="🖼️")
 
             return True

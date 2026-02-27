@@ -15,7 +15,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from src.core.logger import logger
-from src.core.config import NY_TZ, get_config
+from src.core.config import NY_TZ, get_config, has_mod_role
 from src.api.dependencies import get_bot
 from src.api.models.stats import PublicStatsResponse
 from src.api.utils.discord import batch_fetch_users, format_relative_time
@@ -163,8 +163,18 @@ async def get_public_stats(
         """
     )
 
-    # Moderator leaderboard
-    mods_rows = db.fetchall(
+    # Get current mod IDs from main guild
+    current_mod_ids = set()
+    main_guild = None
+    if bot and hasattr(bot, 'config') and bot.config.main_guild_id:
+        main_guild = bot.get_guild(bot.config.main_guild_id)
+        if main_guild:
+            for m in main_guild.members:
+                if has_mod_role(m):
+                    current_mod_ids.add(m.id)
+
+    # Moderator leaderboard (all, then filter by current mods)
+    all_mods_rows = db.fetchall(
         """
         SELECT
             moderator_id,
@@ -175,9 +185,11 @@ async def get_public_stats(
         FROM cases
         GROUP BY moderator_id
         ORDER BY actions DESC
-        LIMIT 20
         """
     )
+
+    # Filter to only current mods
+    mods_rows = [row for row in all_mods_rows if row["moderator_id"] in current_mod_ids][:20]
 
     # Recent actions (last 10)
     recent_rows = db.fetchall(

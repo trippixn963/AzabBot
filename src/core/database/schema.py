@@ -675,6 +675,47 @@ class SchemaMixin:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE appeals ADD COLUMN attachments TEXT")
 
+        # Migration: Make thread_id nullable (was NOT NULL in older schema)
+        # SQLite doesn't support ALTER COLUMN, so recreate table
+        cursor.execute("PRAGMA table_info(appeals)")
+        columns = cursor.fetchall()
+        thread_col = next((c for c in columns if c[1] == "thread_id"), None)
+        if thread_col and thread_col[3] == 1:  # notnull=1 means NOT NULL
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS appeals_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    appeal_id TEXT UNIQUE NOT NULL,
+                    case_id TEXT NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    guild_id INTEGER NOT NULL,
+                    thread_id INTEGER,
+                    action_type TEXT NOT NULL,
+                    reason TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created_at REAL NOT NULL,
+                    resolved_at REAL,
+                    resolved_by INTEGER,
+                    resolution TEXT,
+                    resolution_reason TEXT,
+                    email TEXT,
+                    attachments TEXT
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO appeals_new
+                SELECT id, appeal_id, case_id, user_id, guild_id, thread_id,
+                       action_type, reason, status, created_at, resolved_at,
+                       resolved_by, resolution, resolution_reason, email, attachments
+                FROM appeals
+            """)
+            cursor.execute("DROP TABLE appeals")
+            cursor.execute("ALTER TABLE appeals_new RENAME TO appeals")
+            # Recreate indexes
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_appeals_case ON appeals(case_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_appeals_user ON appeals(user_id, guild_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_appeals_status ON appeals(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_appeals_guild_stats ON appeals(guild_id, status, resolution)")
+
         # -----------------------------------------------------------------
         # Linked Messages Table
         # -----------------------------------------------------------------

@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 from src.core.logger import logger
 from src.core.database import get_db
 from src.core.constants import SECONDS_PER_DAY
+from src.core.config import has_mod_role
 
 NY_TZ = ZoneInfo("America/New_York")
 
@@ -36,8 +37,8 @@ def _get_previous_period_start(period: str, now: float) -> float:
     return now - (2 * offset)
 
 
-def _get_rankings_for_period(db: Any, start_time: float, guild_member_ids: set) -> Dict[int, int]:
-    """Get mod rankings for a specific time period."""
+def _get_rankings_for_period(db: Any, start_time: float, current_mod_ids: set) -> Dict[int, int]:
+    """Get mod rankings for a specific time period (only users with mod role)."""
     rows = db.fetchall(
         """
         SELECT
@@ -53,8 +54,8 @@ def _get_rankings_for_period(db: Any, start_time: float, guild_member_ids: set) 
         """,
         (start_time,)
     )
-    # Filter by guild members and build ranking map
-    filtered = [row for row in rows if row["moderator_id"] in guild_member_ids]
+    # Filter by current mods and build ranking map
+    filtered = [row for row in rows if row["moderator_id"] in current_mod_ids]
     return {row["moderator_id"]: idx + 1 for idx, row in enumerate(filtered)}
 
 
@@ -74,23 +75,30 @@ async def get_leaderboard_data(
     db = get_db()
     now = time.time()
 
-    # Get ops/staff guild - REQUIRED for member filtering and online status
-    guild = None
-    guild_member_ids = set()
+    # Get main guild - REQUIRED for mod role checking
+    main_guild = None
+    current_mod_ids = set()
+    if bot and hasattr(bot, 'config') and bot.config.main_guild_id:
+        main_guild = bot.get_guild(bot.config.main_guild_id)
+        if main_guild:
+            # Check mod role in MAIN guild (where mod roles are assigned)
+            for m in main_guild.members:
+                if has_mod_role(m):
+                    current_mod_ids.add(m.id)
+
+    # Get ops/staff guild - for online status only
+    mods_guild = None
     online_members = set()
     if bot and hasattr(bot, 'config') and bot.config.mod_server_id:
-        guild = bot.get_guild(bot.config.mod_server_id)
-        if guild:
-            # Use cached members (fast) - cache is kept fresh by Discord gateway events
-            for m in guild.members:
-                guild_member_ids.add(m.id)
-                # Check Discord presence (online, idle, dnd = online; offline = offline)
+        mods_guild = bot.get_guild(bot.config.mod_server_id)
+        if mods_guild:
+            for m in mods_guild.members:
                 if m.status != discord.Status.offline:
                     online_members.add(m.id)
 
-    # If no guild, return empty (only track staff server members)
-    if not guild:
-        logger.warning("Leaderboard", [("Error", "Mods guild not found")])
+    # If no main guild, return empty
+    if not main_guild:
+        logger.warning("Leaderboard", [("Error", "Main guild not found")])
         return []
 
     # Calculate time range
@@ -101,7 +109,7 @@ async def get_leaderboard_data(
     prev_start = _get_previous_period_start(period, now)
     prev_rankings = {}
     if prev_start > 0:
-        prev_rankings = _get_rankings_for_period(db, prev_start, guild_member_ids)
+        prev_rankings = _get_rankings_for_period(db, prev_start, current_mod_ids)
 
     # Get moderator stats with scoring (period-filtered)
     all_rows = db.fetchall(
@@ -125,14 +133,8 @@ async def get_leaderboard_data(
         (start_time,)
     )
 
-    # STRICT filter: only include mods who are currently in ops server
-    # Double-check each mod with guild.get_member() for accuracy
-    filtered_rows = []
-    for row in all_rows:
-        mod_id = row["moderator_id"]
-        if mod_id in guild_member_ids and guild.get_member(mod_id) is not None:
-            filtered_rows.append(row)
-    all_rows = filtered_rows
+    # STRICT filter: only include users who currently have mod role
+    all_rows = [row for row in all_rows if row["moderator_id"] in current_mod_ids]
 
     # Limit results
     page_rows = all_rows[:per_page]

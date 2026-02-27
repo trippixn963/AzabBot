@@ -364,7 +364,7 @@ class MutesMixin:
         self,
         user_id: int,
         guild_id: int,
-    ) -> Optional[sqlite3.Row]:
+    ) -> Optional[Dict[str, Any]]:
         """
         Get active mute for a user in a guild.
 
@@ -373,13 +373,14 @@ class MutesMixin:
             guild_id: Guild ID.
 
         Returns:
-            Mute record row or None if not muted.
+            Mute record dict or None if not muted.
         """
-        return self.fetchone(
+        row = self.fetchone(
             """SELECT * FROM active_mutes
                WHERE user_id = ? AND guild_id = ? AND unmuted = 0""",
             (user_id, guild_id)
         )
+        return dict(row) if row else None
 
     def is_user_muted(self: "DatabaseManager", user_id: int, guild_id: int) -> bool:
         """

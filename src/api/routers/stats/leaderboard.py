@@ -16,7 +16,7 @@ import discord
 from fastapi import APIRouter, Depends, Query
 
 from src.core.logger import logger
-from src.core.config import NY_TZ
+from src.core.config import NY_TZ, has_mod_role
 from src.api.dependencies import get_bot, get_pagination, PaginationParams
 from src.api.models.base import PaginatedResponse, ModeratorBrief
 from src.api.models.stats import LeaderboardEntry, UserSummaryResponse
@@ -75,10 +75,11 @@ async def get_leaderboard(
         (start_time,)
     )
 
-    # Filter to only include moderators who are in the ops server
+    # Filter to only include users who currently have mod role
     if guild:
-        guild_member_ids = {m.id for m in guild.members}
-        all_rows = [row for row in all_rows if row["moderator_id"] in guild_member_ids]
+        # Build set of user IDs who currently have mod access
+        current_mod_ids = {m.id for m in guild.members if has_mod_role(m)}
+        all_rows = [row for row in all_rows if row["moderator_id"] in current_mod_ids]
 
     total = len(all_rows)
 
