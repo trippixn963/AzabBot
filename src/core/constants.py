@@ -10,6 +10,14 @@ Server: discord.gg/syria
 """
 
 # =============================================================================
+# Health Check
+# =============================================================================
+
+HEALTH_CHECK_INTERVAL = 30      # Seconds between health checks
+HEALTH_MAX_FAILURES = 5         # Consecutive failures before forced restart
+
+
+# =============================================================================
 # Time Constants (in seconds)
 # =============================================================================
 
@@ -38,7 +46,7 @@ MAX_ATTACHMENT_CACHE_SIZE = 8 * BYTES_PER_MB  # 8 MB max attachment cache
 import os
 
 # API port (serves /health and /api/azab/*)
-# NOTE: OthmanBot=8080, AzabBot=8081, JawdatBot=8082, TahaBot=8083, SyriaBot=8084, TrippixnBot=8085
+# NOTE: OthmanBot=8085, AzabBot=8081, JawdatBot=8089, TahaBot=8083, SyriaBot=8088, TrippixnBot=8086
 API_PORT = int(os.getenv("AZAB_API_PORT", "8081"))
 
 # =============================================================================

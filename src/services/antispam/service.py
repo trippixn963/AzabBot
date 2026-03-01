@@ -885,8 +885,8 @@ class AntiSpamService(ReputationMixin, RaidDetectionMixin, SpamHandlerMixin):
         if not spam_type and is_zalgo(content):
             spam_type = "zalgo"
 
-        # 3. Invite spam
-        if not spam_type and await self._check_invite_spam(content, state, now, guild_id):
+        # 3. Invite spam (skip for mods server)
+        if not spam_type and guild_id != self.config.mod_server_id and await self._check_invite_spam(content, state, now, guild_id):
             spam_type = "invite_spam"
 
         # 4. Message flood

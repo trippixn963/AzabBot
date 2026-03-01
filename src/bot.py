@@ -27,6 +27,8 @@ from src.utils.discord_rate_limit import log_http_error
 from src.utils.http import http_session
 from src.core.constants import (
     GUILD_FETCH_TIMEOUT,
+    HEALTH_CHECK_INTERVAL,
+    HEALTH_MAX_FAILURES,
     SECONDS_PER_HOUR,
     QUERY_LIMIT_LARGE,
     EDITSNIPE_CACHE_TTL,
@@ -120,6 +122,10 @@ class AzabBot(commands.Bot):
         self.maintenance = None
         self.prisoner_service = None
         self.backup_scheduler = None
+
+        # Health check watchdog
+        self._health_task: Optional[asyncio.Task] = None
+        self._health_failures: int = 0
 
         # Message history tracking (LRU cache with limit)
         self._last_messages_lock = asyncio.Lock()
@@ -571,6 +577,9 @@ class AzabBot(commands.Bot):
                 ("Content Moderation", "✓ Enabled" if self.content_moderation and self.content_moderation.enabled else "✗ Disabled"),
             ], emoji="🚀")
 
+            # Start health check watchdog
+            self._health_task = asyncio.create_task(self._health_check_loop())
+
         except Exception as e:
             logger.error("Service Initialization Failed", [
                 ("Error", str(e)),
@@ -979,12 +988,64 @@ class AzabBot(commands.Bot):
             log_http_error(e, "Auto-Hide Channel", [("Channel", f"#{channel.name}")])
 
     # =========================================================================
+    # Health Check Watchdog
+    # =========================================================================
+
+    async def _health_check_loop(self) -> None:
+        """Monitor Discord connection health. Exit if connection is dead."""
+        logger.tree("Health Monitor Started", [
+            ("Interval", f"{HEALTH_CHECK_INTERVAL}s"),
+            ("Max Failures", str(HEALTH_MAX_FAILURES)),
+        ], emoji="💓")
+
+        await asyncio.sleep(HEALTH_CHECK_INTERVAL)
+
+        while not self.is_closed():
+            try:
+                ws_alive: bool = self.ws is not None and not self.ws.socket.closed
+                latency_valid: bool = self.latency is not None and self.latency > 0
+
+                if ws_alive and latency_valid:
+                    self._health_failures = 0
+                else:
+                    self._health_failures += 1
+                    logger.tree("Health Check Failed", [
+                        ("Failures", f"{self._health_failures}/{HEALTH_MAX_FAILURES}"),
+                        ("WS Alive", str(ws_alive)),
+                        ("Latency", str(self.latency)),
+                    ], emoji="⚠️")
+
+                    if self._health_failures >= HEALTH_MAX_FAILURES:
+                        logger.tree("Connection Dead - Restarting", [
+                            ("Failures", str(self._health_failures)),
+                            ("Action", "Closing bot for systemd restart"),
+                        ], emoji="💀")
+                        await self.close()
+                        return
+
+            except Exception as e:
+                self._health_failures += 1
+                logger.error_tree("Health Check Error", e, [
+                    ("Failures", f"{self._health_failures}/{HEALTH_MAX_FAILURES}"),
+                ])
+
+            await asyncio.sleep(HEALTH_CHECK_INTERVAL)
+
+    # =========================================================================
     # Shutdown
     # =========================================================================
 
     async def shutdown(self) -> None:
         """Graceful shutdown with proper cleanup."""
         logger.info("Initiating Graceful Shutdown")
+
+        # Cancel health check first to prevent restart loop
+        if self._health_task and not self._health_task.done():
+            self._health_task.cancel()
+            try:
+                await self._health_task
+            except asyncio.CancelledError:
+                pass
 
         if self.mute_scheduler:
             await self.mute_scheduler.stop()
