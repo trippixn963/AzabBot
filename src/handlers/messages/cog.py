@@ -44,15 +44,12 @@ class MessageEvents(HelpersMixin, commands.Cog):
         self._prisoner_warning_times: Dict[int, float] = {}
         self._ping_lock = asyncio.Lock()
 
-        # GIF domains to filter (when user can't embed)
+        # GIF-specific domains (tenor/giphy/gfycat are exclusively GIF platforms)
+        # Other GIF links (e.g. imgur .gif URLs) are caught by the .gif extension check
         self._gif_domains: List[str] = [
             "tenor.com",
             "giphy.com",
             "gfycat.com",
-            "imgur.com/a/",  # imgur albums often contain gifs
-            "i.imgur.com",   # direct imgur images/gifs
-            "media.discordapp.net",
-            "cdn.discordapp.com",
         ]
 
     # -------------------------------------------------------------------------
@@ -104,27 +101,32 @@ class MessageEvents(HelpersMixin, commands.Cog):
             return False
 
         # GIF link found - now check if user is allowed to post it
+
+        # Skip filter for owner and moderators
+        if author.id == self.config.owner_id or author.id in self.config.moderator_ids:
+            return False
+        if self.config.moderation_role_id and author.get_role(self.config.moderation_role_id):
+            return False
+
         has_forbid_embeds: bool = any(
             r.name == "Forbid: Embed Links" for r in author.roles
         )
 
-        # Check level 5 role - default to True if not configured (only filter forbid users)
-        has_level_5: bool = True
-        if self.config.gif_permission_role_id is not None:
-            role = author.get_role(self.config.gif_permission_role_id)
-            has_level_5 = role is not None
+        # Check level 5+ roles - default to True if not configured (only filter forbid users)
+        has_level_role: bool = True
+        if self.config.gif_permission_role_ids:
+            has_level_role = any(author.get_role(rid) for rid in self.config.gif_permission_role_ids)
 
         # Debug logging to trace filter decisions
         logger.debug("GIF Filter Check", [
             ("User", f"{author.name} ({author.id})"),
             ("Match", gif_reason),
-            ("Has Level 5", str(has_level_5)),
+            ("Has Level Role", str(has_level_role)),
             ("Has Forbid Embeds", str(has_forbid_embeds)),
-            ("Role ID Config", str(self.config.gif_permission_role_id)),
         ])
 
-        # User can embed if they have level 5 AND don't have forbid embeds
-        if has_level_5 and not has_forbid_embeds:
+        # User can embed if they have a level role AND don't have forbid embeds
+        if has_level_role and not has_forbid_embeds:
             return False
 
         # Determine filter reason
