@@ -69,7 +69,7 @@ class ForumLogsMixin:
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
-        await self._send_log(LogCategory.CHANNEL_CHANGES, embed)
+        await self._send_log(LogCategory.CHANNELS, embed)
 
     async def log_forum_tag_delete(
         self: "LoggingService",
@@ -87,7 +87,7 @@ class ForumLogsMixin:
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
-        await self._send_log(LogCategory.CHANNEL_CHANGES, embed)
+        await self._send_log(LogCategory.CHANNELS, embed)
 
     async def log_forum_tag_update(
         self: "LoggingService",
@@ -107,7 +107,7 @@ class ForumLogsMixin:
         if moderator:
             embed.add_field(name="By", value=self._format_user_field(moderator), inline=True)
 
-        await self._send_log(LogCategory.CHANNEL_CHANGES, embed)
+        await self._send_log(LogCategory.CHANNELS, embed)
 
 
 __all__ = ["ForumLogsMixin"]

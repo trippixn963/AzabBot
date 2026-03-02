@@ -355,54 +355,5 @@ class TicketsLogsMixin:
                 ("Reason", "send_log returned None"),
             ])
 
-    async def log_case_transcript(
-        self: "LoggingService",
-        case_id: str,
-        user: discord.User,
-        action_type: str,
-        moderator_id: int,
-        reason: str,
-        created_at: float,
-        approved_by: discord.Member,
-        transcript_url: Optional[str] = None,
-        case_thread_url: Optional[str] = None) -> None:
-        """Log a case transcript when approved."""
-        if not self.enabled:
-            return
-
-        action_emoji = {
-            "mute": "🔇", "ban": "🔨", "warn": "⚠️", "forbid": "🚫",
-            "timeout": "⏰", "unmute": "🔊", "unban": "✅", "unforbid": "✅",
-        }.get(action_type, "📋")
-
-        embed = discord.Embed(
-            title=f"{action_emoji} Case Transcript - {case_id}",
-            color=EmbedColors.SUCCESS
-        )
-
-        self._set_user_thumbnail(embed, user)
-        embed.add_field(name="User", value=f"{user.mention}\n`{user.name}`", inline=True)
-        embed.add_field(name="Action", value=f"`{action_type.title()}`", inline=True)
-        embed.add_field(name="Moderator", value=f"<@{moderator_id}>", inline=True)
-        embed.add_field(name="Reason", value=reason[:200] if len(reason) > 200 else reason, inline=False)
-        embed.add_field(name="Created", value=f"<t:{int(created_at)}:F>", inline=True)
-        embed.add_field(name="Approved By", value=approved_by.mention, inline=True)
-
-        view = discord.ui.View(timeout=None)
-        if transcript_url:
-            view.add_item(discord.ui.Button(
-                label="View Transcript",
-                url=transcript_url,
-                style=discord.ButtonStyle.link,
-                emoji="📜"))
-        if case_thread_url:
-            view.add_item(discord.ui.Button(
-                label="Case Thread",
-                url=case_thread_url,
-                style=discord.ButtonStyle.link,
-                emoji=CASE_EMOJI))
-
-        await self._send_log(LogCategory.TRANSCRIPTS, embed, view=view if view.children else None, user_id=user.id)
-
 
 __all__ = ["TicketsLogsMixin"]

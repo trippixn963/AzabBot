@@ -115,6 +115,31 @@ class LinkApproveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"la
             embed=success_embed,
             view=None)
 
+        # Log to ALLIANCES thread in server logs
+        if hasattr(bot, 'logging_service') and bot.logging_service and bot.logging_service.enabled:
+            try:
+                log_embed = discord.Embed(
+                    title="🔗 Partnership Linked",
+                    color=EmbedColors.BLUE
+                )
+                log_embed.add_field(
+                    name="Moderator",
+                    value=f"{interaction.user.mention}\n`{interaction.user.id}`",
+                    inline=True)
+                log_embed.add_field(
+                    name="Linked Member",
+                    value=f"{member_mention}\n`{self.member_id}`",
+                    inline=True)
+                log_embed.add_field(
+                    name="Message",
+                    value=f"[Jump to Message]({message_url})",
+                    inline=True)
+                await bot.logging_service._send_log(
+                    bot.logging_service.LogCategory.ALLIANCES,
+                    log_embed)
+            except Exception as e:
+                logger.debug("Link Alliance Log Failed", [("Error", str(e)[:50])])
+
 
 class LinkDenyButton(discord.ui.DynamicItem[discord.ui.Button], template=r"ld:(?P<msg>\d+):(?P<mem>\d+)"):
     """Persistent deny button for link confirmation."""
@@ -191,56 +216,6 @@ class LinkConfirmView(discord.ui.View):
         ))
         self.add_item(LinkDenyButton(message.id, member.id))
 
-    async def _log_link_created(self, interaction: discord.Interaction) -> None:
-        """Log link creation to server logs."""
-        if not self.bot.logging_service or not self.bot.logging_service.enabled:
-            return
-
-        try:
-            embed = discord.Embed(
-                title="🔗 Message Linked",
-                color=EmbedColors.BLUE
-            )
-
-            embed.add_field(
-                name="Moderator",
-                value=f"{self.moderator.mention}\n`{self.moderator.id}`",
-                inline=True)
-            embed.add_field(
-                name="Linked Member",
-                value=f"{self.member.mention}\n`{self.member.id}`",
-                inline=True)
-            embed.add_field(
-                name="Channel",
-                value=f"{self.message.channel.mention}",
-                inline=True)
-            embed.add_field(
-                name="Message",
-                value=f"[Jump to Message]({self.message.jump_url})",
-                inline=True)
-
-            if self.is_cross_server:
-                embed.add_field(
-                    name="Cross-Server",
-                    value=f"From {interaction.guild.name} → {self.target_guild.name}",
-                    inline=True)
-
-            # Show message preview if available
-            if self.message.content:
-                preview = self.message.content[:200]
-                if len(self.message.content) > 200:
-                    preview += "..."
-                embed.add_field(
-                    name="Message Preview",
-                    value=f"```{preview}```",
-                    inline=False)
-
-            await self.bot.logging_service._send_log(
-                self.bot.logging_service.LogCategory.ALLIANCES,
-                embed)
-
-        except Exception as e:
-            logger.debug("Link Log Failed", [("Error", str(e)[:50])])
 
 
 __all__ = ["LinkApproveButton", "LinkDenyButton", "LinkConfirmView"]
