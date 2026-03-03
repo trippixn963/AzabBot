@@ -317,6 +317,8 @@ class MessageEvents(HelpersMixin, commands.Cog):
         if (
             message.guild
             and message.content
+            and not message.author.bot
+            and not is_mod_server
             and isinstance(message.author, discord.Member)
         ):
             if await self._check_gif_link_filter(message):
@@ -354,7 +356,12 @@ class MessageEvents(HelpersMixin, commands.Cog):
         # Auto-Mod: External Discord Invite Links
         # Skip: links-allowed channel, management role holders
         # -----------------------------------------------------------------
-        if message.guild and message.content:
+        is_mod_server = (
+            message.guild
+            and self.config.mod_server_id
+            and message.guild.id == self.config.mod_server_id
+        )
+        if message.guild and message.content and not is_mod_server:
             invite_matches = INVITE_PATTERN.findall(message.content)
             if invite_matches:
                 # Check if in links-allowed channel
