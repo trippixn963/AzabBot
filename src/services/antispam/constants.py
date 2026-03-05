@@ -93,6 +93,14 @@ DISCORD_INVITE_PATTERN = re.compile(
     re.IGNORECASE
 )
 
+# Third-party invite/server listing sites
+INVITE_SITE_PATTERN = re.compile(
+    r'(?:https?://)?(?:www\.)?'
+    r'(?:disboard\.org|discord\.me|top\.gg|discordservers\.com|discords\.com)/'
+    r'[^\s]+',
+    re.IGNORECASE
+)
+
 # Whitelisted invite codes (your server's invites)
 WHITELISTED_INVITE_CODES: Set[str] = {
     "syria",  # discord.gg/syria
@@ -471,6 +479,7 @@ __all__ = [
     "INVITE_LIMIT",
     "INVITE_TIME_WINDOW",
     "DISCORD_INVITE_PATTERN",
+    "INVITE_SITE_PATTERN",
     "WHITELISTED_INVITE_CODES",
     # Caps Spam
     "CAPS_PERCENTAGE",

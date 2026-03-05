@@ -25,7 +25,7 @@ from src.utils.snipe_blocker import should_block_snipe, is_snipe_clearer, block_
 from src.utils.discord_rate_limit import log_http_error
 from src.api.services.event_logger import event_logger
 
-from .helpers import HelpersMixin, INVITE_PATTERN
+from .helpers import HelpersMixin, INVITE_PATTERN, INVITE_SITE_PATTERN
 
 if TYPE_CHECKING:
     from src.bot import AzabBot
@@ -363,7 +363,8 @@ class MessageEvents(HelpersMixin, commands.Cog):
         )
         if message.guild and message.content and not is_mod_server:
             invite_matches = INVITE_PATTERN.findall(message.content)
-            if invite_matches:
+            has_invite_site = bool(INVITE_SITE_PATTERN.search(message.content))
+            if invite_matches or has_invite_site:
                 # Check if in links-allowed channel
                 is_links_allowed_channel = (
                     self.config.links_allowed_channel_id

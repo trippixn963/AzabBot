@@ -46,6 +46,14 @@ INVITE_PATTERN = re.compile(
     re.IGNORECASE
 )
 
+# Third-party server listing sites (always treated as external invites)
+INVITE_SITE_PATTERN = re.compile(
+    r'(?:https?://)?(?:www\.)?'
+    r'(?:disboard\.org|discord\.me|top\.gg|discordservers\.com|discords\.com)'
+    r'/[^\s]+',
+    re.IGNORECASE
+)
+
 # Prisoner timeout duration (1 hour) - kept here as it's specific to this handler
 PRISONER_PING_TIMEOUT = timedelta(hours=1)
 
@@ -305,6 +313,10 @@ class HelpersMixin:
         if not message.guild:
             return None
 
+        # Check for third-party invite/listing sites (always external)
+        if INVITE_SITE_PATTERN.search(message.content):
+            return "invite-site"
+
         # Find all invite codes in the message
         matches = INVITE_PATTERN.findall(message.content)
         if not matches:
@@ -523,4 +535,4 @@ class HelpersMixin:
             context="External Invite Auto-Mute DM"))
 
 
-__all__ = ["HelpersMixin", "INVITE_PATTERN"]
+__all__ = ["HelpersMixin", "INVITE_PATTERN", "INVITE_SITE_PATTERN"]

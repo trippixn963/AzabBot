@@ -23,6 +23,7 @@ from .constants import (
     CHAR_REPEAT_LIMIT,
     CRYPTO_WALLET_PATTERN,
     DISCORD_INVITE_PATTERN,
+    INVITE_SITE_PATTERN,
     DUPLICATE_SIMILARITY_THRESHOLD,
     EXEMPT_ARABIC_GREETINGS,
     PHISHING_DOMAINS,
@@ -243,8 +244,17 @@ def is_whitelisted_invite(invite_code: str) -> bool:
     return invite_code.lower() in WHITELISTED_INVITE_CODES
 
 
+def has_invite_site_links(content: str) -> bool:
+    """Check if content contains third-party invite/server listing site links."""
+    return bool(INVITE_SITE_PATTERN.search(content))
+
+
 def has_non_whitelisted_invites(content: str) -> bool:
-    """Check if content contains non-whitelisted invites."""
+    """Check if content contains non-whitelisted invites or invite site links."""
+    # Check third-party invite sites (always blocked)
+    if has_invite_site_links(content):
+        return True
+    # Check standard Discord invites
     invites = extract_invites(content)
     if not invites:
         return False
