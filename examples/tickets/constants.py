@@ -1,0 +1,183 @@
+"""
+AzabBot - Ticket System Constants
+=================================
+
+Categories, colors, timeouts, and configuration for the ticket system.
+
+Author: حَـــــنَّـــــا
+Server: discord.gg/syria
+"""
+
+import discord
+
+from src.core.config import EmbedColors
+from src.core.constants import (
+    EMOJI_ID_TICKET,
+    EMOJI_ID_APPEAL,
+    EMOJI_ID_SUGGESTION,
+    EMOJI_ID_STAFF,
+    EMOJI_ID_TRANSCRIPT,
+    EMOJI_ID_APPROVE,
+    EMOJI_ID_DENY,
+    EMOJI_ID_LOCK,
+    EMOJI_ID_UNLOCK,
+    EMOJI_ID_EXTEND,
+    EMOJI_ID_HISTORY,
+    EMOJI_ID_INFO,
+    EMOJI_ID_TRANSFER,
+    TICKET_CATEGORY_COOLDOWN,
+    AUTO_CLOSE_CHECK_INTERVAL,
+    THREAD_DELETE_DELAY,
+    CLOSE_REQUEST_COOLDOWN,
+)
+
+
+# =============================================================================
+# Emojis
+# =============================================================================
+
+TICKET_EMOJI = discord.PartialEmoji(name="ticket", id=EMOJI_ID_TICKET)
+PARTNERSHIP_EMOJI = discord.PartialEmoji(name="appeal", id=EMOJI_ID_APPEAL)
+SUGGESTION_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon22", id=EMOJI_ID_SUGGESTION)
+STAFF_EMOJI = discord.PartialEmoji(name="discotoolsxyzicon23", id=EMOJI_ID_STAFF)
+TRANSCRIPT_EMOJI = discord.PartialEmoji(name="transcript", id=EMOJI_ID_TRANSCRIPT)
+APPROVE_EMOJI = discord.PartialEmoji(name="approve", id=EMOJI_ID_APPROVE)
+DENY_EMOJI = discord.PartialEmoji(name="deny", id=EMOJI_ID_DENY)
+LOCK_EMOJI = discord.PartialEmoji(name="lock", id=EMOJI_ID_LOCK)
+UNLOCK_EMOJI = discord.PartialEmoji(name="unlock", id=EMOJI_ID_UNLOCK)
+EXTEND_EMOJI = discord.PartialEmoji(name="extend", id=EMOJI_ID_EXTEND)
+HISTORY_EMOJI = discord.PartialEmoji(name="history", id=EMOJI_ID_HISTORY)
+INFO_EMOJI = discord.PartialEmoji(name="info", id=EMOJI_ID_INFO)
+TRANSFER_EMOJI = discord.PartialEmoji(name="transfer", id=EMOJI_ID_TRANSFER)
+
+
+# =============================================================================
+# Categories
+# =============================================================================
+
+VERIFICATION_EMOJI = discord.PartialEmoji(name="approve", id=EMOJI_ID_APPROVE)
+
+TICKET_CATEGORIES = {
+    "support": {
+        "label": "Support",
+        "emoji": TICKET_EMOJI,
+        "description": "Questions, issues, or general help",
+        "color": EmbedColors.GREEN,
+        "fields": [
+            {"label": "What do you need help with?", "placeholder": "Describe your issue in detail...", "style": "long", "required": True},
+        ],
+    },
+    "partnership": {
+        "label": "Partnership",
+        "emoji": PARTNERSHIP_EMOJI,
+        "description": "Business inquiries & collaborations",
+        "color": EmbedColors.GREEN,
+        "fields": [
+            {"label": "Server Name", "placeholder": "Your server name", "style": "short", "required": True},
+            {"label": "Member Count", "placeholder": "e.g. 5,000", "style": "short", "required": True},
+            {"label": "Partnership Details", "placeholder": "Describe your server and what kind of partnership you're looking for...", "style": "long", "required": True},
+        ],
+    },
+    "suggestion": {
+        "label": "Suggestion",
+        "emoji": SUGGESTION_EMOJI,
+        "description": "Ideas & feedback for the server",
+        "color": EmbedColors.GOLD,
+        "fields": [
+            {"label": "Your Suggestion", "placeholder": "Describe your idea in detail...", "style": "long", "required": True},
+            {"label": "Why would this benefit the server?", "placeholder": "Explain the impact...", "style": "long", "required": False},
+        ],
+    },
+    "verification": {
+        "label": "Verification",
+        "emoji": VERIFICATION_EMOJI,
+        "description": "Request the Verified role",
+        "color": EmbedColors.GREEN,
+        "fields": [
+            {"label": "Gender", "placeholder": "Male or Female", "style": "short", "required": True},
+            {"label": "Can you join a voice call?", "placeholder": "Yes or No", "style": "short", "required": True},
+        ],
+    },
+    "appeal": {
+        "label": "Mute Appeal",
+        "emoji": PARTNERSHIP_EMOJI,
+        "description": "Appeal a mute punishment",
+        "color": EmbedColors.GOLD,
+        "hidden": True,
+        "fields": [
+            {"label": "Why should your mute be removed?", "placeholder": "Explain why you believe you should be unmuted...", "style": "long", "required": True},
+            {"label": "Will you follow the rules going forward?", "placeholder": "Yes or No", "style": "short", "required": True},
+        ],
+    },
+}
+
+
+# =============================================================================
+# Status
+# =============================================================================
+
+STATUS_EMOJI = {
+    "open": "🟢",
+    "claimed": "🔵",
+    "closed": "🔴",
+}
+
+STATUS_COLOR = {
+    "open": EmbedColors.GREEN,
+    "claimed": EmbedColors.GOLD,
+    "closed": EmbedColors.GOLD,
+}
+
+
+# =============================================================================
+# Limits & Timeouts
+# =============================================================================
+
+MAX_OPEN_TICKETS_PER_USER = 1
+INACTIVE_WARNING_DAYS = 3      # Warn after 3 days of inactivity
+INACTIVE_CLOSE_DAYS = 5        # Close after 5 days of inactivity
+DELETE_AFTER_CLOSE_DAYS = 1    # Delete thread 24 hours after closing
+MAX_TRANSCRIPT_MESSAGES = 500  # Max messages to include in transcript
+MAX_TRANSCRIPT_USER_LOOKUPS = 15  # Max API calls for unresolved mentions
+CLAIM_REMINDER_COOLDOWN = 300  # 5 minutes between claim reminders per staff per ticket
+
+
+# =============================================================================
+# Re-exports from core constants
+# =============================================================================
+
+__all__ = [
+    # Emojis
+    "TICKET_EMOJI",
+    "PARTNERSHIP_EMOJI",
+    "SUGGESTION_EMOJI",
+    "VERIFICATION_EMOJI",
+    "STAFF_EMOJI",
+    "TRANSCRIPT_EMOJI",
+    "APPROVE_EMOJI",
+    "DENY_EMOJI",
+    "LOCK_EMOJI",
+    "UNLOCK_EMOJI",
+    "EXTEND_EMOJI",
+    "HISTORY_EMOJI",
+    "INFO_EMOJI",
+    "TRANSFER_EMOJI",
+    # Categories
+    "TICKET_CATEGORIES",
+    # Status
+    "STATUS_EMOJI",
+    "STATUS_COLOR",
+    # Limits
+    "MAX_OPEN_TICKETS_PER_USER",
+    "INACTIVE_WARNING_DAYS",
+    "INACTIVE_CLOSE_DAYS",
+    "DELETE_AFTER_CLOSE_DAYS",
+    "MAX_TRANSCRIPT_MESSAGES",
+    "MAX_TRANSCRIPT_USER_LOOKUPS",
+    "CLAIM_REMINDER_COOLDOWN",
+    # Timeouts (from core)
+    "TICKET_CATEGORY_COOLDOWN",
+    "AUTO_CLOSE_CHECK_INTERVAL",
+    "THREAD_DELETE_DELAY",
+    "CLOSE_REQUEST_COOLDOWN",
+]

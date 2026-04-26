@@ -1,0 +1,88 @@
+# =========================================================================
+# AzabBot — Public Portfolio Mirror — .gitignore
+# =========================================================================
+# This repo only ever contains: README.md, LICENSE, examples/, docs/,
+# and a small images/ folder. Anything else that lands here is a leak.
+# The tight ignore list below catches the most common ones at commit
+# time — defence in depth for "I cd'd into the wrong repo and ran git add".
+
+# Python build artefacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.eggs/
+*.egg-info/
+build/
+dist/
+
+# Virtual envs
+venv/
+.venv/
+env/
+ENV/
+
+# Anything that smells like a secret
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+credentials*.json
+service-account*.json
+config.local.*
+**/auth_token*
+**/api_key*
+
+# Bot operational data — never goes public
+data/
+logs/
+backups/
+snapshots/
+transcripts/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Internal audit / engineering docs — these reference real channel IDs,
+# member IDs, and incident details. Private repo only.
+AUTOMOD-AUDIT*.md
+DEEP-CONSISTENCY*.md
+DOC-CONSISTENCY*.md
+LOG-CONSISTENCY*.md
+PING-SUPPRESSION*.md
+POLISH-PASS*.md
+REVIEW*.md
+*-AUDIT.md
+*-AUDIT-README.md
+
+# Source tree (this is a portfolio mirror — only examples/ goes public)
+/src/
+/tests/
+/scripts/
+/main.py
+/bot.py
+/requirements.txt
+/pyrightconfig.json
+/azabbot.service
+/.python-version
+
+# Editor / OS junk
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini

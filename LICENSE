@@ -1,0 +1,41 @@
+AzabBot — Source-Available Portfolio License
+==============================================
+
+Copyright (c) 2025 John Hamwi. All rights reserved.
+
+This source code is published for portfolio review and educational
+reading only. It is NOT open source and is NOT licensed for use,
+modification, redistribution, or deployment in any form.
+
+Permitted:
+
+  - Reading the source for the purpose of evaluating the author's
+    engineering work (recruiters, hiring managers, fellow engineers).
+  - Quoting short excerpts in technical writing or interviews, with
+    attribution.
+
+Not permitted, without prior written permission from the copyright
+holder:
+
+  - Copying, modifying, or redistributing any part of this codebase.
+  - Running this codebase, in whole or in part, as a Discord bot or
+    any other service.
+  - Incorporating this code into another project, public or private,
+    commercial or non-commercial.
+  - Training machine-learning models on this codebase.
+  - Removing or altering this notice, the author's name, or the
+    "AzabBot" branding from any extracted code.
+
+The full production codebase is private. The files published here
+are extracted, redacted, and curated for portfolio review. They
+reference imports and infrastructure that are not included; they are
+reading material, not a buildable project.
+
+For licensing inquiries, contact: john.hamwi10@gmail.com
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM, OUT OF, OR IN
+CONNECTION WITH THE SOFTWARE OR ITS USE.
